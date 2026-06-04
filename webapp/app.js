@@ -3331,7 +3331,7 @@ function startEditMasterFolderRow(rowId) {
       category: table.id,
       targetTable: `master_folder:${table.id}`,
       readonly: false,
-      _source: `แก้ไขจาก ${row._source || "source"}`,
+      _source: "กำลังแก้ไข",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -3351,8 +3351,6 @@ async function syncMasterFolderTableToDatabase() {
     ...row,
     id: `${table.id}-${row._sourceRow || index + 1}`,
     tableId: table.id,
-    sourceFile: table.sourceFile,
-    sourceSheet: table.title,
   }));
   const rows = [...sourceRows, ...masterFolderDraftRows(table.id)];
   if (!rows.length) {
@@ -3420,8 +3418,6 @@ async function importAllMasterFolderTablesToDatabase() {
         ...row,
         id: `${table.id}-${row._sourceRow || index + 1}`,
         tableId: table.id,
-        sourceFile: table.sourceFile,
-        sourceSheet: table.title,
       }));
       if (!rows.length) continue;
       setEstMasterSyncMessage(`กำลังนำเข้า ${table.title}: ${fmt(rows.length)} rows (${fmt(imported)} rows แล้ว)`);
@@ -3734,7 +3730,7 @@ function masterFolderDraftRows(tableId) {
 function masterFolderRows(table) {
   if (!table) return [];
   return [
-    ...(table.rows || []).map((row, index) => ({ ...row, id: `source-${table.id}-${index}`, tableId: table.id, readonly: true, _source: `${table.sourceFile} #${row._sourceRow || index + 1}` })),
+    ...(table.rows || []).map((row, index) => ({ ...row, id: `master-${table.id}-${index}`, tableId: table.id, readonly: true, _source: "ข้อมูลหลัก" })),
     ...masterFolderDraftRows(table.id),
   ];
 }
@@ -3795,7 +3791,7 @@ function renderMasterFolderPanel() {
       <b>${fmt(domain.rowCount)} rows</b>
     </article>`).join("");
   const tableOptions = masterFolderTables().map((item) => `
-    <option value="${esc(item.id)}" ${item.id === table.id ? "selected" : ""}>${esc(item.domain)} | ${esc(item.sourceFile)} | ${esc(item.title)} (${fmt(item.rowCount)})</option>`).join("");
+    <option value="${esc(item.id)}" ${item.id === table.id ? "selected" : ""}>${esc(item.title)} | ${esc(item.domain)} (${fmt(item.rowCount)})</option>`).join("");
   const refBadges = (table.references || []).map((ref) => `<span>${esc(ref.field)} -> ${esc(ref.refDomain)}</span>`).join("") || "<span>ไม่มี foreign key ที่ตรวจพบ</span>";
   const dbButtons = `
     <div class="folder-command-bar">
@@ -3806,17 +3802,17 @@ function renderMasterFolderPanel() {
   return `
     <section class="est-panel est-master-folder">
       <div class="section-head">
-        <h3>Master Data จาก Folder</h3>
+        <h3>ข้อมูลหลักของระบบ</h3>
         <span>${fmt(data.tableCount || masterFolderTables().length)} tables / ${fmt(data.rowCount || 0)} rows</span>
       </div>
       ${dbButtons}
       <div class="master-folder-domains">${domainCards}</div>
       <div class="est-master-actions">
         <select data-folder-master-table>${tableOptions}</select>
-        <span>เลือก table แล้วกดแก้ไข row หรือบันทึกลงฐานข้อมูล</span>
+        <span>เลือก table หลัก แล้วเพิ่ม/แก้ไข/บันทึกลงฐานข้อมูล</span>
       </div>
       <div class="folder-schema-card">
-        <div><strong>${esc(table.title)}</strong><span>${esc(table.sourceFile)}</span></div>
+        <div><strong>${esc(table.title)}</strong><span>${esc(table.domain)}</span></div>
         <div><b>Table ID</b><code>${esc(table.id)}</code></div>
         <div><b>Primary key</b><code>${esc(table.primaryLabel || table.primaryKey)}</code></div>
         <div><b>Foreign key</b><div class="folder-ref-list">${refBadges}</div></div>
@@ -3830,84 +3826,34 @@ function renderMasterFolderPanel() {
       </form>
       <div class="table-wrap est-table-wrap">
         <table class="mini-table est-table">
-          <thead><tr><th></th>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>ที่มา</th></tr></thead>
+          <thead><tr><th></th>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>สถานะ</th></tr></thead>
           <tbody>${rows.slice(0, 300).map((row) => `<tr class="${row.readonly ? "" : "is-added"}">
             <td>
               <button type="button" data-folder-edit-row="${esc(row.id)}">แก้ไข</button>
               ${row.readonly ? "" : `<button type="button" data-folder-del-row="${esc(row.id)}">ลบ</button>`}
             </td>
             ${visibleColumns.map((col) => `<td>${esc(row[col.key] ?? "")}</td>`).join("")}
-            <td>${esc(row._source || (row.readonly ? "source" : "draft"))}</td>
+            <td>${esc(row._source || (row.readonly ? "ข้อมูลหลัก" : "แก้ไข"))}</td>
           </tr>`).join("")}</tbody>
         </table>
       </div>
-      ${data.skipped?.length ? `<div class="est-sync-message">ไฟล์ที่ยังไม่ได้นำเข้า: ${data.skipped.map((item) => `${esc(item.file)} (${esc(item.reason)})`).join(", ")}</div>` : ""}
     </section>`;
 }
 
 function renderEstMaster() {
-  const categoryKey = state.estMasterCategory;
-  const category = EST_MASTER_CATEGORIES[categoryKey] || EST_MASTER_CATEGORIES.areas;
-  const draftRows = state.estMasterRecords.filter((row) => row.category === categoryKey);
-  const rows = estMasterRows(categoryKey);
-  const edit = state.estMasterRecords.find((row) => row.id === state.estMasterEditId && row.category === categoryKey) || {};
   const syncMessage = state.estMasterSyncMessage
     ? `<div class="est-sync-message">${esc(state.estMasterSyncMessage)}</div>`
     : "";
-  const cards = Object.entries(EST_MASTER_CATEGORIES).map(([key, item]) => `
-    <button class="est-master-card${key === categoryKey ? " active" : ""}" type="button" data-est-master-category="${esc(key)}">
-      <strong>${esc(item.title)}</strong>
-      <span>${esc(item.detail)}</span>
-      <small>${esc(item.table)}</small>
-    </button>`).join("");
-  const inputs = category.fields.map((field) => renderEstMasterField(field, edit, category)).join("");
   return `
     <div class="est-page">
       <div class="report-title">
         <div>
           <h2>ข้อมูลหลัก</h2>
-          <p>แยกหมวดย่อยตามโครงสร้างระบบสวนปาล์ม เพิ่ม/แก้ไขเป็น draft และ map ไป Supabase ตามแต่ละตาราง</p>
+          <p>ข้อมูลหลักของระบบสวนปาล์ม สร้างเป็น table ของตัวเองและเชื่อมโยงกันด้วย primary key / foreign key</p>
         </div>
       </div>
-      <section class="est-master-grid">${cards}</section>
-      ${renderEstMasterSchema(categoryKey)}
       ${renderMasterFolderPanel()}
-      <section class="est-master-actions">
-        <button type="button" data-est-db-load ${state.estMasterSyncBusy ? "disabled" : ""}>เรียกดู/แก้ไข ข้อมูลในฐานข้อมูล</button>
-        <button type="button" data-est-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกข้อมูลในฐานข้อมูล</button>
-        <span>ปลายทาง: <code>${esc(category.table)}</code></span>
-      </section>
       ${syncMessage}
-      <section class="est-entry-grid">
-        <form class="est-entry-form">
-          ${inputs}
-          <label class="est-form-wide">หมายเหตุ<input data-est-master-field="note" value="${esc(edit.note ?? "")}"></label>
-          <div class="est-form-actions">
-            <button type="button" data-est-save-master>${state.estMasterEditId ? "บันทึกแก้ไข" : "เพิ่มข้อมูล"}</button>
-          </div>
-        </form>
-        <section class="est-panel est-source-card">
-          <div class="section-head"><h3>${esc(category.title)}</h3><span>${fmt(draftRows.length)} draft records</span></div>
-          <div class="est-source-list">
-            <p><strong>รายละเอียด:</strong> ${esc(category.detail)}</p>
-            <p><strong>Supabase:</strong> <code>${esc(category.table)}</code></p>
-            <p><strong>ข้อมูลอ้างอิง:</strong> ${categoryKey === "areas" || categoryKey === "budget" || categoryKey === "activities" ? "ประมาณการค่าใช้จ่าย 2569.xlsx" : "บันทึกเพิ่ม/แก้ไขในระบบ"}</p>
-          </div>
-        </section>
-      </section>
-      <section class="est-panel">
-        <div class="section-head"><h3>${esc(category.title)}</h3><span>${fmt(rows.length)} records</span></div>
-        <div class="table-wrap est-table-wrap">
-          <table class="mini-table est-table">
-            <thead><tr><th></th>${category.fields.map((field) => `<th>${esc(estMasterFieldLabel(field))}</th>`).join("")}<th>ที่มา</th></tr></thead>
-            <tbody>${rows.slice(0, 220).map((row) => `<tr class="${row.readonly ? "" : "is-added"}">
-              <td>${row.readonly ? "" : `<button type="button" data-est-edit-master="${esc(row.id)}">แก้ไข</button> <button type="button" data-est-del-master="${esc(row.id)}">ลบ</button>`}</td>
-              ${category.fields.map((field) => `<td>${esc(row[estMasterFieldKey(field)] ?? "")}</td>`).join("")}
-              <td>${esc(row._source || (row.readonly ? "source" : "draft"))}</td>
-            </tr>`).join("")}</tbody>
-          </table>
-        </div>
-      </section>
     </div>`;
 }
 
