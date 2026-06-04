@@ -67,6 +67,8 @@ def build_tables():
     ap_rows = rows_from_sheet(wb, "AP")
     activity_rows = rows_from_sheet(wb, "Activity")
     system_rows = rows_from_sheet(wb, "System")
+    ap_names = {clean(row.get("APcode")): clean(row.get("APname")) for row in ap_rows}
+    system_names = {clean(row.get("WorkCode")): clean(row.get("WorkName")) for row in system_rows}
 
     terrains = []
     seen_terrains = set()
@@ -79,11 +81,13 @@ def build_tables():
             "area_rai": clean(row.get("area")),
             "area_planted": clean(row.get("Area Planted")),
             "tree_count": clean(row.get("# of Trees")),
-            "rspo": clean(row.get("RSPO Certified")),
+            "rspo": "RSPO" if str(clean(row.get("RSPO Certified"))).upper() == "YES" else "NON-RSPO",
             "payroll_department_code": clean(row.get("Payroll Department Code")),
             "payroll_description": clean(row.get("Payroll Code Description")),
             "work_code": clean(row.get("WorkCode")),
+            "work_name": system_names.get(clean(row.get("WorkCode")), ""),
             "ap_code": clean(row.get("APCode")),
+            "ap_name": ap_names.get(clean(row.get("APCode")), ""),
         }, "terrain_key")
 
     ap = []
@@ -142,7 +146,9 @@ def build_tables():
                 ("payroll_department_code", "รหัสฝ่ายค่าแรง", "text"),
                 ("payroll_description", "ฝ่ายค่าแรง", "text"),
                 ("work_code", "คีย์ระบบงาน", "text"),
+                ("work_name", "ชื่อระบบงาน", "text"),
                 ("ap_code", "คีย์ AP", "text"),
+                ("ap_name", "ชื่อ AP", "text"),
             ],
             [
                 {"field": "work_code", "refDomain": "system", "refKey": "work_code"},

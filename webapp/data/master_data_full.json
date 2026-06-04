@@ -1,6 +1,6 @@
 {
   "ok": true,
-  "generatedAt": "2026-06-04T22:52:16",
+  "generatedAt": "2026-06-04T23:09:18",
   "tableCount": 5,
   "rowCount": 444,
   "domains": [
@@ -89,8 +89,18 @@
           "type": "text"
         },
         {
+          "key": "work_name",
+          "label": "ชื่อระบบงาน",
+          "type": "text"
+        },
+        {
           "key": "ap_code",
           "label": "คีย์ AP",
+          "type": "text"
+        },
+        {
+          "key": "ap_name",
+          "label": "ชื่อ AP",
           "type": "text"
         }
       ],
@@ -115,11 +125,13 @@
           "area_rai": 8,
           "area_planted": 8,
           "tree_count": 184,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 541,
           "payroll_description": "พันไร่",
           "work_code": 278,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST004",
+          "ap_name": "พันไร่-R(C05 )",
           "_sourceRow": 1
         },
         {
@@ -130,11 +142,13 @@
           "area_rai": 6,
           "area_planted": 6,
           "tree_count": 126,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 651,
           "payroll_description": "บางกัน",
           "work_code": 14,
+          "work_name": "",
           "ap_code": "EST002",
+          "ap_name": "แปลงบางกัน(B14)",
           "_sourceRow": 2
         },
         {
@@ -145,11 +159,13 @@
           "area_rai": 82,
           "area_planted": 82,
           "tree_count": 1813,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 531,
           "payroll_description": "ยวนสาว",
           "work_code": 25,
+          "work_name": "ยวนสาว PU",
           "ap_code": "EST003",
+          "ap_name": "แปลงยวนสาว(PU1,3,4)",
           "_sourceRow": 3
         },
         {
@@ -160,11 +176,13 @@
           "area_rai": 72,
           "area_planted": 72,
           "tree_count": 1574,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 531,
           "payroll_description": "ยวนสาว",
           "work_code": 25,
+          "work_name": "ยวนสาว PU",
           "ap_code": "EST003",
+          "ap_name": "แปลงยวนสาว(PU1,3,4)",
           "_sourceRow": 4
         },
         {
@@ -175,11 +193,13 @@
           "area_rai": 69,
           "area_planted": 69,
           "tree_count": 1509,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 531,
           "payroll_description": "ยวนสาว",
           "work_code": 25,
+          "work_name": "ยวนสาว PU",
           "ap_code": "EST003",
+          "ap_name": "แปลงยวนสาว(PU1,3,4)",
           "_sourceRow": 5
         },
         {
@@ -190,11 +210,13 @@
           "area_rai": 102,
           "area_planted": 102,
           "tree_count": 2243,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 601,
           "payroll_description": "ตะกุก",
           "work_code": 11,
+          "work_name": "ตะกุก T",
           "ap_code": "EST001",
+          "ap_name": "แปลงตะกุก(T29,30)",
           "_sourceRow": 6
         },
         {
@@ -205,11 +227,13 @@
           "area_rai": 113,
           "area_planted": 113,
           "tree_count": 2494,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 601,
           "payroll_description": "ตะกุก",
           "work_code": 11,
+          "work_name": "ตะกุก T",
           "ap_code": "EST001",
+          "ap_name": "แปลงตะกุก(T29,30)",
           "_sourceRow": 7
         },
         {
@@ -220,11 +244,13 @@
           "area_rai": 111,
           "area_planted": 111,
           "tree_count": 2785,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 501,
           "payroll_description": "กะเปา 49",
           "work_code": 317,
+          "work_name": "R-กะเปา A",
           "ap_code": "EST009",
+          "ap_name": "กะเปา รุ่นปี49-52-R(A10,11,12,13)",
           "_sourceRow": 8
         },
         {
@@ -235,11 +261,13 @@
           "area_rai": 97,
           "area_planted": 97,
           "tree_count": 2421,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 501,
           "payroll_description": "กะเปา 49",
           "work_code": 317,
+          "work_name": "R-กะเปา A",
           "ap_code": "EST009",
+          "ap_name": "กะเปา รุ่นปี49-52-R(A10,11,12,13)",
           "_sourceRow": 9
         },
         {
@@ -250,11 +278,13 @@
           "area_rai": 151,
           "area_planted": 151,
           "tree_count": 3764,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 501,
           "payroll_description": "กะเปา 49",
           "work_code": 317,
+          "work_name": "R-กะเปา A",
           "ap_code": "EST009",
+          "ap_name": "กะเปา รุ่นปี49-52-R(A10,11,12,13)",
           "_sourceRow": 10
         },
         {
@@ -265,11 +295,13 @@
           "area_rai": 116,
           "area_planted": 116,
           "tree_count": 2893,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 501,
           "payroll_description": "กะเปา 49",
           "work_code": 317,
+          "work_name": "R-กะเปา A",
           "ap_code": "EST009",
+          "ap_name": "กะเปา รุ่นปี49-52-R(A10,11,12,13)",
           "_sourceRow": 11
         },
         {
@@ -280,11 +312,13 @@
           "area_rai": 168,
           "area_planted": 168,
           "tree_count": 4192,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 652,
           "payroll_description": "บางกัน 49",
           "work_code": 322,
+          "work_name": "บางกัน B",
           "ap_code": "EST011",
+          "ap_name": "บางกัน รุ่นปี49-52 (B07,10,13)",
           "_sourceRow": 12
         },
         {
@@ -295,11 +329,13 @@
           "area_rai": 4,
           "area_planted": 4,
           "tree_count": 112,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 602,
           "payroll_description": "ตะกุก 49",
           "work_code": 320,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST010",
+          "ap_name": "ตะกุก ปีรุ่น49-52-R(T10,12,16,20,28)",
           "_sourceRow": 13
         },
         {
@@ -310,11 +346,13 @@
           "area_rai": 113,
           "area_planted": 113,
           "tree_count": 2833,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 602,
           "payroll_description": "ตะกุก 49",
           "work_code": 320,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST010",
+          "ap_name": "ตะกุก ปีรุ่น49-52-R(T10,12,16,20,28)",
           "_sourceRow": 14
         },
         {
@@ -325,11 +363,13 @@
           "area_rai": 195,
           "area_planted": 195,
           "tree_count": 4864,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 502,
           "payroll_description": "กะเปา 50",
           "work_code": 315,
+          "work_name": "กะเปา A",
           "ap_code": "EST008",
+          "ap_name": "กะเปา รุ่นปี49-52 (A04,05)",
           "_sourceRow": 15
         },
         {
@@ -340,11 +380,13 @@
           "area_rai": 171,
           "area_planted": 171,
           "tree_count": 4608,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 502,
           "payroll_description": "กะเปา 50",
           "work_code": 315,
+          "work_name": "กะเปา A",
           "ap_code": "EST008",
+          "ap_name": "กะเปา รุ่นปี49-52 (A04,05)",
           "_sourceRow": 16
         },
         {
@@ -355,11 +397,13 @@
           "area_rai": 157,
           "area_planted": 157,
           "tree_count": 4022,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 653,
           "payroll_description": "บางกัน 50",
           "work_code": 322,
+          "work_name": "บางกัน B",
           "ap_code": "EST011",
+          "ap_name": "บางกัน รุ่นปี49-52 (B07,10,13)",
           "_sourceRow": 17
         },
         {
@@ -370,11 +414,13 @@
           "area_rai": 170,
           "area_planted": 170,
           "tree_count": 4245,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 653,
           "payroll_description": "บางกัน 50",
           "work_code": 322,
+          "work_name": "บางกัน B",
           "ap_code": "EST011",
+          "ap_name": "บางกัน รุ่นปี49-52 (B07,10,13)",
           "_sourceRow": 18
         },
         {
@@ -385,11 +431,13 @@
           "area_rai": 103,
           "area_planted": 103,
           "tree_count": 2792,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 542,
           "payroll_description": "พันไร่ 50",
           "work_code": 310,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST005",
+          "ap_name": "พันไร่ รุ่นปี49-52-R (C05,07)",
           "_sourceRow": 19
         },
         {
@@ -400,11 +448,13 @@
           "area_rai": 156,
           "area_planted": 156,
           "tree_count": 4202,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 542,
           "payroll_description": "พันไร่ 50",
           "work_code": 310,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST005",
+          "ap_name": "พันไร่ รุ่นปี49-52-R (C05,07)",
           "_sourceRow": 20
         },
         {
@@ -415,11 +465,13 @@
           "area_rai": 115,
           "area_planted": 115,
           "tree_count": 2872,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 603,
           "payroll_description": "ตะกุก 50",
           "work_code": 320,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST010",
+          "ap_name": "ตะกุก ปีรุ่น49-52-R(T10,12,16,20,28)",
           "_sourceRow": 21
         },
         {
@@ -430,11 +482,13 @@
           "area_rai": 121,
           "area_planted": 121,
           "tree_count": 3030,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 603,
           "payroll_description": "ตะกุก 50",
           "work_code": 320,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST010",
+          "ap_name": "ตะกุก ปีรุ่น49-52-R(T10,12,16,20,28)",
           "_sourceRow": 22
         },
         {
@@ -445,11 +499,13 @@
           "area_rai": 5,
           "area_planted": 5,
           "tree_count": 152,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 512,
           "payroll_description": "ปลายราง 51",
           "work_code": 393,
+          "work_name": "ปลายราง P",
           "ap_code": "EST007",
+          "ap_name": "ปลายราง รุ่นปี49-52(P07)",
           "_sourceRow": 23
         },
         {
@@ -460,11 +516,13 @@
           "area_rai": 15,
           "area_planted": 15,
           "tree_count": 401,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 512,
           "payroll_description": "ปลายราง 51",
           "work_code": 312,
+          "work_name": "R-ปลายราง P",
           "ap_code": "EST006",
+          "ap_name": "ปลายราง รุ่นปี49-52-R(P07)",
           "_sourceRow": 24
         },
         {
@@ -475,11 +533,13 @@
           "area_rai": 4,
           "area_planted": 4,
           "tree_count": 92,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 604,
           "payroll_description": "ตะกุก 52",
           "work_code": 320,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST010",
+          "ap_name": "ตะกุก ปีรุ่น49-52-R(T10,12,16,20,28)",
           "_sourceRow": 25
         },
         {
@@ -490,11 +550,13 @@
           "area_rai": 4,
           "area_planted": 4,
           "tree_count": 93,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 513,
           "payroll_description": "ปลายราง 55",
           "work_code": 358,
+          "work_name": "R-ปลายราง P",
           "ap_code": "EST020",
+          "ap_name": "ปลายราง รุ่นปี55-58-R (P07)",
           "_sourceRow": 26
         },
         {
@@ -505,11 +567,13 @@
           "area_rai": 78,
           "area_planted": 78,
           "tree_count": 1950,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 503,
           "payroll_description": "กะเปา 56",
           "work_code": 347,
+          "work_name": "กะเปา A",
           "ap_code": "EST013",
+          "ap_name": "กะเปา รุ่นปี55-58(A01,02)",
           "_sourceRow": 27
         },
         {
@@ -520,11 +584,13 @@
           "area_rai": 153,
           "area_planted": 153,
           "tree_count": 3835,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 503,
           "payroll_description": "กะเปา 56",
           "work_code": 347,
+          "work_name": "กะเปา A",
           "ap_code": "EST013",
+          "ap_name": "กะเปา รุ่นปี55-58(A01,02)",
           "_sourceRow": 28
         },
         {
@@ -535,11 +601,13 @@
           "area_rai": 85,
           "area_planted": 85,
           "tree_count": 2119,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 503,
           "payroll_description": "กะเปา 56",
           "work_code": 346,
+          "work_name": "R-กะเปา A",
           "ap_code": "EST012",
+          "ap_name": "กะเปา รุ่นปี55-58-R (A03,08,09)",
           "_sourceRow": 29
         },
         {
@@ -550,11 +618,13 @@
           "area_rai": 124,
           "area_planted": 124,
           "tree_count": 3106,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 543,
           "payroll_description": "พันไร่ 56",
           "work_code": 348,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST014",
+          "ap_name": "พันไร่ รุ่นปี55-58-R (C06,10)",
           "_sourceRow": 30
         },
         {
@@ -565,11 +635,13 @@
           "area_rai": 157,
           "area_planted": 157,
           "tree_count": 3931,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 522,
           "payroll_description": "หมอนไม้ 56",
           "work_code": 349,
+          "work_name": "R-หมอนไม้ D",
           "ap_code": "EST016",
+          "ap_name": "หมอนไม้ รุ่นปี55-58-R (D07)",
           "_sourceRow": 31
         },
         {
@@ -580,11 +652,13 @@
           "area_rai": 9,
           "area_planted": 9,
           "tree_count": 213,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 605,
           "payroll_description": "ตะกุก 56",
           "work_code": 351,
+          "work_name": "ตะกุก T",
           "ap_code": "EST018",
+          "ap_name": "ตะกุก รุ่นปี55-58 (T08)",
           "_sourceRow": 32
         },
         {
@@ -595,11 +669,13 @@
           "area_rai": 113,
           "area_planted": 113,
           "tree_count": 2816,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 605,
           "payroll_description": "ตะกุก 56",
           "work_code": 350,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST017",
+          "ap_name": "ตะกุกรุ่น55-58-R(T08,09,11,13,17,18,19,21,28)",
           "_sourceRow": 33
         },
         {
@@ -610,11 +686,13 @@
           "area_rai": 128,
           "area_planted": 128,
           "tree_count": 3199,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 605,
           "payroll_description": "ตะกุก 56",
           "work_code": 350,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST017",
+          "ap_name": "ตะกุกรุ่น55-58-R(T08,09,11,13,17,18,19,21,28)",
           "_sourceRow": 34
         },
         {
@@ -625,11 +703,13 @@
           "area_rai": 121,
           "area_planted": 121,
           "tree_count": 3015,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 605,
           "payroll_description": "ตะกุก 56",
           "work_code": 350,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST017",
+          "ap_name": "ตะกุกรุ่น55-58-R(T08,09,11,13,17,18,19,21,28)",
           "_sourceRow": 35
         },
         {
@@ -640,11 +720,13 @@
           "area_rai": 56,
           "area_planted": 56,
           "tree_count": 1403,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 605,
           "payroll_description": "ตะกุก 56",
           "work_code": 350,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST017",
+          "ap_name": "ตะกุกรุ่น55-58-R(T08,09,11,13,17,18,19,21,28)",
           "_sourceRow": 36
         },
         {
@@ -655,11 +737,13 @@
           "area_rai": 172,
           "area_planted": 172,
           "tree_count": 4308,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 504,
           "payroll_description": "กะเปา 57",
           "work_code": 346,
+          "work_name": "R-กะเปา A",
           "ap_code": "EST012",
+          "ap_name": "กะเปา รุ่นปี55-58-R (A03,08,09)",
           "_sourceRow": 37
         },
         {
@@ -670,11 +754,13 @@
           "area_rai": 154,
           "area_planted": 154,
           "tree_count": 3861,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 504,
           "payroll_description": "กะเปา 57",
           "work_code": 346,
+          "work_name": "R-กะเปา A",
           "ap_code": "EST012",
+          "ap_name": "กะเปา รุ่นปี55-58-R (A03,08,09)",
           "_sourceRow": 38
         },
         {
@@ -685,11 +771,13 @@
           "area_rai": 169,
           "area_planted": 169,
           "tree_count": 4231,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 654,
           "payroll_description": "บางกัน 57",
           "work_code": 352,
+          "work_name": "บางกัน B",
           "ap_code": "EST019",
+          "ap_name": "บางกัน รุ่นปี55-58 (B03,12,14)",
           "_sourceRow": 39
         },
         {
@@ -700,11 +788,13 @@
           "area_rai": 171,
           "area_planted": 171,
           "tree_count": 4265,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 654,
           "payroll_description": "บางกัน 57",
           "work_code": 352,
+          "work_name": "บางกัน B",
           "ap_code": "EST019",
+          "ap_name": "บางกัน รุ่นปี55-58 (B03,12,14)",
           "_sourceRow": 40
         },
         {
@@ -715,11 +805,13 @@
           "area_rai": 67,
           "area_planted": 67,
           "tree_count": 1663,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 654,
           "payroll_description": "บางกัน 57",
           "work_code": 352,
+          "work_name": "บางกัน B",
           "ap_code": "EST019",
+          "ap_name": "บางกัน รุ่นปี55-58 (B03,12,14)",
           "_sourceRow": 41
         },
         {
@@ -730,11 +822,13 @@
           "area_rai": 12,
           "area_planted": 12,
           "tree_count": 300,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 544,
           "payroll_description": "พันไร่ 57",
           "work_code": 392,
+          "work_name": "พันไร่ C",
           "ap_code": "EST015",
+          "ap_name": "พันไร่ รุ่นปี55-58 (C06)",
           "_sourceRow": 42
         },
         {
@@ -745,11 +839,13 @@
           "area_rai": 100,
           "area_planted": 100,
           "tree_count": 2495,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 544,
           "payroll_description": "พันไร่ 57",
           "work_code": 348,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST014",
+          "ap_name": "พันไร่ รุ่นปี55-58-R (C06,10)",
           "_sourceRow": 43
         },
         {
@@ -760,11 +856,13 @@
           "area_rai": 117,
           "area_planted": 117,
           "tree_count": 2934,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 606,
           "payroll_description": "ตะกุก 58",
           "work_code": 350,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST017",
+          "ap_name": "ตะกุกรุ่น55-58-R(T08,09,11,13,17,18,19,21,28)",
           "_sourceRow": 44
         },
         {
@@ -775,11 +873,13 @@
           "area_rai": 116,
           "area_planted": 116,
           "tree_count": 2903,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 606,
           "payroll_description": "ตะกุก 58",
           "work_code": 350,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST017",
+          "ap_name": "ตะกุกรุ่น55-58-R(T08,09,11,13,17,18,19,21,28)",
           "_sourceRow": 45
         },
         {
@@ -790,11 +890,13 @@
           "area_rai": 115,
           "area_planted": 115,
           "tree_count": 2864,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 606,
           "payroll_description": "ตะกุก 58",
           "work_code": 350,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST017",
+          "ap_name": "ตะกุกรุ่น55-58-R(T08,09,11,13,17,18,19,21,28)",
           "_sourceRow": 46
         },
         {
@@ -805,11 +907,13 @@
           "area_rai": 128,
           "area_planted": 128,
           "tree_count": 2825,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 606,
           "payroll_description": "ตะกุก 58",
           "work_code": 350,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST017",
+          "ap_name": "ตะกุกรุ่น55-58-R(T08,09,11,13,17,18,19,21,28)",
           "_sourceRow": 47
         },
         {
@@ -820,11 +924,13 @@
           "area_rai": 129,
           "area_planted": 129,
           "tree_count": 2843,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 606,
           "payroll_description": "ตะกุก 58",
           "work_code": 350,
+          "work_name": "R-ตะกุก T",
           "ap_code": "EST017",
+          "ap_name": "ตะกุกรุ่น55-58-R(T08,09,11,13,17,18,19,21,28)",
           "_sourceRow": 48
         },
         {
@@ -835,11 +941,13 @@
           "area_rai": 133,
           "area_planted": 133,
           "tree_count": 3333,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 545,
           "payroll_description": "พันไร่ 59",
           "work_code": 353,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST021",
+          "ap_name": "พันไร่ รุ่นปี59-60-R (C01,02,03,04,05,08,09,11)",
           "_sourceRow": 49
         },
         {
@@ -850,11 +958,13 @@
           "area_rai": 101,
           "area_planted": 101,
           "tree_count": 2525,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 545,
           "payroll_description": "พันไร่ 59",
           "work_code": 353,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST021",
+          "ap_name": "พันไร่ รุ่นปี59-60-R (C01,02,03,04,05,08,09,11)",
           "_sourceRow": 50
         },
         {
@@ -865,11 +975,13 @@
           "area_rai": 116,
           "area_planted": 116,
           "tree_count": 2888,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 545,
           "payroll_description": "พันไร่ 59",
           "work_code": 353,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST021",
+          "ap_name": "พันไร่ รุ่นปี59-60-R (C01,02,03,04,05,08,09,11)",
           "_sourceRow": 51
         },
         {
@@ -880,11 +992,13 @@
           "area_rai": 76,
           "area_planted": 76,
           "tree_count": 1905,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 545,
           "payroll_description": "พันไร่ 59",
           "work_code": 353,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST021",
+          "ap_name": "พันไร่ รุ่นปี59-60-R (C01,02,03,04,05,08,09,11)",
           "_sourceRow": 52
         },
         {
@@ -895,11 +1009,13 @@
           "area_rai": 92,
           "area_planted": 92,
           "tree_count": 2291,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 545,
           "payroll_description": "พันไร่ 59",
           "work_code": 353,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST021",
+          "ap_name": "พันไร่ รุ่นปี59-60-R (C01,02,03,04,05,08,09,11)",
           "_sourceRow": 53
         },
         {
@@ -910,11 +1026,13 @@
           "area_rai": 142,
           "area_planted": 142,
           "tree_count": 3259,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 505,
           "payroll_description": "กะเปา 60",
           "work_code": 354,
+          "work_name": "กะเปา A",
           "ap_code": "EST022",
+          "ap_name": "กะเปา รุ่นปี59-60 (A06)",
           "_sourceRow": 54
         },
         {
@@ -925,11 +1043,13 @@
           "area_rai": 154,
           "area_planted": 154,
           "tree_count": 3851,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 655,
           "payroll_description": "บางกัน 60",
           "work_code": 355,
+          "work_name": "บางกัน B",
           "ap_code": "EST023",
+          "ap_name": "บางกัน ปาล์มรุ่นปี 59-60 (B04,08,09)",
           "_sourceRow": 55
         },
         {
@@ -940,11 +1060,13 @@
           "area_rai": 139,
           "area_planted": 139,
           "tree_count": 3476,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 655,
           "payroll_description": "บางกัน 60",
           "work_code": 355,
+          "work_name": "บางกัน B",
           "ap_code": "EST023",
+          "ap_name": "บางกัน ปาล์มรุ่นปี 59-60 (B04,08,09)",
           "_sourceRow": 56
         },
         {
@@ -955,11 +1077,13 @@
           "area_rai": 165,
           "area_planted": 165,
           "tree_count": 4127,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 655,
           "payroll_description": "บางกัน 60",
           "work_code": 355,
+          "work_name": "บางกัน B",
           "ap_code": "EST023",
+          "ap_name": "บางกัน ปาล์มรุ่นปี 59-60 (B04,08,09)",
           "_sourceRow": 57
         },
         {
@@ -970,11 +1094,13 @@
           "area_rai": 108,
           "area_planted": 108,
           "tree_count": 2707,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 546,
           "payroll_description": "พันไร่ 60",
           "work_code": 353,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST021",
+          "ap_name": "พันไร่ รุ่นปี59-60-R (C01,02,03,04,05,08,09,11)",
           "_sourceRow": 58
         },
         {
@@ -985,11 +1111,13 @@
           "area_rai": 85,
           "area_planted": 85,
           "tree_count": 2132,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 546,
           "payroll_description": "พันไร่ 60",
           "work_code": 353,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST021",
+          "ap_name": "พันไร่ รุ่นปี59-60-R (C01,02,03,04,05,08,09,11)",
           "_sourceRow": 59
         },
         {
@@ -1000,11 +1128,13 @@
           "area_rai": 29,
           "area_planted": 29,
           "tree_count": 720,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 546,
           "payroll_description": "พันไร่ 60",
           "work_code": 353,
+          "work_name": "R-พันไร่ C",
           "ap_code": "EST021",
+          "ap_name": "พันไร่ รุ่นปี59-60-R (C01,02,03,04,05,08,09,11)",
           "_sourceRow": 60
         },
         {
@@ -1015,11 +1145,13 @@
           "area_rai": 24,
           "area_planted": 24,
           "tree_count": 534,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 506,
           "payroll_description": "พันไร่ 60",
           "work_code": 381,
+          "work_name": "R-กะเปา A-63 - 65",
           "ap_code": "EST025",
+          "ap_name": "กะเปา รุ่นปี63-65-R (A01,03,07 )",
           "_sourceRow": 61
         },
         {
@@ -1030,11 +1162,13 @@
           "area_rai": 39,
           "area_planted": 39,
           "tree_count": 981,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 506,
           "payroll_description": "กะเปา 63",
           "work_code": 381,
+          "work_name": "R-กะเปา A-63 - 65",
           "ap_code": "EST025",
+          "ap_name": "กะเปา รุ่นปี63-65-R (A01,03,07 )",
           "_sourceRow": 62
         },
         {
@@ -1045,11 +1179,13 @@
           "area_rai": 109,
           "area_planted": 109,
           "tree_count": 2388,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 506,
           "payroll_description": "กะเปา 63",
           "work_code": 382,
+          "work_name": "กะเปา A-63 - 65",
           "ap_code": "EST026",
+          "ap_name": "กะเปา รุ่นปี63-65 (A01,07 )",
           "_sourceRow": 63
         },
         {
@@ -1060,11 +1196,13 @@
           "area_rai": 14,
           "area_planted": 14,
           "tree_count": 309,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 506,
           "payroll_description": "กะเปา 63",
           "work_code": 381,
+          "work_name": "R-กะเปา A-63 - 65",
           "ap_code": "EST025",
+          "ap_name": "กะเปา รุ่นปี63-65-R (A01,03,07 )",
           "_sourceRow": 64
         },
         {
@@ -1075,11 +1213,13 @@
           "area_rai": 108,
           "area_planted": 108,
           "tree_count": 2365,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 523,
           "payroll_description": "หมอนไม้ 63",
           "work_code": 395,
+          "work_name": "R-รีเพลนท์หมอนไม้ D 63 - 65",
           "ap_code": "EST024",
+          "ap_name": "หมอนไม้ รุ่นปี63-65-R(D01,02,03,04,05,08)",
           "_sourceRow": 65
         },
         {
@@ -1090,11 +1230,13 @@
           "area_rai": 121,
           "area_planted": 121,
           "tree_count": 3037,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 607,
           "payroll_description": "ตะกุก 63",
           "work_code": 385,
+          "work_name": "R-ตะกุก T-63 - 65",
           "ap_code": "EST029",
+          "ap_name": "ตะกุก รุ่นปี63-65-R( T05,22,23 )",
           "_sourceRow": 66
         },
         {
@@ -1105,11 +1247,13 @@
           "area_rai": 38,
           "area_planted": 38,
           "tree_count": 842,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 607,
           "payroll_description": "ตะกุก 63",
           "work_code": 385,
+          "work_name": "R-ตะกุก T-63 - 65",
           "ap_code": "EST029",
+          "ap_name": "ตะกุก รุ่นปี63-65-R( T05,22,23 )",
           "_sourceRow": 67
         },
         {
@@ -1120,11 +1264,13 @@
           "area_rai": 38,
           "area_planted": 38,
           "tree_count": 844,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 607,
           "payroll_description": "ตะกุก 63",
           "work_code": 385,
+          "work_name": "R-ตะกุก T-63 - 65",
           "ap_code": "EST029",
+          "ap_name": "ตะกุก รุ่นปี63-65-R( T05,22,23 )",
           "_sourceRow": 68
         },
         {
@@ -1135,11 +1281,13 @@
           "area_rai": 158,
           "area_planted": 158,
           "tree_count": 3480,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 656,
           "payroll_description": "บางกัน 64",
           "work_code": 396,
+          "work_name": "รีเพลนท์บางกัน B 63-65",
           "ap_code": "EST030",
+          "ap_name": "บางกัน รุ่นปี63-65(B01,11)",
           "_sourceRow": 69
         },
         {
@@ -1150,11 +1298,13 @@
           "area_rai": 143,
           "area_planted": 143,
           "tree_count": 3140,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 656,
           "payroll_description": "บางกัน 64",
           "work_code": 396,
+          "work_name": "รีเพลนท์บางกัน B 63-65",
           "ap_code": "EST030",
+          "ap_name": "บางกัน รุ่นปี63-65(B01,11)",
           "_sourceRow": 70
         },
         {
@@ -1165,11 +1315,13 @@
           "area_rai": 167,
           "area_planted": 167,
           "tree_count": 3671,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 656,
           "payroll_description": "บางกัน 64",
           "work_code": 396,
+          "work_name": "รีเพลนท์บางกัน B 63-65",
           "ap_code": "EST030",
+          "ap_name": "บางกัน รุ่นปี63-65(B01,11)",
           "_sourceRow": 71
         },
         {
@@ -1180,11 +1332,13 @@
           "area_rai": 130,
           "area_planted": 130,
           "tree_count": 2853,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 524,
           "payroll_description": "หมอนไม้ 64",
           "work_code": 395,
+          "work_name": "R-รีเพลนท์หมอนไม้ D 63 - 65",
           "ap_code": "EST024",
+          "ap_name": "หมอนไม้ รุ่นปี63-65-R(D01,02,03,04,05,08)",
           "_sourceRow": 72
         },
         {
@@ -1195,11 +1349,13 @@
           "area_rai": 131,
           "area_planted": 131,
           "tree_count": 2886,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 514,
           "payroll_description": "ปลายราง 64",
           "work_code": 383,
+          "work_name": "R-ปลายราง P-63 - 65",
           "ap_code": "EST027",
+          "ap_name": "ปลายราง รุ่นปี63-65-R (P06,07,08,09 )",
           "_sourceRow": 73
         },
         {
@@ -1210,11 +1366,13 @@
           "area_rai": 117,
           "area_planted": 117,
           "tree_count": 2579,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 514,
           "payroll_description": "ปลายราง 64",
           "work_code": 383,
+          "work_name": "R-ปลายราง P-63 - 65",
           "ap_code": "EST027",
+          "ap_name": "ปลายราง รุ่นปี63-65-R (P06,07,08,09 )",
           "_sourceRow": 74
         },
         {
@@ -1225,11 +1383,13 @@
           "area_rai": 155,
           "area_planted": 155,
           "tree_count": 3402,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 514,
           "payroll_description": "ปลายราง 64",
           "work_code": 383,
+          "work_name": "R-ปลายราง P-63 - 65",
           "ap_code": "EST027",
+          "ap_name": "ปลายราง รุ่นปี63-65-R (P06,07,08,09 )",
           "_sourceRow": 75
         },
         {
@@ -1240,11 +1400,13 @@
           "area_rai": 100,
           "area_planted": 100,
           "tree_count": 2192,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 514,
           "payroll_description": "ปลายราง 64",
           "work_code": 383,
+          "work_name": "R-ปลายราง P-63 - 65",
           "ap_code": "EST027",
+          "ap_name": "ปลายราง รุ่นปี63-65-R (P06,07,08,09 )",
           "_sourceRow": 76
         },
         {
@@ -1255,11 +1417,13 @@
           "area_rai": 130,
           "area_planted": 130,
           "tree_count": 2868,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 657,
           "payroll_description": "บางกัน 65",
           "work_code": 396,
+          "work_name": "รีเพลนท์บางกัน B 63-65",
           "ap_code": "EST030",
+          "ap_name": "บางกัน รุ่นปี63-65(B01,11)",
           "_sourceRow": 77
         },
         {
@@ -1270,11 +1434,13 @@
           "area_rai": 145,
           "area_planted": 145,
           "tree_count": 3193,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 657,
           "payroll_description": "บางกัน 65",
           "work_code": 396,
+          "work_name": "รีเพลนท์บางกัน B 63-65",
           "ap_code": "EST030",
+          "ap_name": "บางกัน รุ่นปี63-65(B01,11)",
           "_sourceRow": 78
         },
         {
@@ -1285,11 +1451,13 @@
           "area_rai": 115,
           "area_planted": 115,
           "tree_count": 2531,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 525,
           "payroll_description": "หมอนไม้ 65",
           "work_code": 395,
+          "work_name": "R-รีเพลนท์หมอนไม้ D 63 - 65",
           "ap_code": "EST024",
+          "ap_name": "หมอนไม้ รุ่นปี63-65-R(D01,02,03,04,05,08)",
           "_sourceRow": 79
         },
         {
@@ -1300,11 +1468,13 @@
           "area_rai": 127,
           "area_planted": 127,
           "tree_count": 2803,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 525,
           "payroll_description": "หมอนไม้ 65",
           "work_code": 395,
+          "work_name": "R-รีเพลนท์หมอนไม้ D 63 - 65",
           "ap_code": "EST024",
+          "ap_name": "หมอนไม้ รุ่นปี63-65-R(D01,02,03,04,05,08)",
           "_sourceRow": 80
         },
         {
@@ -1315,11 +1485,13 @@
           "area_rai": 128,
           "area_planted": 128,
           "tree_count": 2819,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 525,
           "payroll_description": "หมอนไม้ 65",
           "work_code": 395,
+          "work_name": "R-รีเพลนท์หมอนไม้ D 63 - 65",
           "ap_code": "EST024",
+          "ap_name": "หมอนไม้ รุ่นปี63-65-R(D01,02,03,04,05,08)",
           "_sourceRow": 81
         },
         {
@@ -1330,11 +1502,13 @@
           "area_rai": 122,
           "area_planted": 122,
           "tree_count": 2687,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 525,
           "payroll_description": "หมอนไม้ 65",
           "work_code": 395,
+          "work_name": "R-รีเพลนท์หมอนไม้ D 63 - 65",
           "ap_code": "EST024",
+          "ap_name": "หมอนไม้ รุ่นปี63-65-R(D01,02,03,04,05,08)",
           "_sourceRow": 82
         },
         {
@@ -1345,11 +1519,13 @@
           "area_rai": 136,
           "area_planted": 136,
           "tree_count": 2999,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 526,
           "payroll_description": "หมอนไม้ 66",
           "work_code": 363,
+          "work_name": "R-รีเพลนท์หมอนไม้ D ปี 66",
           "ap_code": "EST032",
+          "ap_name": "รีเพลนท์หมอนไม้ รุ่นปี66-R(D09)",
           "_sourceRow": 83
         },
         {
@@ -1360,11 +1536,13 @@
           "area_rai": 116,
           "area_planted": 116,
           "tree_count": 2550,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 515,
           "payroll_description": "ปลายราง 66",
           "work_code": 362,
+          "work_name": "R-รีเพลนท์ปลายราง P ปี 66",
           "ap_code": "EST031",
+          "ap_name": "รีเพลนท์ปลายราง รุ่นปี66-R (P03,04,05)",
           "_sourceRow": 84
         },
         {
@@ -1375,11 +1553,13 @@
           "area_rai": 130,
           "area_planted": 130,
           "tree_count": 2854,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 515,
           "payroll_description": "ปลายราง 66",
           "work_code": 362,
+          "work_name": "R-รีเพลนท์ปลายราง P ปี 66",
           "ap_code": "EST031",
+          "ap_name": "รีเพลนท์ปลายราง รุ่นปี66-R (P03,04,05)",
           "_sourceRow": 85
         },
         {
@@ -1390,11 +1570,13 @@
           "area_rai": 141,
           "area_planted": 141,
           "tree_count": 3111,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 515,
           "payroll_description": "ปลายราง 66",
           "work_code": 362,
+          "work_name": "R-รีเพลนท์ปลายราง P ปี 66",
           "ap_code": "EST031",
+          "ap_name": "รีเพลนท์ปลายราง รุ่นปี66-R (P03,04,05)",
           "_sourceRow": 86
         },
         {
@@ -1405,11 +1587,13 @@
           "area_rai": 90,
           "area_planted": 90,
           "tree_count": 1970,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 533,
           "payroll_description": "ยวนสาว 66",
           "work_code": 368,
+          "work_name": "รีเพลนท์ ยวนสาว PU ปี 66",
           "ap_code": "EST034",
+          "ap_name": "รีเพลนท์ยวนสาว รุ่นปี66(PU2)ปลูกแซม",
           "_sourceRow": 87
         },
         {
@@ -1420,11 +1604,13 @@
           "area_rai": 111,
           "area_planted": 111,
           "tree_count": 2449,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 608,
           "payroll_description": "ตะกุก 66",
           "work_code": 364,
+          "work_name": "รีเพลนท์ ตะกุก T ปี 66",
           "ap_code": "EST033",
+          "ap_name": "รีเพลนท์ตะกุก รุ่นปี66 (T03,04,06,07)",
           "_sourceRow": 88
         },
         {
@@ -1435,11 +1621,13 @@
           "area_rai": 92,
           "area_planted": 92,
           "tree_count": 2014,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 608,
           "payroll_description": "ตะกุก 66",
           "work_code": 364,
+          "work_name": "รีเพลนท์ ตะกุก T ปี 66",
           "ap_code": "EST033",
+          "ap_name": "รีเพลนท์ตะกุก รุ่นปี66 (T03,04,06,07)",
           "_sourceRow": 89
         },
         {
@@ -1450,11 +1638,13 @@
           "area_rai": 132,
           "area_planted": 132,
           "tree_count": 2898,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 608,
           "payroll_description": "ตะกุก 66",
           "work_code": 364,
+          "work_name": "รีเพลนท์ ตะกุก T ปี 66",
           "ap_code": "EST033",
+          "ap_name": "รีเพลนท์ตะกุก รุ่นปี66 (T03,04,06,07)",
           "_sourceRow": 90
         },
         {
@@ -1465,11 +1655,13 @@
           "area_rai": 107,
           "area_planted": 107,
           "tree_count": 2364,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 608,
           "payroll_description": "ตะกุก 66",
           "work_code": 364,
+          "work_name": "รีเพลนท์ ตะกุก T ปี 66",
           "ap_code": "EST033",
+          "ap_name": "รีเพลนท์ตะกุก รุ่นปี66 (T03,04,06,07)",
           "_sourceRow": 91
         },
         {
@@ -1480,11 +1672,13 @@
           "area_rai": 130,
           "area_planted": 130,
           "tree_count": 2865,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 527,
           "payroll_description": "หมอนไม้ 67",
           "work_code": 375,
+          "work_name": "R-รีเพลนท์หมอนไม้ D 67",
           "ap_code": "EST036",
+          "ap_name": "รีเพลนท์หมอนไม้ รุ่นปี67-R ( D06 )",
           "_sourceRow": 92
         },
         {
@@ -1495,11 +1689,13 @@
           "area_rai": 99,
           "area_planted": 99,
           "tree_count": 2167,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 516,
           "payroll_description": "ปลายราง 67",
           "work_code": 374,
+          "work_name": "R-รีเพลนท์ปลายราง P 67",
           "ap_code": "EST035",
+          "ap_name": "รีเพลนท์ปลายราง รุ่นปี67-R ( P01,02 )",
           "_sourceRow": 93
         },
         {
@@ -1510,11 +1706,13 @@
           "area_rai": 105,
           "area_planted": 105,
           "tree_count": 2320,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 516,
           "payroll_description": "ปลายราง 67",
           "work_code": 374,
+          "work_name": "R-รีเพลนท์ปลายราง P 67",
           "ap_code": "EST035",
+          "ap_name": "รีเพลนท์ปลายราง รุ่นปี67-R ( P01,02 )",
           "_sourceRow": 94
         },
         {
@@ -1525,11 +1723,13 @@
           "area_rai": 3,
           "area_planted": 3,
           "tree_count": 61,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 610,
           "payroll_description": "ตะกุก 67 (T10,18,21)",
           "work_code": 379,
+          "work_name": "ตะกุก T 67",
           "ap_code": "EST038",
+          "ap_name": "รีเพล็นตะกุก67 ( T10,18,21 )ปลูกเพิ่ม",
           "_sourceRow": 95
         },
         {
@@ -1540,11 +1740,13 @@
           "area_rai": 8,
           "area_planted": 8,
           "tree_count": 171,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 610,
           "payroll_description": "ตะกุก 67 (T10,18,21)",
           "work_code": 379,
+          "work_name": "ตะกุก T 67",
           "ap_code": "EST038",
+          "ap_name": "รีเพล็นตะกุก67 ( T10,18,21 )ปลูกเพิ่ม",
           "_sourceRow": 96
         },
         {
@@ -1555,11 +1757,13 @@
           "area_rai": 11,
           "area_planted": 11,
           "tree_count": 241,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 610,
           "payroll_description": "ตะกุก 67 (T10,18,21)",
           "work_code": 379,
+          "work_name": "ตะกุก T 67",
           "ap_code": "EST038",
+          "ap_name": "รีเพล็นตะกุก67 ( T10,18,21 )ปลูกเพิ่ม",
           "_sourceRow": 97
         },
         {
@@ -1570,11 +1774,13 @@
           "area_rai": 140,
           "area_planted": 140,
           "tree_count": 3070,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 609,
           "payroll_description": "ตะกุก 67 (T29,30)",
           "work_code": 376,
+          "work_name": "รีเพลนท์ตะกุก T 67",
           "ap_code": "EST037",
+          "ap_name": "รีเพลนท์ตะกุก รุ่นปี67 ( T29,30 )ปลูกแซม",
           "_sourceRow": 98
         },
         {
@@ -1585,11 +1791,13 @@
           "area_rai": 149,
           "area_planted": 149,
           "tree_count": 3270,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 609,
           "payroll_description": "ตะกุก 67 (T29,30)",
           "work_code": 376,
+          "work_name": "รีเพลนท์ตะกุก T 67",
           "ap_code": "EST037",
+          "ap_name": "รีเพลนท์ตะกุก รุ่นปี67 ( T29,30 )ปลูกแซม",
           "_sourceRow": 99
         },
         {
@@ -1600,11 +1808,13 @@
           "area_rai": 86,
           "area_planted": 86,
           "tree_count": 1892,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 535,
           "payroll_description": "ยวนสาว 68 (68-PU1,3,4 ปลูกแซม)",
           "work_code": 390,
+          "work_name": "รีเพลนท์ยวนสาว PU 68",
           "ap_code": "EST041",
+          "ap_name": "รีเพลนท์ยวนสาว68 ( PU1,3,4 )ปลูกแซม",
           "_sourceRow": 100
         },
         {
@@ -1615,11 +1825,13 @@
           "area_rai": 77,
           "area_planted": 77,
           "tree_count": 1686,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 535,
           "payroll_description": "ยวนสาว 68 (68-PU1,3,4 ปลูกแซม)",
           "work_code": 390,
+          "work_name": "รีเพลนท์ยวนสาว PU 68",
           "ap_code": "EST041",
+          "ap_name": "รีเพลนท์ยวนสาว68 ( PU1,3,4 )ปลูกแซม",
           "_sourceRow": 101
         },
         {
@@ -1630,11 +1842,13 @@
           "area_rai": 63,
           "area_planted": 63,
           "tree_count": 1380,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 535,
           "payroll_description": "ยวนสาว 68 (68-PU1,3,4 ปลูกแซม)",
           "work_code": 390,
+          "work_name": "รีเพลนท์ยวนสาว PU 68",
           "ap_code": "EST041",
+          "ap_name": "รีเพลนท์ยวนสาว68 ( PU1,3,4 )ปลูกแซม",
           "_sourceRow": 102
         },
         {
@@ -1645,11 +1859,13 @@
           "area_rai": 34,
           "area_planted": 34,
           "tree_count": 751,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 534,
           "payroll_description": "ยวนสาว 68 (68-PU5,6)",
           "work_code": 394,
+          "work_name": "รีเพลนท์ยวนสาว PU 68",
           "ap_code": "EST041",
+          "ap_name": "รีเพลนท์ยวนสาว68 ( PU1,3,4 )ปลูกแซม",
           "_sourceRow": 103
         },
         {
@@ -1660,11 +1876,13 @@
           "area_rai": 53,
           "area_planted": 53,
           "tree_count": 1168,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 534,
           "payroll_description": "ยวนสาว 68 (68-PU5,6)",
           "work_code": 389,
+          "work_name": "R-รีเพลนท์ยวนสาว PU 68",
           "ap_code": "EST040",
+          "ap_name": "รีเพลนท์ยวนสาว รุ่นปี68-R ( PU5,PU6 )",
           "_sourceRow": 104
         },
         {
@@ -1675,11 +1893,13 @@
           "area_rai": 7,
           "area_planted": 7,
           "tree_count": 145,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 534,
           "payroll_description": "ยวนสาว 68 (68-PU5,6)",
           "work_code": 394,
+          "work_name": "รีเพลนท์ยวนสาว PU 68",
           "ap_code": "EST042",
+          "ap_name": "รีเพลนท์ยวนสาว รุ่นปี68( PU5,PU6 )",
           "_sourceRow": 105
         },
         {
@@ -1690,11 +1910,13 @@
           "area_rai": 70,
           "area_planted": 70,
           "tree_count": 1547,
-          "rspo": "YES",
+          "rspo": "RSPO",
           "payroll_department_code": 534,
           "payroll_description": "ยวนสาว 68 (68-PU5,6)",
           "work_code": 394,
+          "work_name": "รีเพลนท์ยวนสาว PU 68",
           "ap_code": "EST040",
+          "ap_name": "รีเพลนท์ยวนสาว รุ่นปี68-R ( PU5,PU6 )",
           "_sourceRow": 106
         },
         {
@@ -1705,11 +1927,13 @@
           "area_rai": 140,
           "area_planted": 140,
           "tree_count": 3154,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 611,
           "payroll_description": "ตะกุก 68",
           "work_code": 388,
+          "work_name": "R-รีเพลนท์ตะกุก T 68",
           "ap_code": "EST039",
+          "ap_name": "รีเพลนท์ตะกุก รุ่นปี68 (T01,02 )",
           "_sourceRow": 107
         },
         {
@@ -1720,11 +1944,13 @@
           "area_rai": 137,
           "area_planted": 137,
           "tree_count": 2935,
-          "rspo": "NO",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 611,
           "payroll_description": "ตะกุก 68",
           "work_code": 388,
+          "work_name": "R-รีเพลนท์ตะกุก T 68",
           "ap_code": "EST039",
+          "ap_name": "รีเพลนท์ตะกุก รุ่นปี68 (T01,02 )",
           "_sourceRow": 108
         },
         {
@@ -1735,11 +1961,13 @@
           "area_rai": 0,
           "area_planted": "",
           "tree_count": 22749,
-          "rspo": "",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 560,
           "payroll_description": "แปลงเพาะ SB170867",
           "work_code": 377,
+          "work_name": "แปลงเพาะ 67 SB170867",
           "ap_code": "EST043",
+          "ap_name": "แปลงเพาะ66 (SB270766)",
           "_sourceRow": 109
         },
         {
@@ -1750,11 +1978,13 @@
           "area_rai": 0,
           "area_planted": "",
           "tree_count": 1358,
-          "rspo": "",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 559,
           "payroll_description": "แปลงเพาะ SB270766",
           "work_code": 367,
+          "work_name": "แปลงเพาะ 66 SB270766",
           "ap_code": "EST044",
+          "ap_name": "แปลงเพาะ67 (SB170867)",
           "_sourceRow": 110
         },
         {
@@ -1765,11 +1995,13 @@
           "area_rai": 0,
           "area_planted": "",
           "tree_count": 1358,
-          "rspo": "",
+          "rspo": "NON-RSPO",
           "payroll_department_code": 559,
           "payroll_description": "แปลงเพาะ SB270767",
           "work_code": 368,
+          "work_name": "รีเพลนท์ ยวนสาว PU ปี 66",
           "ap_code": "EST045",
+          "ap_name": "สำนักงาน",
           "_sourceRow": 111
         },
         {
@@ -1780,16 +2012,18 @@
           "area_rai": "",
           "area_planted": "",
           "tree_count": "",
-          "rspo": "OB",
+          "rspo": "NON-RSPO",
           "payroll_department_code": "",
           "payroll_description": "ปาล์มขนส่งออก",
           "work_code": "",
+          "work_name": "",
           "ap_code": "",
+          "ap_name": "",
           "_sourceRow": 112
         }
       ],
       "rowCount": 112,
-      "columnCount": 12
+      "columnCount": 14
     },
     {
       "id": "master_ap",

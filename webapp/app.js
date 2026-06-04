@@ -3766,9 +3766,76 @@ function masterFolderReferenceOptions(refDomain) {
   return options;
 }
 
+function masterFolderUniqueOptions(table, field) {
+  const seen = new Set();
+  return masterFolderRows(table).map((row) => String(row[field] ?? "").trim()).filter((value) => {
+    if (!value || seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  }).sort((a, b) => a.localeCompare(b, "th"));
+}
+
+function masterFolderCodeNameOptions(tableId, codeField, nameField) {
+  const table = masterFolderTables().find((item) => item.id === tableId);
+  if (!table) return [];
+  const seen = new Set();
+  return masterFolderRows(table).map((row) => {
+    const code = String(row[codeField] ?? "").trim();
+    const name = String(row[nameField] ?? "").trim();
+    if (!code || seen.has(code)) return null;
+    seen.add(code);
+    return { code, name, label: name ? `${code} · ${name}` : code };
+  }).filter(Boolean).sort((a, b) => a.label.localeCompare(b.label, "th"));
+}
+
+function renderMasterSelectField(column, value, options, attrs = "") {
+  return `
+    <label>${esc(column.label)}
+      <select data-folder-master-field="${esc(column.key)}" ${attrs}>
+        <option value="">เลือก${esc(column.label)}</option>
+        ${options.map((item) => {
+          const option = typeof item === "string" ? { value: item, label: item } : { value: item.value ?? item.code, label: item.label, data: item };
+          const dataAttrs = option.data ? Object.entries(option.data)
+            .filter(([key]) => !["label", "value"].includes(key))
+            .map(([key, dataValue]) => ` data-${key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}="${esc(dataValue ?? "")}"`).join("") : "";
+          return `<option value="${esc(option.value)}"${String(value) === String(option.value) ? " selected" : ""}${dataAttrs}>${esc(option.label)}</option>`;
+        }).join("")}
+      </select>
+    </label>`;
+}
+
+function datasetKeyFromSnake(key) {
+  return String(key).replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
 function renderMasterFolderInput(column, table, edit) {
   const ref = (table.references || []).find((item) => item.field === column.key);
   const value = edit[column.key] ?? "";
+  if (table.id === "master_terrains") {
+    if (["estate", "zone", "area_group"].includes(column.key)) {
+      return renderMasterSelectField(column, value, masterFolderUniqueOptions(table, column.key));
+    }
+    if (column.key === "rspo") {
+      return renderMasterSelectField(column, value, ["RSPO", "NON-RSPO"]);
+    }
+    if (column.key === "payroll_department_code") {
+      const options = masterFolderRows(table).map((row) => ({
+        value: row.payroll_department_code,
+        label: row.payroll_description ? `${row.payroll_department_code} · ${row.payroll_description}` : row.payroll_department_code,
+        payrollDescription: row.payroll_description,
+      })).filter((item, index, arr) => item.value && arr.findIndex((x) => x.value === item.value) === index);
+      return renderMasterSelectField(column, value, options, 'data-folder-autofill="payroll_description"');
+    }
+    if (column.key === "work_code") {
+      return renderMasterSelectField(column, value, masterFolderCodeNameOptions("master_work_systems", "work_code", "work_name").map((item) => ({ value: item.code, label: item.label, workName: item.name })), 'data-folder-autofill="work_name"');
+    }
+    if (column.key === "ap_code") {
+      return renderMasterSelectField(column, value, masterFolderCodeNameOptions("master_ap", "ap_code", "ap_name").map((item) => ({ value: item.code, label: item.label, apName: item.name })), 'data-folder-autofill="ap_name"');
+    }
+    if (["payroll_description", "work_name", "ap_name"].includes(column.key)) {
+      return `<label>${esc(column.label)}<input data-folder-master-field="${esc(column.key)}" value="${esc(value)}" readonly></label>`;
+    }
+  }
   if (ref) {
     const options = masterFolderReferenceOptions(ref.refDomain);
     return `
@@ -4704,6 +4771,13 @@ async function init() {
       state.masterFolderTableId = e.target.value;
       state.masterFolderEditId = "";
       render();
+      return;
+    }
+    if (e.target.matches("[data-folder-autofill]")) {
+      const targetField = e.target.dataset.folderAutofill;
+      const selected = e.target.selectedOptions?.[0];
+      const target = els.reportPage.querySelector(`[data-folder-master-field="${CSS.escape(targetField)}"]`);
+      if (target && selected) target.value = selected.dataset[datasetKeyFromSnake(targetField)] || "";
       return;
     }
     if (e.target.id === "estWorkBlock") {
