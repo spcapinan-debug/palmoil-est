@@ -3318,6 +3318,32 @@ function saveMasterFolderRow() {
   render();
 }
 
+function startEditMasterFolderRow(rowId) {
+  const table = activeMasterFolderTable();
+  if (!table) return;
+  const row = masterFolderRows(table).find((item) => item.id === rowId);
+  if (!row) return;
+  if (row.readonly) {
+    const draft = {
+      ...row,
+      id: `folder-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      tableId: table.id,
+      category: table.id,
+      targetTable: `master_folder:${table.id}`,
+      readonly: false,
+      _source: `แก้ไขจาก ${row._source || "source"}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    state.masterFolderRecords.push(draft);
+    state.masterFolderEditId = draft.id;
+    saveMasterFolderRecords();
+  } else {
+    state.masterFolderEditId = row.id;
+  }
+  render();
+}
+
 async function syncMasterFolderTableToDatabase() {
   const table = activeMasterFolderTable();
   if (!table) return;
@@ -3771,18 +3797,23 @@ function renderMasterFolderPanel() {
   const tableOptions = masterFolderTables().map((item) => `
     <option value="${esc(item.id)}" ${item.id === table.id ? "selected" : ""}>${esc(item.domain)} | ${esc(item.sourceFile)} | ${esc(item.title)} (${fmt(item.rowCount)})</option>`).join("");
   const refBadges = (table.references || []).map((ref) => `<span>${esc(ref.field)} -> ${esc(ref.refDomain)}</span>`).join("") || "<span>ไม่มี foreign key ที่ตรวจพบ</span>";
+  const dbButtons = `
+    <div class="folder-command-bar">
+      <button type="button" data-folder-db-load ${state.estMasterSyncBusy ? "disabled" : ""}>ดึงข้อมูลจากฐานข้อมูล</button>
+      <button type="button" data-folder-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึก table นี้</button>
+      <button type="button" data-folder-db-import-all ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกทุก table ลงฐานข้อมูล</button>
+    </div>`;
   return `
     <section class="est-panel est-master-folder">
       <div class="section-head">
         <h3>Master Data จาก Folder</h3>
         <span>${fmt(data.tableCount || masterFolderTables().length)} tables / ${fmt(data.rowCount || 0)} rows</span>
       </div>
+      ${dbButtons}
       <div class="master-folder-domains">${domainCards}</div>
       <div class="est-master-actions">
         <select data-folder-master-table>${tableOptions}</select>
-        <button type="button" data-folder-db-load ${state.estMasterSyncBusy ? "disabled" : ""}>เรียกดู table จากฐานข้อมูล</button>
-        <button type="button" data-folder-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึก table นี้</button>
-        <button type="button" data-folder-db-import-all ${state.estMasterSyncBusy ? "disabled" : ""}>นำเข้าฐานข้อมูลทั้งหมด</button>
+        <span>เลือก table แล้วกดแก้ไข row หรือบันทึกลงฐานข้อมูล</span>
       </div>
       <div class="folder-schema-card">
         <div><strong>${esc(table.title)}</strong><span>${esc(table.sourceFile)}</span></div>
@@ -3794,13 +3825,17 @@ function renderMasterFolderPanel() {
         ${formColumns.map((column) => renderMasterFolderInput(column, table, edit)).join("")}
         <div class="est-form-actions est-form-wide">
           <button type="button" data-folder-save-row>${state.masterFolderEditId ? "บันทึกแก้ไข row" : "เพิ่ม row"}</button>
+          <button type="button" data-folder-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกข้อมูลลงฐานข้อมูล</button>
         </div>
       </form>
       <div class="table-wrap est-table-wrap">
         <table class="mini-table est-table">
           <thead><tr><th></th>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>ที่มา</th></tr></thead>
           <tbody>${rows.slice(0, 300).map((row) => `<tr class="${row.readonly ? "" : "is-added"}">
-            <td>${row.readonly ? "" : `<button type="button" data-folder-edit-row="${esc(row.id)}">แก้ไข</button> <button type="button" data-folder-del-row="${esc(row.id)}">ลบ</button>`}</td>
+            <td>
+              <button type="button" data-folder-edit-row="${esc(row.id)}">แก้ไข</button>
+              ${row.readonly ? "" : `<button type="button" data-folder-del-row="${esc(row.id)}">ลบ</button>`}
+            </td>
             ${visibleColumns.map((col) => `<td>${esc(row[col.key] ?? "")}</td>`).join("")}
             <td>${esc(row._source || (row.readonly ? "source" : "draft"))}</td>
           </tr>`).join("")}</tbody>
@@ -4783,8 +4818,7 @@ async function init() {
     }
     const folderEdit = e.target.closest("[data-folder-edit-row]");
     if (folderEdit) {
-      state.masterFolderEditId = folderEdit.dataset.folderEditRow;
-      render();
+      startEditMasterFolderRow(folderEdit.dataset.folderEditRow);
       return;
     }
     const folderDel = e.target.closest("[data-folder-del-row]");

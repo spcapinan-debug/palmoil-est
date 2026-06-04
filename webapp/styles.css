@@ -2060,6 +2060,36 @@ tfoot td {
   gap: 12px;
 }
 
+.folder-command-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.folder-command-bar button {
+  min-height: 34px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 14px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 800;
+}
+
+.folder-command-bar button:first-child {
+  background: #fff;
+  color: var(--primary);
+}
+
+.folder-command-bar button:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
 .master-folder-domains {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
