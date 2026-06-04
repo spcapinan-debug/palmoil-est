@@ -73,6 +73,14 @@ module.exports = async function handler(req, res) {
       const requestUrl = new URL(req.url, "http://localhost");
       const category = requestUrl.searchParams.get("category") || "areas";
       if (!validCategory(category)) return json(res, 400, { ok: false, error: "Invalid category" });
+      if (category === "healthcheck") {
+        return json(res, 200, {
+          ok: true,
+          route: "est-master",
+          hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+          hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+        });
+      }
       const rows = await supabaseFetch(`est_master_records?category=eq.${encodeURIComponent(category)}&order=updated_at.desc`);
       return json(res, 200, { ok: true, rows: rows.map(fromDbRecord) });
     }
