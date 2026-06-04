@@ -3304,7 +3304,7 @@ function saveMasterFolderRow() {
     id: `folder-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     tableId: table.id,
     category: table.id,
-    targetTable: `master_folder:${table.id}`,
+    targetTable: `master:${table.id}`,
     createdAt: new Date().toISOString(),
   };
   for (const input of els.reportPage.querySelectorAll("[data-folder-master-field]")) {
@@ -3329,7 +3329,7 @@ function startEditMasterFolderRow(rowId) {
       id: `folder-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       tableId: table.id,
       category: table.id,
-      targetTable: `master_folder:${table.id}`,
+      targetTable: `master:${table.id}`,
       readonly: false,
       _source: "กำลังแก้ไข",
       createdAt: new Date().toISOString(),
@@ -3349,7 +3349,7 @@ async function syncMasterFolderTableToDatabase() {
   if (!table) return;
   const sourceRows = (table.rows || []).map((row, index) => ({
     ...row,
-    id: `${table.id}-${row._sourceRow || index + 1}`,
+    id: masterFolderRowId(table, index),
     tableId: table.id,
   }));
   const rows = [...sourceRows, ...masterFolderDraftRows(table.id)];
@@ -3365,7 +3365,7 @@ async function syncMasterFolderTableToDatabase() {
     const res = await fetch(EST_MASTER_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "upsert", category: table.id, table: `master_folder:${table.id}`, rows }),
+      body: JSON.stringify({ action: "upsert", category: table.id, table: `master:${table.id}`, rows }),
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok || payload.ok === false) throw new Error(payload.error || `HTTP ${res.status}`);
@@ -3385,7 +3385,7 @@ async function loadMasterFolderTableFromDatabase() {
   setEstMasterSyncMessage(`กำลังเรียกดู table ${table.title} จากฐานข้อมูล...`);
   render();
   try {
-    const url = `${EST_MASTER_API}?category=${encodeURIComponent(table.id)}&table=${encodeURIComponent(`master_folder:${table.id}`)}&t=${Date.now()}`;
+    const url = `${EST_MASTER_API}?category=${encodeURIComponent(table.id)}&table=${encodeURIComponent(`master:${table.id}`)}&t=${Date.now()}`;
     const res = await fetch(url, { cache: "no-store" });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok || payload.ok === false) throw new Error(payload.error || `HTTP ${res.status}`);
@@ -3412,11 +3412,12 @@ async function importAllMasterFolderTablesToDatabase() {
   if (!tables.length) return;
   state.estMasterSyncBusy = true;
   let imported = 0;
+  let importedTables = 0;
   try {
     for (const table of tables) {
       const rows = (table.rows || []).map((row, index) => ({
         ...row,
-        id: `${table.id}-${row._sourceRow || index + 1}`,
+        id: masterFolderRowId(table, index),
         tableId: table.id,
       }));
       if (!rows.length) continue;
@@ -3425,13 +3426,14 @@ async function importAllMasterFolderTablesToDatabase() {
       const res = await fetch(EST_MASTER_API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "upsert", category: table.id, table: `master_folder:${table.id}`, rows }),
+        body: JSON.stringify({ action: "upsert", category: table.id, table: `master:${table.id}`, rows }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || payload.ok === false) throw new Error(`${table.title}: ${payload.error || `HTTP ${res.status}`}`);
       imported += rows.length;
+      importedTables += 1;
     }
-    setEstMasterSyncMessage(`นำเข้า Master Data ทั้งหมดลงฐานข้อมูลแล้ว ${fmt(imported)} rows จาก ${fmt(tables.length)} tables`);
+    setEstMasterSyncMessage(`บันทึกข้อมูลหลักลงฐานข้อมูลแล้ว ${fmt(imported)} rows จาก ${fmt(importedTables)} tables`);
   } catch (err) {
     setEstMasterSyncMessage(`นำเข้าทั้งหมดหยุดที่ ${fmt(imported)} rows: ${err.message}`);
   } finally {
@@ -3733,6 +3735,10 @@ function masterFolderRows(table) {
     ...(table.rows || []).map((row, index) => ({ ...row, id: `master-${table.id}-${index}`, tableId: table.id, readonly: true, _source: "ข้อมูลหลัก" })),
     ...masterFolderDraftRows(table.id),
   ];
+}
+
+function masterFolderRowId(table, index, prefix = "row") {
+  return `${table.id}-${prefix}-${index + 1}`;
 }
 
 function masterFolderPkValue(row, table) {

@@ -44,12 +44,16 @@ async function supabaseFetch(path, options = {}) {
   return data;
 }
 
-function toDbRecord(row, category, targetTable) {
+function toDbRecord(row, category, targetTable, index, seen) {
+  const baseId = String(row.id || `${category}-${index + 1}`).trim();
+  let localId = baseId;
+  if (seen.has(localId)) localId = `${baseId}__dup_${index + 1}`;
+  seen.add(localId);
   return {
-    local_id: row.id || null,
+    local_id: localId,
     category,
     target_table: targetTable || row.targetTable || "",
-    payload: row,
+    payload: { ...row, id: localId },
     note: row.note || null,
     updated_at: new Date().toISOString(),
   };
@@ -81,7 +85,7 @@ module.exports = async function handler(req, res) {
           hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
         });
       }
-      const rows = await supabaseFetch(`est_master_records?category=eq.${encodeURIComponent(category)}&order=updated_at.desc`);
+      const rows = await supabaseFetch(`est_master_records?category=eq.${encodeURIComponent(category)}&order=updated_at.desc&limit=50000`);
       return json(res, 200, { ok: true, rows: rows.map(fromDbRecord) });
     }
 
@@ -92,7 +96,8 @@ module.exports = async function handler(req, res) {
       const targetTable = body.table || "";
       const rows = Array.isArray(body.rows) ? body.rows : [];
       if (!rows.length) return json(res, 400, { ok: false, error: "No rows" });
-      const records = rows.map((row) => toDbRecord(row, category, targetTable));
+      const seen = new Set();
+      const records = rows.map((row, index) => toDbRecord(row, category, targetTable, index, seen));
       const saved = await supabaseFetch("est_master_records?on_conflict=local_id", {
         method: "POST",
         body: JSON.stringify(records),
