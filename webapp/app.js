@@ -3788,16 +3788,13 @@ function renderMasterFolderPanel() {
   if (!table) return `<section class="est-panel"><div class="empty-state">ยังไม่มีข้อมูลจาก folder Master Data</div></section>`;
   const rows = masterFolderRows(table);
   const edit = state.masterFolderRecords.find((row) => row.id === state.masterFolderEditId && row.tableId === table.id) || {};
-  const visibleColumns = (table.columns || []).slice(0, 18);
-  const formColumns = (table.columns || []).slice(0, 30);
-  const domainCards = (data.domains || []).map((domain) => `
-    <article>
-      <strong>${esc(domain.id)}</strong>
-      <span>${fmt(domain.tableCount)} tables</span>
-      <b>${fmt(domain.rowCount)} rows</b>
-    </article>`).join("");
-  const tableOptions = masterFolderTables().map((item) => `
-    <option value="${esc(item.id)}" ${item.id === table.id ? "selected" : ""}>${esc(item.title)} | ${esc(item.domain)} (${fmt(item.rowCount)})</option>`).join("");
+  const visibleColumns = (table.columns || []).slice(0, 10);
+  const formColumns = (table.columns || []).slice(0, 18);
+  const navItems = masterFolderTables().map((item) => `
+    <button type="button" class="${item.id === table.id ? "active" : ""}" data-folder-master-nav="${esc(item.id)}">
+      <span>${esc(item.title)}</span>
+      <b>${fmt(item.rowCount)}</b>
+    </button>`).join("");
   const refBadges = (table.references || []).map((ref) => `<span>${esc(ref.field)} -> ${esc(ref.refDomain)}</span>`).join("") || "<span>ไม่มี foreign key ที่ตรวจพบ</span>";
   const dbButtons = `
     <div class="folder-command-bar">
@@ -3805,43 +3802,54 @@ function renderMasterFolderPanel() {
       <button type="button" data-folder-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึก table นี้</button>
       <button type="button" data-folder-db-import-all ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกทุก table ลงฐานข้อมูล</button>
     </div>`;
+  const totalRows = data.rowCount || masterFolderTables().reduce((sum, item) => sum + n(item.rowCount), 0);
   return `
-    <section class="est-panel est-master-folder">
-      <div class="section-head">
-        <h3>ข้อมูลหลักของระบบ</h3>
-        <span>${fmt(data.tableCount || masterFolderTables().length)} tables / ${fmt(data.rowCount || 0)} rows</span>
-      </div>
-      ${dbButtons}
-      <div class="master-folder-domains">${domainCards}</div>
-      <div class="est-master-actions">
-        <select data-folder-master-table>${tableOptions}</select>
-        <span>เลือก table หลัก แล้วเพิ่ม/แก้ไข/บันทึกลงฐานข้อมูล</span>
-      </div>
-      <div class="folder-schema-card">
-        <div><strong>${esc(table.title)}</strong><span>${esc(table.domain)}</span></div>
-        <div><b>Table ID</b><code>${esc(table.id)}</code></div>
-        <div><b>Primary key</b><code>${esc(table.primaryLabel || table.primaryKey)}</code></div>
-        <div><b>Foreign key</b><div class="folder-ref-list">${refBadges}</div></div>
-      </div>
-      <form class="est-entry-form folder-master-form">
-        ${formColumns.map((column) => renderMasterFolderInput(column, table, edit)).join("")}
-        <div class="est-form-actions est-form-wide">
-          <button type="button" data-folder-save-row>${state.masterFolderEditId ? "บันทึกแก้ไข row" : "เพิ่ม row"}</button>
-          <button type="button" data-folder-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกข้อมูลลงฐานข้อมูล</button>
+    <section class="master-console">
+      <aside class="master-nav">
+        <div>
+          <strong>กลุ่มข้อมูลหลัก</strong>
+          <span>${fmt(masterFolderTables().length)} tables · ${fmt(totalRows)} rows</span>
         </div>
-      </form>
-      <div class="table-wrap est-table-wrap">
-        <table class="mini-table est-table">
-          <thead><tr><th></th>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>สถานะ</th></tr></thead>
-          <tbody>${rows.slice(0, 300).map((row) => `<tr class="${row.readonly ? "" : "is-added"}">
-            <td>
-              <button type="button" data-folder-edit-row="${esc(row.id)}">แก้ไข</button>
-              ${row.readonly ? "" : `<button type="button" data-folder-del-row="${esc(row.id)}">ลบ</button>`}
-            </td>
-            ${visibleColumns.map((col) => `<td>${esc(row[col.key] ?? "")}</td>`).join("")}
-            <td>${esc(row._source || (row.readonly ? "ข้อมูลหลัก" : "แก้ไข"))}</td>
-          </tr>`).join("")}</tbody>
-        </table>
+        ${navItems}
+      </aside>
+      <div class="master-workspace">
+        <section class="master-toolbar">
+          <div>
+            <h3>${esc(table.title)}</h3>
+            <span>${esc(table.id)} · ${esc(table.domain)}</span>
+          </div>
+          ${dbButtons}
+        </section>
+        <section class="master-meta-grid">
+          <article><span>คีย์หลัก</span><strong>${esc(table.primaryLabel || table.primaryKey)}</strong></article>
+          <article><span>ความสัมพันธ์</span><strong>${fmt((table.references || []).length)}</strong></article>
+          <article><span>ข้อมูลทั้งหมด</span><strong>${fmt(rows.length)}</strong></article>
+          <article><span>แก้ไขในเครื่อง</span><strong>${fmt(masterFolderDraftRows(table.id).length)}</strong></article>
+        </section>
+        <section class="master-relations">${refBadges}</section>
+        <details class="master-editor" ${state.masterFolderEditId ? "open" : ""}>
+          <summary>${state.masterFolderEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูลใหม่"}</summary>
+          <form class="est-entry-form folder-master-form">
+            ${formColumns.map((column) => renderMasterFolderInput(column, table, edit)).join("")}
+            <div class="est-form-actions est-form-wide">
+              <button type="button" data-folder-save-row>${state.masterFolderEditId ? "บันทึกแก้ไข row" : "เพิ่ม row"}</button>
+              <button type="button" data-folder-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกข้อมูลลงฐานข้อมูล</button>
+            </div>
+          </form>
+        </details>
+        <div class="table-wrap est-table-wrap">
+          <table class="mini-table est-table master-table">
+            <thead><tr><th></th>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>สถานะ</th></tr></thead>
+            <tbody>${rows.slice(0, 300).map((row) => `<tr class="${row.readonly ? "" : "is-added"}">
+              <td>
+                <button type="button" data-folder-edit-row="${esc(row.id)}">แก้ไข</button>
+                ${row.readonly ? "" : `<button type="button" data-folder-del-row="${esc(row.id)}">ลบ</button>`}
+              </td>
+              ${visibleColumns.map((col) => `<td>${esc(row[col.key] ?? "")}</td>`).join("")}
+              <td>${esc(row._source || (row.readonly ? "ข้อมูลหลัก" : "แก้ไข"))}</td>
+            </tr>`).join("")}</tbody>
+          </table>
+        </div>
       </div>
     </section>`;
 }
@@ -4766,6 +4774,13 @@ async function init() {
     }
     if (e.target.closest("[data-folder-db-import-all]")) {
       importAllMasterFolderTablesToDatabase();
+      return;
+    }
+    const folderNav = e.target.closest("[data-folder-master-nav]");
+    if (folderNav) {
+      state.masterFolderTableId = folderNav.dataset.folderMasterNav;
+      state.masterFolderEditId = "";
+      render();
       return;
     }
     const folderEdit = e.target.closest("[data-folder-edit-row]");
