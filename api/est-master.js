@@ -98,6 +98,11 @@ module.exports = async function handler(req, res) {
 
     if (req.method === "POST") {
       const body = await readBody(req);
+      if (body.action === "deleteCategories") {
+        const categories = Array.isArray(body.categories) ? body.categories.filter(validCategory) : [];
+        for (const category of categories) await deleteCategory(category);
+        return json(res, 200, { ok: true, deletedCategories: categories });
+      }
       const category = body.category || "areas";
       if (!validCategory(category)) return json(res, 400, { ok: false, error: "Invalid category" });
       const targetTable = body.table || "";
