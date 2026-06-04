@@ -19,6 +19,10 @@ const state = {
   estMasterRecords: [],
   estMasterSyncMessage: "",
   estMasterSyncBusy: false,
+  masterFolderData: null,
+  masterFolderTableId: "",
+  masterFolderEditId: "",
+  masterFolderRecords: [],
   estSearchTimer: null,
   sidebarCollapsed: localStorage.getItem("sidebarCollapsed") === "1",
 };
@@ -67,6 +71,7 @@ const CULTIVATE_API_BASE = window.__CULTIVATE_API_BASE__ || "http://127.0.0.1:80
 const TRANSPORT_REFRESH_API = window.__TRANSPORT_REFRESH_API__ || CULTIVATE_API_BASE.replace(/cultivate\.php.*$/, "transport_refresh.php");
 const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
+const MASTER_FOLDER_DATA_URL = window.__MASTER_FOLDER_DATA_URL__ || "./data/master_data_full.json";
 const DAILY_HEADERS = [
   "วันที่",
   "เวลา",
@@ -620,6 +625,19 @@ async function loadEstData() {
   state.estData = payload;
   if (!state.estFilters.datasetId && payload.budgetDatasets?.[0]) {
     state.estFilters.datasetId = payload.budgetDatasets[0].id;
+  }
+}
+
+async function loadMasterFolderData() {
+  const payload = window.__MASTER_FOLDER_DATA__ || await fetch(`${MASTER_FOLDER_DATA_URL}?t=${Date.now()}`, { cache: "no-store" })
+    .then((res) => res.json())
+    .catch(() => ({ ok: false, domains: [], tables: [], skipped: [] }));
+  state.masterFolderData = payload;
+  if (!state.masterFolderTableId && payload.tables?.[0]) {
+    const priority = payload.tables.find((table) => table.domain === "terrains")
+      || payload.tables.find((table) => table.domain === "activities")
+      || payload.tables[0];
+    state.masterFolderTableId = priority.id;
   }
 }
 
@@ -2803,11 +2821,13 @@ function loadEstDailyEntries() {
     state.estWorkOrders = JSON.parse(localStorage.getItem("est-work-orders") || "[]");
     state.estDailyEntries = JSON.parse(localStorage.getItem("est-daily-entries") || "[]");
     state.estMasterRecords = JSON.parse(localStorage.getItem("est-master-records") || "[]");
+    state.masterFolderRecords = JSON.parse(localStorage.getItem("master-folder-records") || "[]");
   } catch {
     state.estWorkPlans = [];
     state.estWorkOrders = [];
     state.estDailyEntries = [];
     state.estMasterRecords = [];
+    state.masterFolderRecords = [];
   }
 }
 
@@ -2825,6 +2845,10 @@ function saveEstDailyEntries() {
 
 function saveEstMasterRecords() {
   localStorage.setItem("est-master-records", JSON.stringify(state.estMasterRecords));
+}
+
+function saveMasterFolderRecords() {
+  localStorage.setItem("master-folder-records", JSON.stringify(state.masterFolderRecords));
 }
 
 function estField(row, names) {
@@ -3270,6 +3294,130 @@ async function loadEstMasterFromDatabase() {
   }
 }
 
+function saveMasterFolderRow() {
+  const table = activeMasterFolderTable();
+  if (!table) return;
+  const current = state.masterFolderEditId
+    ? state.masterFolderRecords.find((row) => row.id === state.masterFolderEditId && row.tableId === table.id)
+    : null;
+  const row = current || {
+    id: `folder-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    tableId: table.id,
+    category: table.id,
+    targetTable: `master_folder:${table.id}`,
+    createdAt: new Date().toISOString(),
+  };
+  for (const input of els.reportPage.querySelectorAll("[data-folder-master-field]")) {
+    row[input.dataset.folderMasterField] = input.value.trim();
+  }
+  row.updatedAt = new Date().toISOString();
+  row._source = "draft";
+  if (!current) state.masterFolderRecords.push(row);
+  state.masterFolderEditId = "";
+  saveMasterFolderRecords();
+  render();
+}
+
+async function syncMasterFolderTableToDatabase() {
+  const table = activeMasterFolderTable();
+  if (!table) return;
+  const sourceRows = (table.rows || []).map((row, index) => ({
+    ...row,
+    id: `${table.id}-${row._sourceRow || index + 1}`,
+    tableId: table.id,
+    sourceFile: table.sourceFile,
+    sourceSheet: table.title,
+  }));
+  const rows = [...sourceRows, ...masterFolderDraftRows(table.id)];
+  if (!rows.length) {
+    setEstMasterSyncMessage("table นี้ไม่มีข้อมูลสำหรับบันทึก");
+    render();
+    return;
+  }
+  state.estMasterSyncBusy = true;
+  setEstMasterSyncMessage(`กำลังบันทึก ${fmt(rows.length)} rows จาก ${table.title}...`);
+  render();
+  try {
+    const res = await fetch(EST_MASTER_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "upsert", category: table.id, table: `master_folder:${table.id}`, rows }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || payload.ok === false) throw new Error(payload.error || `HTTP ${res.status}`);
+    setEstMasterSyncMessage(`บันทึก table ${table.title} ลงฐานข้อมูลแล้ว ${fmt(payload.rows?.length || rows.length)} rows`);
+  } catch (err) {
+    setEstMasterSyncMessage(`บันทึกฐานข้อมูลไม่สำเร็จ: ${err.message}`);
+  } finally {
+    state.estMasterSyncBusy = false;
+    render();
+  }
+}
+
+async function loadMasterFolderTableFromDatabase() {
+  const table = activeMasterFolderTable();
+  if (!table) return;
+  state.estMasterSyncBusy = true;
+  setEstMasterSyncMessage(`กำลังเรียกดู table ${table.title} จากฐานข้อมูล...`);
+  render();
+  try {
+    const url = `${EST_MASTER_API}?category=${encodeURIComponent(table.id)}&table=${encodeURIComponent(`master_folder:${table.id}`)}&t=${Date.now()}`;
+    const res = await fetch(url, { cache: "no-store" });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || payload.ok === false) throw new Error(payload.error || `HTTP ${res.status}`);
+    const dbRows = (payload.rows || payload.data || []).map((row, index) => ({
+      ...row,
+      id: row.id || `db-${table.id}-${index}`,
+      tableId: table.id,
+      _source: "database",
+    }));
+    state.masterFolderRecords = state.masterFolderRecords.filter((row) => row.tableId !== table.id).concat(dbRows);
+    state.masterFolderEditId = "";
+    saveMasterFolderRecords();
+    setEstMasterSyncMessage(`เรียกดู ${fmt(dbRows.length)} rows จากฐานข้อมูลแล้ว สามารถกดแก้ไขในตารางได้`);
+  } catch (err) {
+    setEstMasterSyncMessage(`เรียกดูฐานข้อมูลไม่สำเร็จ: ${err.message}`);
+  } finally {
+    state.estMasterSyncBusy = false;
+    render();
+  }
+}
+
+async function importAllMasterFolderTablesToDatabase() {
+  const tables = masterFolderTables();
+  if (!tables.length) return;
+  state.estMasterSyncBusy = true;
+  let imported = 0;
+  try {
+    for (const table of tables) {
+      const rows = (table.rows || []).map((row, index) => ({
+        ...row,
+        id: `${table.id}-${row._sourceRow || index + 1}`,
+        tableId: table.id,
+        sourceFile: table.sourceFile,
+        sourceSheet: table.title,
+      }));
+      if (!rows.length) continue;
+      setEstMasterSyncMessage(`กำลังนำเข้า ${table.title}: ${fmt(rows.length)} rows (${fmt(imported)} rows แล้ว)`);
+      render();
+      const res = await fetch(EST_MASTER_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "upsert", category: table.id, table: `master_folder:${table.id}`, rows }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload.ok === false) throw new Error(`${table.title}: ${payload.error || `HTTP ${res.status}`}`);
+      imported += rows.length;
+    }
+    setEstMasterSyncMessage(`นำเข้า Master Data ทั้งหมดลงฐานข้อมูลแล้ว ${fmt(imported)} rows จาก ${fmt(tables.length)} tables`);
+  } catch (err) {
+    setEstMasterSyncMessage(`นำเข้าทั้งหมดหยุดที่ ${fmt(imported)} rows: ${err.message}`);
+  } finally {
+    state.estMasterSyncBusy = false;
+    render();
+  }
+}
+
 function createEstWorkOrderFromPlan(plan, overrides = {}) {
   if (!plan) return null;
   const order = {
@@ -3545,6 +3693,123 @@ function renderEstMasterSchema(categoryKey) {
     </section>`;
 }
 
+function masterFolderTables() {
+  return state.masterFolderData?.tables || [];
+}
+
+function activeMasterFolderTable() {
+  return masterFolderTables().find((table) => table.id === state.masterFolderTableId) || masterFolderTables()[0] || null;
+}
+
+function masterFolderDraftRows(tableId) {
+  return state.masterFolderRecords.filter((row) => row.tableId === tableId);
+}
+
+function masterFolderRows(table) {
+  if (!table) return [];
+  return [
+    ...(table.rows || []).map((row, index) => ({ ...row, id: `source-${table.id}-${index}`, tableId: table.id, readonly: true, _source: `${table.sourceFile} #${row._sourceRow || index + 1}` })),
+    ...masterFolderDraftRows(table.id),
+  ];
+}
+
+function masterFolderPkValue(row, table) {
+  return row.databaseId || row[table?.primaryKey] || row.id || "";
+}
+
+function masterFolderLabel(row, table) {
+  const keys = [table?.primaryKey, "name", "Name", "description", "Description", "ชื่อ", "แปลง", "บล็อก", "Activity", "Material Name", "partner"].filter(Boolean);
+  const values = keys.map((key) => row[key]).filter((value) => value !== undefined && value !== "");
+  return values.slice(0, 3).join(" / ") || String(masterFolderPkValue(row, table));
+}
+
+function masterFolderReferenceOptions(refDomain) {
+  const seen = new Set();
+  const options = [];
+  for (const table of masterFolderTables().filter((item) => item.domain === refDomain)) {
+    for (const row of masterFolderRows(table)) {
+      const value = String(masterFolderPkValue(row, table) || "").trim();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      options.push({ value, label: `${masterFolderLabel(row, table)} (${table.title})` });
+      if (options.length >= 300) return options;
+    }
+  }
+  return options;
+}
+
+function renderMasterFolderInput(column, table, edit) {
+  const ref = (table.references || []).find((item) => item.field === column.key);
+  const value = edit[column.key] ?? "";
+  if (ref) {
+    const options = masterFolderReferenceOptions(ref.refDomain);
+    return `
+      <label>${esc(column.label)}
+        <select data-folder-master-field="${esc(column.key)}">
+          <option value="">เลือกจาก ${esc(ref.refDomain)}</option>
+          ${options.map((item) => `<option value="${esc(item.value)}" ${String(value) === String(item.value) ? "selected" : ""}>${esc(item.label)}</option>`).join("")}
+        </select>
+      </label>`;
+  }
+  return `<label>${esc(column.label)}<input data-folder-master-field="${esc(column.key)}" value="${esc(value)}"></label>`;
+}
+
+function renderMasterFolderPanel() {
+  const data = state.masterFolderData || { domains: [], tables: [], skipped: [] };
+  const table = activeMasterFolderTable();
+  if (!table) return `<section class="est-panel"><div class="empty-state">ยังไม่มีข้อมูลจาก folder Master Data</div></section>`;
+  const rows = masterFolderRows(table);
+  const edit = state.masterFolderRecords.find((row) => row.id === state.masterFolderEditId && row.tableId === table.id) || {};
+  const visibleColumns = (table.columns || []).slice(0, 18);
+  const formColumns = (table.columns || []).slice(0, 30);
+  const domainCards = (data.domains || []).map((domain) => `
+    <article>
+      <strong>${esc(domain.id)}</strong>
+      <span>${fmt(domain.tableCount)} tables</span>
+      <b>${fmt(domain.rowCount)} rows</b>
+    </article>`).join("");
+  const tableOptions = masterFolderTables().map((item) => `
+    <option value="${esc(item.id)}" ${item.id === table.id ? "selected" : ""}>${esc(item.domain)} | ${esc(item.sourceFile)} | ${esc(item.title)} (${fmt(item.rowCount)})</option>`).join("");
+  const refBadges = (table.references || []).map((ref) => `<span>${esc(ref.field)} -> ${esc(ref.refDomain)}</span>`).join("") || "<span>ไม่มี foreign key ที่ตรวจพบ</span>";
+  return `
+    <section class="est-panel est-master-folder">
+      <div class="section-head">
+        <h3>Master Data จาก Folder</h3>
+        <span>${fmt(data.tableCount || masterFolderTables().length)} tables / ${fmt(data.rowCount || 0)} rows</span>
+      </div>
+      <div class="master-folder-domains">${domainCards}</div>
+      <div class="est-master-actions">
+        <select data-folder-master-table>${tableOptions}</select>
+        <button type="button" data-folder-db-load ${state.estMasterSyncBusy ? "disabled" : ""}>เรียกดู table จากฐานข้อมูล</button>
+        <button type="button" data-folder-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึก table นี้</button>
+        <button type="button" data-folder-db-import-all ${state.estMasterSyncBusy ? "disabled" : ""}>นำเข้าฐานข้อมูลทั้งหมด</button>
+      </div>
+      <div class="folder-schema-card">
+        <div><strong>${esc(table.title)}</strong><span>${esc(table.sourceFile)}</span></div>
+        <div><b>Table ID</b><code>${esc(table.id)}</code></div>
+        <div><b>Primary key</b><code>${esc(table.primaryLabel || table.primaryKey)}</code></div>
+        <div><b>Foreign key</b><div class="folder-ref-list">${refBadges}</div></div>
+      </div>
+      <form class="est-entry-form folder-master-form">
+        ${formColumns.map((column) => renderMasterFolderInput(column, table, edit)).join("")}
+        <div class="est-form-actions est-form-wide">
+          <button type="button" data-folder-save-row>${state.masterFolderEditId ? "บันทึกแก้ไข row" : "เพิ่ม row"}</button>
+        </div>
+      </form>
+      <div class="table-wrap est-table-wrap">
+        <table class="mini-table est-table">
+          <thead><tr><th></th>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>ที่มา</th></tr></thead>
+          <tbody>${rows.slice(0, 300).map((row) => `<tr class="${row.readonly ? "" : "is-added"}">
+            <td>${row.readonly ? "" : `<button type="button" data-folder-edit-row="${esc(row.id)}">แก้ไข</button> <button type="button" data-folder-del-row="${esc(row.id)}">ลบ</button>`}</td>
+            ${visibleColumns.map((col) => `<td>${esc(row[col.key] ?? "")}</td>`).join("")}
+            <td>${esc(row._source || (row.readonly ? "source" : "draft"))}</td>
+          </tr>`).join("")}</tbody>
+        </table>
+      </div>
+      ${data.skipped?.length ? `<div class="est-sync-message">ไฟล์ที่ยังไม่ได้นำเข้า: ${data.skipped.map((item) => `${esc(item.file)} (${esc(item.reason)})`).join(", ")}</div>` : ""}
+    </section>`;
+}
+
 function renderEstMaster() {
   const categoryKey = state.estMasterCategory;
   const category = EST_MASTER_CATEGORIES[categoryKey] || EST_MASTER_CATEGORIES.areas;
@@ -3571,6 +3836,7 @@ function renderEstMaster() {
       </div>
       <section class="est-master-grid">${cards}</section>
       ${renderEstMasterSchema(categoryKey)}
+      ${renderMasterFolderPanel()}
       <section class="est-master-actions">
         <button type="button" data-est-db-load ${state.estMasterSyncBusy ? "disabled" : ""}>เรียกดู/แก้ไข ข้อมูลในฐานข้อมูล</button>
         <button type="button" data-est-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกข้อมูลในฐานข้อมูล</button>
@@ -4362,7 +4628,7 @@ async function init() {
   applySidebarState();
   loadClearOverrides();
   loadEstDailyEntries();
-  await Promise.all([loadPayload(), loadEstData()]);
+  await Promise.all([loadPayload(), loadEstData(), loadMasterFolderData()]);
   state.view = initialViewFromUrl();
   setDateValue(els.startDate, state.payload.source.dateMin);
   setDateValue(els.endDate, state.payload.source.dateMax);
@@ -4439,6 +4705,12 @@ async function init() {
       render();
       return;
     }
+    if (e.target.matches("[data-folder-master-table]")) {
+      state.masterFolderTableId = e.target.value;
+      state.masterFolderEditId = "";
+      render();
+      return;
+    }
     if (e.target.id === "estWorkBlock") {
       const selected = e.target.selectedOptions?.[0];
       const activity = document.querySelector("#estWorkActivity");
@@ -4491,6 +4763,36 @@ async function init() {
     }
     if (e.target.closest("[data-est-db-load]")) {
       loadEstMasterFromDatabase();
+      return;
+    }
+    if (e.target.closest("[data-folder-save-row]")) {
+      saveMasterFolderRow();
+      return;
+    }
+    if (e.target.closest("[data-folder-db-save]")) {
+      syncMasterFolderTableToDatabase();
+      return;
+    }
+    if (e.target.closest("[data-folder-db-load]")) {
+      loadMasterFolderTableFromDatabase();
+      return;
+    }
+    if (e.target.closest("[data-folder-db-import-all]")) {
+      importAllMasterFolderTablesToDatabase();
+      return;
+    }
+    const folderEdit = e.target.closest("[data-folder-edit-row]");
+    if (folderEdit) {
+      state.masterFolderEditId = folderEdit.dataset.folderEditRow;
+      render();
+      return;
+    }
+    const folderDel = e.target.closest("[data-folder-del-row]");
+    if (folderDel) {
+      state.masterFolderRecords = state.masterFolderRecords.filter((row) => row.id !== folderDel.dataset.folderDelRow);
+      if (state.masterFolderEditId === folderDel.dataset.folderDelRow) state.masterFolderEditId = "";
+      saveMasterFolderRecords();
+      render();
       return;
     }
     const editMaster = e.target.closest("[data-est-edit-master]");

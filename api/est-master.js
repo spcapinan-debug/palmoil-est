@@ -1,11 +1,6 @@
-const allowedCategories = new Set([
-  "areas",
-  "people",
-  "payrollTypes",
-  "system",
-  "budget",
-  "activities",
-]);
+function validCategory(category) {
+  return typeof category === "string" && /^[a-zA-Z0-9_.:-]{1,160}$/.test(category);
+}
 
 function json(res, status, payload) {
   res.statusCode = status;
@@ -77,7 +72,7 @@ module.exports = async function handler(req, res) {
     if (req.method === "GET") {
       const requestUrl = new URL(req.url, "http://localhost");
       const category = requestUrl.searchParams.get("category") || "areas";
-      if (!allowedCategories.has(category)) return json(res, 400, { ok: false, error: "Invalid category" });
+      if (!validCategory(category)) return json(res, 400, { ok: false, error: "Invalid category" });
       const rows = await supabaseFetch(`est_master_records?category=eq.${encodeURIComponent(category)}&order=updated_at.desc`);
       return json(res, 200, { ok: true, rows: rows.map(fromDbRecord) });
     }
@@ -85,7 +80,7 @@ module.exports = async function handler(req, res) {
     if (req.method === "POST") {
       const body = await readBody(req);
       const category = body.category || "areas";
-      if (!allowedCategories.has(category)) return json(res, 400, { ok: false, error: "Invalid category" });
+      if (!validCategory(category)) return json(res, 400, { ok: false, error: "Invalid category" });
       const targetTable = body.table || "";
       const rows = Array.isArray(body.rows) ? body.rows : [];
       if (!rows.length) return json(res, 400, { ok: false, error: "No rows" });

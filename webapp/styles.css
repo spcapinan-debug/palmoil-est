@@ -2055,6 +2055,93 @@ tfoot td {
   white-space: normal;
 }
 
+.est-master-folder {
+  display: grid;
+  gap: 12px;
+}
+
+.master-folder-domains {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.master-folder-domains article {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.master-folder-domains strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.master-folder-domains span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.master-folder-domains b {
+  color: var(--primary);
+  font-size: 16px;
+}
+
+.est-master-actions select {
+  min-width: min(620px, 100%);
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.folder-schema-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(200px, .8fr) minmax(180px, .7fr) minmax(220px, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.folder-schema-card div {
+  min-width: 0;
+}
+
+.folder-schema-card strong,
+.folder-schema-card b {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.folder-schema-card span,
+.folder-ref-list span {
+  display: inline-block;
+  margin: 2px 4px 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.folder-schema-card code {
+  display: inline-block;
+  max-width: 100%;
+  color: var(--primary);
+  white-space: normal;
+  word-break: break-word;
+}
+
+.folder-master-form {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .est-entry-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, .6fr);

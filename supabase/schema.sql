@@ -144,6 +144,9 @@ create table if not exists est_master_records (
   updated_at timestamptz not null default now()
 );
 
+create index if not exists est_master_records_category_idx on est_master_records(category);
+create index if not exists est_master_records_target_table_idx on est_master_records(target_table);
+
 alter table est_areas enable row level security;
 alter table est_blocks enable row level security;
 alter table est_workers enable row level security;
