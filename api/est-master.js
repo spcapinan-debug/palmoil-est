@@ -44,6 +44,13 @@ async function supabaseFetch(path, options = {}) {
   return data;
 }
 
+async function deleteCategory(category) {
+  await supabaseFetch(`est_master_records?category=eq.${encodeURIComponent(category)}`, {
+    method: "DELETE",
+    headers: { Prefer: "return=minimal" },
+  });
+}
+
 function toDbRecord(row, category, targetTable, index, seen) {
   const baseId = String(row.id || `${category}-${index + 1}`).trim();
   let localId = baseId;
@@ -98,6 +105,7 @@ module.exports = async function handler(req, res) {
       if (!rows.length) return json(res, 400, { ok: false, error: "No rows" });
       const seen = new Set();
       const records = rows.map((row, index) => toDbRecord(row, category, targetTable, index, seen));
+      if (body.action === "replace") await deleteCategory(category);
       const saved = await supabaseFetch("est_master_records?on_conflict=local_id", {
         method: "POST",
         body: JSON.stringify(records),

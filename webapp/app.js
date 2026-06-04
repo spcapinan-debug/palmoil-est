@@ -3365,7 +3365,7 @@ async function syncMasterFolderTableToDatabase() {
     const res = await fetch(EST_MASTER_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "upsert", category: table.id, table: `master:${table.id}`, rows }),
+      body: JSON.stringify({ action: "replace", category: table.id, table: `master:${table.id}`, rows }),
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok || payload.ok === false) throw new Error(payload.error || `HTTP ${res.status}`);
@@ -3426,7 +3426,7 @@ async function importAllMasterFolderTablesToDatabase() {
       const res = await fetch(EST_MASTER_API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "upsert", category: table.id, table: `master:${table.id}`, rows }),
+        body: JSON.stringify({ action: "replace", category: table.id, table: `master:${table.id}`, rows }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || payload.ok === false) throw new Error(`${table.title}: ${payload.error || `HTTP ${res.status}`}`);
