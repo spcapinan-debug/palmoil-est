@@ -2007,6 +2007,54 @@ tfoot td {
   color: #1e3a8a;
 }
 
+.est-schema-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.est-key-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.est-key-flow article {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.est-key-flow b {
+  color: var(--primary);
+  font-size: 13px;
+}
+
+.est-key-flow span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.est-key-flow strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.est-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.est-table code {
+  display: inline-block;
+  max-width: 100%;
+  white-space: normal;
+}
+
 .est-entry-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, .6fr);

@@ -3359,37 +3359,54 @@ const EST_MASTER_CATEGORIES = {
     title: "ข้อมูลพื้นที่",
     detail: "แบ่งทุกระดับ เก็บถึงจำนวนต้น และปีปลูก",
     table: "est_blocks",
-    fields: [["zone", "ตอนบน/ตอนล่าง"], ["area", "แปลง"], ["block", "บล็อก"], ["palmYear", "ปีปลูก/รุ่นปี"], ["rai", "จำนวนไร่"], ["trees", "จำนวนต้น"], ["manager", "ผู้จัดการพื้นที่"]],
+    primaryKey: "block",
+    primaryLabel: "block_code",
+    fields: [["zone", "ตอนบน/ตอนล่าง"], ["area", "แปลง"], ["block", "คีย์บล็อก / block_code"], ["palmYear", "ปีปลูก/รุ่นปี"], ["rai", "จำนวนไร่"], ["trees", "จำนวนต้น"], ["manager", "ผู้จัดการพื้นที่"]],
   },
   people: {
     title: "ข้อมูลพนักงาน/ผู้รับเหมา",
     detail: "แบ่งกลุ่มตอนบน/ล่าง ค่าแรง ผู้จัดการ ทีมหัวหน้า และผู้รับเหมา เพิ่มแก้ ระยะเวลาทำงาน",
     table: "est_workers, est_contractors",
-    fields: [["code", "รหัส"], ["name", "ชื่อ"], ["role", "ตำแหน่ง/ประเภท"], ["zone", "ตอนบน/ตอนล่าง"], ["team", "ทีม"], ["rate", "ค่าแรง"], ["startDate", "เริ่มงาน"], ["endDate", "สิ้นสุด"]],
+    primaryKey: "code",
+    primaryLabel: "worker_code / contractor_code",
+    fields: [["code", "คีย์พนักงาน/ผู้รับเหมา"], ["name", "ชื่อ"], ["role", "ตำแหน่ง/ประเภท"], ["zone", "ตอนบน/ตอนล่าง"], ["team", "ทีม"], ["rate", "ค่าแรง"], ["startDate", "เริ่มงาน"], ["endDate", "สิ้นสุด"]],
   },
   payrollTypes: {
     title: "ประเภทเงินเพิ่ม/เงินหัก",
     detail: "เพิ่ม แก้ไข การลาแปรผันตามพนักงาน ตามบันทึกค่าแรง",
     table: "est_payroll_types",
-    fields: [["code", "รหัส"], ["name", "ชื่อรายการ"], ["type", "เพิ่ม/หัก/ลา/ล่วงเวลา"], ["method", "วิธีคำนวณ"], ["rate", "อัตรา"], ["variableByWorker", "แปรผันตามพนักงาน"]],
+    primaryKey: "code",
+    primaryLabel: "payroll_type_code",
+    references: { workerKey: { category: "people", label: "คีย์พนักงาน" } },
+    fields: [["code", "คีย์ประเภทเงิน"], ["name", "ชื่อรายการ"], ["type", "เพิ่ม/หัก/ลา/ล่วงเวลา"], ["method", "วิธีคำนวณ"], ["rate", "อัตรา"], ["variableByWorker", "แปรผันตามพนักงาน"], ["workerKey", "คีย์พนักงานที่ผูก"]],
   },
   system: {
     title: "ข้อมูลระบบงาน",
     detail: "สถานะงาน ลำดับ flow และค่าตั้งต้นของระบบงานสวน",
     table: "est_system_settings",
+    primaryKey: "key",
+    primaryLabel: "setting_key",
     fields: [["key", "รหัสตั้งค่า"], ["name", "ชื่อรายการ"], ["group", "กลุ่มระบบ"], ["value", "ค่า"], ["description", "รายละเอียด"]],
   },
   budget: {
     title: "ข้อมูลงบประมาณ",
     detail: "บันทึกงบประมาณตามกิจกรรมรายบล็อก อัตราตามกิจกรรม และตามคนงาน/ผู้รับเหมา",
     table: "est_budget_lines",
-    fields: [["fiscalYear", "ปีงบประมาณ"], ["activity", "กิจกรรม"], ["block", "บล็อก"], ["rate", "อัตรา"], ["workerRate", "อัตราคนงาน"], ["contractorRate", "อัตราผู้รับเหมา"], ["budget", "งบประมาณ"]],
+    primaryKey: "budgetKey",
+    primaryLabel: "budget_line_key",
+    references: {
+      blockKey: { category: "areas", label: "คีย์บล็อก" },
+      activityKey: { category: "activities", label: "คีย์กิจกรรม" },
+    },
+    fields: [["budgetKey", "คีย์งบประมาณ"], ["fiscalYear", "ปีงบประมาณ"], ["activityKey", "คีย์กิจกรรม"], ["activity", "กิจกรรม"], ["blockKey", "คีย์บล็อก"], ["block", "บล็อก"], ["rate", "อัตรา"], ["workerRate", "อัตราคนงาน"], ["contractorRate", "อัตราผู้รับเหมา"], ["budget", "งบประมาณ"]],
   },
   activities: {
     title: "ข้อมูลงานกิจกรรม",
     detail: "จัดเป็นกลุ่มกิจกรรมใหญ่และย่อยลงมา พร้อมบันทึกแก้ไข",
     table: "est_activities",
-    fields: [["group", "กลุ่มกิจกรรมใหญ่"], ["code", "รหัสกิจกรรม"], ["name", "กิจกรรมย่อย"], ["unit", "หน่วย"], ["defaultRate", "อัตราตั้งต้น"], ["description", "รายละเอียด"]],
+    primaryKey: "code",
+    primaryLabel: "activity_code",
+    fields: [["group", "กลุ่มกิจกรรมใหญ่"], ["code", "คีย์กิจกรรม / activity_code"], ["name", "กิจกรรมย่อย"], ["unit", "หน่วย"], ["defaultRate", "อัตราตั้งต้น"], ["description", "รายละเอียด"]],
   },
 };
 
@@ -3400,6 +3417,7 @@ function estMasterSourceRows(category) {
       zone: row.block.includes("-T") ? "ตอนบน" : row.block.includes("-B") || row.block.includes("-P") ? "ตอนล่าง" : "",
       area: row.area,
       block: row.block,
+      primaryKey: row.block,
       palmYear: String(row.block).slice(0, 2),
       rai: row.rai,
       trees: row.trees,
@@ -3409,8 +3427,11 @@ function estMasterSourceRows(category) {
   }
   if (category === "budget") {
     return options.slice(0, 80).map((row) => ({
+      budgetKey: `BUD-2569-${row.block || "BLOCK"}-${row.sourceRow || ""}`,
       fiscalYear: "2569",
+      activityKey: row.activity,
       activity: row.activity,
+      blockKey: row.block,
       block: row.block,
       rate: row.rate,
       workerRate: row.rate,
@@ -3440,6 +3461,90 @@ function estMasterRows(category) {
   ];
 }
 
+function estMasterFieldKey(field) {
+  return Array.isArray(field) ? field[0] : field.key;
+}
+
+function estMasterFieldLabel(field) {
+  return Array.isArray(field) ? field[1] : field.label;
+}
+
+function estMasterPkValue(row, category) {
+  const config = EST_MASTER_CATEGORIES[category] || {};
+  const key = config.primaryKey || "id";
+  return row.databaseId || row[key] || row.primaryKey || row.id || "";
+}
+
+function estMasterLabelValue(row, category) {
+  if (category === "areas") return [row.block, row.area, row.zone].filter(Boolean).join(" / ");
+  if (category === "people") return [row.code, row.name, row.role].filter(Boolean).join(" / ");
+  if (category === "activities") return [row.code, row.name || row.group].filter(Boolean).join(" / ");
+  if (category === "budget") return [row.budgetKey, row.block, row.activity].filter(Boolean).join(" / ");
+  return [row.code || row.key || row.id, row.name || row.description].filter(Boolean).join(" / ");
+}
+
+function estMasterReferenceOptions(category) {
+  const seen = new Set();
+  return estMasterRows(category).map((row) => {
+    const value = String(estMasterPkValue(row, category) || "").trim();
+    if (!value || seen.has(value)) return null;
+    seen.add(value);
+    return { value, label: estMasterLabelValue(row, category) || value };
+  }).filter(Boolean).slice(0, 250);
+}
+
+function renderEstMasterField(field, edit, category) {
+  const key = estMasterFieldKey(field);
+  const label = estMasterFieldLabel(field);
+  const ref = category.references?.[key];
+  const value = edit[key] ?? "";
+  if (ref) {
+    const options = estMasterReferenceOptions(ref.category);
+    return `
+      <label>${esc(label)}
+        <select data-est-master-field="${esc(key)}">
+          <option value="">เลือก${esc(ref.label || label)}</option>
+          ${options.map((item) => `<option value="${esc(item.value)}" ${String(value) === String(item.value) ? "selected" : ""}>${esc(item.label)}</option>`).join("")}
+        </select>
+      </label>`;
+  }
+  return `
+    <label>${esc(label)}
+      <input data-est-master-field="${esc(key)}" value="${esc(value)}">
+    </label>`;
+}
+
+function renderEstMasterSchema(categoryKey) {
+  const tableRows = Object.entries(EST_MASTER_CATEGORIES).map(([key, config]) => {
+    const refs = Object.entries(config.references || {}).map(([field, ref]) => `${field} -> ${EST_MASTER_CATEGORIES[ref.category]?.table || ref.category}.${EST_MASTER_CATEGORIES[ref.category]?.primaryLabel || "id"}`);
+    return `
+      <tr class="${key === categoryKey ? "is-added" : ""}">
+        <td><strong>${esc(config.table)}</strong><small>${esc(config.title)}</small></td>
+        <td><code>${esc(config.primaryLabel || config.primaryKey || "id")}</code></td>
+        <td>${refs.length ? refs.map((item) => `<code>${esc(item)}</code>`).join("<br>") : "<span class=\"muted\">-</span>"}</td>
+        <td>${fmt(estMasterRows(key).length)}</td>
+      </tr>`;
+  }).join("");
+  const active = EST_MASTER_CATEGORIES[categoryKey] || EST_MASTER_CATEGORIES.areas;
+  const relationRows = Object.entries(active.references || {}).map(([field, ref]) => `
+    <article>
+      <b>${esc(field)}</b>
+      <span>${esc(active.table)} ดึงคีย์จาก ${esc(EST_MASTER_CATEGORIES[ref.category]?.table || ref.category)}</span>
+      <strong>${fmt(estMasterReferenceOptions(ref.category).length)} keys</strong>
+    </article>`).join("") || `<article><b>${esc(active.primaryLabel || active.primaryKey || "id")}</b><span>หมวดนี้เป็นตารางหลัก ใช้คีย์นี้ให้ตารางอื่นอ้างอิง</span><strong>${fmt(estMasterReferenceOptions(categoryKey).length)} keys</strong></article>`;
+  return `
+    <section class="est-panel est-schema-panel">
+      <div class="section-head"><h3>โครงสร้าง Table และ Key</h3><span>Primary key / Foreign key</span></div>
+      <div class="est-key-flow">${relationRows}</div>
+      <div class="table-wrap est-table-wrap">
+        <table class="mini-table est-table">
+          <thead><tr><th>Table</th><th>คีย์หลัก</th><th>คีย์ที่ดึงมาใช้ร่วมกัน</th><th>Records</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
 function renderEstMaster() {
   const categoryKey = state.estMasterCategory;
   const category = EST_MASTER_CATEGORIES[categoryKey] || EST_MASTER_CATEGORIES.areas;
@@ -3455,10 +3560,7 @@ function renderEstMaster() {
       <span>${esc(item.detail)}</span>
       <small>${esc(item.table)}</small>
     </button>`).join("");
-  const inputs = category.fields.map(([key, label]) => `
-    <label>${esc(label)}
-      <input data-est-master-field="${esc(key)}" value="${esc(edit[key] ?? "")}">
-    </label>`).join("");
+  const inputs = category.fields.map((field) => renderEstMasterField(field, edit, category)).join("");
   return `
     <div class="est-page">
       <div class="report-title">
@@ -3468,6 +3570,7 @@ function renderEstMaster() {
         </div>
       </div>
       <section class="est-master-grid">${cards}</section>
+      ${renderEstMasterSchema(categoryKey)}
       <section class="est-master-actions">
         <button type="button" data-est-db-load ${state.estMasterSyncBusy ? "disabled" : ""}>เรียกดู/แก้ไข ข้อมูลในฐานข้อมูล</button>
         <button type="button" data-est-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกข้อมูลในฐานข้อมูล</button>
@@ -3495,10 +3598,10 @@ function renderEstMaster() {
         <div class="section-head"><h3>${esc(category.title)}</h3><span>${fmt(rows.length)} records</span></div>
         <div class="table-wrap est-table-wrap">
           <table class="mini-table est-table">
-            <thead><tr><th></th>${category.fields.map(([, label]) => `<th>${esc(label)}</th>`).join("")}<th>ที่มา</th></tr></thead>
+            <thead><tr><th></th>${category.fields.map((field) => `<th>${esc(estMasterFieldLabel(field))}</th>`).join("")}<th>ที่มา</th></tr></thead>
             <tbody>${rows.slice(0, 220).map((row) => `<tr class="${row.readonly ? "" : "is-added"}">
               <td>${row.readonly ? "" : `<button type="button" data-est-edit-master="${esc(row.id)}">แก้ไข</button> <button type="button" data-est-del-master="${esc(row.id)}">ลบ</button>`}</td>
-              ${category.fields.map(([key]) => `<td>${esc(row[key] ?? "")}</td>`).join("")}
+              ${category.fields.map((field) => `<td>${esc(row[estMasterFieldKey(field)] ?? "")}</td>`).join("")}
               <td>${esc(row._source || (row.readonly ? "source" : "draft"))}</td>
             </tr>`).join("")}</tbody>
           </table>
