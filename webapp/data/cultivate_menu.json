@@ -1,0 +1,841 @@
+{
+  "source": {
+    "system": "SPC Cultivate",
+    "capturedAt": "2026-05-30",
+    "mode": "live-menu-scrape",
+    "url": "https://spc.cultivate-agri.com/web/home",
+    "groupCount": 10,
+    "itemCount": 74,
+    "note": "Generated from the authenticated Cultivate menu structure. No credentials or private login data stored."
+  },
+  "menuGroup": "งานจัดการสวนปาล์ม",
+  "modules": [
+    {
+      "id": "palm-work",
+      "title": "การทำงานสวน",
+      "pageTitle": "การทำงานสวนปาล์ม",
+      "accent": "Plan → Schedule → Work",
+      "subtitle": "หน้าติดตามงานจาก Planner Workbench, Scheduler Workbench, Daily Entries และ Operations Dashboard ของ Cultivate",
+      "sources": [
+        "/web/planner_workbench",
+        "/web/scheduler_workbench",
+        "/web/dailyEntry",
+        "Superset: 01 - OPERATIONS - WORK ORDER WORKFLOWS"
+      ],
+      "steps": [
+        "เลือกงานที่ต้องการติดตาม",
+        "กำหนดช่วงวันที่ทำงาน",
+        "เลือกพื้นที่หรือบล็อก",
+        "เลือกกลุ่มทำงาน",
+        "ตรวจผลจริงเทียบแผนจาก Cultivate"
+      ],
+      "tables": [
+        "cultivate_work_orders",
+        "cultivate_schedule",
+        "cultivate_daily_entries",
+        "cultivate_terrains",
+        "cultivate_activity_groups"
+      ]
+    },
+    {
+      "id": "palm-cultivate-daily-operations",
+      "title": "Daily operations",
+      "pageTitle": "Cultivate - Daily operations",
+      "accent": "SPC Cultivate",
+      "subtitle": "ข้อมูลเมนู Daily operations ที่อ่านจากโปรแกรม SPC Cultivate โดยตรง",
+      "sources": [
+        "/web/workOrderPrintOut",
+        "/web/cost-data-navigator",
+        "/web/approvalInbox",
+        "/web/dailyEntry",
+        "/web/weighbridge",
+        "/web/stockManagement"
+      ],
+      "steps": [
+        "Work Order Print Outs",
+        "Cost Data Navigator",
+        "Approval",
+        "Daily Entries",
+        "Weighbridge",
+        "Stock Management"
+      ],
+      "tables": [
+        "cultivate:/web/workOrderPrintOut",
+        "cultivate:/web/cost-data-navigator",
+        "cultivate:/web/approvalInbox",
+        "cultivate:/web/dailyEntry",
+        "cultivate:/web/weighbridge",
+        "cultivate:/web/stockManagement"
+      ]
+    },
+    {
+      "id": "palm-cultivate-plan-and-schedule",
+      "title": "Plan & Schedule",
+      "pageTitle": "Cultivate - Plan & Schedule",
+      "accent": "SPC Cultivate",
+      "subtitle": "ข้อมูลเมนู Plan & Schedule ที่อ่านจากโปรแกรม SPC Cultivate โดยตรง",
+      "sources": [
+        "/web/planner_workbench",
+        "/web/scheduler_workbench"
+      ],
+      "steps": [
+        "Planner Workbench",
+        "Scheduler Workbench"
+      ],
+      "tables": [
+        "cultivate:/web/planner_workbench",
+        "cultivate:/web/scheduler_workbench"
+      ]
+    },
+    {
+      "id": "palm-cultivate-cheque-roll",
+      "title": "Cheque-roll",
+      "pageTitle": "Cultivate - Cheque-roll",
+      "accent": "SPC Cultivate",
+      "subtitle": "ข้อมูลเมนู Cheque-roll ที่อ่านจากโปรแกรม SPC Cultivate โดยตรง",
+      "sources": [
+        "/web/checkroll_console",
+        "/web/employeead",
+        "/web/chequeroll_groups",
+        "/web/average-bunch-weight-manual-input"
+      ],
+      "steps": [
+        "Cheque-roll Console",
+        "Employee A&D Console",
+        "Cheque-roll Groups",
+        "Manual Avg. Bunch Terrain"
+      ],
+      "tables": [
+        "cultivate:/web/checkroll_console",
+        "cultivate:/web/employeead",
+        "cultivate:/web/chequeroll_groups",
+        "cultivate:/web/average-bunch-weight-manual-input"
+      ]
+    },
+    {
+      "id": "palm-cultivate-master-data",
+      "title": "Master Data",
+      "pageTitle": "Cultivate - Master Data",
+      "accent": "SPC Cultivate",
+      "subtitle": "ข้อมูลเมนู Master Data ที่อ่านจากโปรแกรม SPC Cultivate โดยตรง",
+      "sources": [
+        "/web/allowances_deductions",
+        "/web/master_contracts",
+        "/web/partnersMaster",
+        "/web/master_crop_phases",
+        "/web/approvalSchemes",
+        "/web/mdm",
+        "/web/gangs_master",
+        "/web/activities_master",
+        "/web/activityGroups",
+        "/web/master_settlement_class",
+        "/web/master_employee_allowances_deductions",
+        "/web/materials_master",
+        "/web/materialGroups",
+        "/web/terrains_master",
+        "/web/accountsMaster",
+        "/web/companyMaster",
+        "/web/designationsMaster",
+        "/web/equipmentTypesMaster",
+        "/web/nationalitiesMaster",
+        "/web/equipmentsMaster",
+        "/web/cropsMaster",
+        "/web/partnerDocTypeMaster",
+        "/web/partnerRacesMaster",
+        "/web/partnerReligionMaster",
+        "/web/partnerStatutoryTypeMaster",
+        "/web/partnerStatutoryGroupMaster",
+        "/web/warehouseMaster",
+        "/web/weighbridgeMaster",
+        "/web/unitsMaster",
+        "/web/terrainMaterialMonthlyMarketPrices",
+        "/web/activityTypesMaster",
+        "/web/characteristicClasses",
+        "/web/characteristicCatalog",
+        "/web/characteristics",
+        "/web/calendarsMaster",
+        "/web/characteristicUpdateRuleMaster",
+        "/web/logisticAggregator",
+        "/web/employeePaymentPeriodMaster",
+        "/web/leavesMaster",
+        "/web/terrain-materials",
+        "/web/iot",
+        "/web/iotVariables"
+      ],
+      "steps": [
+        "Allowances & Deductions",
+        "Contracts",
+        "Partner Master",
+        "Master Crop Phases",
+        "Approval Schemes",
+        "Master Data Management",
+        "Gang Master",
+        "Activities",
+        "Activity Groups",
+        "Settlement Classes",
+        "Employee A&D Master",
+        "Materials",
+        "Material Groups",
+        "Terrains",
+        "Accounts",
+        "Companies",
+        "Designations",
+        "Equipment Types",
+        "Nationalities",
+        "Equipment",
+        "Crops",
+        "Partner document Types",
+        "Partner Race",
+        "Partner Religions",
+        "Statutory Types",
+        "Statutory groups",
+        "Warehouses",
+        "Weighbridges",
+        "Units",
+        "Terrain Material Monthly Market Prices",
+        "Activity Types",
+        "Characteristic Classes",
+        "Characteristic Catalog",
+        "Characteristics",
+        "Calendars",
+        "Characteristic Update Rule",
+        "Logistic Aggregator",
+        "Employee Payment Period",
+        "Leaves",
+        "Terrain Materials",
+        "Iot Devices",
+        "Iot Variables"
+      ],
+      "tables": [
+        "cultivate:/web/allowances_deductions",
+        "cultivate:/web/master_contracts",
+        "cultivate:/web/partnersMaster",
+        "cultivate:/web/master_crop_phases",
+        "cultivate:/web/approvalSchemes",
+        "cultivate:/web/mdm",
+        "cultivate:/web/gangs_master",
+        "cultivate:/web/activities_master",
+        "cultivate:/web/activityGroups",
+        "cultivate:/web/master_settlement_class",
+        "cultivate:/web/master_employee_allowances_deductions",
+        "cultivate:/web/materials_master",
+        "cultivate:/web/materialGroups",
+        "cultivate:/web/terrains_master",
+        "cultivate:/web/accountsMaster",
+        "cultivate:/web/companyMaster",
+        "cultivate:/web/designationsMaster",
+        "cultivate:/web/equipmentTypesMaster",
+        "cultivate:/web/nationalitiesMaster",
+        "cultivate:/web/equipmentsMaster",
+        "cultivate:/web/cropsMaster",
+        "cultivate:/web/partnerDocTypeMaster",
+        "cultivate:/web/partnerRacesMaster",
+        "cultivate:/web/partnerReligionMaster",
+        "cultivate:/web/partnerStatutoryTypeMaster",
+        "cultivate:/web/partnerStatutoryGroupMaster",
+        "cultivate:/web/warehouseMaster",
+        "cultivate:/web/weighbridgeMaster",
+        "cultivate:/web/unitsMaster",
+        "cultivate:/web/terrainMaterialMonthlyMarketPrices",
+        "cultivate:/web/activityTypesMaster",
+        "cultivate:/web/characteristicClasses",
+        "cultivate:/web/characteristicCatalog",
+        "cultivate:/web/characteristics",
+        "cultivate:/web/calendarsMaster",
+        "cultivate:/web/characteristicUpdateRuleMaster",
+        "cultivate:/web/logisticAggregator",
+        "cultivate:/web/employeePaymentPeriodMaster",
+        "cultivate:/web/leavesMaster",
+        "cultivate:/web/terrain-materials",
+        "cultivate:/web/iot",
+        "cultivate:/web/iotVariables"
+      ]
+    },
+    {
+      "id": "palm-cultivate-maintenance-and-eoy-activities",
+      "title": "Maintenance and EOY Activities",
+      "pageTitle": "Cultivate - Maintenance and EOY Activities",
+      "accent": "SPC Cultivate",
+      "subtitle": "ข้อมูลเมนู Maintenance and EOY Activities ที่อ่านจากโปรแกรม SPC Cultivate โดยตรง",
+      "sources": [
+        "/web/materials_master",
+        "/web/budget_calendar",
+        "/web/terrains_master",
+        "/web/materialGroups",
+        "/web/nursery"
+      ],
+      "steps": [
+        "Materials Master",
+        "Budget Calendars",
+        "Terrains",
+        "Material Groups",
+        "Nursery"
+      ],
+      "tables": [
+        "cultivate:/web/materials_master",
+        "cultivate:/web/budget_calendar",
+        "cultivate:/web/terrains_master",
+        "cultivate:/web/materialGroups",
+        "cultivate:/web/nursery"
+      ]
+    },
+    {
+      "id": "palm-cultivate-platform-development",
+      "title": "Platform Development",
+      "pageTitle": "Cultivate - Platform Development",
+      "accent": "SPC Cultivate",
+      "subtitle": "ข้อมูลเมนู Platform Development ที่อ่านจากโปรแกรม SPC Cultivate โดยตรง",
+      "sources": [
+        "/web/localization",
+        "/web/waw"
+      ],
+      "steps": [
+        "Localization",
+        "Webapp Workbench"
+      ],
+      "tables": [
+        "cultivate:/web/localization",
+        "cultivate:/web/waw"
+      ]
+    },
+    {
+      "id": "palm-cultivate-settings",
+      "title": "Settings",
+      "pageTitle": "Cultivate - Settings",
+      "accent": "SPC Cultivate",
+      "subtitle": "ข้อมูลเมนู Settings ที่อ่านจากโปรแกรม SPC Cultivate โดยตรง",
+      "sources": [
+        "/web/configurations",
+        "/web/monitoring"
+      ],
+      "steps": [
+        "Configuration",
+        "Monitoring"
+      ],
+      "tables": [
+        "cultivate:/web/configurations",
+        "cultivate:/web/monitoring"
+      ]
+    },
+    {
+      "id": "palm-cultivate-surveys",
+      "title": "Surveys",
+      "pageTitle": "Cultivate - Surveys",
+      "accent": "SPC Cultivate",
+      "subtitle": "ข้อมูลเมนู Surveys ที่อ่านจากโปรแกรม SPC Cultivate โดยตรง",
+      "sources": [
+        "/web/surveys"
+      ],
+      "steps": [
+        "Surveys"
+      ],
+      "tables": [
+        "cultivate:/web/surveys"
+      ]
+    },
+    {
+      "id": "palm-cultivate-security",
+      "title": "Security",
+      "pageTitle": "Cultivate - Security",
+      "accent": "SPC Cultivate",
+      "subtitle": "ข้อมูลเมนู Security ที่อ่านจากโปรแกรม SPC Cultivate โดยตรง",
+      "sources": [
+        "/web/security/users",
+        "/web/security/roles",
+        "/web/userGroups",
+        "/web/security/datagroups",
+        "/web/security/dataprofiles"
+      ],
+      "steps": [
+        "Users",
+        "Roles",
+        "User Groups",
+        "Datagroups",
+        "Dataprofiles"
+      ],
+      "tables": [
+        "cultivate:/web/security/users",
+        "cultivate:/web/security/roles",
+        "cultivate:/web/userGroups",
+        "cultivate:/web/security/datagroups",
+        "cultivate:/web/security/dataprofiles"
+      ]
+    },
+    {
+      "id": "palm-cultivate-reports",
+      "title": "Reports",
+      "pageTitle": "Cultivate - Reports",
+      "accent": "SPC Cultivate",
+      "subtitle": "ข้อมูลเมนู Reports ที่อ่านจากโปรแกรม SPC Cultivate โดยตรง",
+      "sources": [
+        "/web/home",
+        "/web/reports/checkroll_report_v2",
+        "/web/reports/checkroll_report_v3",
+        "/web/reporting",
+        "/web/maps"
+      ],
+      "steps": [
+        "Dashboard",
+        "For HDRF",
+        "Cheque-roll Audit",
+        "Reporting",
+        "Maps"
+      ],
+      "tables": [
+        "cultivate:/web/home",
+        "cultivate:/web/reports/checkroll_report_v2",
+        "cultivate:/web/reports/checkroll_report_v3",
+        "cultivate:/web/reporting",
+        "cultivate:/web/maps"
+      ]
+    }
+  ],
+  "cultivateGroups": [
+    {
+      "title": "Daily operations",
+      "items": [
+        {
+          "title": "Work Order Print Outs",
+          "path": "/web/workOrderPrintOut",
+          "url": "https://spc.cultivate-agri.com/web/workOrderPrintOut"
+        },
+        {
+          "title": "Cost Data Navigator",
+          "path": "/web/cost-data-navigator",
+          "url": "https://spc.cultivate-agri.com/web/cost-data-navigator"
+        },
+        {
+          "title": "Approval",
+          "path": "/web/approvalInbox",
+          "url": "https://spc.cultivate-agri.com/web/approvalInbox"
+        },
+        {
+          "title": "Daily Entries",
+          "path": "/web/dailyEntry",
+          "url": "https://spc.cultivate-agri.com/web/dailyEntry"
+        },
+        {
+          "title": "Weighbridge",
+          "path": "/web/weighbridge",
+          "url": "https://spc.cultivate-agri.com/web/weighbridge"
+        },
+        {
+          "title": "Stock Management",
+          "path": "/web/stockManagement",
+          "url": "https://spc.cultivate-agri.com/web/stockManagement"
+        }
+      ]
+    },
+    {
+      "title": "Plan & Schedule",
+      "items": [
+        {
+          "title": "Planner Workbench",
+          "path": "/web/planner_workbench",
+          "url": "https://spc.cultivate-agri.com/web/planner_workbench"
+        },
+        {
+          "title": "Scheduler Workbench",
+          "path": "/web/scheduler_workbench",
+          "url": "https://spc.cultivate-agri.com/web/scheduler_workbench"
+        }
+      ]
+    },
+    {
+      "title": "Cheque-roll",
+      "items": [
+        {
+          "title": "Cheque-roll Console",
+          "path": "/web/checkroll_console",
+          "url": "https://spc.cultivate-agri.com/web/checkroll_console"
+        },
+        {
+          "title": "Employee A&D Console",
+          "path": "/web/employeead",
+          "url": "https://spc.cultivate-agri.com/web/employeead"
+        },
+        {
+          "title": "Cheque-roll Groups",
+          "path": "/web/chequeroll_groups",
+          "url": "https://spc.cultivate-agri.com/web/chequeroll_groups"
+        },
+        {
+          "title": "Manual Avg. Bunch Terrain",
+          "path": "/web/average-bunch-weight-manual-input",
+          "url": "https://spc.cultivate-agri.com/web/average-bunch-weight-manual-input"
+        }
+      ]
+    },
+    {
+      "title": "Master Data",
+      "items": [
+        {
+          "title": "Allowances & Deductions",
+          "path": "/web/allowances_deductions",
+          "url": "https://spc.cultivate-agri.com/web/allowances_deductions"
+        },
+        {
+          "title": "Contracts",
+          "path": "/web/master_contracts",
+          "url": "https://spc.cultivate-agri.com/web/master_contracts"
+        },
+        {
+          "title": "Partner Master",
+          "path": "/web/partnersMaster",
+          "url": "https://spc.cultivate-agri.com/web/partnersMaster"
+        },
+        {
+          "title": "Master Crop Phases",
+          "path": "/web/master_crop_phases",
+          "url": "https://spc.cultivate-agri.com/web/master_crop_phases"
+        },
+        {
+          "title": "Approval Schemes",
+          "path": "/web/approvalSchemes",
+          "url": "https://spc.cultivate-agri.com/web/approvalSchemes"
+        },
+        {
+          "title": "Master Data Management",
+          "path": "/web/mdm",
+          "url": "https://spc.cultivate-agri.com/web/mdm"
+        },
+        {
+          "title": "Gang Master",
+          "path": "/web/gangs_master",
+          "url": "https://spc.cultivate-agri.com/web/gangs_master"
+        },
+        {
+          "title": "Activities",
+          "path": "/web/activities_master",
+          "url": "https://spc.cultivate-agri.com/web/activities_master"
+        },
+        {
+          "title": "Activity Groups",
+          "path": "/web/activityGroups",
+          "url": "https://spc.cultivate-agri.com/web/activityGroups"
+        },
+        {
+          "title": "Settlement Classes",
+          "path": "/web/master_settlement_class",
+          "url": "https://spc.cultivate-agri.com/web/master_settlement_class"
+        },
+        {
+          "title": "Employee A&D Master",
+          "path": "/web/master_employee_allowances_deductions",
+          "url": "https://spc.cultivate-agri.com/web/master_employee_allowances_deductions"
+        },
+        {
+          "title": "Materials",
+          "path": "/web/materials_master",
+          "url": "https://spc.cultivate-agri.com/web/materials_master"
+        },
+        {
+          "title": "Material Groups",
+          "path": "/web/materialGroups",
+          "url": "https://spc.cultivate-agri.com/web/materialGroups"
+        },
+        {
+          "title": "Terrains",
+          "path": "/web/terrains_master",
+          "url": "https://spc.cultivate-agri.com/web/terrains_master"
+        },
+        {
+          "title": "Accounts",
+          "path": "/web/accountsMaster",
+          "url": "https://spc.cultivate-agri.com/web/accountsMaster"
+        },
+        {
+          "title": "Companies",
+          "path": "/web/companyMaster",
+          "url": "https://spc.cultivate-agri.com/web/companyMaster"
+        },
+        {
+          "title": "Designations",
+          "path": "/web/designationsMaster",
+          "url": "https://spc.cultivate-agri.com/web/designationsMaster"
+        },
+        {
+          "title": "Equipment Types",
+          "path": "/web/equipmentTypesMaster",
+          "url": "https://spc.cultivate-agri.com/web/equipmentTypesMaster"
+        },
+        {
+          "title": "Nationalities",
+          "path": "/web/nationalitiesMaster",
+          "url": "https://spc.cultivate-agri.com/web/nationalitiesMaster"
+        },
+        {
+          "title": "Equipment",
+          "path": "/web/equipmentsMaster",
+          "url": "https://spc.cultivate-agri.com/web/equipmentsMaster"
+        },
+        {
+          "title": "Crops",
+          "path": "/web/cropsMaster",
+          "url": "https://spc.cultivate-agri.com/web/cropsMaster"
+        },
+        {
+          "title": "Partner document Types",
+          "path": "/web/partnerDocTypeMaster",
+          "url": "https://spc.cultivate-agri.com/web/partnerDocTypeMaster"
+        },
+        {
+          "title": "Partner Race",
+          "path": "/web/partnerRacesMaster",
+          "url": "https://spc.cultivate-agri.com/web/partnerRacesMaster"
+        },
+        {
+          "title": "Partner Religions",
+          "path": "/web/partnerReligionMaster",
+          "url": "https://spc.cultivate-agri.com/web/partnerReligionMaster"
+        },
+        {
+          "title": "Statutory Types",
+          "path": "/web/partnerStatutoryTypeMaster",
+          "url": "https://spc.cultivate-agri.com/web/partnerStatutoryTypeMaster"
+        },
+        {
+          "title": "Statutory groups",
+          "path": "/web/partnerStatutoryGroupMaster",
+          "url": "https://spc.cultivate-agri.com/web/partnerStatutoryGroupMaster"
+        },
+        {
+          "title": "Warehouses",
+          "path": "/web/warehouseMaster",
+          "url": "https://spc.cultivate-agri.com/web/warehouseMaster"
+        },
+        {
+          "title": "Weighbridges",
+          "path": "/web/weighbridgeMaster",
+          "url": "https://spc.cultivate-agri.com/web/weighbridgeMaster"
+        },
+        {
+          "title": "Units",
+          "path": "/web/unitsMaster",
+          "url": "https://spc.cultivate-agri.com/web/unitsMaster"
+        },
+        {
+          "title": "Terrain Material Monthly Market Prices",
+          "path": "/web/terrainMaterialMonthlyMarketPrices",
+          "url": "https://spc.cultivate-agri.com/web/terrainMaterialMonthlyMarketPrices"
+        },
+        {
+          "title": "Activity Types",
+          "path": "/web/activityTypesMaster",
+          "url": "https://spc.cultivate-agri.com/web/activityTypesMaster"
+        },
+        {
+          "title": "Characteristic Classes",
+          "path": "/web/characteristicClasses",
+          "url": "https://spc.cultivate-agri.com/web/characteristicClasses"
+        },
+        {
+          "title": "Characteristic Catalog",
+          "path": "/web/characteristicCatalog",
+          "url": "https://spc.cultivate-agri.com/web/characteristicCatalog"
+        },
+        {
+          "title": "Characteristics",
+          "path": "/web/characteristics",
+          "url": "https://spc.cultivate-agri.com/web/characteristics"
+        },
+        {
+          "title": "Calendars",
+          "path": "/web/calendarsMaster",
+          "url": "https://spc.cultivate-agri.com/web/calendarsMaster"
+        },
+        {
+          "title": "Characteristic Update Rule",
+          "path": "/web/characteristicUpdateRuleMaster",
+          "url": "https://spc.cultivate-agri.com/web/characteristicUpdateRuleMaster"
+        },
+        {
+          "title": "Logistic Aggregator",
+          "path": "/web/logisticAggregator",
+          "url": "https://spc.cultivate-agri.com/web/logisticAggregator"
+        },
+        {
+          "title": "Employee Payment Period",
+          "path": "/web/employeePaymentPeriodMaster",
+          "url": "https://spc.cultivate-agri.com/web/employeePaymentPeriodMaster"
+        },
+        {
+          "title": "Leaves",
+          "path": "/web/leavesMaster",
+          "url": "https://spc.cultivate-agri.com/web/leavesMaster"
+        },
+        {
+          "title": "Terrain Materials",
+          "path": "/web/terrain-materials",
+          "url": "https://spc.cultivate-agri.com/web/terrain-materials"
+        },
+        {
+          "title": "Iot Devices",
+          "path": "/web/iot",
+          "url": "https://spc.cultivate-agri.com/web/iot"
+        },
+        {
+          "title": "Iot Variables",
+          "path": "/web/iotVariables",
+          "url": "https://spc.cultivate-agri.com/web/iotVariables"
+        }
+      ]
+    },
+    {
+      "title": "Maintenance and EOY Activities",
+      "items": [
+        {
+          "title": "Materials Master",
+          "path": "/web/materials_master",
+          "url": "https://spc.cultivate-agri.com/web/materials_master"
+        },
+        {
+          "title": "Budget Calendars",
+          "path": "/web/budget_calendar",
+          "url": "https://spc.cultivate-agri.com/web/budget_calendar"
+        },
+        {
+          "title": "Terrains",
+          "path": "/web/terrains_master",
+          "url": "https://spc.cultivate-agri.com/web/terrains_master"
+        },
+        {
+          "title": "Material Groups",
+          "path": "/web/materialGroups",
+          "url": "https://spc.cultivate-agri.com/web/materialGroups"
+        },
+        {
+          "title": "Nursery",
+          "path": "/web/nursery",
+          "url": "https://spc.cultivate-agri.com/web/nursery"
+        }
+      ]
+    },
+    {
+      "title": "Platform Development",
+      "items": [
+        {
+          "title": "Localization",
+          "path": "/web/localization",
+          "url": "https://spc.cultivate-agri.com/web/localization"
+        },
+        {
+          "title": "Webapp Workbench",
+          "path": "/web/waw",
+          "url": "https://spc.cultivate-agri.com/web/waw"
+        }
+      ]
+    },
+    {
+      "title": "Settings",
+      "items": [
+        {
+          "title": "Configuration",
+          "path": "/web/configurations",
+          "url": "https://spc.cultivate-agri.com/web/configurations"
+        },
+        {
+          "title": "Monitoring",
+          "path": "/web/monitoring",
+          "url": "https://spc.cultivate-agri.com/web/monitoring"
+        }
+      ]
+    },
+    {
+      "title": "Surveys",
+      "items": [
+        {
+          "title": "Surveys",
+          "path": "/web/surveys",
+          "url": "https://spc.cultivate-agri.com/web/surveys"
+        }
+      ]
+    },
+    {
+      "title": "Security",
+      "items": [
+        {
+          "title": "Users",
+          "path": "/web/security/users",
+          "url": "https://spc.cultivate-agri.com/web/security/users"
+        },
+        {
+          "title": "Roles",
+          "path": "/web/security/roles",
+          "url": "https://spc.cultivate-agri.com/web/security/roles"
+        },
+        {
+          "title": "User Groups",
+          "path": "/web/userGroups",
+          "url": "https://spc.cultivate-agri.com/web/userGroups"
+        },
+        {
+          "title": "Datagroups",
+          "path": "/web/security/datagroups",
+          "url": "https://spc.cultivate-agri.com/web/security/datagroups"
+        },
+        {
+          "title": "Dataprofiles",
+          "path": "/web/security/dataprofiles",
+          "url": "https://spc.cultivate-agri.com/web/security/dataprofiles"
+        }
+      ]
+    },
+    {
+      "title": "Reports",
+      "items": [
+        {
+          "title": "Dashboard",
+          "path": "/web/home",
+          "url": "https://spc.cultivate-agri.com/web/home"
+        },
+        {
+          "title": "For HDRF",
+          "path": "/web/reports/checkroll_report_v2",
+          "url": "https://spc.cultivate-agri.com/web/reports/checkroll_report_v2"
+        },
+        {
+          "title": "Cheque-roll Audit",
+          "path": "/web/reports/checkroll_report_v3",
+          "url": "https://spc.cultivate-agri.com/web/reports/checkroll_report_v3"
+        },
+        {
+          "title": "Reporting",
+          "path": "/web/reporting",
+          "url": "https://spc.cultivate-agri.com/web/reporting"
+        },
+        {
+          "title": "Maps",
+          "path": "/web/maps",
+          "url": "https://spc.cultivate-agri.com/web/maps"
+        }
+      ]
+    }
+  ],
+  "databaseGroups": [
+    [
+      "Cultivate Operations",
+      "workOrderPrintOut, approvalInbox, dailyEntry, weighbridge, stockManagement"
+    ],
+    [
+      "Cultivate Planning",
+      "planner_workbench, scheduler_workbench"
+    ],
+    [
+      "Cultivate Cheque-roll",
+      "checkroll_console, employeead, chequeroll_groups, average_bunch_weight"
+    ],
+    [
+      "Cultivate Master Data",
+      "contracts, partners, gangs, activities, materials, terrains, warehouses, weighbridges"
+    ],
+    [
+      "Cultivate Reports",
+      "dashboard, reporting, maps, checkroll reports"
+    ],
+    [
+      "Cultivate Security",
+      "users, roles, userGroups, datagroups, dataprofiles"
+    ]
+  ]
+}

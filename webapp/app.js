@@ -1,0 +1,4475 @@
+const state = {
+  payload: null,
+  records: [],
+  view: "dashboard",
+  clearOverrides: [],
+  currentRows: [],
+  dailyFilters: { standard: "all", flow: "all" },
+  palmFilters: { job: "all", from: "", to: "", area: "all", group: "all", query: "" },
+  dashboardCompareMode: "area",
+  payloadSignature: "",
+  liveMode: !window.__PALM_DATA__,
+  estData: null,
+  estFilters: { activity: "all", datasetId: "", query: "" },
+  estWorkPlans: [],
+  estWorkOrders: [],
+  estDailyEntries: [],
+  estMasterCategory: "areas",
+  estMasterEditId: "",
+  estMasterRecords: [],
+  estMasterSyncMessage: "",
+  estMasterSyncBusy: false,
+  estSearchTimer: null,
+  sidebarCollapsed: localStorage.getItem("sidebarCollapsed") === "1",
+};
+
+const els = {
+  appShell: document.querySelector(".app-shell"),
+  sidebar: document.querySelector("#appSidebar"),
+  sidebarToggle: document.querySelector("#sidebarToggle"),
+  sourceInfo: document.querySelector("#sourceInfo"),
+  startDate: document.querySelector("#startDate"),
+  endDate: document.querySelector("#endDate"),
+  startDatePicker: document.querySelector("#startDatePicker"),
+  endDatePicker: document.querySelector("#endDatePicker"),
+  yardFilter: document.querySelector("#yardFilter"),
+  datePanel: document.querySelector(".date-panel"),
+  globalFilterPanel: document.querySelector("#globalFilterPanel"),
+  tabs: document.querySelector("#tabs"),
+  dashboard: document.querySelector("#dashboard"),
+  reportPage: document.querySelector("#reportPage"),
+  clearPage: document.querySelector("#clearPage"),
+  kpiOpening: document.querySelector("#kpiOpening"),
+  kpiInbound: document.querySelector("#kpiInbound"),
+  kpiOutbound: document.querySelector("#kpiOutbound"),
+  kpiLoss: document.querySelector("#kpiLoss"),
+  kpiBalance: document.querySelector("#kpiBalance"),
+  printBtn: document.querySelector("#printBtn"),
+  refreshTransportBtn: document.querySelector("#refreshTransportBtn"),
+  printPreviewModal: document.querySelector("#printPreviewModal"),
+  printPreviewBody: document.querySelector("#printPreviewBody"),
+  previewPrintBtn: document.querySelector("#previewPrintBtn"),
+  previewCloseBtn: document.querySelector("#previewCloseBtn"),
+  applyBtn: document.querySelector("#applyBtn"),
+  csvBtn: document.querySelector("#csvBtn"),
+  clearDate: document.querySelector("#clearDate"),
+  clearPr: document.querySelector("#clearPr"),
+  clearTk: document.querySelector("#clearTk"),
+  clearNote: document.querySelector("#clearNote"),
+  addClearRow: document.querySelector("#addClearRow"),
+  clearTable: document.querySelector("#clearTable"),
+};
+
+const nf = new Intl.NumberFormat("th-TH", { maximumFractionDigits: 0 });
+const tonNf = new Intl.NumberFormat("th-TH", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+const moneyNf = new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const CULTIVATE_API_BASE = window.__CULTIVATE_API_BASE__ || "http://127.0.0.1:8080/api/cultivate.php";
+const TRANSPORT_REFRESH_API = window.__TRANSPORT_REFRESH_API__ || CULTIVATE_API_BASE.replace(/cultivate\.php.*$/, "transport_refresh.php");
+const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
+const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
+const DAILY_HEADERS = [
+  "วันที่",
+  "เวลา",
+  "กลุ่ม",
+  "กอง / รายการ",
+  "เอกสาร/ใบชั่ง",
+  "มาตรฐาน/ประเภท",
+  "ผู้ส่ง",
+  "ทะเบียน",
+  "คนขับ",
+  "โรงงาน",
+  "ปลายราง (RSPO)",
+  "ปลายราง (NON-RSPO)",
+  "ตะกุก (RSPO)",
+  "ตะกุก (NON-RSPO)",
+  "รวม",
+  "น้ำหนักปลายทางโรงงาน",
+  "น้ำหนักเทียบปลายทาง",
+];
+
+const PALM_MENU = {
+  "palm-overview": {
+    title: "ภาพรวมงานจัดการสวนปาล์ม",
+    subtitle: "รวมโครงสร้างงานจากระบบ SPC Cultivate และรายงาน Superset เพื่อจัดเป็นเมนูใช้งานในหน้า RSPO Ramp",
+    accent: "Dashboard",
+    steps: ["ดูสถานะงานสวน", "ติดตามแผนเทียบผลงานจริง", "ดูผลผลิตตามแปลง", "ดูแผนที่และข้อมูลบล็อก"],
+    sources: ["Superset: 01 - OPERATIONS - WORK ORDER WORKFLOWS", "Superset: 02 - Harvest", "/web/maps", "/web/reporting"],
+    tables: ["terrains", "work_orders", "daily_entries", "harvest_records", "inventory_movements"],
+  },
+  "palm-work": {
+    title: "การทำงานสวนปาล์ม",
+    subtitle: "หน้าติดตามงานจากแผน ประเมินกำหนดการ และผลทำงานจริง พร้อมค้นหาตามงาน เวลา พื้นที่ และกลุ่มทำงาน",
+    accent: "Plan → Schedule → Work",
+    steps: ["เลือกงานที่ต้องการติดตาม", "กำหนดช่วงวันที่ทำงาน", "เลือกพื้นที่หรือบล็อก", "เลือกกลุ่มทำงาน", "ตรวจผลจริงเทียบแผนประเมิน"],
+    sources: ["/web/planner_workbench", "/web/scheduler_workbench", "/web/dailyEntry", "Superset: 01 - OPERATIONS - WORK ORDER WORKFLOWS"],
+    tables: ["cultivate_work_orders", "cultivate_schedule", "cultivate_daily_entries", "cultivate_terrains", "cultivate_activity_groups"],
+  },
+  "palm-plan": {
+    title: "แผนงานและใบงาน",
+    subtitle: "สร้างแผนงานสวน จัดตาราง แจกใบงาน และควบคุมสถานะ Planned / Scheduled / Executed",
+    accent: "Plan & Schedule",
+    steps: ["เลือก Plan และ Crop Phase", "เลือกกิจกรรมและแปลง", "กำหนดแรงงาน วัสดุ อุปกรณ์", "สร้างและจัดตาราง Work Order", "พิมพ์ใบงานและส่งอนุมัติ"],
+    sources: ["/web/planner_workbench", "/web/scheduler_workbench", "/web/workOrderPrintOut", "/web/approvalInbox"],
+    tables: ["plans", "work_orders", "work_order_terrains", "activities", "contracts"],
+  },
+  "palm-daily": {
+    title: "บันทึกงานประจำวัน",
+    subtitle: "รับผลปฏิบัติงานจริงจากใบงานหรือ QR แล้วนำไปปิดงาน คำนวณต้นทุน และส่งต่อค่าแรง",
+    accent: "Daily Entries",
+    steps: ["ค้นหาหรือสแกนใบงาน", "กรอง Type / Activity / Terrain / Estate / Contract", "บันทึกปริมาณงาน คนงาน วัสดุ หมายเหตุ", "เปลี่ยนสถานะ Open / Closed"],
+    sources: ["/web/dailyEntry", "Superset: Daily Entry Record"],
+    tables: ["daily_entries", "work_orders", "partners", "terrains", "employee_allowance_deductions"],
+  },
+  "palm-harvest": {
+    title: "เก็บเกี่ยวและชั่งน้ำหนัก",
+    subtitle: "เชื่อมงานเก็บเกี่ยว AG08 กับตั๋วชั่ง เพื่อดูน้ำหนัก ผลผลิต และ ABW ตามบล็อก/แปลง",
+    accent: "Harvest / Weighbridge",
+    steps: ["สร้างใบงานเก็บเกี่ยว", "บันทึกผลเก็บเกี่ยวรายวัน", "นำเข้าไฟล์เครื่องชั่ง", "ตรวจ matched / unmatched ticket", "สรุปผลผลิตรายบล็อกและรายรุ่นปี"],
+    sources: ["/web/weighbridge", "Reporting 18 - FFB Block Yield", "Reporting 19 - FFB Block Yield Totals", "Superset: 02 - Harvest"],
+    tables: ["harvest_records", "weighbridge_tickets", "weighbridges", "terrains", "partners"],
+  },
+  "palm-inventory": {
+    title: "คลังและสต๊อกสวน",
+    subtitle: "ควบคุมรับเข้า ส่งออก โอนคลัง ตรวจนับ และวัสดุตามแปลง",
+    accent: "Stock Management",
+    steps: ["Good Receipt รับเข้า", "Good Issue / Good Delivery เบิกใช้หรือส่งออก", "Transfer โอนคลัง", "Stock Take ตรวจนับ", "วิเคราะห์ Material Management"],
+    sources: ["/web/stockManagement", "/web/materials_master", "/web/warehouseMaster", "/web/terrain-materials", "Reporting 9 - Material Management Report"],
+    tables: ["materials", "material_groups", "warehouses", "stock_balances", "inventory_movements", "stock_takes"],
+  },
+  "palm-payroll": {
+    title: "ค่าแรงและผู้รับเหมา",
+    subtitle: "จัดการ partner, gang, contract, allowance/deduction และรอบค่าแรง",
+    accent: "Cheque-roll",
+    steps: ["กำหนดกลุ่มค่าแรง", "ผูกพนักงาน/คู่ค้า/ผู้รับเหมา", "ตั้งสัญญาตามแปลงและกิจกรรม", "รวมผลงานตาม period", "เพิ่ม allowance/deduction และอนุมัติ"],
+    sources: ["/web/checkroll_console", "/web/employeead", "/web/chequeroll_groups", "/web/partnersMaster", "/web/master_contracts"],
+    tables: ["partners", "contracts", "contract_terrains", "contract_activities", "checkroll_periods", "employee_allowance_deductions"],
+  },
+  "palm-master": {
+    title: "ข้อมูลหลักสวน",
+    subtitle: "ฐานข้อมูลตั้งต้นสำหรับแปลง กิจกรรม วัสดุ คลัง เครื่องชั่ง และสิทธิ์การมองเห็นข้อมูล",
+    accent: "Master Data",
+    steps: ["สร้าง Estate / Datagroup", "สร้าง Terrain hierarchy", "สร้าง Activity Group / Activity", "สร้าง Material / Warehouse / Weighbridge", "ผูกวัสดุตามแปลงและอัตราใช้"],
+    sources: ["/web/terrains_master", "/web/activityGroups", "/web/activities_master", "/web/materials_master", "/web/weighbridgeMaster"],
+    tables: ["companies", "estates", "datagroups", "terrains", "activity_groups", "activities", "terrain_materials"],
+  },
+  "palm-report": {
+    title: "รายงานสวนปาล์ม",
+    subtitle: "รายงานผลผลิต ต้นทุน งานสวน สต๊อก และข้อมูล ramp ที่เกี่ยวข้องกับการขนส่งออก",
+    accent: "Reports",
+    steps: ["Terrains Master List", "FFB Block Yield", "Oil Palm Crop Statement", "Stock Inventory Report", "Ramp Inbound / Outbound", "Harvest Incentives"],
+    sources: ["Reporting 1", "Reporting 18/19", "Reporting 22", "Reporting 23", "Reporting 30/31"],
+    tables: ["vw_daily_harvest_by_block", "vw_stock_balance_by_material", "harvest_records", "inventory_movements", "weighbridge_tickets"],
+  },
+};
+
+const PALM_DB_GROUPS = [
+  ["Master org", "companies, estates, datagroups"],
+  ["Terrain", "terrains, terrain_materials"],
+  ["Operation", "activity_groups, activities, plans, work_orders"],
+  ["Execution", "daily_entries, work_order_terrains"],
+  ["Harvest", "harvest_records, weighbridge_tickets"],
+  ["Inventory", "materials, warehouses, stock_balances, inventory_movements"],
+  ["Payroll", "partners, contracts, checkroll_periods"],
+  ["Reports", "vw_daily_harvest_by_block, vw_stock_balance_by_material"],
+];
+
+function fallbackCultivateMenu() {
+  return {
+    source: { system: "SPC Cultivate", mode: "fallback" },
+    menuGroup: "งานจัดการสวนปาล์ม",
+    modules: Object.entries(PALM_MENU).map(([id, item]) => ({
+      id,
+      title: item.title,
+      pageTitle: item.title,
+      ...item,
+    })),
+    cultivateGroups: [],
+    databaseGroups: PALM_DB_GROUPS,
+  };
+}
+
+function normalizeCultivateMenu(menu) {
+  const fallback = fallbackCultivateMenu();
+  const modules = Array.isArray(menu?.modules) && menu.modules.length ? menu.modules : fallback.modules;
+  return {
+    source: menu?.source || fallback.source,
+    menuGroup: menu?.menuGroup || fallback.menuGroup,
+    modules: modules.map((module) => ({
+      id: module.id,
+      title: module.title || module.pageTitle || module.id,
+      pageTitle: module.pageTitle || module.title || module.id,
+      accent: module.accent || "",
+      subtitle: module.subtitle || "",
+      sources: Array.isArray(module.sources) ? module.sources : [],
+      steps: Array.isArray(module.steps) ? module.steps : [],
+      tables: Array.isArray(module.tables) ? module.tables : [],
+    })).filter((module) => module.id),
+    cultivateGroups: Array.isArray(menu?.cultivateGroups) ? menu.cultivateGroups : fallback.cultivateGroups,
+    databaseGroups: Array.isArray(menu?.databaseGroups) ? menu.databaseGroups : fallback.databaseGroups,
+  };
+}
+
+function palmMenuModules() {
+  return state.cultivateMenu?.modules || fallbackCultivateMenu().modules;
+}
+
+function palmMenuMap() {
+  return Object.fromEntries(palmMenuModules().map((module) => [module.id, module]));
+}
+
+function palmDatabaseGroups() {
+  return state.cultivateMenu?.databaseGroups || PALM_DB_GROUPS;
+}
+
+function cultivateGroups() {
+  return state.cultivateMenu?.cultivateGroups || [];
+}
+
+const PALM_MENU_ICONS = ["◇", "◷", "▤", "◫", "◉", "▣", "฿", "⌘", "↗", "◆", "●"];
+
+function initialViewFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get("view") || params.get("page") || params.get("v") || "";
+  const transportViews = new Set(["dashboard", "stock", "rspo", "daily", "summary", "clear", "master-data"]);
+  if (requested.startsWith("est-")) return requested;
+  if (transportViews.has(requested) && requested !== "master-data") return requested;
+  return state.view;
+}
+
+function renderPalmSidebar() {
+  if (!els.palmMenuSection) return;
+  const group = state.cultivateMenu?.menuGroup || "งานจัดการสวนปาล์ม";
+  els.palmMenuSection.innerHTML = `
+    <p class="menu-section-title">${esc(group)}</p>
+    ${palmMenuModules().map((module, index) => `
+      <button type="button" data-view="${esc(module.id)}" data-icon="${esc(PALM_MENU_ICONS[index % PALM_MENU_ICONS.length])}">
+        <span>${esc(module.title)}</span>
+      </button>`).join("")}`;
+  for (const btn of els.tabs.querySelectorAll("button")) btn.classList.toggle("active", btn.dataset.view === state.view);
+}
+
+function applySidebarState() {
+  els.sidebar?.classList.toggle("collapsed", state.sidebarCollapsed);
+  els.appShell?.classList.toggle("sidebar-collapsed", state.sidebarCollapsed);
+  els.sidebarToggle?.setAttribute("aria-pressed", state.sidebarCollapsed ? "true" : "false");
+}
+
+async function loadCultivateMenu() {
+  const raw = window.__CULTIVATE_MENU__ || await fetchCultivateResource("menu")
+    .catch(() => fetch(`./data/cultivate_menu.json?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json()))
+    .catch(() => fallbackCultivateMenu());
+  state.cultivateMenu = normalizeCultivateMenu(raw);
+  renderPalmSidebar();
+}
+
+async function loadCultivateWork() {
+  const raw = window.__CULTIVATE_WORK__ || await fetchCultivateResource("work")
+    .catch(() => fetch(`./data/cultivate_work.json?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json()))
+    .catch(() => ({ source: { system: "SPC Cultivate", mode: "empty" }, workRows: [] }));
+  state.cultivateWork = {
+    source: raw.source || { system: "SPC Cultivate" },
+    workRows: Array.isArray(raw.workRows) ? raw.workRows : [],
+  };
+}
+
+async function loadCultivateMaster() {
+  const raw = window.__CULTIVATE_MASTER__ || await fetchCultivateResource("master")
+    .catch(() => fetch(`./data/cultivate_master.json?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json()))
+    .catch(() => ({ source: { system: "SPC Cultivate", mode: "empty" } }));
+  state.cultivateMaster = {
+    source: raw.source || { system: "SPC Cultivate" },
+    terrains: Array.isArray(raw.terrains) ? raw.terrains : [],
+    activities: Array.isArray(raw.activities) ? raw.activities : [],
+    activityGroups: Array.isArray(raw.activityGroups) ? raw.activityGroups : [],
+    gangs: Array.isArray(raw.gangs) ? raw.gangs : [],
+    partners: Array.isArray(raw.partners) ? raw.partners : [],
+    materials: Array.isArray(raw.materials) ? raw.materials : [],
+    warehouses: Array.isArray(raw.warehouses) ? raw.warehouses : [],
+    weighbridges: Array.isArray(raw.weighbridges) ? raw.weighbridges : [],
+    rawTables: Array.isArray(raw.rawTables) ? raw.rawTables : [],
+  };
+}
+
+function masterDataSignature(payload) {
+  const source = payload?.source || {};
+  return [source.generatedAt, source.editsUpdatedAt, source.datasetCount, source.rowCount].join("|");
+}
+
+async function loadMasterData({ silent = false } = {}) {
+  const raw = window.__MASTER_DATA__ || await fetch(`${MASTER_DATA_API}?t=${Date.now()}`, { cache: "no-store" })
+    .then((res) => res.json())
+    .catch(() => fetch(`./data/master_data.json?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json()))
+    .catch(() => ({ ok: false, source: {}, groups: [], datasets: [] }));
+  const signature = masterDataSignature(raw);
+  if (silent && signature === state.masterDataSignature) return false;
+  state.masterData = {
+    ok: raw.ok !== false,
+    source: raw.source || {},
+    groups: Array.isArray(raw.groups) ? raw.groups : [],
+    files: Array.isArray(raw.files) ? raw.files : [],
+    datasets: Array.isArray(raw.datasets) ? raw.datasets : [],
+  };
+  state.masterDataSignature = signature;
+  if (!state.masterFilters.datasetId && state.masterData.datasets[0]) {
+    state.masterFilters.datasetId = state.masterData.datasets[0].id;
+  }
+  if (silent) render();
+  return true;
+}
+
+async function loadCultivateCredentials() {
+  state.cultivateCredentials = await fetch(CULTIVATE_CREDENTIALS_API, { cache: "no-store" })
+    .then((res) => res.json())
+    .catch(() => ({ ok: false, hasCredentials: false }));
+}
+
+async function fetchCultivateResource(resource) {
+  const url = `${CULTIVATE_API_BASE}?resource=${encodeURIComponent(resource)}&t=${Date.now()}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Cultivate API ${resource} failed: ${res.status}`);
+  const payload = await res.json();
+  if (payload && payload.ok === false) throw new Error(payload.error || `Cultivate API ${resource} failed`);
+  return payload?.data || payload;
+}
+
+async function importCultivateFiles() {
+  const input = document.querySelector("#cultivateImportFiles");
+  const status = document.querySelector("#cultivateImportStatus");
+  const mode = document.querySelector("#cultivateImportMode")?.value || "work";
+  if (!input?.files?.length) {
+    if (mode === "master") {
+      await importCultivateFromServer("master");
+      return;
+    }
+    if (status) status.textContent = "กรุณาเลือกไฟล์ export ก่อน";
+    return;
+  }
+  const form = new FormData();
+  for (const file of input.files) form.append("files[]", file);
+  if (status) status.textContent = "กำลังนำเข้า...";
+  try {
+    form.append("mode", mode);
+    const res = await fetch(`${CULTIVATE_IMPORT_API}?mode=${encodeURIComponent(mode)}`, { method: "POST", body: form });
+    const payload = await res.json();
+    if (!res.ok || payload.ok === false) throw new Error(payload.error || "Import failed");
+    if (mode === "master") await loadCultivateMaster();
+    else await loadCultivateWork();
+    const rowCount = payload.rows || Object.values(payload.counts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+    if (status) status.textContent = `นำเข้าแล้ว ${fmt(rowCount)} แถว จาก ${fmt(payload.files || input.files.length)} ไฟล์`;
+    render();
+  } catch (error) {
+    if (status) status.textContent = `นำเข้าไม่สำเร็จ: ${error.message}`;
+  }
+}
+
+async function importCultivateFromServer(mode = "master") {
+  const status = document.querySelector("#cultivateImportStatus");
+  if (status) status.textContent = mode === "master" ? "กำลังดึง Master Data อัตโนมัติ..." : "กำลังดึงข้อมูลอัตโนมัติ...";
+  try {
+    const form = new FormData();
+    form.append("mode", mode);
+    const res = await fetch(`${CULTIVATE_IMPORT_API}?mode=${encodeURIComponent(mode)}&source=server-folder`, {
+      method: "POST",
+      body: form,
+    });
+    const payload = await res.json();
+    if (!res.ok || payload.ok === false) throw new Error(payload.error || "Auto import failed");
+    if (mode === "master") await loadCultivateMaster();
+    else await loadCultivateWork();
+    const rowCount = payload.rows || Object.values(payload.counts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+    if (payload.warning) {
+      if (status) status.textContent = "ยังไม่พบไฟล์ export ในโฟลเดอร์ cultivate_exports";
+      return;
+    }
+    if (status) status.textContent = `ดึงอัตโนมัติแล้ว ${fmt(rowCount)} แถว จาก ${fmt(payload.files || 0)} ไฟล์`;
+    render();
+  } catch (error) {
+    if (status) status.textContent = `ดึงอัตโนมัติไม่สำเร็จ: ${error.message}`;
+  }
+}
+
+async function saveCultivateCredentials() {
+  const status = document.querySelector("#cultivateCredentialStatus");
+  const baseUrl = document.querySelector("#cultivateBaseUrl")?.value.trim() || "https://spc.cultivate-agri.com";
+  const username = document.querySelector("#cultivateUsername")?.value.trim() || "";
+  const password = document.querySelector("#cultivatePassword")?.value || "";
+  if (!username || !password) {
+    if (status) status.textContent = "กรุณากรอก user และ password";
+    return;
+  }
+  if (status) status.textContent = "กำลังบันทึก...";
+  try {
+    const res = await fetch(CULTIVATE_CREDENTIALS_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: baseUrl, username, password }),
+    });
+    const payload = await res.json();
+    if (!res.ok || payload.ok === false) throw new Error(payload.error || "Save failed");
+    await loadCultivateCredentials();
+    document.querySelector("#cultivatePassword").value = "";
+    if (status) status.textContent = "บันทึกแล้ว";
+    render();
+  } catch (error) {
+    if (status) status.textContent = `บันทึกไม่สำเร็จ: ${error.message}`;
+  }
+}
+
+async function refreshTransportFromQuery() {
+  if (!els.refreshTransportBtn) return;
+  const original = els.refreshTransportBtn.textContent;
+  els.refreshTransportBtn.textContent = "Refreshing...";
+  els.refreshTransportBtn.disabled = true;
+  try {
+    const res = await fetch(`${TRANSPORT_REFRESH_API}?t=${Date.now()}`, { method: "POST", cache: "no-store" });
+    const payload = await res.json();
+    if (!res.ok || payload.ok === false) throw new Error(payload.error || "Refresh failed");
+    await loadPayload({ silent: true });
+    els.refreshTransportBtn.textContent = `Query ${fmt(payload.source?.rowCount || 0)} rows`;
+    window.setTimeout(() => {
+      els.refreshTransportBtn.textContent = original;
+    }, 2500);
+  } catch (error) {
+    els.refreshTransportBtn.textContent = "Refresh failed";
+    window.setTimeout(() => {
+      els.refreshTransportBtn.textContent = original;
+    }, 3000);
+  } finally {
+    els.refreshTransportBtn.disabled = false;
+  }
+}
+
+function autoRefreshTransportFromQuery() {
+  window.setTimeout(() => {
+    refreshTransportFromQuery();
+  }, 500);
+}
+
+function ensurePrintPreviewElements() {
+  if (!els.printPreviewModal) {
+    document.body.insertAdjacentHTML("beforeend", `
+      <div id="printPreviewModal" class="print-preview-modal hidden" aria-hidden="true">
+        <div class="print-preview-panel">
+          <div class="print-preview-bar">
+            <div>
+              <strong>Print Preview</strong>
+              <span>ตรวจสอบหน้ารายงานก่อนพิมพ์หรือบันทึก PDF</span>
+            </div>
+            <div class="print-preview-actions">
+              <button id="previewPrintBtn" type="button">พิมพ์ / PDF</button>
+              <button id="previewCloseBtn" type="button">ปิด</button>
+            </div>
+          </div>
+          <div id="printPreviewBody" class="print-preview-body"></div>
+        </div>
+      </div>`);
+    els.printPreviewModal = document.querySelector("#printPreviewModal");
+    els.printPreviewBody = document.querySelector("#printPreviewBody");
+    els.previewPrintBtn = document.querySelector("#previewPrintBtn");
+    els.previewCloseBtn = document.querySelector("#previewCloseBtn");
+  }
+}
+
+function n(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function fmt(value) {
+  return nf.format(Math.round(n(value)));
+}
+
+function lossOnly(value) {
+  return Math.max(0, -n(value));
+}
+
+function isoDay(value) {
+  if (!value) return "";
+  const text = String(value).trim();
+  const thaiDate = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (thaiDate) {
+    const day = thaiDate[1].padStart(2, "0");
+    const month = thaiDate[2].padStart(2, "0");
+    let yearNumber = Number(thaiDate[3]);
+    if (thaiDate[3].length === 2) yearNumber += 2500;
+    if (yearNumber > 2400) yearNumber -= 543;
+    const year = String(yearNumber).padStart(4, "0");
+    return `${year}-${month}-${day}`;
+  }
+  return text.slice(0, 10);
+}
+
+function displayDate(value) {
+  const d = isoDay(value);
+  if (!d) return "";
+  const [y, m, day] = d.split("-");
+  return `${day}/${m}/${y}`;
+}
+
+function dateValue(el) {
+  return isoDay(el?.value);
+}
+
+function setDateValue(el, value) {
+  if (!el) return;
+  const iso = isoDay(value);
+  el.value = displayDate(iso);
+  if (el === els.startDate && els.startDatePicker) els.startDatePicker.value = iso;
+  if (el === els.endDate && els.endDatePicker) els.endDatePicker.value = iso;
+}
+
+function normalizeDateInput(el) {
+  const iso = dateValue(el);
+  if (iso) setDateValue(el, iso);
+}
+
+function syncDatePickerFromText(el) {
+  const iso = dateValue(el);
+  if (el === els.startDate && els.startDatePicker) els.startDatePicker.value = iso;
+  if (el === els.endDate && els.endDatePicker) els.endDatePicker.value = iso;
+}
+
+function dayNumber(value) {
+  return Number(isoDay(value).slice(8, 10));
+}
+
+function monthTitle(start, end) {
+  return `${displayDate(start)} - ${displayDate(end)}`;
+}
+
+function inRange(day) {
+  const start = dateValue(els.startDate);
+  const end = dateValue(els.endDate);
+  return (!start || day >= start) && (!end || day <= end);
+}
+
+function isoDateFromUtc(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addIsoDays(day, amount) {
+  const [year, month, date] = String(day).split("-").map(Number);
+  if (!year || !month || !date) return "";
+  const value = new Date(Date.UTC(year, month - 1, date + amount));
+  return isoDateFromUtc(value);
+}
+
+function daysBetween(start, end) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start || "") || !/^\d{4}-\d{2}-\d{2}$/.test(end || "") || start > end) return [];
+  const days = [];
+  for (let day = start; day <= end; day = addIsoDays(day, 1)) days.push(day);
+  return days;
+}
+
+function yardScope() {
+  if (els.yardFilter.value === "garden") return "garden";
+  if (els.yardFilter.value === "takuk") return "takuk";
+  return "combined";
+}
+
+function loadClearOverrides() {
+  try {
+    state.clearOverrides = JSON.parse(localStorage.getItem("palm-clear-ramp-log") || "[]");
+  } catch {
+    state.clearOverrides = [];
+  }
+}
+
+function saveClearOverrides() {
+  localStorage.setItem("palm-clear-ramp-log", JSON.stringify(state.clearOverrides));
+}
+
+function payloadSignature(payload) {
+  const source = payload?.source || {};
+  return [source.generatedAt, source.rowCount, source.dateMax].join("|");
+}
+
+function updateSourceInfo() {
+  const source = state.payload?.source || {};
+  const live = state.liveMode ? "LIVE" : "ONLINE SNAPSHOT";
+  const recordSource = source.recordSource === "query" ? "ODBC Query" : "Excel Sheet";
+  const generated = source.generatedAt ? `\nupdated ${source.generatedAt}` : "";
+  els.sourceInfo.textContent = `${live} · ${recordSource}\n${fmt(source.rowCount)} rows\n${source.dateMin} - ${source.dateMax}${generated}`;
+}
+
+async function loadPayload({ silent = false } = {}) {
+  const payload = window.__PALM_DATA__ || await fetch(`./data/data.json?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
+  const signature = payloadSignature(payload);
+  if (silent && signature === state.payloadSignature) return false;
+  const previousStart = dateValue(els.startDate);
+  const previousEnd = dateValue(els.endDate);
+  state.payload = payload;
+  state.payloadSignature = signature;
+  state.records = state.payload.records || [];
+  state.records.forEach((record, index) => {
+    record._srcRow = record._srcRow || index + 2;
+  });
+  updateSourceInfo();
+  if (!previousStart && state.payload.source?.dateMin) setDateValue(els.startDate, state.payload.source.dateMin);
+  if (!previousEnd && state.payload.source?.dateMax) setDateValue(els.endDate, state.payload.source.dateMax);
+  if (els.clearDate && state.payload.source?.dateMax) els.clearDate.value = state.payload.source.dateMax;
+  if (!silent) return true;
+  render();
+  return true;
+}
+
+async function loadEstData() {
+  const payload = window.__EST_DATA__ || await fetch(`${EST_DATA_URL}?t=${Date.now()}`, { cache: "no-store" })
+    .then((res) => res.json())
+    .catch(() => ({ ok: false, source: {}, menu: [], budgetDatasets: [], activityTotals: {}, masterSummary: { groups: [], datasets: [] }, estDoc: { paragraphs: [] } }));
+  state.estData = payload;
+  if (!state.estFilters.datasetId && payload.budgetDatasets?.[0]) {
+    state.estFilters.datasetId = payload.budgetDatasets[0].id;
+  }
+}
+
+function startLiveRefresh() {
+  if (!state.liveMode) return;
+  window.setInterval(async () => {
+    try {
+      await loadPayload({ silent: true });
+    } catch (error) {
+      els.sourceInfo.textContent = `${els.sourceInfo.textContent}\nrefresh failed`;
+    }
+  }, 15000);
+}
+
+function workbookClearRows() {
+  const sheet = state.payload.sheets.Clear_Ramp_Log;
+  return (sheet?.rows || []).map((row) => ({
+    date: row._date,
+    clearPrSet: row["เคลียร์แรมป์ ปลายราง"] !== null && row["เคลียร์แรมป์ ปลายราง"] !== undefined,
+    clearTkSet: row["เคลียร์แรมป์ ตะกุก"] !== null && row["เคลียร์แรมป์ ตะกุก"] !== undefined,
+    clearPr: n(row["เคลียร์แรมป์ ปลายราง"]),
+    clearTk: n(row["เคลียร์แรมป์ ตะกุก"]),
+    lossRamp: lossOnly(row["Loss รวม - แรมป์"]),
+    lossTransport: lossOnly(row["Loss รวม - ขนส่ง"]),
+    lossPrRamp: lossOnly(row["Loss ปลายราง - แรมป์"]),
+    lossPrTransport: lossOnly(row["Loss ปลายราง - ขนส่ง"]),
+    lossTkRamp: lossOnly(row["Loss ตะกุก - แรมป์"]),
+    lossTkTransport: lossOnly(row["Loss ตะกุก - ขนส่ง"]),
+    note: row["หมายเหตุ"] || row["Source / Note"] || "",
+    source: "workbook",
+  })).filter((row) => row.date);
+}
+
+function clearRows() {
+  const map = new Map();
+  for (const row of workbookClearRows()) map.set(row.date, row);
+  for (const row of state.clearOverrides) {
+    const base = map.get(row.date) || autoClearLoss(row.date);
+    map.set(row.date, { ...base, ...row, source: "manual" });
+  }
+  return [...map.values()]
+    .map((row) => fillAutoClearLoss(row))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function movementBySourceRow() {
+  const map = new Map();
+  for (const row of state.payload.sheets.Movement.rows || []) {
+    if (row["_srcRow"]) map.set(Number(row["_srcRow"]), row);
+  }
+  return map;
+}
+
+function autoClearLoss(date) {
+  const loss = { garden: 0, takuk: 0 };
+  for (const record of state.records || []) {
+    const rowDate = isoDay(record.weightDate || record.date);
+    if (rowDate !== date || record.wpInOutType !== "O") continue;
+    const scope = dataRecordScope(record);
+    const diff = n(record.wpFacNetWeight) - n(record.wpNetWeight);
+    if (diff < 0) loss[scope] += Math.abs(diff);
+  }
+  return {
+    date,
+    clearPrSet: false,
+    clearTkSet: false,
+    clearPr: 0,
+    clearTk: 0,
+    lossRamp: 0,
+    lossTransport: loss.garden + loss.takuk,
+    lossPrRamp: 0,
+    lossPrTransport: loss.garden,
+    lossTkRamp: 0,
+    lossTkTransport: loss.takuk,
+    note: "",
+    source: "auto",
+  };
+}
+
+function fillAutoClearLoss(row) {
+  const auto = autoClearLoss(row.date);
+  return {
+    ...row,
+    lossRamp: n(row.lossRamp) || auto.lossRamp,
+    lossTransport: auto.lossTransport,
+    lossPrRamp: n(row.lossPrRamp) || auto.lossPrRamp,
+    lossPrTransport: auto.lossPrTransport,
+    lossTkRamp: n(row.lossTkRamp) || auto.lossTkRamp,
+    lossTkTransport: auto.lossTkTransport,
+  };
+}
+
+function dataRecordScope(record) {
+  const movement = movementBySourceRow().get(Number(record._srcRow));
+  if (movement) return movementScope(movement);
+  if (String(record.location || "").startsWith("T")) return "takuk";
+  if (String(record.location || "").startsWith("E")) return "garden";
+  if (record.areaGroup === "Takuk" || String(record.name || "").includes("ตะกุก")) return "takuk";
+  return "garden";
+}
+
+function dataInboundBucket(record) {
+  if (record.standard === "Contract Farmer") return "customer";
+  if (record.areaGroup === "Banggun") return "banggun";
+  if (record.areaGroup === "Kapao") return "kapao";
+  if (record.areaGroup === "Takuk" && String(record.name || "").includes("เหนือ")) return "takukNorth";
+  if (record.areaGroup === "Takuk") return "takuk";
+  return "estate";
+}
+
+function standardBucketFromText(text) {
+  const value = String(text || "");
+  if (value.includes("NON-RSPO")) return "NON-RSPO";
+  if (value.includes("RSPO")) return "RSPO";
+  return "";
+}
+
+function recordStandardBucket(record, movement) {
+  const fromMovement = standardBucketFromText(movement?.["กอง"]);
+  if (fromMovement) return fromMovement;
+  if (record.standard === "RSPO") return "RSPO";
+  if (record.standard === "Contract Farmer") return "Contract Farmer";
+  return "NON-RSPO";
+}
+
+function recordFlow(record) {
+  return record.wpInOutType === "O" ? "ส่งออก" : "รับเข้า";
+}
+
+function recordMatchesGlobalFilters(record, movement) {
+  const standard = state.dailyFilters.standard;
+  const flow = state.dailyFilters.flow;
+  const recordStandard = recordFlow(record) === "รับเข้า"
+    ? (record.standard || "")
+    : recordStandardBucket(record, movement);
+  return (
+    (standard === "all" || standard === recordStandard) &&
+    (flow === "all" || flow === recordFlow(record))
+  );
+}
+
+function globalFiltersAreAll() {
+  return state.dailyFilters.standard === "all" && state.dailyFilters.flow === "all";
+}
+
+function clearMap() {
+  return new Map(clearRows().map((row) => [row.date, row]));
+}
+
+function filteredMovementRows() {
+  return state.payload.sheets.Movement.rows.filter((row) => row._date && inRange(row._date));
+}
+
+function movementScope(row) {
+  const yard = row["ลาน"];
+  if (yard === "T" || String(row["กอง"] || "").includes("ตะกุก")) return "takuk";
+  return "garden";
+}
+
+function inboundBucket(row) {
+  const text = String(row["ชื่อแปลง / เลขที่เอกสาร"] || "");
+  if (text.includes("Contract Farmer")) return "customer";
+  if (text.includes("บางกัน")) return "banggun";
+  if (text.includes("กะเปา")) return "kapao";
+  if (text.includes("ตะกุกเหนือ")) return "takukNorth";
+  if (text.includes("ตะกุก")) return "takuk";
+  if (text.includes("RSPO")) return "estate";
+  return "other";
+}
+
+function blankDaily(day) {
+  return {
+    date: day,
+    opening: 0,
+    customer: 0,
+    estate: 0,
+    banggun: 0,
+    kapao: 0,
+    takukNorth: 0,
+    takuk: 0,
+    totalRamp: 0,
+    timeDay: 0,
+    timeEvening: 0,
+    inboundRspo: 0,
+    inboundNonRspo: 0,
+    inboundTotal: 0,
+    totalAll: 0,
+    outboundPr: 0,
+    outboundBanggun: 0,
+    outboundKapao: 0,
+    outboundTakukNorth: 0,
+    outboundTakuk: 0,
+    outboundRspo: 0,
+    outboundNonRspo: 0,
+    outboundTotal: 0,
+    facNet: 0,
+    clearPr: 0,
+    clearTk: 0,
+    clear: 0,
+    lossRamp: 0,
+    lossTransport: 0,
+    loss: 0,
+    tripCount: 0,
+    balance: 0,
+  };
+}
+
+function buildDaily(scope) {
+  const rows = filteredMovementRows();
+  const map = new Map();
+  const clears = clearMap();
+
+  for (const row of rows) {
+    const rowScope = movementScope(row);
+    if (scope !== "combined" && rowScope !== scope) continue;
+    const day = row._date;
+    const item = map.get(day) || blankDaily(day);
+    const inbound = n(row["รับเข้า (kg)"]);
+    const outbound = n(row["ส่งออก (kg)"]);
+    const fac = n(row["รับปลายทาง"]);
+    const hour = Number(String(row["วันที่/เวลา (AE)"] || "T12").slice(11, 13));
+    const bucket = inboundBucket(row);
+
+    if (inbound > 0) item[bucket] += inbound;
+    item.totalRamp += inbound;
+    if (hour >= 17) item.timeEvening += inbound;
+    else item.timeDay += inbound;
+
+    if (outbound > 0) {
+      if (rowScope === "takuk") item.outboundTakuk += outbound;
+      else if (bucket === "banggun") item.outboundBanggun += outbound;
+      else if (bucket === "kapao") item.outboundKapao += outbound;
+      else item.outboundPr += outbound;
+      item.outboundTotal += outbound;
+      item.facNet += fac;
+      const diff = n(row["น้ำหนักเทียบปลายทาง"]);
+      if (diff < 0) item.lossTransport += Math.abs(diff);
+    }
+    map.set(day, item);
+  }
+
+  for (const clear of clearRows()) {
+    if (!inRange(clear.date)) continue;
+    if (!map.has(clear.date)) map.set(clear.date, blankDaily(clear.date));
+  }
+
+  let carry = 0;
+  return [...map.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((item) => {
+      const clear = clears.get(item.date);
+      item.clearPr = scope === "takuk" ? 0 : n(clear?.clearPr);
+      item.clearTk = scope === "garden" ? 0 : n(clear?.clearTk);
+      item.clear = item.clearPr + item.clearTk;
+      const hasClearOpening = scope === "garden"
+        ? clear?.clearPrSet
+        : scope === "takuk"
+          ? clear?.clearTkSet
+          : clear?.clearPrSet || clear?.clearTkSet;
+      if (hasClearOpening) {
+        carry = scope === "garden"
+          ? n(clear?.clearPr)
+          : scope === "takuk"
+            ? n(clear?.clearTk)
+            : (clear?.clearPrSet ? n(clear?.clearPr) : 0) + (clear?.clearTkSet ? n(clear?.clearTk) : 0);
+      }
+      item.lossRamp = n(clear?.lossRamp);
+      const explicitTransportLoss = item.lossTransport;
+      if (scope === "garden") {
+        item.lossRamp = n(clear?.lossPrRamp);
+        item.lossTransport = n(clear?.lossPrTransport) || explicitTransportLoss;
+      }
+      if (scope === "takuk") {
+        item.lossRamp = n(clear?.lossTkRamp);
+        item.lossTransport = n(clear?.lossTkTransport) || explicitTransportLoss;
+      }
+      item.loss = item.lossRamp + item.lossTransport;
+      item.totalAll = carry + item.totalRamp;
+      item.opening = carry;
+      item.balance = carry + item.totalRamp - item.outboundTotal - item.loss;
+      carry = item.balance;
+      return item;
+    });
+}
+
+function totals(rows) {
+  return rows.reduce((acc, row) => {
+    for (const key of Object.keys(row)) {
+      if (typeof row[key] === "number") acc[key] = (acc[key] || 0) + row[key];
+    }
+    return acc;
+  }, {});
+}
+
+function periodBalance(rows) {
+  const t = totals(rows);
+  return n(rows[0]?.opening) + n(t.totalRamp) - n(t.outboundTotal) - n(t.loss);
+}
+
+function exactRows(scope) {
+  const workbookReport = state.payload.workbookReports?.[scope];
+  if (workbookReport?.rows?.length) {
+    return workbookReport.rows.filter((row) => inRange(row.date));
+  }
+  const report = state.payload.monthlyReports?.[scope];
+  if (!report) return [];
+  return report.rows.filter((row) => inRange(row.date));
+}
+
+function exactMetric(scope, cells, metric) {
+  const map = {
+    combined: { opening: 1, inbound: 10, outbound: 18, loss: 25, balance: 19 },
+    garden: { opening: 1, inbound: 11, outbound: 19, loss: 25, balance: 20 },
+    takuk: { opening: 1, inbound: 9, outbound: 17, loss: 23, balance: 18 },
+  };
+  return n(cells[map[scope][metric]]);
+}
+
+function exactFooter(scope, rows) {
+  const metricIndex = {
+    combined: { opening: 1, balance: 19 },
+    garden: { opening: 1, balance: 20 },
+    takuk: { opening: 1, balance: 18 },
+  }[scope];
+  const width = rows[0]?.cells.length || 0;
+  const cells = [];
+  for (let i = 0; i < width; i += 1) {
+    if (i === 0) {
+      cells.push("<td>รวม</td>");
+    } else if (i === metricIndex.opening) {
+      cells.push(`<td class="num">${fmt(rows[0]?.cells[i])}</td>`);
+    } else if (i === metricIndex.balance) {
+      cells.push(`<td class="num">${fmt(rows.at(-1)?.cells[i])}</td>`);
+    } else {
+      const values = rows.map((row) => row.cells[i]).filter((value) => typeof value === "number");
+      const total = values.reduce((sum, value) => sum + value, 0);
+      cells.push(`<td class="${total < 0 ? "num loss" : "num"}">${values.length ? fmt(total) : ""}</td>`);
+    }
+  }
+  return `<tfoot><tr>${cells.join("")}</tr></tfoot>`;
+}
+
+function renderExactStock(scope, rows) {
+  state.currentRows = rows.map((row) => ({ date: row.date, ...Object.fromEntries(row.cells.map((value, index) => [`c${index + 1}`, value])) }));
+  const report = state.payload.workbookReports?.[scope] || state.payload.monthlyReports[scope];
+  const inbound = rows.reduce((sum, row) => sum + exactMetric(scope, row.cells, "inbound"), 0);
+  const outbound = rows.reduce((sum, row) => sum + exactMetric(scope, row.cells, "outbound"), 0);
+  const loss = rows.reduce((sum, row) => sum + Math.abs(exactMetric(scope, row.cells, "loss")), 0);
+  els.kpiOpening.textContent = fmt(rows.length ? exactMetric(scope, rows[0].cells, "opening") : 0);
+  els.kpiInbound.textContent = fmt(inbound);
+  els.kpiOutbound.textContent = fmt(outbound);
+  els.kpiLoss.textContent = fmt(loss);
+  els.kpiBalance.textContent = fmt(rows.length ? exactMetric(scope, rows.at(-1).cells, "balance") : 0);
+
+  const title = `
+    <div class="report-title">
+      <h2>บริษัท ทักษิณปาล์ม (2521) จำกัด${scope === "combined" ? " - ฝ่ายสวนปาล์มคีรีรัฐนิคม" : ""}</h2>
+      <p>รายงานสต๊อคผลปาล์มสด ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}</p>
+      <p>${reportMeta(scope)}</p>
+    </div>`;
+  const headerRows = report.headers.map((header) => `<tr>${header.map((cell) => `<th>${cell ?? ""}</th>`).join("")}</tr>`).join("");
+  const bodyRows = rows.map((row) => `<tr>${row.cells.map((cell, index) => {
+    const value = index === 0 ? dayNumber(row.date) : cell;
+    return typeof value === "number" ? `<td class="num">${fmt(value)}</td>` : `<td>${value ?? ""}</td>`;
+  }).join("")}</tr>`).join("");
+  els.reportPage.innerHTML = `${title}<div class="table-wrap"><table><thead>${headerRows}</thead><tbody>${bodyRows}</tbody>${exactFooter(scope, rows)}</table></div>`;
+}
+
+function renderDashboard(rows) {
+  const t = totals(rows);
+  els.kpiOpening.textContent = fmt(rows[0]?.opening || 0);
+  els.kpiInbound.textContent = fmt(t.totalRamp);
+  els.kpiOutbound.textContent = fmt(t.outboundTotal);
+  els.kpiLoss.textContent = fmt(t.loss);
+  els.kpiBalance.textContent = fmt(periodBalance(rows));
+}
+
+function reportMeta(scope) {
+  const titles = {
+    combined: "เครื่องชั่งแรมป์ปลายราง+เครื่องชั่งแรมป์ตะกุก",
+    garden: "เครื่องชั่งแรมป์ปลายราง",
+    takuk: "เครื่องชั่งแรมป์ตะกุก",
+  };
+  return titles[scope] || "";
+}
+
+function stockPrintTitle(scope) {
+  const scopeTitle = {
+    combined: "เครื่องชั่งแรมป์ปลายราง+เครื่องชั่งแรมป์ตะกุก",
+    garden: "เครื่องชั่งแรมป์ปลายราง",
+    takuk: "เครื่องชั่งแรมป์ตะกุก",
+  };
+  return scopeTitle[scope] || reportMeta(scope);
+}
+
+function stockPrintGroups(scope) {
+  if (scope === "garden") {
+    return [
+      { key: "day", label: "วันที่", value: (r) => dayNumber(r.date), total: () => "รวม", average: () => "เฉลี่ย / วัน", row: true },
+      { key: "opening", label: "น้ำหนัก<br>ยกมา", value: (r) => r.opening, total: () => 0, average: () => "" },
+      { label: "เทปลายราง", cols: [
+        { key: "customer", label: "ลูกค้า", value: (r) => r.customer },
+        { key: "estate", label: "ปลายราง", value: (r) => r.estate },
+      ] },
+      { label: "น้ำหนักส่งผ่าน", cols: [
+        { key: "banggun", label: "บางกัน", value: (r) => r.banggun },
+        { key: "kapao", label: "กะเปา", value: (r) => r.kapao },
+      ] },
+      { key: "totalRamp", label: "รวมน้ำหนัก<br>ลงแรมป์", value: (r) => r.totalRamp },
+      { key: "totalAll", label: "รวมน้ำหนัก<br>ทั้งหมด", value: (r) => r.totalAll, totalKey: "totalRamp" },
+      { label: "น้ำหนักส่งออก", cols: [
+        { key: "outboundPr", label: "ปลายราง", value: (r) => r.outboundPr },
+        { key: "outboundBanggun", label: "บางกัน", value: (r) => r.outboundBanggun },
+        { key: "outboundKapao", label: "กะเปา", value: (r) => r.outboundKapao },
+      ] },
+      { key: "outboundTotal", label: "รวม<br>น้ำหนัก<br>ส่งออก", value: (r) => r.outboundTotal },
+      { key: "balance", label: "น้ำหนัก<br>คงเหลือ", value: (r) => r.balance, total: (rows) => periodBalance(rows), average: (rows) => averageOf(rows, "balance") },
+      { key: "clearPr", label: "เคลียร์<br>แรมป์", value: (r) => r.clearPr },
+      { key: "facNet", label: "น้ำหนัก<br>โรงงาน", value: (r) => r.facNet },
+      { label: "น้ำหนักสูญหาย", cols: [
+        { key: "lossRamp", label: "แรมป์", value: (r) => -n(r.lossRamp), loss: true },
+        { key: "lossTransport", label: "ขนส่ง", value: (r) => -n(r.lossTransport), loss: true },
+        { key: "loss", label: "รวม", value: (r) => -n(r.loss), loss: true },
+      ] },
+    ];
+  }
+  if (scope === "takuk") {
+    return [
+      { key: "day", label: "วันที่", value: (r) => dayNumber(r.date), total: () => "รวม", average: () => "เฉลี่ย / วัน", row: true },
+      { key: "opening", label: "น้ำหนัก<br>ยกมา", value: (r) => r.opening, total: () => 0, average: () => "" },
+      { label: "น้ำหนักลงแรมป์", cols: [
+        { key: "takukNorth", label: "ตะกุกเหนือ", value: (r) => r.takukNorth },
+        { key: "takuk", label: "ตะกุก", value: (r) => r.takuk },
+      ] },
+      { key: "totalRamp", label: "รวม<br>น้ำหนัก<br>ลงแรมป์", value: (r) => r.totalRamp },
+      { key: "totalAll", label: "รวม<br>น้ำหนัก<br>ทั้งหมด", value: (r) => r.totalAll, totalKey: "totalRamp" },
+      { label: "น้ำหนักส่งออก", cols: [
+        { key: "outboundTakukNorth", label: "ตะกุกเหนือ", value: (r) => r.outboundTakukNorth },
+        { key: "outboundTakuk", label: "ตะกุก", value: (r) => r.outboundTakuk },
+      ] },
+      { key: "outboundTotal", label: "รวม<br>น้ำหนัก<br>ส่งออก", value: (r) => r.outboundTotal },
+      { key: "balance", label: "น้ำหนัก<br>คงเหลือ", value: (r) => r.balance, total: (rows) => periodBalance(rows), average: (rows) => averageOf(rows, "balance") },
+      { key: "clearTk", label: "เคลียร์<br>แรมป์", value: (r) => r.clearTk },
+      { key: "facNet", label: "น้ำหนัก<br>โรงงาน", value: (r) => r.facNet },
+      { label: "น้ำหนักสูญหาย", cols: [
+        { key: "lossRamp", label: "แรมป์", value: (r) => -n(r.lossRamp), loss: true },
+        { key: "lossTransport", label: "ขนส่ง", value: (r) => -n(r.lossTransport), loss: true },
+        { key: "loss", label: "รวม", value: (r) => -n(r.loss), loss: true },
+      ] },
+    ];
+  }
+  return [
+    { key: "day", label: "วันที่", value: (r) => dayNumber(r.date), total: () => "รวม", average: () => "เฉลี่ย / วัน", row: true },
+    { key: "opening", label: "น้ำหนัก<br>ยกมา", value: (r) => r.opening, total: () => 0, average: () => "" },
+    { label: "น้ำหนักลงแรมป์", cols: [
+      { key: "customer", label: "ลูกค้า", value: (r) => r.customer },
+      { key: "estate", label: "ปลายราง", value: (r) => r.estate },
+      { key: "banggun", label: "บางกัน", value: (r) => r.banggun },
+      { key: "kapao", label: "กะเปา", value: (r) => r.kapao },
+      { key: "takukTotal", label: "ตะกุก", value: (r) => n(r.takukNorth) + n(r.takuk) },
+      { key: "totalRamp", label: "รวม", value: (r) => r.totalRamp },
+    ] },
+    { key: "totalAll", label: "รวม<br>น้ำหนัก<br>ทั้งหมด", value: (r) => r.totalAll, totalKey: "totalRamp" },
+    { label: "น้ำหนักส่งออก", cols: [
+      { key: "outboundPr", label: "ปลายราง", value: (r) => r.outboundPr },
+      { key: "outboundBanggun", label: "บางกัน", value: (r) => r.outboundBanggun },
+      { key: "outboundKapao", label: "กะเปา", value: (r) => r.outboundKapao },
+      { key: "outboundTakukTotal", label: "ตะกุก", value: (r) => n(r.outboundTakukNorth) + n(r.outboundTakuk) },
+      { key: "outboundTotal", label: "รวม", value: (r) => r.outboundTotal },
+    ] },
+    { key: "balance", label: "น้ำหนัก<br>คงเหลือ", value: (r) => r.balance, total: (rows) => periodBalance(rows), average: (rows) => averageOf(rows, "balance") },
+    { label: "เคลียร์แรมป์", cols: [
+      { key: "clearPr", label: "ปลาย<br>ราง", value: (r) => r.clearPr },
+      { key: "clearTk", label: "ตะกุก", value: (r) => r.clearTk },
+    ] },
+    { key: "facNet", label: "น้ำหนัก<br>โรงงาน", value: (r) => r.facNet },
+    { label: "น้ำหนักสูญหาย", cols: [
+      { key: "lossRamp", label: "แรมป์", value: (r) => -n(r.lossRamp), loss: true },
+      { key: "lossTransport", label: "ขนส่ง", value: (r) => -n(r.lossTransport), loss: true },
+      { key: "loss", label: "รวม", value: (r) => -n(r.loss), loss: true },
+    ] },
+  ];
+}
+
+function stockPrintLeaves(groups) {
+  return groups.flatMap((group) => group.cols || [group]);
+}
+
+function averageOf(rows, key) {
+  return rows.length ? rows.reduce((sum, row) => sum + n(row[key]), 0) / rows.length : 0;
+}
+
+function stockPrintValue(value, zero = "-") {
+  if (typeof value === "string") return value;
+  const parsed = n(value);
+  if (!parsed) return zero;
+  return fmt(parsed);
+}
+
+function stockPrintHeader(groups) {
+  const top = groups.map((group) => {
+    if (group.cols) return `<th colspan="${group.cols.length}">${group.label}</th>`;
+    return `<th rowspan="2">${group.label}</th>`;
+  }).join("");
+  const sub = groups.filter((group) => group.cols).flatMap((group) => group.cols.map((col) => `<th>${col.label}</th>`)).join("");
+  return `<thead><tr>${top}</tr><tr>${sub}</tr></thead>`;
+}
+
+function stockPrintSummaryCell(col, rows, mode) {
+  if (mode === "total") {
+    if (col.total) return col.total(rows);
+    if (col.totalKey) return rows.reduce((sum, row) => sum + n(row[col.totalKey]), 0);
+    return rows.reduce((sum, row) => sum + n(col.value(row)), 0);
+  }
+  if (col.average) return col.average(rows);
+  if (col.loss) {
+    const outbound = rows.reduce((sum, row) => sum + n(row.outboundTotal), 0);
+    const loss = Math.abs(rows.reduce((sum, row) => sum + n(col.value(row)), 0));
+    return outbound ? -((loss / outbound) * 100).toFixed(2) : 0;
+  }
+  if (col.row) return col.average(rows);
+  if (col.key === "opening") return "";
+  if (col.key === "balance") return averageOf(rows, "balance");
+  const total = col.totalKey
+    ? rows.reduce((sum, row) => sum + n(row[col.totalKey]), 0)
+    : rows.reduce((sum, row) => sum + n(col.value(row)), 0);
+  return rows.length ? total / rows.length : 0;
+}
+
+function stockPrintFooter(groups, rows) {
+  const leaves = stockPrintLeaves(groups);
+  const totalCells = leaves.map((col) => `<td class="${col.loss ? "loss" : ""}">${stockPrintValue(stockPrintSummaryCell(col, rows, "total"), "0")}</td>`).join("");
+  const avgCells = leaves.map((col) => {
+    const value = stockPrintSummaryCell(col, rows, "average");
+    const display = col.loss && typeof value !== "string" ? n(value).toFixed(2) : stockPrintValue(value, col.loss ? "0" : "-");
+    return `<td class="${col.loss ? "loss" : ""}">${display}</td>`;
+  }).join("");
+  return `<tfoot><tr>${totalCells}</tr><tr>${avgCells}</tr></tfoot>`;
+}
+
+function stockMoneyValue(scope) {
+  const movementMap = movementBySourceRow();
+  return (state.records || []).reduce((sum, record) => {
+    const date = record.weightDate || record.date;
+    if (!date || !inRange(date) || record.wpInOutType !== "I") return sum;
+    const movement = movementMap.get(Number(record._srcRow));
+    const rowScope = movement ? movementScope(movement) : dataRecordScope(record);
+    if (scope !== "combined" && rowScope !== scope) return sum;
+    if (!recordMatchesGlobalFilters(record, movement)) return sum;
+    if (record.standard !== "Contract Farmer") return sum;
+    return sum + (n(record.wpNetWeight) * n(record.wpBunchPrice));
+  }, 0);
+}
+
+function stockAuditMetrics(rows, scope) {
+  const t = totals(rows);
+  return {
+    opening: n(rows[0]?.opening),
+    operation: n(t.estate) + n(t.banggun) + n(t.kapao) + n(t.takukNorth) + n(t.takuk),
+    customer: n(t.customer),
+    inbound: n(t.totalRamp),
+    outboundKm8: n(t.outboundTotal),
+    outboundKm20: 0,
+    outbound: n(t.outboundTotal),
+    balance: periodBalance(rows),
+    factoryKm8: n(t.facNet),
+    factoryKm20: 0,
+    factory: n(t.facNet),
+    transportLoss: n(t.lossTransport),
+    estimate: 0,
+    clear: scope === "takuk" ? n(t.clearTk) : scope === "garden" ? n(t.clearPr) : n(t.clearPr) + n(t.clearTk),
+    rampLoss: n(t.lossRamp),
+    loss: n(t.loss),
+    money: stockMoneyValue(scope),
+  };
+}
+
+function auditTon(value, dash = true) {
+  const parsed = n(value);
+  if (!parsed && dash) return "-";
+  return tonNf.format(parsed / 1000);
+}
+
+function auditPct(value, outbound) {
+  const parsed = n(value);
+  return parsed && outbound ? `${((parsed / n(outbound)) * 100).toFixed(2)}%` : "";
+}
+
+function auditMetricCells(garden, takuk, key, percent = false) {
+  const combined = n(garden[key]) + n(takuk[key]);
+  const gardenPct = percent ? auditPct(garden[key], garden.outbound) : "";
+  const takukPct = percent ? auditPct(takuk[key], takuk.outbound) : "";
+  const combinedPct = percent ? auditPct(combined, n(garden.outbound) + n(takuk.outbound)) : "";
+  return `
+    <td class="num">${auditTon(garden[key])}</td><td>${gardenPct}</td>
+    <td class="num">${auditTon(takuk[key])}</td><td>${takukPct}</td>
+    <td class="num">${auditTon(combined)}</td><td>${combinedPct}</td>`;
+}
+
+function auditMoneyCells(garden, takuk) {
+  const combined = n(garden.money) + n(takuk.money);
+  return `
+    <td colspan="5" class="num money">${moneyNf.format(n(garden.money))}</td><td>บาท</td>
+    <td colspan="5" class="num money">${moneyNf.format(combined)}</td><td>บาท</td>`;
+}
+
+function stockAuditTable(garden, takuk) {
+  const rows = [
+    { label: "ยอดยกมา", key: "opening" },
+    { label: "รับเข้า&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- แปลงปฏิบัติการ", key: "operation" },
+    { label: "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- ลูกค้า (ธกส.)", key: "customer" },
+    { label: "รวมน้ำหนักรับเข้า", key: "inbound", className: "audit-total" },
+    { label: "น้ำหนักส่งออก&nbsp;&nbsp;&nbsp;- โรงงาน กม.8", key: "outboundKm8" },
+    { label: "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- โรงงาน กม.20", key: "outboundKm20" },
+    { label: "รวมน้ำหนักส่งออก", key: "outbound", className: "audit-total" },
+    { label: "น้ำหนักคงเหลือที่แรมป์", key: "balance", className: "audit-balance" },
+    { label: "น้ำหนักรับโรงงาน&nbsp;&nbsp;- โรงงาน กม.8", key: "factoryKm8" },
+    { label: "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- โรงงาน กม.20", key: "factoryKm20" },
+    { label: "รวมน้ำหนักรับโรงงาน", key: "factory", className: "audit-total" },
+    { label: "น้ำหนักสูญเสียระหว่างขนส่ง", key: "transportLoss", percent: true },
+    { label: "ตรวจนับสต็อค&nbsp;&nbsp;&nbsp;&nbsp;- ประมาณการ", key: "estimate" },
+    { label: "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- ชั่งน้ำหนัก (เคลียร์แรมป์)", key: "clear" },
+    { label: "น้ำหนักสูญเสียที่แรมป์", key: "rampLoss", percent: true, className: "audit-loss" },
+    { label: "น้ำหนักสูญเสียทั้งหมด", key: "loss", percent: true, className: "audit-grand-loss" },
+  ];
+  return `
+    <table class="stock-audit-table">
+      <thead>
+        <tr>
+          <th rowspan="2">รายการ</th>
+          <th colspan="6">${stockPeriodCaption("เดือน")}</th>
+          <th colspan="6">สะสม ${stockPeriodCaption("")}</th>
+        </tr>
+        <tr>
+          <th colspan="2">แรมป์สวน</th><th colspan="2">แรมป์ตะกุก</th><th colspan="2">รวม</th>
+          <th colspan="2">แรมป์สวน</th><th colspan="2">แรมป์ตะกุก</th><th colspan="2">รวม</th>
+        </tr>
+        <tr>
+          <th></th>
+          <th>น้ำหนัก (ตัน)</th><th>%</th><th>น้ำหนัก (ตัน)</th><th>%</th><th>น้ำหนัก (ตัน)</th><th>%</th>
+          <th>น้ำหนัก (ตัน)</th><th>%</th><th>น้ำหนัก (ตัน)</th><th>%</th><th>น้ำหนัก (ตัน)</th><th>%</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((row) => `<tr class="${row.className || ""}">
+          <td class="left">${row.label}</td>
+          ${auditMetricCells(garden, takuk, row.key, row.percent)}
+          ${auditMetricCells(garden, takuk, row.key, row.percent)}
+        </tr>`).join("")}
+        <tr class="audit-money">
+          <td class="left">มูลค่ารับซื้อผลปาล์มลูกค้า (ธกส.)</td>
+          ${auditMoneyCells(garden, takuk)}
+        </tr>
+      </tbody>
+    </table>`;
+}
+
+function renderStockAuditPage(scope) {
+  const garden = scope === "takuk" ? stockAuditMetrics([], "garden") : stockAuditMetrics(buildStockFromData("garden"), "garden");
+  const takuk = scope === "garden" ? stockAuditMetrics([], "takuk") : stockAuditMetrics(buildStockFromData("takuk"), "takuk");
+  return `
+    <section class="stock-print-page stock-audit-page">
+      <div class="stock-audit-title">
+        <h2>รายงานการตรวจนับสต็อคผลปาล์มสด ประจำ${stockPeriodCaption("เดือน")}</h2>
+        <h3>${stockPeriodCaption("เดือน")}</h3>
+      </div>
+      ${stockAuditTable(garden, takuk)}
+      <div class="stock-signatures">
+        <div>
+          <strong>ผู้จัดทำรายงาน</strong>
+          <span></span>
+          <p>(........................................)</p>
+          <small>วัน/เดือน/ปี........................</small>
+        </div>
+        <div>
+          <strong>ผู้ตรวจสอบ</strong>
+          <span></span>
+          <p>( นายเพชรรัตน์&nbsp;&nbsp;ภิรอด )</p>
+          <small>วัน/เดือน/ปี........................</small>
+        </div>
+        <div>
+          <strong>ผช.ผอ.ฝ่ายสวนปาล์มฯ</strong>
+          <span></span>
+          <p>( นางสาวโสภิตา&nbsp;&nbsp;แซ่จู )</p>
+          <small>วัน/เดือน/ปี........................</small>
+        </div>
+      </div>
+      <div class="stock-copy-list">
+        <p><b>สำเนาเรียน</b> คุณศรีนา/คุณศราฯ เพื่อโปรดทราบ</p>
+        <p><b>สำเนา</b> บัญชี กม.8 เพื่อทราบ</p>
+      </div>
+    </section>`;
+}
+
+function stockPrintBody(groups, rows) {
+  const leaves = stockPrintLeaves(groups);
+  return `<tbody>${rows.map((row) => `<tr>${leaves.map((col) => {
+    const value = col.value(row);
+    return `<td class="${col.loss ? "loss" : ""}">${stockPrintValue(value, col.loss ? "0" : "-")}</td>`;
+  }).join("")}</tr>`).join("")}</tbody>`;
+}
+
+function chunkRows(rows, size) {
+  const chunks = [];
+  for (let index = 0; index < rows.length; index += size) chunks.push(rows.slice(index, index + size));
+  return chunks.length ? chunks : [[]];
+}
+
+function renderStockPrintPages(scope, rows) {
+  const groups = stockPrintGroups(scope);
+  const chunks = chunkRows(rows, 29);
+  const detailPages = chunks.length;
+  return `<div class="stock-print">
+    ${chunks.map((chunk, index) => `
+      <section class="stock-print-page">
+        <div class="stock-print-head">
+          <div>
+            <h2>บริษัท ทักษิณปาล์ม (2521) จำกัด${scope === "combined" ? " - ฝ่ายสวนปาล์มคีรีรัฐนิคม" : ""}</h2>
+            <h3>รายงานสต็อคผลปาล์มสด ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}</h3>
+            <p>${stockPrintTitle(scope)}</p>
+          </div>
+          <span>${index + 1}/${detailPages}</span>
+        </div>
+        <table class="stock-print-table stock-print-${scope}">
+          ${stockPrintHeader(groups)}
+          ${stockPrintBody(groups, chunk)}
+          ${index === chunks.length - 1 ? stockPrintFooter(groups, rows) : ""}
+        </table>
+      </section>`).join("")}
+    ${renderStockAuditPage(scope)}
+  </div>`;
+}
+
+function openPrintPreview() {
+  if (state.view !== "stock") {
+    window.print();
+    return;
+  }
+  normalizeDateInput(els.startDate);
+  normalizeDateInput(els.endDate);
+  renderStock(yardScope());
+  const printSource = els.reportPage.querySelector(".stock-print");
+  if (!printSource) return;
+  els.printPreviewBody.innerHTML = printSource.innerHTML;
+  els.printPreviewModal.classList.remove("hidden");
+  els.printPreviewModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("preview-open");
+}
+
+function closePrintPreview() {
+  els.printPreviewModal.classList.add("hidden");
+  els.printPreviewModal.setAttribute("aria-hidden", "true");
+  els.printPreviewBody.innerHTML = "";
+  document.body.classList.remove("preview-open");
+}
+
+function buildStockFromData(scope) {
+  const movementMap = movementBySourceRow();
+  const useClearAdjustments = globalFiltersAreAll();
+  const clearByDate = useClearAdjustments ? clearMap() : new Map();
+  const dayMap = new Map();
+  const end = dateValue(els.endDate) || "9999-12-31";
+  const start = dateValue(els.startDate) || "0000-00-00";
+
+  function scopedDay(date, dayScope) {
+    const key = `${date}|${dayScope}`;
+    if (!dayMap.has(key)) dayMap.set(key, blankDaily(date));
+    return dayMap.get(key);
+  }
+
+  for (const record of state.records) {
+    const date = record.weightDate || record.date;
+    if (!date || date > end) continue;
+    const movement = movementMap.get(Number(record._srcRow));
+    if (!recordMatchesGlobalFilters(record, movement)) continue;
+    const rowScope = movement ? movementScope(movement) : dataRecordScope(record);
+    const item = scopedDay(date, rowScope);
+    const weight = n(record.wpNetWeight);
+    const hour = Number(String(record.wpCarWeightDate || "T12").slice(11, 13));
+
+    if (record.wpInOutType === "I") {
+      const bucket = dataInboundBucket(record);
+      item[bucket] += weight;
+      item.totalRamp += weight;
+      item.inboundTotal += weight;
+      if (recordStandardBucket(record, movement) === "RSPO") item.inboundRspo += weight;
+      else item.inboundNonRspo += weight;
+      if (hour >= 17) item.timeEvening += weight;
+      else item.timeDay += weight;
+    }
+
+    if (record.wpInOutType === "O") {
+      if (rowScope === "takuk") item.outboundTakuk += weight;
+      else item.outboundPr += weight;
+      item.outboundTotal += weight;
+      item.tripCount += 1;
+      if (recordStandardBucket(record, movement) === "RSPO") item.outboundRspo += weight;
+      else item.outboundNonRspo += weight;
+      item.facNet += n(record.wpFacNetWeight);
+      const diff = n(record.wpFacNetWeight) - weight;
+      if (diff < 0) item.lossTransport += Math.abs(diff);
+    }
+  }
+
+  if (useClearAdjustments) {
+    for (const clear of clearRows()) {
+      if (!clear.date || clear.date > end) continue;
+      scopedDay(clear.date, "garden");
+      scopedDay(clear.date, "takuk");
+    }
+  }
+
+  for (const date of daysBetween(start, end)) {
+    scopedDay(date, "garden");
+    scopedDay(date, "takuk");
+  }
+
+  const dates = [...new Set([...dayMap.keys()].map((key) => key.split("|")[0]))].sort();
+  let carryGarden = 0;
+  let carryTakuk = 0;
+  const result = [];
+
+  for (const date of dates) {
+    const clear = clearByDate.get(date);
+    const garden = dayMap.get(`${date}|garden`) || blankDaily(date);
+    const takuk = dayMap.get(`${date}|takuk`) || blankDaily(date);
+
+    applyScopeOpening(garden, "garden", clear, carryGarden);
+    applyScopeOpening(takuk, "takuk", clear, carryTakuk);
+    carryGarden = garden.balance;
+    carryTakuk = takuk.balance;
+
+    const combined = combineScopeDays(date, garden, takuk, clear);
+    if (date >= start && date <= end) {
+      if (scope === "garden") result.push(garden);
+      else if (scope === "takuk") result.push(takuk);
+      else result.push(combined);
+    }
+  }
+
+  return result;
+}
+
+function applyScopeOpening(item, scope, clear, previousBalance) {
+  const useClear = scope === "garden" ? clear?.clearPrSet : clear?.clearTkSet;
+  item.opening = useClear ? (scope === "garden" ? n(clear?.clearPr) : n(clear?.clearTk)) : previousBalance;
+  item.clearPr = scope === "garden" ? n(clear?.clearPr) : 0;
+  item.clearTk = scope === "takuk" ? n(clear?.clearTk) : 0;
+  item.clear = item.clearPr + item.clearTk;
+  item.lossRamp = scope === "garden" ? n(clear?.lossPrRamp) : n(clear?.lossTkRamp);
+  item.lossTransport = (scope === "garden" ? n(clear?.lossPrTransport) : n(clear?.lossTkTransport)) || item.lossTransport;
+  item.loss = item.lossRamp + item.lossTransport;
+  item.totalAll = item.opening + item.totalRamp;
+  item.balance = item.opening + item.totalRamp - item.outboundTotal - item.loss;
+}
+
+function combineScopeDays(date, garden, takuk, clear) {
+  const combined = blankDaily(date);
+  for (const key of Object.keys(combined)) {
+    if (typeof combined[key] === "number") combined[key] = n(garden[key]) + n(takuk[key]);
+  }
+  combined.date = date;
+  combined.clearPr = n(clear?.clearPr);
+  combined.clearTk = n(clear?.clearTk);
+  combined.clear = combined.clearPr + combined.clearTk;
+  combined.lossRamp = n(garden.lossRamp) + n(takuk.lossRamp);
+  combined.lossTransport = n(garden.lossTransport) + n(takuk.lossTransport);
+  combined.loss = combined.lossRamp + combined.lossTransport;
+  combined.opening = n(garden.opening) + n(takuk.opening);
+  combined.balance = n(garden.balance) + n(takuk.balance);
+  combined.totalAll = combined.opening + combined.totalRamp;
+  return combined;
+}
+
+function renderStock(scope) {
+  const rows = buildStockFromData(scope);
+  state.currentRows = rows;
+  renderDashboard(rows);
+  els.reportPage.classList.add("stock-report-page");
+  const t = totals(rows);
+
+  const title = `
+    <div class="report-title">
+      <h2>บริษัท ทักษิณปาล์ม (2521) จำกัด${scope === "combined" ? " - ฝ่ายสวนปาล์มคีรีรัฐนิคม" : ""}</h2>
+      <p>รายงานสต๊อคผลปาล์มสด ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}</p>
+      <p>${reportMeta(scope)}</p>
+    </div>`;
+
+  const body = rows.map((r) => `
+    <tr>
+      <td>${dayNumber(r.date)}</td>
+      <td class="num">${fmt(r.opening)}</td>
+      <td class="num">${fmt(r.customer)}</td>
+      <td class="num">${fmt(r.estate)}</td>
+      <td class="num">${fmt(r.banggun + r.kapao)}</td>
+      <td class="num">${fmt(r.customer)}</td>
+      <td class="num">${fmt(r.estate)}</td>
+      <td class="num">${fmt(r.banggun)}</td>
+      <td class="num">${fmt(r.kapao)}</td>
+      <td class="num">${fmt(r.takukNorth)}</td>
+      <td class="num">${fmt(r.takuk)}</td>
+      <td class="num">${fmt(r.totalRamp)}</td>
+      <td class="num">${fmt(r.timeDay)}</td>
+      <td class="num">${fmt(r.timeEvening)}</td>
+      <td class="num">${fmt(r.inboundRspo)}</td>
+      <td class="num">${fmt(r.inboundNonRspo)}</td>
+      <td class="num">${fmt(r.inboundTotal || r.totalRamp)}</td>
+      <td class="num">${fmt(r.outboundPr)}</td>
+      <td class="num">${fmt(r.outboundBanggun)}</td>
+      <td class="num">${fmt(r.outboundKapao)}</td>
+      <td class="num">${fmt(r.outboundTakukNorth)}</td>
+      <td class="num">${fmt(r.outboundTakuk)}</td>
+      <td class="num">${fmt(r.outboundRspo)}</td>
+      <td class="num">${fmt(r.outboundNonRspo)}</td>
+      <td class="num">${fmt(r.outboundTotal)}</td>
+      <td class="num">${fmt(r.balance)}</td>
+      <td class="num">${fmt(r.clearPr)}</td>
+      <td class="num">${fmt(r.clearTk)}</td>
+      <td class="num">${fmt(r.facNet)}</td>
+      <td class="num loss">${fmt(r.lossRamp)}</td>
+      <td class="num loss">${fmt(r.lossTransport)}</td>
+      <td class="num loss">${fmt(r.loss)}</td>
+      <td class="num">${fmt(r.tripCount)}</td>
+    </tr>`).join("");
+
+  els.reportPage.innerHTML = `${title}
+    <div class="table-wrap stock-web-table">
+      <table>
+        <thead>
+          <tr>
+            <th rowspan="2">วันที่/เดือน</th>
+            <th rowspan="2">น้ำหนัก<br>ยกมา</th>
+            <th colspan="3">ปลายราง / คีรีรัฐ</th>
+            <th colspan="7">น้ำหนักลงแรมป์</th>
+            <th colspan="2">ช่วงเวลา</th>
+            <th colspan="3">น้ำหนักรับเข้า</th>
+            <th colspan="8">น้ำหนักส่งออก</th>
+            <th rowspan="2">น้ำหนัก<br>คงเหลือ</th>
+            <th colspan="2">เคลียร์แรมป์</th>
+            <th rowspan="2">น้ำหนัก<br>โรงงาน</th>
+            <th colspan="3">น้ำหนักสูญหาย</th>
+            <th rowspan="2">จำนวน<br>เที่ยว</th>
+          </tr>
+          <tr>
+            <th>ลูกค้า</th><th>ปาล์มสวนฯ</th><th>บางกัน/กะเปา</th>
+            <th>ลูกค้า</th><th>ปลายราง</th><th>บางกัน</th><th>กะเปา</th><th>ตะกุกเหนือ</th><th>ตะกุก</th><th>รวม</th>
+            <th>8.00-17.00</th><th>17.00-19.00</th>
+            <th>RSPO</th><th>NON-RSPO</th><th>รวม</th>
+            <th>ปลายราง</th><th>บางกัน</th><th>กะเปา</th><th>ตะกุกเหนือ</th><th>ตะกุก</th><th>RSPO</th><th>NON-RSPO</th><th>รวม</th>
+            <th>ปลายราง</th><th>ตะกุก</th>
+            <th>แรมป์</th><th>ขนส่ง</th><th>รวม</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+        <tfoot>
+          <tr>
+            <td>รวม</td>
+            <td class="num">${fmt(rows[0]?.opening || 0)}</td>
+            <td class="num">${fmt(t.customer)}</td>
+            <td class="num">${fmt(t.estate)}</td>
+            <td class="num">${fmt((t.banggun || 0) + (t.kapao || 0))}</td>
+            <td class="num">${fmt(t.customer)}</td>
+            <td class="num">${fmt(t.estate)}</td>
+            <td class="num">${fmt(t.banggun)}</td>
+            <td class="num">${fmt(t.kapao)}</td>
+            <td class="num">${fmt(t.takukNorth)}</td>
+            <td class="num">${fmt(t.takuk)}</td>
+            <td class="num">${fmt(t.totalRamp)}</td>
+            <td class="num">${fmt(t.timeDay)}</td>
+            <td class="num">${fmt(t.timeEvening)}</td>
+            <td class="num">${fmt(t.inboundRspo)}</td>
+            <td class="num">${fmt(t.inboundNonRspo)}</td>
+            <td class="num">${fmt(t.inboundTotal || t.totalRamp)}</td>
+            <td class="num">${fmt(t.outboundPr)}</td>
+            <td class="num">${fmt(t.outboundBanggun)}</td>
+            <td class="num">${fmt(t.outboundKapao)}</td>
+            <td class="num">${fmt(t.outboundTakukNorth)}</td>
+            <td class="num">${fmt(t.outboundTakuk)}</td>
+            <td class="num">${fmt(t.outboundRspo)}</td>
+            <td class="num">${fmt(t.outboundNonRspo)}</td>
+            <td class="num">${fmt(t.outboundTotal)}</td>
+            <td class="num">${fmt(periodBalance(rows))}</td>
+            <td class="num">${fmt(t.clearPr)}</td>
+            <td class="num">${fmt(t.clearTk)}</td>
+            <td class="num">${fmt(t.facNet)}</td>
+            <td class="num loss">${fmt(t.lossRamp)}</td>
+            <td class="num loss">${fmt(t.lossTransport)}</td>
+            <td class="num loss">${fmt(t.loss)}</td>
+            <td class="num">${fmt(t.tripCount)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    ${renderStockPrintPages(scope, rows)}`;
+}
+
+function renderMovement() {
+  const rows = filteredMovementRows();
+  const grouped = buildMovementGroups(rows);
+  state.currentRows = grouped.flatMap((group) => group.days.map((day) => ({
+    group: group.name,
+    date: day.date,
+    in: day.in,
+    out: day.out,
+    opening: day.opening,
+    balance: day.balance,
+  })));
+  renderDashboard(buildDaily("combined"));
+  els.reportPage.innerHTML = `
+    <div class="report-title">
+      <h2>รายงานเคลื่อนไหวปาล์มน้ำมัน</h2>
+      <p>ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}</p>
+      <p>หน้าเดียว แบ่งคอลัมน์ตามลานและมาตรฐาน พร้อมยอดรับเข้า/ส่งออก/คงเหลือรายวัน</p>
+    </div>
+    ${renderMovementMatrix(grouped)}`;
+}
+
+function renderDailyReport() {
+  const headers = DAILY_HEADERS;
+  const rows = dailyRowsFromData().filter((row) => row._date && inRange(row._date) && dailyRowMatches(row));
+  state.currentRows = rows;
+  renderDashboard(buildStockFromData(yardScope()));
+
+  const totals = rows.reduce((acc, row) => {
+    for (const key of ["ปลายราง (RSPO)", "ปลายราง (NON-RSPO)", "ตะกุก (RSPO)", "ตะกุก (NON-RSPO)", "รวม", "น้ำหนักปลายทางโรงงาน", "น้ำหนักเทียบปลายทาง"]) {
+      acc[key] = (acc[key] || 0) + n(row[key]);
+    }
+    return acc;
+  }, {});
+
+  const grouped = groupDailyRows(rows);
+  els.reportPage.innerHTML = `
+    <div class="report-title">
+      <h2>Daily Report - รายงานรับเข้า / ส่งออก แยกกลุ่มรายวัน</h2>
+      <p>ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}</p>
+      <p>คำนวณจากชีต data โดยตรง เพื่อให้รับเข้า/ส่งออกครบทุกเดือน</p>
+    </div>
+    <div class="daily-summary">
+      <article><span>ปลายราง (RSPO)</span><strong>${fmt(totals["ปลายราง (RSPO)"])}</strong></article>
+      <article><span>ปลายราง (NON-RSPO)</span><strong>${fmt(totals["ปลายราง (NON-RSPO)"])}</strong></article>
+      <article><span>ตะกุก (RSPO)</span><strong>${fmt(totals["ตะกุก (RSPO)"])}</strong></article>
+      <article><span>ตะกุก (NON-RSPO)</span><strong>${fmt(totals["ตะกุก (NON-RSPO)"])}</strong></article>
+      <article><span>รวม</span><strong>${fmt(totals["รวม"])}</strong></article>
+    </div>
+    <div class="table-wrap daily-table-wrap">
+      <table class="daily-report-table">
+        <thead>
+          <tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr>
+        </thead>
+        <tbody>
+          ${grouped.map((group) => `
+            <tr class="section-label"><td colspan="${headers.length}">${displayDate(group.date)} | รับเข้า ${fmt(group.in)} | ส่งออก ${fmt(group.out)} | รวม ${fmt(group.total)}</td></tr>
+            ${group.rows.map((row) => `<tr>${headers.map((h) => dailyCell(row[h], h)).join("")}</tr>`).join("")}
+          `).join("")}
+        </tbody>
+        <tfoot>
+          <tr>
+            ${headers.map((h, index) => dailyFooterCell(h, index, totals, rows.length)).join("")}
+          </tr>
+        </tfoot>
+      </table>
+    </div>`;
+}
+
+function dailyRowsFromData() {
+  const movementMap = movementBySourceRow();
+  return (state.records || [])
+    .map((record) => {
+      const date = record.weightDate || record.date;
+      const flow = recordFlow(record);
+      const movement = movementMap.get(Number(record._srcRow));
+      if (!recordMatchesGlobalFilters(record, movement)) return null;
+      const scope = movement ? movementScope(movement) : dataRecordScope(record);
+      const standard = flow === "รับเข้า" ? (record.standard || "") : recordStandardBucket(record, movement) || "NON-RSPO";
+      const groupStandard = standard === "RSPO" ? "RSPO" : "NON-RSPO";
+      const yardName = scope === "takuk" ? "ตะกุก" : "ปลายราง";
+      const groupName = `${yardName} (${groupStandard})`;
+      const weight = n(record.wpNetWeight);
+      const row = {
+        "วันที่": date,
+        "เวลา": record.wpCarWeightDate || record.wpDocDate || "",
+        "กลุ่ม": flow,
+        "กอง / รายการ": groupName,
+        "เอกสาร/ใบชั่ง": record.wpDocNo || "",
+        "มาตรฐาน/ประเภท": standard,
+        "ผู้ส่ง": record.name || record.wpctCode || "",
+        "ทะเบียน": record.wpCarLicense || "",
+        "คนขับ": record.wpDriver || "",
+        "โรงงาน": flow === "ส่งออก" ? (record.wpftcode || record.wpFacDocNo || "") : "",
+        "ปลายราง (RSPO)": 0,
+        "ปลายราง (NON-RSPO)": 0,
+        "ตะกุก (RSPO)": 0,
+        "ตะกุก (NON-RSPO)": 0,
+        "รวม": weight,
+        "น้ำหนักปลายทางโรงงาน": flow === "ส่งออก" ? n(record.wpFacNetWeight) : null,
+        "น้ำหนักเทียบปลายทาง": flow === "ส่งออก" ? n(record.wpFacNetWeight) - weight : null,
+        _date: date,
+      };
+      row[groupName] = weight;
+      return row;
+    })
+    .filter(Boolean)
+    .filter((row) => row._date && row["รวม"])
+    .sort((a, b) => {
+      const dateCompare = a._date.localeCompare(b._date);
+      if (dateCompare) return dateCompare;
+      return String(a["เวลา"] || "").localeCompare(String(b["เวลา"] || ""));
+    });
+}
+
+function dailyFooterCell(header, index, totals, rowCount) {
+  if (index === 0) return "<td>รวม</td>";
+  if (header === "กลุ่ม") return `<td>${fmt(rowCount)} รายการ</td>`;
+  if (totals[header] !== undefined) return `<td class="${n(totals[header]) < 0 ? "num loss" : "num"}">${fmt(totals[header])}</td>`;
+  return "<td></td>";
+}
+
+function syncGlobalFilterBar() {
+  for (const btn of els.globalFilterPanel.querySelectorAll("[data-daily-filter]")) {
+    btn.classList.toggle("active", state.dailyFilters[btn.dataset.dailyFilter] === btn.dataset.value);
+  }
+}
+
+function wireGlobalFilterBar() {
+  els.globalFilterPanel.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-daily-filter]");
+    if (!btn) return;
+    state.dailyFilters[btn.dataset.dailyFilter] = btn.dataset.value;
+    syncGlobalFilterBar();
+    render();
+  });
+}
+
+function dailyRowMatches(row) {
+  const yard = els.yardFilter.value;
+  const standard = state.dailyFilters.standard;
+  const flow = state.dailyFilters.flow;
+  const pile = String(row["กอง / รายการ"] || "");
+  const rowYard = pile.includes("ตะกุก") ? "takuk" : "garden";
+  const rowStandard = row["มาตรฐาน/ประเภท"] || "";
+  const rowFlow = row["กลุ่ม"] || "";
+  return (
+    (yard === "all" || yard === rowYard) &&
+    (standard === "all" || standard === rowStandard) &&
+    (flow === "all" || flow === rowFlow)
+  );
+}
+
+function groupDailyRows(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const date = row._date;
+    if (!map.has(date)) map.set(date, { date, rows: [], in: 0, out: 0, total: 0 });
+    const group = map.get(date);
+    group.rows.push(row);
+    group.total += n(row["รวม"]);
+    if (row["กลุ่ม"] === "รับเข้า") group.in += n(row["รวม"]);
+    if (row["กลุ่ม"] === "ส่งออก") group.out += n(row["รวม"]);
+  }
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function dailyCell(value, header) {
+  if (header === "วันที่") return `<td>${displayDate(value)}</td>`;
+  if (header === "เวลา" && typeof value === "string") return `<td>${value.slice(11, 16) || value}</td>`;
+  if (header === "เวลา" && typeof value === "number") {
+    const totalMinutes = Math.round(value * 24 * 60);
+    const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
+    const mm = String(totalMinutes % 60).padStart(2, "0");
+    return `<td>${hh}:${mm}</td>`;
+  }
+  if (typeof value === "number") return `<td class="num">${fmt(value)}</td>`;
+  return `<td class="${header === "ผู้ส่ง" ? "left" : ""}">${value ?? ""}</td>`;
+}
+
+function movementGroupName(row) {
+  const pile = String(row["กอง"] || "");
+  if (pile.includes("ปลายราง") && pile.includes("RSPO") && !pile.includes("NON")) return "ปลายราง (RSPO)";
+  if (pile.includes("ปลายราง") && pile.includes("NON")) return "ปลายราง (NON-RSPO)";
+  if (pile.includes("ตะกุก") && pile.includes("RSPO") && !pile.includes("NON")) return "ตะกุก (RSPO)";
+  if (pile.includes("ตะกุก") && pile.includes("NON")) return "ตะกุก (NON-RSPO)";
+  return pile || "ไม่ระบุ";
+}
+
+function buildMovementGroups(rows) {
+  const order = ["ปลายราง (RSPO)", "ปลายราง (NON-RSPO)", "ตะกุก (RSPO)", "ตะกุก (NON-RSPO)"];
+  const map = new Map(order.map((name) => [name, { name, days: new Map(), totalIn: 0, totalOut: 0, lastBalance: 0 }]));
+
+  for (const row of rows) {
+    const name = movementGroupName(row);
+    if (!map.has(name)) map.set(name, { name, days: new Map(), totalIn: 0, totalOut: 0, lastBalance: 0 });
+    const group = map.get(name);
+    const date = row._date;
+    if (!date) continue;
+    if (!group.days.has(date)) {
+      group.days.set(date, { date, in: 0, out: 0, opening: null, balance: null, inbound: [], outbound: [] });
+    }
+    const day = group.days.get(date);
+    const inbound = n(row["รับเข้า (kg)"]);
+    const outbound = n(row["ส่งออก (kg)"]);
+    day.in += inbound;
+    day.out += outbound;
+    if (day.opening === null && row["ยอดยกมา"] !== null) day.opening = n(row["ยอดยกมา"]);
+    if (row["ยอดคงเหลือ (kg)"] !== null) day.balance = n(row["ยอดคงเหลือ (kg)"]);
+    const item = {
+      time: String(row["วันที่/เวลา (AE)"] || "").slice(11, 16),
+      label: row["ชื่อแปลง / เลขที่เอกสาร"] || "",
+      car: row["ทะเบียน / คนขับ"] || "",
+      weight: inbound || outbound,
+      factory: row["โรงงาน"] || "",
+      facNet: n(row["รับปลายทาง"]),
+      diff: n(row["น้ำหนักเทียบปลายทาง"]),
+    };
+    if (inbound > 0) day.inbound.push(item);
+    if (outbound > 0) day.outbound.push(item);
+    group.totalIn += inbound;
+    group.totalOut += outbound;
+    group.lastBalance = day.balance ?? group.lastBalance;
+  }
+
+  return [...map.values()].map((group) => ({
+    ...group,
+    days: [...group.days.values()].sort((a, b) => a.date.localeCompare(b.date)),
+  }));
+}
+
+function renderMovementGroup(group) {
+  return `
+    <section class="movement-card">
+      <div class="movement-card-head">
+        <h3>${group.name}</h3>
+        <div>
+          <span>รับเข้า ${fmt(group.totalIn)}</span>
+          <span>ส่งออก ${fmt(group.totalOut)}</span>
+          <span>คงเหลือ ${fmt(group.lastBalance)}</span>
+        </div>
+      </div>
+      <div class="movement-days">
+        ${group.days.map((day) => renderMovementDay(day)).join("") || '<div class="empty-day">ไม่มีข้อมูล</div>'}
+      </div>
+    </section>`;
+}
+
+function renderMovementMatrix(groups) {
+  const groupNames = ["ปลายราง (RSPO)", "ปลายราง (NON-RSPO)", "ตะกุก (RSPO)", "ตะกุก (NON-RSPO)"];
+  const groupMap = new Map(groups.map((group) => [group.name, new Map(group.days.map((day) => [day.date, day]))]));
+  const dates = [...new Set(groups.flatMap((group) => group.days.map((day) => day.date)))].sort();
+
+  const body = dates.map((date) => `<tr>
+    <td class="date-cell">${displayDate(date)}</td>
+    ${groupNames.map((name) => movementMatrixCell(groupMap.get(name)?.get(date))).join("")}
+  </tr>`).join("");
+
+  const foot = `<tr>
+    <td>รวม</td>
+    ${groupNames.map((name) => {
+      const group = groups.find((g) => g.name === name);
+      return `<td class="movement-cell total-cell">
+        <div><b>รับ</b> ${fmt(group?.totalIn || 0)}</div>
+        <div><b>ส่ง</b> ${fmt(group?.totalOut || 0)}</div>
+        <div><b>คงเหลือ</b> ${fmt(group?.lastBalance || 0)}</div>
+      </td>`;
+    }).join("")}
+  </tr>`;
+
+  return `<div class="table-wrap movement-matrix-wrap">
+    <table class="movement-matrix">
+      <thead>
+        <tr>
+          <th>วันที่</th>
+          ${groupNames.map((name) => `<th>${name}</th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>${body}</tbody>
+      <tfoot>${foot}</tfoot>
+    </table>
+  </div>`;
+}
+
+function movementMatrixCell(day) {
+  if (!day) return `<td class="movement-cell empty-cell">-</td>`;
+  return `<td class="movement-cell">
+    <div class="movement-cell-top">
+      <span>ยกมา ${fmt(day.opening || 0)}</span>
+      <strong>${fmt(day.balance || 0)}</strong>
+    </div>
+    <div class="movement-totals">
+      <span class="in">รับ ${fmt(day.in)}</span>
+      <span class="out">ส่ง ${fmt(day.out)}</span>
+    </div>
+    <div class="movement-lists">
+      <div>
+        <b>รับเข้า</b>
+        ${movementCompactItems(day.inbound)}
+      </div>
+      <div>
+        <b>ส่งออก</b>
+        ${movementCompactItems(day.outbound)}
+      </div>
+    </div>
+  </td>`;
+}
+
+function movementCompactItems(items) {
+  if (!items.length) return '<em>ไม่มี</em>';
+  return `<ul>${items.slice(0, 5).map((item) => `<li><span>${item.time}</span><span>${item.label}</span><strong>${fmt(item.weight)}</strong></li>`).join("")}${items.length > 5 ? `<li><span></span><span>อีก ${items.length - 5} รายการ</span><strong></strong></li>` : ""}</ul>`;
+}
+
+function renderMovementDay(day) {
+  return `
+    <article class="movement-day">
+      <header>
+        <strong>${displayDate(day.date)}</strong>
+        <span>ยกมา ${fmt(day.opening || 0)} | รับ ${fmt(day.in)} | ส่ง ${fmt(day.out)} | คงเหลือ ${fmt(day.balance || 0)}</span>
+      </header>
+      <div class="movement-flow">
+        <div>
+          <h4>รับเข้า</h4>
+          ${movementItems(day.inbound)}
+        </div>
+        <div>
+          <h4>ส่งออก</h4>
+          ${movementItems(day.outbound, true)}
+        </div>
+      </div>
+    </article>`;
+}
+
+function movementItems(items, outbound = false) {
+  if (!items.length) return '<p class="muted">ไม่มีรายการ</p>';
+  return `<table class="movement-mini"><tbody>${items.map((item) => `
+    <tr>
+      <td>${item.time}</td>
+      <td class="left">${item.label}</td>
+      <td>${outbound ? item.car : ""}</td>
+      <td class="num">${fmt(item.weight)}</td>
+      ${outbound ? `<td class="num">${fmt(item.facNet)}</td><td class="num loss">${fmt(item.diff)}</td>` : ""}
+    </tr>`).join("")}</tbody></table>`;
+}
+
+function renderSummary() {
+  const movementMap = movementBySourceRow();
+  const rows = state.records.filter((r) => {
+    const movement = movementMap.get(Number(r._srcRow));
+    const scope = movement ? movementScope(movement) : dataRecordScope(r);
+    return inRange(r.date) &&
+      r.wpInOutType === "I" &&
+      (yardScope() === "combined" || yardScope() === scope) &&
+      recordMatchesGlobalFilters(r, movement);
+  });
+  state.currentRows = rows;
+  renderDashboard(buildStockFromData(yardScope()));
+  els.reportPage.innerHTML = `
+    <div class="report-title">
+      <h2>สรุปการรับปาล์มน้ำมัน</h2>
+      <p>ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}</p>
+      <p>แยกลานเทและมาตรฐาน RSPO / NON-RSPO / Contract Farmer</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>วันที่</th><th>เวลา</th><th class="left">แปลง/ผู้ส่ง</th><th>มาตรฐาน</th><th>พื้นที่</th><th>ทะเบียน</th><th>น้ำหนัก</th><th>ทะลาย</th><th>ดิบ</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr>
+          <td>${displayDate(r.date)}</td>
+          <td>${String(r.wpCarWeightDate || "").slice(11, 16)}</td>
+          <td class="left">${r.name || r.wpctCode || ""}</td>
+          <td>${r.standard || ""}</td>
+          <td>${r.areaGroup || ""}</td>
+          <td>${r.wpCarLicense || ""}</td>
+          <td class="num">${fmt(r.wpNetWeight)}</td>
+          <td class="num">${fmt(r.wpRampAmount)}</td>
+          <td class="num">${fmt(r.wpRawPercent)}</td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderRspo() {
+  const summaryRows = buildRspoSummaryRows();
+  const detailRows = buildRspoDetailRows();
+  const monthly = buildRspoMonthlyByEstate();
+  state.currentRows = detailRows;
+  renderDashboard(buildStockFromData(yardScope()));
+
+  const summaryTable = `
+    <table class="rspo-summary-table">
+      <thead><tr><th>หมวด</th><th>รับเข้า (kg)</th><th>ส่งออก (kg)</th><th>ใบชั่ง</th><th>น้ำหนักโรงงาน</th><th>สูญหาย</th></tr></thead>
+      <tbody>${summaryRows.map((row) => `<tr>
+        <td class="left">${row.label}</td>
+        <td class="num">${fmt(row.inbound)}</td>
+        <td class="num">${fmt(row.outbound)}</td>
+        <td class="num">${fmt(row.tickets)}</td>
+        <td class="num">${fmt(row.factory)}</td>
+        <td class="num loss">${fmt(row.loss)}</td>
+      </tr>`).join("")}</tbody>
+    </table>`;
+
+  const detailTable = `
+    <table>
+      <thead><tr><th>วันที่</th><th class="left">ชื่อแปลง/ผู้ส่ง</th><th>มาตรฐาน</th><th>ลานเท</th><th>แปลงใหญ่</th><th>จำนวนใบชั่ง</th><th>รับเข้า (kg)</th><th>ทะลาย</th><th>ดิบ</th></tr></thead>
+      <tbody>${detailRows.map((row) => `<tr>
+        <td>${displayDate(row.date)}</td>
+        <td class="left">${row.name}</td>
+        <td>${row.standard}</td>
+        <td>${row.yard}</td>
+        <td>${row.estate}</td>
+        <td class="num">${fmt(row.tickets)}</td>
+        <td class="num">${fmt(row.inbound)}</td>
+        <td class="num">${fmt(row.bunch)}</td>
+        <td class="num">${fmt(row.raw)}</td>
+      </tr>`).join("")}</tbody>
+      <tfoot><tr>
+        <td class="left">รวม</td><td></td><td></td><td></td><td></td>
+        <td class="num">${fmt(detailRows.reduce((sum, row) => sum + row.tickets, 0))}</td>
+        <td class="num">${fmt(detailRows.reduce((sum, row) => sum + row.inbound, 0))}</td>
+        <td class="num">${fmt(detailRows.reduce((sum, row) => sum + row.bunch, 0))}</td>
+        <td class="num">${fmt(detailRows.reduce((sum, row) => sum + row.raw, 0))}</td>
+      </tr></tfoot>
+    </table>`;
+
+  els.reportPage.innerHTML = `
+    <div class="report-title">
+      <h2>RSPO Report</h2>
+      <p>คำนวณจากชีต data ตามช่วงวันที่ ลานเท มาตรฐาน และรายการที่เลือก</p>
+    </div>
+    <div class="rspo-layout">
+      <section class="rspo-card">
+        <h3>สรุปตามมาตรฐาน / รายการ</h3>
+        <div class="table-wrap">${summaryTable}</div>
+      </section>
+      <section class="rspo-card">
+        <h3>ผลผลิตรับเข้า RSPO ตามแปลงใหญ่ / รายเดือน</h3>
+        <div class="table-wrap">${renderRspoMonthlyTable(monthly)}</div>
+      </section>
+      <section class="rspo-card rspo-detail">
+        <h3>รายละเอียดรับเข้า ตามชื่อแปลง</h3>
+        <div class="table-wrap">${detailTable}</div>
+      </section>
+    </div>`;
+}
+
+function filteredReportRecords() {
+  const movementMap = movementBySourceRow();
+  return (state.records || []).filter((record) => {
+    const date = record.weightDate || record.date;
+    const movement = movementMap.get(Number(record._srcRow));
+    const scope = movement ? movementScope(movement) : dataRecordScope(record);
+    return date &&
+      inRange(date) &&
+      (yardScope() === "combined" || yardScope() === scope) &&
+      recordMatchesGlobalFilters(record, movement);
+  }).map((record) => ({
+    record,
+    movement: movementMap.get(Number(record._srcRow)),
+    scope: movementMap.has(Number(record._srcRow)) ? movementScope(movementMap.get(Number(record._srcRow))) : dataRecordScope(record),
+  }));
+}
+
+function buildRspoSummaryRows() {
+  const order = ["RSPO", "NON-RSPO", "Contract Farmer", "Outbound Logistics"];
+  const map = new Map(order.map((label) => [label, { label, inbound: 0, outbound: 0, tickets: 0, factory: 0, loss: 0 }]));
+  for (const { record, movement } of filteredReportRecords()) {
+    const flow = recordFlow(record);
+    const label = flow === "ส่งออก" ? "Outbound Logistics" : recordStandardBucket(record, movement);
+    if (!map.has(label)) map.set(label, { label, inbound: 0, outbound: 0, tickets: 0, factory: 0, loss: 0 });
+    const item = map.get(label);
+    const weight = n(record.wpNetWeight);
+    item.tickets += 1;
+    if (flow === "รับเข้า") item.inbound += weight;
+    if (flow === "ส่งออก") {
+      item.outbound += weight;
+      item.factory += n(record.wpFacNetWeight);
+      item.loss += lossOnly(n(record.wpFacNetWeight) - weight);
+    }
+  }
+  return [...map.values()].filter((row) => row.inbound || row.outbound || row.tickets || state.dailyFilters.standard === "all");
+}
+
+function buildRspoDetailRows() {
+  const map = new Map();
+  for (const { record, movement, scope } of filteredReportRecords()) {
+    if (record.wpInOutType !== "I") continue;
+    const key = [record.weightDate || record.date, record.wpctCode || record.name, record.standard, scope].join("|");
+    if (!map.has(key)) {
+      map.set(key, {
+        date: record.weightDate || record.date,
+        name: record.name || record.wpctCode || "",
+        standard: record.standard || "",
+        yard: scope === "takuk" ? "ตะกุก" : "ปลายราง",
+        estate: record.areaGroup || record.estate || "ไม่ระบุ",
+        tickets: 0,
+        inbound: 0,
+        bunch: 0,
+        raw: 0,
+      });
+    }
+    const item = map.get(key);
+    item.tickets += 1;
+    item.inbound += n(record.wpNetWeight);
+    item.bunch += n(record.wpRampAmount);
+    item.raw += n(record.wpRawPercent);
+  }
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date) || b.inbound - a.inbound);
+}
+
+function monthKey(dateText) {
+  const d = isoDay(dateText);
+  return d ? d.slice(0, 7) : "";
+}
+
+function monthLabel(key) {
+  if (!key) return "";
+  const [year, month] = key.split("-");
+  return `${month}/${year}`;
+}
+
+function thaiMonthName(monthNumber) {
+  return [
+    "",
+    "มกราคม",
+    "กุมภาพันธ์",
+    "มีนาคม",
+    "เมษายน",
+    "พฤษภาคม",
+    "มิถุนายน",
+    "กรกฎาคม",
+    "สิงหาคม",
+    "กันยายน",
+    "ตุลาคม",
+    "พฤศจิกายน",
+    "ธันวาคม",
+  ][Number(monthNumber)] || "";
+}
+
+function stockPeriodCaption(prefix = "") {
+  const start = dateValue(els.startDate);
+  const end = dateValue(els.endDate);
+  if (start && end && start.slice(0, 7) === end.slice(0, 7)) {
+    const [year, month] = start.split("-");
+    return `${prefix}${thaiMonthName(month)} ${Number(year) + 543}`;
+  }
+  return `${prefix}${displayDate(start)} - ${displayDate(end)}`;
+}
+
+function buildRspoMonthlyByEstate() {
+  const matrix = new Map();
+  const monthSet = new Set();
+  const movementMap = movementBySourceRow();
+  for (const row of state.records) {
+    const movement = movementMap.get(Number(row._srcRow));
+    const scope = movement ? movementScope(movement) : dataRecordScope(row);
+    if (row.wpInOutType !== "I" || row.standard !== "RSPO" || !inRange(row.date)) continue;
+    if (yardScope() !== "combined" && yardScope() !== scope) continue;
+    if (!recordMatchesGlobalFilters(row, movement)) continue;
+    const estate = row.areaGroup || row["แปลงใหญ่"] || "ไม่ระบุ";
+    const month = monthKey(row.date);
+    if (!month) continue;
+    monthSet.add(month);
+    if (!matrix.has(estate)) matrix.set(estate, { estate, months: {}, total: 0, tickets: 0, bunch: 0 });
+    const item = matrix.get(estate);
+    const weight = n(row.wpNetWeight);
+    item.months[month] = (item.months[month] || 0) + weight;
+    item.total += weight;
+    item.tickets += 1;
+    item.bunch += n(row.wpRampAmount);
+  }
+  return {
+    months: [...monthSet].sort(),
+    rows: [...matrix.values()].sort((a, b) => b.total - a.total),
+  };
+}
+
+function renderRspoMonthlyTable(data) {
+  const monthHeaders = data.months.map((month) => `<th>${monthLabel(month)}</th>`).join("");
+  const body = data.rows.map((row) => `<tr>
+    <td class="left">${row.estate}</td>
+    ${data.months.map((month) => `<td class="num">${fmt(row.months[month] || 0)}</td>`).join("")}
+    <td class="num">${fmt(row.total)}</td>
+    <td class="num">${fmt(row.tickets)}</td>
+    <td class="num">${fmt(row.bunch)}</td>
+  </tr>`).join("");
+  const totalByMonth = Object.fromEntries(data.months.map((month) => [month, data.rows.reduce((sum, row) => sum + n(row.months[month]), 0)]));
+  const grand = data.rows.reduce((sum, row) => sum + row.total, 0);
+  const tickets = data.rows.reduce((sum, row) => sum + row.tickets, 0);
+  const bunch = data.rows.reduce((sum, row) => sum + row.bunch, 0);
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th class="left">แปลงใหญ่</th>
+          ${monthHeaders}
+          <th>รวมรับเข้า (kg)</th>
+          <th>จำนวนใบชั่ง</th>
+          <th>ทะลาย</th>
+        </tr>
+      </thead>
+      <tbody>${body}</tbody>
+      <tfoot>
+        <tr>
+          <td class="left">รวม</td>
+          ${data.months.map((month) => `<td class="num">${fmt(totalByMonth[month])}</td>`).join("")}
+          <td class="num">${fmt(grand)}</td>
+          <td class="num">${fmt(tickets)}</td>
+          <td class="num">${fmt(bunch)}</td>
+        </tr>
+      </tfoot>
+    </table>`;
+}
+
+function pct(value, total) {
+  return total ? `${((n(value) / n(total)) * 100).toFixed(1)}%` : "0.0%";
+}
+
+function signed(value) {
+  const rounded = Math.round(n(value));
+  return `${rounded > 0 ? "+" : ""}${nf.format(rounded)}`;
+}
+
+function signedPct(value) {
+  const parsed = n(value);
+  return `${parsed > 0 ? "+" : ""}${parsed.toFixed(2)}%`;
+}
+
+function dashboardStats(rows) {
+  const t = totals(rows);
+  const inbound = n(t.totalRamp);
+  const outbound = n(t.outboundTotal);
+  const loss = n(t.loss);
+  const factory = n(t.facNet);
+  return {
+    opening: n(rows[0]?.opening),
+    inbound,
+    outbound,
+    loss,
+    factory,
+    trips: n(t.tripCount),
+    balance: periodBalance(rows),
+    net: inbound - outbound - loss,
+    lossRate: outbound ? (loss / outbound) * 100 : 0,
+    factoryDiff: factory - outbound,
+  };
+}
+
+function metricTile(label, value, detail, tone = "") {
+  return `
+    <article class="analytics-tile ${tone}">
+      <span>${label}</span>
+      <strong>${value}</strong>
+      <small>${detail || ""}</small>
+    </article>`;
+}
+
+function deltaCell(current, previous, suffix = "") {
+  const delta = n(current) - n(previous);
+  const cls = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+  return `<td class="num delta ${cls}">${signed(delta)}${suffix}</td>`;
+}
+
+function maxBy(items, getter) {
+  return items.reduce((best, item) => (getter(item) > getter(best || {}) ? item : best), null);
+}
+
+function periodLabel(rows) {
+  if (!rows.length) return "-";
+  return `${displayDate(rows[0].date)} - ${displayDate(rows.at(-1).date)}`;
+}
+
+function buildPeriodComparison(rows) {
+  const ordered = [...rows].sort((a, b) => a.date.localeCompare(b.date));
+  if (ordered.length < 2) {
+    return {
+      previousRows: [],
+      currentRows: ordered,
+      previous: dashboardStats([]),
+      current: dashboardStats(ordered),
+    };
+  }
+  const midpoint = Math.ceil(ordered.length / 2);
+  const previousRows = ordered.slice(0, midpoint);
+  const currentRows = ordered.slice(midpoint);
+  return {
+    previousRows,
+    currentRows,
+    previous: dashboardStats(previousRows),
+    current: dashboardStats(currentRows),
+  };
+}
+
+function buildStandardAnalytics(records) {
+  const order = ["RSPO", "NON-RSPO", "Contract Farmer"];
+  const map = new Map(order.map((label) => [label, {
+    label,
+    tickets: 0,
+    inbound: 0,
+    outbound: 0,
+    factory: 0,
+    loss: 0,
+  }]));
+  for (const { record, movement } of records) {
+    const label = record.wpInOutType === "I" ? recordStandardBucket(record, movement) : recordStandardBucket(record, movement);
+    if (!map.has(label)) map.set(label, { label, tickets: 0, inbound: 0, outbound: 0, factory: 0, loss: 0 });
+    const item = map.get(label);
+    const weight = n(record.wpNetWeight);
+    item.tickets += 1;
+    if (record.wpInOutType === "I") item.inbound += weight;
+    if (record.wpInOutType === "O") {
+      item.outbound += weight;
+      item.factory += n(record.wpFacNetWeight);
+      item.loss += lossOnly(n(record.wpFacNetWeight) - weight);
+    }
+  }
+  return [...map.values()].filter((item) => item.tickets || state.dailyFilters.standard === "all");
+}
+
+function buildTopInbound(records) {
+  const map = new Map();
+  for (const { record, movement, scope } of records) {
+    if (record.wpInOutType !== "I") continue;
+    const label = record.name || record.wpctCode || "ไม่ระบุ";
+    const key = `${label}|${recordStandardBucket(record, movement)}|${scope}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        label,
+        standard: recordStandardBucket(record, movement),
+        yard: scope === "takuk" ? "ตะกุก" : "ปลายราง",
+        tickets: 0,
+        weight: 0,
+      });
+    }
+    const item = map.get(key);
+    item.tickets += 1;
+    item.weight += n(record.wpNetWeight);
+  }
+  return [...map.values()].sort((a, b) => b.weight - a.weight).slice(0, 10);
+}
+
+function buildFactoryAnalytics(records) {
+  const map = new Map();
+  for (const { record, scope } of records) {
+    if (record.wpInOutType !== "O") continue;
+    const label = record.wpftcode || record.wpFacDocNo || "ไม่ระบุ";
+    if (!map.has(label)) {
+      map.set(label, {
+        label,
+        yard: scope === "takuk" ? "ตะกุก" : "ปลายราง",
+        trips: 0,
+        outbound: 0,
+        factory: 0,
+        loss: 0,
+      });
+    }
+    const item = map.get(label);
+    const weight = n(record.wpNetWeight);
+    const factory = n(record.wpFacNetWeight);
+    item.trips += 1;
+    item.outbound += weight;
+    item.factory += factory;
+    item.loss += lossOnly(factory - weight);
+  }
+  return [...map.values()].sort((a, b) => b.outbound - a.outbound).slice(0, 10);
+}
+
+function buildMonthlyTrend(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const key = monthKey(row.date);
+    if (!key) continue;
+    if (!map.has(key)) map.set(key, { month: key, inbound: 0, outbound: 0, loss: 0, trips: 0, balance: 0 });
+    const item = map.get(key);
+    item.inbound += n(row.totalRamp);
+    item.outbound += n(row.outboundTotal);
+    item.loss += n(row.loss);
+    item.trips += n(row.tripCount);
+    item.balance = n(row.balance);
+  }
+  return [...map.values()].sort((a, b) => a.month.localeCompare(b.month));
+}
+
+function terrainLookupByCode() {
+  const rows = state.payload.lookups?.terrain || [];
+  return new Map(rows.map((row) => [String(row.WpctCode || row.LookupKey_fast || ""), row]));
+}
+
+function terrainForRecord(record, terrainMap = terrainLookupByCode()) {
+  return terrainMap.get(String(record.wpctCode || "")) || {};
+}
+
+function terrainArea(row) {
+  return n(row["Area Planted"] || row.area);
+}
+
+function yieldGroupInfo(record, terrain, mode) {
+  if (mode === "terrain") {
+    const block = terrain.terrain || record.terrain || "ไม่ระบุ";
+    return { key: String(block), label: String(block), type: "บล็อก" };
+  }
+  if (mode === "year") {
+    const year = terrain["ปีปลูก"] || "ไม่ระบุ";
+    return { key: String(year), label: String(year), type: "รุ่นปี" };
+  }
+  const area = terrain.wparea || record.areaGroup || "ไม่ระบุ";
+  return { key: String(area), label: String(area), type: "แปลงใหญ่" };
+}
+
+function buildYieldComparison(records, mode) {
+  const terrainMap = terrainLookupByCode();
+  const map = new Map();
+  const totalWeight = records.reduce((sum, item) => {
+    return item.record.wpInOutType === "I" ? sum + n(item.record.wpNetWeight) : sum;
+  }, 0);
+  const allBlocks = new Map();
+
+  for (const { record } of records) {
+    if (record.wpInOutType !== "I") continue;
+    const terrain = terrainForRecord(record, terrainMap);
+    const group = yieldGroupInfo(record, terrain, mode);
+    if (!map.has(group.key)) {
+      map.set(group.key, {
+        key: group.key,
+        label: group.label,
+        type: group.type,
+        tickets: 0,
+        weight: 0,
+        area: 0,
+        blocks: new Map(),
+      });
+    }
+    const item = map.get(group.key);
+    const blockKey = String(terrain.WpctCode || terrain.LookupKey_fast || record.wpctCode || `${group.key}-${record.name || ""}`);
+    const blockArea = terrainArea(terrain);
+    item.tickets += 1;
+    item.weight += n(record.wpNetWeight);
+    if (!item.blocks.has(blockKey)) item.blocks.set(blockKey, blockArea);
+    if (!allBlocks.has(blockKey)) allBlocks.set(blockKey, blockArea);
+  }
+
+  const totalArea = [...allBlocks.values()].reduce((sum, value) => sum + n(value), 0);
+  return [...map.values()].map((item) => {
+    item.area = [...item.blocks.values()].reduce((sum, value) => sum + n(value), 0);
+    item.yieldShare = totalWeight ? (item.weight / totalWeight) * 100 : 0;
+    item.areaShare = totalArea ? (item.area / totalArea) * 100 : 0;
+    item.yieldPerRai = item.area ? item.weight / item.area : 0;
+    item.index = item.areaShare ? (item.yieldShare / item.areaShare) * 100 : 0;
+    item.gap = item.yieldShare - item.areaShare;
+    return item;
+  }).sort((a, b) => b.weight - a.weight);
+}
+
+function compareModeLabel(mode) {
+  if (mode === "terrain") return "บล็อก";
+  if (mode === "year") return "รุ่นปี";
+  return "แปลงใหญ่";
+}
+
+function barRows(rows, valueKey, labelKey = "label") {
+  const max = Math.max(...rows.map((row) => n(row[valueKey])), 1);
+  if (!rows.length) return '<p class="analytics-empty">ไม่มีข้อมูลตามเงื่อนไขที่เลือก</p>';
+  return rows.map((row) => {
+    const width = Math.max(2, (n(row[valueKey]) / max) * 100);
+    return `
+      <div class="bar-row">
+        <div class="bar-label"><strong>${row[labelKey]}</strong><span>${row.sub || ""}</span></div>
+        <div class="bar-track"><span style="width:${width}%"></span></div>
+        <div class="bar-value">${row.valueText || fmt(row[valueKey])}</div>
+      </div>`;
+  }).join("");
+}
+
+function simpleTable(headers, rows, emptyText = "ไม่มีข้อมูลตามเงื่อนไขที่เลือก") {
+  if (!rows.length) return `<p class="analytics-empty">${emptyText}</p>`;
+  return `
+    <table class="mini-table">
+      <thead><tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr></thead>
+      <tbody>${rows.join("")}</tbody>
+    </table>`;
+}
+
+function renderAdvancedDashboard() {
+  const rows = buildStockFromData(yardScope());
+  const stats = dashboardStats(rows);
+  const records = filteredReportRecords();
+  const comparison = buildPeriodComparison(rows);
+  const standardRows = buildStandardAnalytics(records);
+  const topInbound = buildTopInbound(records);
+  const factoryRows = buildFactoryAnalytics(records);
+  const monthly = buildMonthlyTrend(rows);
+  const yieldRows = buildYieldComparison(records, state.dashboardCompareMode);
+  const yieldTopRows = yieldRows.slice(0, state.dashboardCompareMode === "terrain" ? 20 : 12);
+  const maxInbound = maxBy(rows, (row) => n(row.totalRamp));
+  const maxOutbound = maxBy(rows, (row) => n(row.outboundTotal));
+  const maxLoss = maxBy(rows, (row) => n(row.loss));
+  const yardOptions = yardScope() === "combined" ? ["garden", "takuk"] : [yardScope()];
+  const yardRows = yardOptions.map((scope) => ({
+    scope,
+    label: scope === "takuk" ? "ตะกุก" : "ปลายราง",
+    stats: dashboardStats(buildStockFromData(scope)),
+  }));
+
+  state.currentRows = [
+    ...rows.map((row) => ({ section: "daily", ...row })),
+    ...standardRows.map((row) => ({ section: "standard", ...row })),
+    ...yardRows.map((row) => ({ section: "yard", yard: row.label, ...row.stats })),
+    ...yieldRows.map((row) => ({ section: `yield-${state.dashboardCompareMode}`, ...row })),
+  ];
+  renderDashboard(rows);
+
+  const periodRows = [
+    ["รับเข้า", "inbound"],
+    ["ส่งออก", "outbound"],
+    ["สูญหาย", "loss"],
+    ["คงเหลือปลายช่วง", "balance"],
+    ["จำนวนเที่ยว", "trips"],
+  ].map(([label, key]) => `
+    <tr>
+      <td class="left">${label}</td>
+      <td class="num">${fmt(comparison.previous[key])}</td>
+      <td class="num">${fmt(comparison.current[key])}</td>
+      ${deltaCell(comparison.current[key], comparison.previous[key])}
+    </tr>`);
+
+  const yardTableRows = yardRows.map((row) => `
+    <tr>
+      <td class="left">${row.label}</td>
+      <td class="num">${fmt(row.stats.inbound)}</td>
+      <td class="num">${fmt(row.stats.outbound)}</td>
+      <td class="num loss">${fmt(row.stats.loss)}</td>
+      <td class="num">${row.stats.lossRate.toFixed(2)}%</td>
+      <td class="num">${fmt(row.stats.balance)}</td>
+      <td class="num">${fmt(row.stats.trips)}</td>
+    </tr>`);
+
+  const standardTableRows = standardRows.map((row) => `
+    <tr>
+      <td class="left">${row.label}</td>
+      <td class="num">${fmt(row.inbound)}</td>
+      <td class="num">${fmt(row.outbound)}</td>
+      <td class="num">${fmt(row.tickets)}</td>
+      <td class="num">${fmt(row.factory)}</td>
+      <td class="num loss">${fmt(row.loss)}</td>
+      <td class="num">${pct(row.inbound, stats.inbound)}</td>
+    </tr>`);
+
+  const yieldTableRows = yieldTopRows.map((row) => `
+    <tr>
+      <td class="left">${row.label}</td>
+      <td class="num">${fmt(row.area)}</td>
+      <td class="num">${fmt(row.tickets)}</td>
+      <td class="num">${fmt(row.weight)}</td>
+      <td class="num">${row.yieldShare.toFixed(2)}%</td>
+      <td class="num">${row.areaShare.toFixed(2)}%</td>
+      <td class="num">${fmt(row.yieldPerRai)}</td>
+      <td class="num ${row.gap < 0 ? "loss" : ""}">${signedPct(row.gap)}</td>
+      <td class="num">${row.index ? row.index.toFixed(1) : "0.0"}</td>
+    </tr>`);
+
+  const yieldBars = yieldTopRows.slice(0, 10).map((row) => ({
+    label: row.label,
+    sub: `ผลผลิต ${row.yieldShare.toFixed(2)}% | พื้นที่ ${row.areaShare.toFixed(2)}% | ${fmt(row.yieldPerRai)} kg/ไร่`,
+    value: row.yieldShare,
+    valueText: `${row.yieldShare.toFixed(2)}%`,
+  }));
+
+  const supplierRows = topInbound.map((row) => `
+    <tr>
+      <td class="left">${row.label}</td>
+      <td>${row.standard}</td>
+      <td>${row.yard}</td>
+      <td class="num">${fmt(row.tickets)}</td>
+      <td class="num">${fmt(row.weight)}</td>
+      <td class="num">${pct(row.weight, stats.inbound)}</td>
+    </tr>`);
+
+  const factoryTableRows = factoryRows.map((row) => `
+    <tr>
+      <td class="left">${row.label}</td>
+      <td>${row.yard}</td>
+      <td class="num">${fmt(row.trips)}</td>
+      <td class="num">${fmt(row.outbound)}</td>
+      <td class="num">${fmt(row.factory)}</td>
+      <td class="num loss">${fmt(row.loss)}</td>
+      <td class="num">${signed(row.factory - row.outbound)}</td>
+    </tr>`);
+
+  const monthlyBars = monthly.map((row) => ({
+    label: monthLabel(row.month),
+    sub: `ส่งออก ${fmt(row.outbound)} | สูญหาย ${fmt(row.loss)} | คงเหลือ ${fmt(row.balance)}`,
+    value: row.inbound,
+  }));
+
+  const insightItems = [
+    `รับเข้าสูงสุด: ${maxInbound ? `${displayDate(maxInbound.date)} (${fmt(maxInbound.totalRamp)} kg)` : "-"}`,
+    `ส่งออกสูงสุด: ${maxOutbound ? `${displayDate(maxOutbound.date)} (${fmt(maxOutbound.outboundTotal)} kg)` : "-"}`,
+    `สูญหายสูงสุด: ${maxLoss ? `${displayDate(maxLoss.date)} (${fmt(maxLoss.loss)} kg)` : "-"}`,
+    `อัตราสูญหายต่อส่งออก: ${stats.lossRate.toFixed(2)}%`,
+    `ส่วนต่างน้ำหนักโรงงานเทียบส่งออก: ${signed(stats.factoryDiff)} kg`,
+  ];
+
+  els.reportPage.innerHTML = `
+    <div class="report-title">
+      <h2>Dashboard วิเคราะห์เชิงลึก</h2>
+      <p>ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))} | วิเคราะห์จากชีต data และการปรับยอด Clear Ramp ตามตัวกรองด้านบน</p>
+    </div>
+    <div class="analytics-layout">
+      <section class="analytics-hero">
+        <div>
+          <h3>ภาพรวมการเคลื่อนไหว</h3>
+          <p>คำนวณรับเข้า ส่งออก สูญหาย คงเหลือ และเปรียบเทียบตามลาน/มาตรฐานจากข้อมูลปัจจุบัน</p>
+        </div>
+        <div class="analytics-hero-grid">
+          ${metricTile("Net Movement", fmt(stats.net), "รับเข้า - ส่งออก - สูญหาย", stats.net < 0 ? "danger" : "good")}
+          ${metricTile("Loss Rate", `${stats.lossRate.toFixed(2)}%`, "สูญหาย / ส่งออก", stats.lossRate > 2 ? "danger" : "")}
+          ${metricTile("Factory Diff", `${signed(stats.factoryDiff)} kg`, "โรงงาน - ส่งออก", stats.factoryDiff < 0 ? "danger" : "good")}
+          ${metricTile("Trips", fmt(stats.trips), "จำนวนเที่ยวส่งออก")}
+        </div>
+      </section>
+
+      <section class="analytics-card wide">
+        <div class="section-head">
+          <h3>เปรียบเทียบช่วงเวลา</h3>
+          <span>${periodLabel(comparison.previousRows)} เทียบ ${periodLabel(comparison.currentRows)}</span>
+        </div>
+        ${simpleTable(["รายการ", "ช่วงก่อน", "ช่วงหลัง", "เปลี่ยนแปลง"], periodRows)}
+      </section>
+
+      <section class="analytics-card">
+        <div class="section-head">
+          <h3>เทียบตามลานเท</h3>
+          <span>ปลายราง / ตะกุก ตามตัวกรองลานเท</span>
+        </div>
+        ${simpleTable(["ลานเท", "รับเข้า", "ส่งออก", "สูญหาย", "Loss %", "คงเหลือ", "เที่ยว"], yardTableRows)}
+      </section>
+
+      <section class="analytics-card">
+        <div class="section-head">
+          <h3>เทียบตามมาตรฐาน</h3>
+          <span>RSPO / NON-RSPO / Contract Farmer</span>
+        </div>
+        ${simpleTable(["มาตรฐาน", "รับเข้า", "ส่งออก", "ใบชั่ง", "โรงงาน", "สูญหาย", "% รับเข้า"], standardTableRows)}
+      </section>
+
+      <section class="analytics-card wide">
+        <div class="section-head">
+          <h3>เปรียบเทียบ % ผลผลิตตาม ${compareModeLabel(state.dashboardCompareMode)}</h3>
+          <label class="analytics-select">เปรียบเทียบ
+            <select id="yieldCompareMode">
+              <option value="terrain"${state.dashboardCompareMode === "terrain" ? " selected" : ""}>บล็อก</option>
+              <option value="area"${state.dashboardCompareMode === "area" ? " selected" : ""}>แปลงใหญ่</option>
+              <option value="year"${state.dashboardCompareMode === "year" ? " selected" : ""}>รุ่นปี</option>
+            </select>
+          </label>
+        </div>
+        <div class="yield-compare-grid">
+          <div class="bar-list">${barRows(yieldBars, "value")}</div>
+          <div class="table-wrap">
+            ${simpleTable([compareModeLabel(state.dashboardCompareMode), "พื้นที่ไร่", "ใบชั่ง", "รับเข้า", "% ผลผลิต", "% พื้นที่", "kg/ไร่", "ส่วนต่าง", "Index"], yieldTableRows)}
+          </div>
+        </div>
+      </section>
+
+      <section class="analytics-card">
+        <div class="section-head">
+          <h3>แนวโน้มรายเดือน</h3>
+          <span>แถบแสดงน้ำหนักรับเข้า</span>
+        </div>
+        <div class="bar-list">${barRows(monthlyBars, "value")}</div>
+      </section>
+
+      <section class="analytics-card">
+        <div class="section-head">
+          <h3>ผู้ส่งรับเข้าสูงสุด</h3>
+          <span>Top 10 ตามน้ำหนักรับเข้า</span>
+        </div>
+        ${simpleTable(["ผู้ส่ง", "มาตรฐาน", "ลาน", "ใบชั่ง", "น้ำหนัก", "% รวม"], supplierRows)}
+      </section>
+
+      <section class="analytics-card">
+        <div class="section-head">
+          <h3>ส่งออกตามโรงงาน</h3>
+          <span>เทียบน้ำหนักส่งออกกับน้ำหนักปลายทาง</span>
+        </div>
+        ${simpleTable(["โรงงาน", "ลาน", "เที่ยว", "ส่งออก", "โรงงาน", "สูญหาย", "ต่าง"], factoryTableRows)}
+      </section>
+
+      <section class="analytics-card insight-card">
+        <div class="section-head">
+          <h3>ข้อสังเกตสำคัญ</h3>
+          <span>จุดที่ควรตรวจสอบต่อ</span>
+        </div>
+        <ul class="insight-list">
+          ${insightItems.map((item) => `<li>${item}</li>`).join("")}
+        </ul>
+      </section>
+    </div>`;
+}
+
+function isPalmView(view) {
+  return String(view || "").startsWith("palm-");
+}
+
+function esc(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function isEstView(view) {
+  return String(view || "").startsWith("est-");
+}
+
+function estDatasets() {
+  return state.estData?.budgetDatasets || [];
+}
+
+function selectedEstDataset() {
+  const datasets = estDatasets();
+  const filtered = state.estFilters.activity === "all"
+    ? datasets
+    : datasets.filter((item) => item.activity === state.estFilters.activity);
+  return filtered.find((item) => item.id === state.estFilters.datasetId) || filtered[0] || datasets[0] || null;
+}
+
+function estRows(dataset) {
+  const rows = dataset?.rows || [];
+  const query = state.estFilters.query.trim().toLowerCase();
+  if (!query) return rows;
+  return rows.filter((row) => Object.entries(row).some(([key, value]) => !key.startsWith("_") && String(value ?? "").toLowerCase().includes(query)));
+}
+
+function renderEstToolbar() {
+  const activities = Object.keys(state.estData?.activityTotals || {}).sort();
+  const datasets = state.estFilters.activity === "all"
+    ? estDatasets()
+    : estDatasets().filter((item) => item.activity === state.estFilters.activity);
+  const dataset = selectedEstDataset();
+  return `
+    <section class="est-toolbar">
+      <label>กิจกรรม
+        <select id="estActivity">
+          <option value="all"${state.estFilters.activity === "all" ? " selected" : ""}>ทุกกิจกรรม</option>
+          ${activities.map((activity) => `<option value="${esc(activity)}"${activity === state.estFilters.activity ? " selected" : ""}>${esc(activity)}</option>`).join("")}
+        </select>
+      </label>
+      <label>ชีตงบประมาณ
+        <select id="estDataset">
+          ${datasets.map((item) => `<option value="${esc(item.id)}"${dataset?.id === item.id ? " selected" : ""}>${esc(item.sheet)} (${fmt(item.rowCount)})</option>`).join("")}
+        </select>
+      </label>
+      <label>ค้นหา
+        <input id="estSearch" type="search" value="${esc(state.estFilters.query)}" placeholder="แปลง บล็อก กิจกรรม ค่าแรง">
+      </label>
+    </section>`;
+}
+
+function renderEstBudgetTable(dataset = selectedEstDataset()) {
+  if (!dataset) return `<p class="analytics-empty">ยังไม่มีข้อมูลงบประมาณ</p>`;
+  const headers = (dataset.headers || []).filter((header) => !String(header).startsWith("_")).slice(0, 12);
+  const rows = estRows(dataset);
+  return `
+    <section class="est-panel">
+      <div class="section-head">
+        <h3>${esc(dataset.sheet)}</h3>
+        <span>${esc(dataset.activity)} · ${fmt(rows.length)} / ${fmt(dataset.rowCount)} rows</span>
+      </div>
+      <div class="table-wrap est-table-wrap">
+        <table class="mini-table est-table">
+          <thead><tr>${headers.map((header) => `<th>${esc(header)}</th>`).join("")}</tr></thead>
+          <tbody>
+            ${rows.slice(0, 220).map((row) => `<tr class="${row._isTotal ? "is-total" : ""}">${headers.map((header) => `<td>${esc(row[header] ?? "")}</td>`).join("")}</tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+      ${rows.length > 220 ? `<p class="master-note">แสดง 220 แถวแรกจาก ${fmt(rows.length)} แถว</p>` : ""}
+    </section>`;
+}
+
+function loadEstDailyEntries() {
+  try {
+    state.estWorkPlans = JSON.parse(localStorage.getItem("est-work-plans") || "[]");
+    state.estWorkOrders = JSON.parse(localStorage.getItem("est-work-orders") || "[]");
+    state.estDailyEntries = JSON.parse(localStorage.getItem("est-daily-entries") || "[]");
+    state.estMasterRecords = JSON.parse(localStorage.getItem("est-master-records") || "[]");
+  } catch {
+    state.estWorkPlans = [];
+    state.estWorkOrders = [];
+    state.estDailyEntries = [];
+    state.estMasterRecords = [];
+  }
+}
+
+function saveEstWorkPlans() {
+  localStorage.setItem("est-work-plans", JSON.stringify(state.estWorkPlans));
+}
+
+function saveEstWorkOrders() {
+  localStorage.setItem("est-work-orders", JSON.stringify(state.estWorkOrders));
+}
+
+function saveEstDailyEntries() {
+  localStorage.setItem("est-daily-entries", JSON.stringify(state.estDailyEntries));
+}
+
+function saveEstMasterRecords() {
+  localStorage.setItem("est-master-records", JSON.stringify(state.estMasterRecords));
+}
+
+function estField(row, names) {
+  const keys = Object.keys(row || {});
+  for (const name of names) {
+    const found = keys.find((key) => key.includes(name));
+    if (found) return row[found];
+  }
+  return "";
+}
+
+function estBudgetOptions() {
+  const rows = [];
+  for (const dataset of estDatasets()) {
+    for (const row of dataset.rows || []) {
+      if (row._isTotal) continue;
+      const block = estField(row, ["บล็อก", "รหัสบล็อก"]);
+      if (!block || String(block).includes("รวม")) continue;
+      rows.push({
+        block: String(block),
+        sheet: dataset.sheet,
+        activity: dataset.activity,
+        area: estField(row, ["แปลง"]),
+        rai: estField(row, ["ไร่", "จำนวน(ไร่)"]),
+        trees: estField(row, ["ต้น", "จำนวน(ต้น)"]),
+        rate: estField(row, ["อัตรา", "ค่าแรง", "บาท/ตัน"]),
+        sourceRow: row._rowNumber,
+      });
+    }
+  }
+  const seen = new Set();
+  return rows.filter((row) => {
+    const key = `${row.block}|${row.sheet}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 1200);
+}
+
+function estSelectedBudgetMeta(selectId = "estPlanBlock") {
+  const selected = document.querySelector(`#${selectId}`)?.selectedOptions?.[0];
+  return {
+    block: selected?.value || "",
+    sheet: selected?.dataset.sheet || "",
+    activity: selected?.dataset.activity || "",
+    rate: n(selected?.dataset.rate),
+    sourceRow: selected?.dataset.row || "",
+  };
+}
+
+function renderEstFlowHeader() {
+  const planCount = state.estWorkPlans.length;
+  const orderCount = state.estWorkOrders.length;
+  const doneCount = state.estDailyEntries.length;
+  return `
+    <section class="est-flow-status">
+      <article><b>1</b><span>วางแผนงาน</span><strong>${fmt(planCount)}</strong></article>
+      <article><b>2</b><span>สั่งงานจากแผน</span><strong>${fmt(orderCount)}</strong></article>
+      <article><b>3</b><span>บันทึกงานจากใบสั่งงาน</span><strong>${fmt(doneCount)}</strong></article>
+    </section>`;
+}
+
+function renderEstPlanPage() {
+  const options = estBudgetOptions();
+  const activities = Object.keys(state.estData?.activityTotals || {}).sort();
+  const plans = [...state.estWorkPlans].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  return `
+    <div class="est-page">
+      <div class="report-title">
+        <div>
+          <h2>วางแผนงาน</h2>
+          <p>สร้างแผนจากงบประมาณ 2569 แล้วส่งต่อเป็นใบสั่งงานเพื่อให้หัวหน้าเลือกไปบันทึกงานจริง</p>
+        </div>
+      </div>
+      ${renderEstFlowHeader()}
+      <section class="est-entry-grid">
+        <form class="est-entry-form">
+          <label>เลขที่แผน<input id="estPlanNo" type="text" placeholder="PLAN-2569-001"></label>
+          <label>วันที่เริ่ม<input id="estPlanStart" type="date"></label>
+          <label>วันที่สิ้นสุด<input id="estPlanEnd" type="date"></label>
+          <label>กิจกรรม
+            <select id="estPlanActivity">${activities.map((activity) => `<option value="${esc(activity)}">${esc(activity)}</option>`).join("")}</select>
+          </label>
+          <label class="est-form-wide">บล็อก / ข้อมูลงบประมาณ
+            <select id="estPlanBlock">
+              ${options.map((item) => `<option value="${esc(item.block)}" data-sheet="${esc(item.sheet)}" data-rate="${esc(item.rate)}" data-activity="${esc(item.activity)}" data-row="${esc(item.sourceRow)}">${esc(item.block)} · ${esc(item.activity)} · ${esc(item.sheet)}</option>`).join("")}
+            </select>
+          </label>
+          <label>คนงานแผน<input id="estPlanWorkers" type="number" step="1" min="0"></label>
+          <label>ปริมาณแผน<input id="estPlanQty" type="number" step="0.01" min="0"></label>
+          <label>งบประมาณ<input id="estPlanBudget" type="number" step="0.01" min="0"></label>
+          <label class="est-form-wide">หมายเหตุ<input id="estPlanNote" type="text"></label>
+          <div class="est-form-actions"><button type="button" data-est-save-plan>บันทึกแผน</button></div>
+        </form>
+        <section class="est-panel est-source-card">
+          <div class="section-head"><h3>หลักการดึงข้อมูล</h3><span>Plan source</span></div>
+          <div class="est-source-list">
+            <p><strong>บล็อก/กิจกรรม/อัตรา:</strong> ดึงจากไฟล์ ${esc(state.estData?.source?.budgetFile || "")}</p>
+            <p><strong>ปลายทาง Supabase:</strong> <code>est_work_plans</code></p>
+            <p><strong>ขั้นถัดไป:</strong> ไปที่เมนูสั่งงานเพื่อดึงแผนนี้ไปออกใบสั่งงาน</p>
+          </div>
+        </section>
+      </section>
+      <section class="est-panel">
+        <div class="section-head"><h3>แผนงานที่สร้างแล้ว</h3><span>${fmt(plans.length)} plans</span></div>
+        <div class="table-wrap est-table-wrap">
+          <table class="mini-table est-table">
+            <thead><tr><th></th><th>แผน</th><th>ช่วงวันที่</th><th>กิจกรรม</th><th>บล็อก</th><th>คนงาน</th><th>ปริมาณ</th><th>งบ</th><th>สถานะ</th><th>ที่มา</th></tr></thead>
+            <tbody>${plans.map((plan) => `<tr>
+              <td><button type="button" data-est-plan-to-order="${esc(plan.id)}">ออกใบสั่งงาน</button></td>
+              <td>${esc(plan.planNo)}</td>
+              <td>${esc(plan.startDate)} - ${esc(plan.endDate)}</td>
+              <td>${esc(plan.activity)}</td>
+              <td>${esc(plan.block)}</td>
+              <td>${fmt(plan.workers)}</td>
+              <td>${fmt(plan.quantity)}</td>
+              <td>${moneyNf.format(n(plan.budget))}</td>
+              <td>${esc(plan.status)}</td>
+              <td>${esc(plan.sourceSheet)} #${esc(plan.sourceRow)}</td>
+            </tr>`).join("")}</tbody>
+          </table>
+        </div>
+      </section>
+      ${renderEstBudgetTable()}
+    </div>`;
+}
+
+function renderEstWorkOrderPage() {
+  const plans = state.estWorkPlans;
+  const orders = [...state.estWorkOrders].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  return `
+    <div class="est-page">
+      <div class="report-title"><h2>สั่งงาน</h2><p>ดึงแผนงานที่สร้างไว้มาออกใบสั่งงาน แล้วส่งต่อให้เมนูบันทึกทำงานเลือกใช้งาน</p></div>
+      ${renderEstFlowHeader()}
+      <section class="est-entry-grid">
+        <form class="est-entry-form">
+          <label class="est-form-wide">เลือกแผนงาน
+            <select id="estOrderPlan">
+              ${plans.map((plan) => `<option value="${esc(plan.id)}">${esc(plan.planNo)} · ${esc(plan.activity)} · ${esc(plan.block)}</option>`).join("")}
+            </select>
+          </label>
+          <label>เลขที่ใบสั่งงาน<input id="estOrderNo" type="text" placeholder="WO-2569-001"></label>
+          <label>วันที่สั่งงาน<input id="estOrderDate" type="date"></label>
+          <label>หัวหน้า/ทีม<input id="estOrderSupervisor" type="text"></label>
+          <label>สถานะ
+            <select id="estOrderStatus">
+              <option value="Scheduled">Scheduled</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Done">Done</option>
+            </select>
+          </label>
+          <label class="est-form-wide">หมายเหตุ<input id="estOrderNote" type="text"></label>
+          <div class="est-form-actions"><button type="button" data-est-save-order>บันทึกใบสั่งงาน</button></div>
+        </form>
+        <section class="est-panel est-source-card">
+          <div class="section-head"><h3>การเชื่อม flow</h3><span>Work Order source</span></div>
+          <div class="est-source-list">
+            <p><strong>ใบสั่งงานต้องเลือกจากแผน:</strong> ไม่มีแผนจะไม่มีข้อมูลให้สั่งงาน</p>
+            <p><strong>ปลายทาง Supabase:</strong> <code>est_work_orders</code></p>
+            <p><strong>ขั้นถัดไป:</strong> เมนูบันทึกทำงานจะดึงเลขใบสั่งงานจากรายการนี้</p>
+          </div>
+        </section>
+      </section>
+      <section class="est-panel">
+        <div class="section-head"><h3>ใบสั่งงาน</h3><span>${fmt(orders.length)} work orders</span></div>
+        <div class="table-wrap est-table-wrap">
+          <table class="mini-table est-table">
+            <thead><tr><th></th><th>WO</th><th>วันที่</th><th>แผน</th><th>กิจกรรม</th><th>บล็อก</th><th>หัวหน้า</th><th>สถานะ</th></tr></thead>
+            <tbody>${orders.map((order) => `<tr>
+              <td><button type="button" data-est-del-order="${esc(order.id)}">ลบ</button></td>
+              <td>${esc(order.orderNo)}</td>
+              <td>${esc(order.orderDate)}</td>
+              <td>${esc(order.planNo)}</td>
+              <td>${esc(order.activity)}</td>
+              <td>${esc(order.block)}</td>
+              <td>${esc(order.supervisor)}</td>
+              <td>${esc(order.status)}</td>
+            </tr>`).join("")}</tbody>
+          </table>
+        </div>
+      </section>
+    </div>`;
+}
+
+function renderEstDailyEntryPage() {
+  const options = estBudgetOptions();
+  const activities = Object.keys(state.estData?.activityTotals || {}).sort();
+  const orders = state.estWorkOrders;
+  const recent = [...state.estDailyEntries].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 80);
+  const datasetRows = estDatasets().map((dataset) => `
+    <tr>
+      <td>${esc(dataset.sheet)}</td>
+      <td>${esc(dataset.activity)}</td>
+      <td>${fmt(dataset.rowCount)}</td>
+      <td>${esc((dataset.headers || []).slice(0, 6).join(", "))}</td>
+      <td>${esc(state.estData?.source?.budgetFile || "")}</td>
+    </tr>`).join("");
+  return `
+    <div class="est-page">
+      <div class="report-title">
+        <div>
+          <h2>บันทึกข้อมูลการทำงาน</h2>
+          <p>บันทึกงานจริงรายวัน โดยดึงใบสั่งงานจาก flow วางแผนงาน → สั่งงาน และยังอ้างอิงงบประมาณ 2569 ได้</p>
+        </div>
+      </div>
+      ${renderEstFlowHeader()}
+      <section class="est-entry-grid">
+        <form id="estDailyForm" class="est-entry-form">
+          <label>วันที่ทำงาน<input id="estWorkDate" type="date" required></label>
+          <label class="est-form-wide">ใบสั่งงานจากแผน
+            <select id="estWorkOrderSelect">
+              <option value="">เลือกใบสั่งงาน หรือบันทึกเอง</option>
+              ${orders.map((order) => `<option value="${esc(order.id)}" data-order="${esc(order.orderNo)}" data-activity="${esc(order.activity)}" data-block="${esc(order.block)}" data-sheet="${esc(order.sourceSheet)}" data-row="${esc(order.sourceRow)}" data-rate="${esc(order.rate)}">${esc(order.orderNo)} · ${esc(order.activity)} · ${esc(order.block)}</option>`).join("")}
+            </select>
+          </label>
+          <label>กิจกรรม
+            <select id="estWorkActivity">
+              ${activities.map((activity) => `<option value="${esc(activity)}">${esc(activity)}</option>`).join("")}
+            </select>
+          </label>
+          <label>บล็อก / แหล่งข้อมูล
+            <select id="estWorkBlock">
+              ${options.map((item) => `<option value="${esc(item.block)}" data-sheet="${esc(item.sheet)}" data-rate="${esc(item.rate)}" data-activity="${esc(item.activity)}" data-row="${esc(item.sourceRow)}">${esc(item.block)} · ${esc(item.sheet)}</option>`).join("")}
+            </select>
+          </label>
+          <label>เลขที่ใบสั่งงาน<input id="estWorkOrder" type="text" placeholder="ดึงจากใบสั่งงาน หรือกรอกเอง"></label>
+          <label>จำนวนคนงาน<input id="estWorkerCount" type="number" step="1" min="0"></label>
+          <label>ปริมาณงาน<input id="estQuantity" type="number" step="0.01" min="0"></label>
+          <label>น้ำหนักตัน<input id="estWeightTon" type="number" step="0.001" min="0"></label>
+          <label>จำนวนทะลาย<input id="estBunchCount" type="number" step="1" min="0"></label>
+          <label>อัตราค่าแรง<input id="estRate" type="number" step="0.01" min="0"></label>
+          <label>เงินหัก<input id="estDeduction" type="number" step="0.01" min="0"></label>
+          <label class="est-form-wide">หมายเหตุ<input id="estWorkNote" type="text"></label>
+          <div class="est-form-actions">
+            <button type="button" data-est-save-work>บันทึกข้อมูล</button>
+          </div>
+        </form>
+        <section class="est-panel est-source-card">
+          <div class="section-head">
+            <h3>รายละเอียดดึงข้อมูล</h3>
+            <span>แสดงที่มาของ dropdown และงบประมาณ</span>
+          </div>
+          <div class="est-source-list">
+            <p><strong>ไฟล์หลัก:</strong> ${esc(state.estData?.source?.budgetFile || "")}</p>
+            <p><strong>Requirement:</strong> ${esc(state.estData?.source?.estFile || "est.docx")}</p>
+            <p><strong>ใบสั่งงานจากแผน:</strong> ${fmt(orders.length)} รายการ จาก <code>est_work_orders</code></p>
+            <p><strong>Dataset งบประมาณ:</strong> ${fmt(state.estData?.source?.datasetCount || 0)} ชีต / ${fmt(state.estData?.source?.rowCount || 0)} แถว</p>
+            <p><strong>ตัวเลือกบล็อก:</strong> ${fmt(options.length)} รายการ</p>
+            <p><strong>ปลายทางฐานข้อมูล:</strong> Supabase table <code>est_daily_entries</code>, <code>est_payroll_lines</code></p>
+          </div>
+        </section>
+      </section>
+      <section class="est-panel">
+        <div class="section-head"><h3>รายการบันทึกล่าสุด</h3><span>${fmt(state.estDailyEntries.length)} draft records</span></div>
+        <div class="table-wrap est-table-wrap">
+          <table class="mini-table est-table">
+            <thead><tr><th></th><th>วันที่</th><th>กิจกรรม</th><th>บล็อก</th><th>ใบสั่งงาน</th><th>คนงาน</th><th>ปริมาณ</th><th>ตัน</th><th>อัตรา</th><th>เงินหัก</th><th>ที่มา</th></tr></thead>
+            <tbody>
+              ${recent.map((row) => `<tr>
+                <td><button type="button" data-est-del-work="${esc(row.id)}">ลบ</button></td>
+                <td>${esc(row.date)}</td>
+                <td>${esc(row.activity)}</td>
+                <td>${esc(row.block)}</td>
+                <td>${esc(row.workOrder)}</td>
+                <td>${fmt(row.workerCount)}</td>
+                <td>${fmt(row.quantity)}</td>
+                <td>${tonNf.format(n(row.weightTon))}</td>
+                <td>${moneyNf.format(n(row.rate))}</td>
+                <td>${moneyNf.format(n(row.deduction))}</td>
+                <td>${esc(row.sourceSheet)} #${esc(row.sourceRow)}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="est-panel">
+        <div class="section-head"><h3>รายละเอียดข้อมูลที่ดึงมา</h3><span>ทุกชีตจากประมาณการค่าใช้จ่าย 2569</span></div>
+        <div class="table-wrap est-table-wrap">
+          <table class="mini-table">
+            <thead><tr><th>ชีต</th><th>กลุ่มกิจกรรม</th><th>Rows</th><th>คอลัมน์ที่อ่านได้</th><th>ไฟล์</th></tr></thead>
+            <tbody>${datasetRows}</tbody>
+          </table>
+        </div>
+      </section>
+      ${renderEstToolbar()}
+      ${renderEstBudgetTable()}
+    </div>`;
+}
+
+function saveEstDailyWorkEntry() {
+  const blockSelect = document.querySelector("#estWorkBlock");
+  const orderSelect = document.querySelector("#estWorkOrderSelect");
+  const selected = blockSelect?.selectedOptions?.[0];
+  const selectedOrder = orderSelect?.selectedOptions?.[0];
+  const row = {
+    id: `work-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    date: document.querySelector("#estWorkDate")?.value || isoDateFromUtc(new Date()),
+    workOrderId: orderSelect?.value || "",
+    activity: selectedOrder?.dataset.activity || document.querySelector("#estWorkActivity")?.value || selected?.dataset.activity || "",
+    block: selectedOrder?.dataset.block || blockSelect?.value || "",
+    workOrder: selectedOrder?.dataset.order || document.querySelector("#estWorkOrder")?.value.trim() || "",
+    workerCount: n(document.querySelector("#estWorkerCount")?.value),
+    quantity: n(document.querySelector("#estQuantity")?.value),
+    weightTon: n(document.querySelector("#estWeightTon")?.value),
+    bunchCount: n(document.querySelector("#estBunchCount")?.value),
+    rate: n(document.querySelector("#estRate")?.value || selectedOrder?.dataset.rate || selected?.dataset.rate),
+    deduction: n(document.querySelector("#estDeduction")?.value),
+    note: document.querySelector("#estWorkNote")?.value.trim() || "",
+    sourceSheet: selectedOrder?.dataset.sheet || selected?.dataset.sheet || "",
+    sourceRow: selectedOrder?.dataset.row || selected?.dataset.row || "",
+    createdAt: new Date().toISOString(),
+    targetTables: ["est_daily_entries", "est_payroll_lines"],
+  };
+  state.estDailyEntries.push(row);
+  saveEstDailyEntries();
+  render();
+}
+
+function saveEstWorkPlan() {
+  const meta = estSelectedBudgetMeta("estPlanBlock");
+  const planNo = document.querySelector("#estPlanNo")?.value.trim() || `PLAN-${Date.now()}`;
+  const plan = {
+    id: `plan-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    planNo,
+    startDate: document.querySelector("#estPlanStart")?.value || "",
+    endDate: document.querySelector("#estPlanEnd")?.value || "",
+    activity: document.querySelector("#estPlanActivity")?.value || meta.activity,
+    block: meta.block,
+    workers: n(document.querySelector("#estPlanWorkers")?.value),
+    quantity: n(document.querySelector("#estPlanQty")?.value),
+    budget: n(document.querySelector("#estPlanBudget")?.value),
+    note: document.querySelector("#estPlanNote")?.value.trim() || "",
+    rate: meta.rate,
+    sourceSheet: meta.sheet,
+    sourceRow: meta.sourceRow,
+    status: "Planned",
+    createdAt: new Date().toISOString(),
+    targetTable: "est_work_plans",
+  };
+  state.estWorkPlans.push(plan);
+  saveEstWorkPlans();
+  render();
+}
+
+function saveEstMasterRecord() {
+  const category = state.estMasterCategory;
+  const config = EST_MASTER_CATEGORIES[category] || EST_MASTER_CATEGORIES.areas;
+  const current = state.estMasterEditId
+    ? state.estMasterRecords.find((row) => row.id === state.estMasterEditId)
+    : null;
+  const row = current || {
+    id: `master-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    category,
+    createdAt: new Date().toISOString(),
+  };
+  for (const input of els.reportPage.querySelectorAll("[data-est-master-field]")) {
+    row[input.dataset.estMasterField] = input.value.trim();
+  }
+  row.category = category;
+  row.targetTable = config.table;
+  row.updatedAt = new Date().toISOString();
+  if (!current) state.estMasterRecords.push(row);
+  state.estMasterEditId = "";
+  saveEstMasterRecords();
+  render();
+}
+
+function setEstMasterSyncMessage(message) {
+  state.estMasterSyncMessage = message;
+}
+
+function activeEstMasterDraftRows() {
+  return state.estMasterRecords.filter((row) => row.category === state.estMasterCategory);
+}
+
+function normalizeEstMasterDbRows(rows, categoryKey, table) {
+  return (rows || []).map((row, index) => ({
+    ...row,
+    id: row.id || `db-${categoryKey}-${Date.now()}-${index}`,
+    category: row.category || categoryKey,
+    targetTable: row.targetTable || row.target_table || table,
+    _source: row._source || "database",
+    readonly: false,
+  }));
+}
+
+async function syncEstMasterToDatabase() {
+  const categoryKey = state.estMasterCategory;
+  const category = EST_MASTER_CATEGORIES[categoryKey] || EST_MASTER_CATEGORIES.areas;
+  const rows = activeEstMasterDraftRows();
+  if (!rows.length) {
+    setEstMasterSyncMessage("ยังไม่มีข้อมูล draft ในหมวดนี้สำหรับบันทึกลงฐานข้อมูล");
+    render();
+    return;
+  }
+  state.estMasterSyncBusy = true;
+  setEstMasterSyncMessage(`กำลังบันทึก ${fmt(rows.length)} รายการ ไปที่ ${category.table}...`);
+  render();
+  try {
+    const res = await fetch(EST_MASTER_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "upsert", category: categoryKey, table: category.table, rows }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || payload.ok === false) throw new Error(payload.error || `HTTP ${res.status}`);
+    const savedRows = normalizeEstMasterDbRows(payload.rows || rows, categoryKey, category.table);
+    const savedIds = new Set(savedRows.map((row) => row.id));
+    state.estMasterRecords = state.estMasterRecords
+      .filter((row) => row.category !== categoryKey || !savedIds.has(row.id))
+      .concat(savedRows);
+    saveEstMasterRecords();
+    setEstMasterSyncMessage(`บันทึกลงฐานข้อมูลแล้ว ${fmt(savedRows.length)} รายการ (${category.table})`);
+  } catch (err) {
+    setEstMasterSyncMessage(`ยังเชื่อมฐานข้อมูลไม่ได้: ${err.message}. ระบบเก็บ draft ไว้ในเครื่องก่อน`);
+  } finally {
+    state.estMasterSyncBusy = false;
+    render();
+  }
+}
+
+async function loadEstMasterFromDatabase() {
+  const categoryKey = state.estMasterCategory;
+  const category = EST_MASTER_CATEGORIES[categoryKey] || EST_MASTER_CATEGORIES.areas;
+  state.estMasterSyncBusy = true;
+  setEstMasterSyncMessage(`กำลังเรียกดูข้อมูลจาก ${category.table}...`);
+  render();
+  try {
+    const url = `${EST_MASTER_API}?category=${encodeURIComponent(categoryKey)}&table=${encodeURIComponent(category.table)}&t=${Date.now()}`;
+    const res = await fetch(url, { cache: "no-store" });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || payload.ok === false) throw new Error(payload.error || `HTTP ${res.status}`);
+    const dbRows = normalizeEstMasterDbRows(payload.rows || payload.data || [], categoryKey, category.table);
+    state.estMasterRecords = state.estMasterRecords.filter((row) => row.category !== categoryKey).concat(dbRows);
+    state.estMasterEditId = "";
+    saveEstMasterRecords();
+    setEstMasterSyncMessage(`เรียกดูข้อมูลจากฐานข้อมูลแล้ว ${fmt(dbRows.length)} รายการ พร้อมแก้ไขในตาราง`);
+  } catch (err) {
+    setEstMasterSyncMessage(`ยังเรียกดูฐานข้อมูลไม่ได้: ${err.message}. แสดงข้อมูล draft และข้อมูลอ้างอิงเดิมก่อน`);
+  } finally {
+    state.estMasterSyncBusy = false;
+    render();
+  }
+}
+
+function createEstWorkOrderFromPlan(plan, overrides = {}) {
+  if (!plan) return null;
+  const order = {
+    id: `wo-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    planId: plan.id,
+    planNo: plan.planNo,
+    orderNo: overrides.orderNo || `WO-${Date.now()}`,
+    orderDate: overrides.orderDate || plan.startDate || isoDateFromUtc(new Date()),
+    supervisor: overrides.supervisor || "",
+    status: overrides.status || "Scheduled",
+    note: overrides.note || "",
+    activity: plan.activity,
+    block: plan.block,
+    workers: plan.workers,
+    quantity: plan.quantity,
+    budget: plan.budget,
+    rate: plan.rate,
+    sourceSheet: plan.sourceSheet,
+    sourceRow: plan.sourceRow,
+    createdAt: new Date().toISOString(),
+    targetTable: "est_work_orders",
+  };
+  state.estWorkOrders.push(order);
+  plan.status = "Ordered";
+  saveEstWorkOrders();
+  saveEstWorkPlans();
+  return order;
+}
+
+function saveEstWorkOrder() {
+  const planId = document.querySelector("#estOrderPlan")?.value || "";
+  const plan = state.estWorkPlans.find((item) => item.id === planId);
+  createEstWorkOrderFromPlan(plan, {
+    orderNo: document.querySelector("#estOrderNo")?.value.trim() || "",
+    orderDate: document.querySelector("#estOrderDate")?.value || "",
+    supervisor: document.querySelector("#estOrderSupervisor")?.value.trim() || "",
+    status: document.querySelector("#estOrderStatus")?.value || "Scheduled",
+    note: document.querySelector("#estOrderNote")?.value.trim() || "",
+  });
+  render();
+}
+
+function renderEstDashboard() {
+  const source = state.estData?.source || {};
+  const totals = state.estData?.activityTotals || {};
+  const rows = Object.entries(totals).sort((a, b) => n(b[1].laborCost) - n(a[1].laborCost));
+  const totalCost = rows.reduce((sum, [, item]) => sum + n(item.laborCost), 0);
+  const totalArea = rows.reduce((sum, [, item]) => sum + n(item.areaRai), 0);
+  const totalTrees = rows.reduce((sum, [, item]) => sum + n(item.trees), 0);
+  return `
+    <div class="est-page">
+      <div class="report-title">
+        <div>
+          <h2>EST Palm Management</h2>
+          <p>ใช้ ${esc(source.budgetFile || "ประมาณการค่าใช้จ่าย 2569.xlsx")} เป็นหลัก และรวมข้อมูลอ้างอิงจากโฟลเดอร์ Master Data</p>
+        </div>
+      </div>
+      <section class="est-kpis">
+        <article><span>ชีตงบประมาณ</span><strong>${fmt(source.datasetCount || 0)}</strong></article>
+        <article><span>แถวข้อมูล</span><strong>${fmt(source.rowCount || 0)}</strong></article>
+        <article><span>พื้นที่อ้างอิง</span><strong>${fmt(totalArea)}</strong></article>
+        <article><span>จำนวนต้น</span><strong>${fmt(totalTrees)}</strong></article>
+        <article><span>งบ/ค่าแรงรวม</span><strong>${moneyNf.format(totalCost)}</strong></article>
+      </section>
+      <section class="est-grid">
+        <article class="est-panel">
+          <div class="section-head"><h3>งบประมาณตามกลุ่มกิจกรรม</h3><span>เรียงตามมูลค่า</span></div>
+          <div class="est-bars">
+            ${rows.map(([activity, item]) => {
+              const pct = totalCost ? Math.max(3, (n(item.laborCost) / totalCost) * 100) : 0;
+              return `<div><span>${esc(activity)}</span><b style="width:${pct}%"></b><strong>${moneyNf.format(n(item.laborCost))}</strong></div>`;
+            }).join("")}
+          </div>
+        </article>
+        <article class="est-panel">
+          <div class="section-head"><h3>เมนูจาก est.docx</h3><span>${fmt(state.estData?.estDoc?.paragraphs?.length || 0)} รายการ requirement</span></div>
+          <ol class="est-flow">
+            ${(state.estData?.estDoc?.paragraphs || []).slice(0, 10).map((line) => `<li>${esc(line)}</li>`).join("")}
+          </ol>
+        </article>
+      </section>
+    </div>`;
+}
+
+const EST_MASTER_CATEGORIES = {
+  areas: {
+    title: "ข้อมูลพื้นที่",
+    detail: "แบ่งทุกระดับ เก็บถึงจำนวนต้น และปีปลูก",
+    table: "est_blocks",
+    fields: [["zone", "ตอนบน/ตอนล่าง"], ["area", "แปลง"], ["block", "บล็อก"], ["palmYear", "ปีปลูก/รุ่นปี"], ["rai", "จำนวนไร่"], ["trees", "จำนวนต้น"], ["manager", "ผู้จัดการพื้นที่"]],
+  },
+  people: {
+    title: "ข้อมูลพนักงาน/ผู้รับเหมา",
+    detail: "แบ่งกลุ่มตอนบน/ล่าง ค่าแรง ผู้จัดการ ทีมหัวหน้า และผู้รับเหมา เพิ่มแก้ ระยะเวลาทำงาน",
+    table: "est_workers, est_contractors",
+    fields: [["code", "รหัส"], ["name", "ชื่อ"], ["role", "ตำแหน่ง/ประเภท"], ["zone", "ตอนบน/ตอนล่าง"], ["team", "ทีม"], ["rate", "ค่าแรง"], ["startDate", "เริ่มงาน"], ["endDate", "สิ้นสุด"]],
+  },
+  payrollTypes: {
+    title: "ประเภทเงินเพิ่ม/เงินหัก",
+    detail: "เพิ่ม แก้ไข การลาแปรผันตามพนักงาน ตามบันทึกค่าแรง",
+    table: "est_payroll_types",
+    fields: [["code", "รหัส"], ["name", "ชื่อรายการ"], ["type", "เพิ่ม/หัก/ลา/ล่วงเวลา"], ["method", "วิธีคำนวณ"], ["rate", "อัตรา"], ["variableByWorker", "แปรผันตามพนักงาน"]],
+  },
+  system: {
+    title: "ข้อมูลระบบงาน",
+    detail: "สถานะงาน ลำดับ flow และค่าตั้งต้นของระบบงานสวน",
+    table: "est_system_settings",
+    fields: [["key", "รหัสตั้งค่า"], ["name", "ชื่อรายการ"], ["group", "กลุ่มระบบ"], ["value", "ค่า"], ["description", "รายละเอียด"]],
+  },
+  budget: {
+    title: "ข้อมูลงบประมาณ",
+    detail: "บันทึกงบประมาณตามกิจกรรมรายบล็อก อัตราตามกิจกรรม และตามคนงาน/ผู้รับเหมา",
+    table: "est_budget_lines",
+    fields: [["fiscalYear", "ปีงบประมาณ"], ["activity", "กิจกรรม"], ["block", "บล็อก"], ["rate", "อัตรา"], ["workerRate", "อัตราคนงาน"], ["contractorRate", "อัตราผู้รับเหมา"], ["budget", "งบประมาณ"]],
+  },
+  activities: {
+    title: "ข้อมูลงานกิจกรรม",
+    detail: "จัดเป็นกลุ่มกิจกรรมใหญ่และย่อยลงมา พร้อมบันทึกแก้ไข",
+    table: "est_activities",
+    fields: [["group", "กลุ่มกิจกรรมใหญ่"], ["code", "รหัสกิจกรรม"], ["name", "กิจกรรมย่อย"], ["unit", "หน่วย"], ["defaultRate", "อัตราตั้งต้น"], ["description", "รายละเอียด"]],
+  },
+};
+
+function estMasterSourceRows(category) {
+  const options = estBudgetOptions();
+  if (category === "areas") {
+    return options.slice(0, 80).map((row) => ({
+      zone: row.block.includes("-T") ? "ตอนบน" : row.block.includes("-B") || row.block.includes("-P") ? "ตอนล่าง" : "",
+      area: row.area,
+      block: row.block,
+      palmYear: String(row.block).slice(0, 2),
+      rai: row.rai,
+      trees: row.trees,
+      manager: "",
+      _source: `${row.sheet} #${row.sourceRow}`,
+    }));
+  }
+  if (category === "budget") {
+    return options.slice(0, 80).map((row) => ({
+      fiscalYear: "2569",
+      activity: row.activity,
+      block: row.block,
+      rate: row.rate,
+      workerRate: row.rate,
+      contractorRate: "",
+      budget: "",
+      _source: `${row.sheet} #${row.sourceRow}`,
+    }));
+  }
+  if (category === "activities") {
+    return Object.keys(state.estData?.activityTotals || {}).map((activity, index) => ({
+      group: activity,
+      code: `ACT-${String(index + 1).padStart(3, "0")}`,
+      name: activity,
+      unit: "",
+      defaultRate: "",
+      description: "จากกลุ่มกิจกรรมในงบประมาณ 2569",
+      _source: state.estData?.source?.budgetFile || "",
+    }));
+  }
+  return [];
+}
+
+function estMasterRows(category) {
+  return [
+    ...estMasterSourceRows(category).map((row, index) => ({ ...row, id: `source-${category}-${index}`, readonly: true })),
+    ...state.estMasterRecords.filter((row) => row.category === category),
+  ];
+}
+
+function renderEstMaster() {
+  const categoryKey = state.estMasterCategory;
+  const category = EST_MASTER_CATEGORIES[categoryKey] || EST_MASTER_CATEGORIES.areas;
+  const draftRows = state.estMasterRecords.filter((row) => row.category === categoryKey);
+  const rows = estMasterRows(categoryKey);
+  const edit = state.estMasterRecords.find((row) => row.id === state.estMasterEditId && row.category === categoryKey) || {};
+  const syncMessage = state.estMasterSyncMessage
+    ? `<div class="est-sync-message">${esc(state.estMasterSyncMessage)}</div>`
+    : "";
+  const cards = Object.entries(EST_MASTER_CATEGORIES).map(([key, item]) => `
+    <button class="est-master-card${key === categoryKey ? " active" : ""}" type="button" data-est-master-category="${esc(key)}">
+      <strong>${esc(item.title)}</strong>
+      <span>${esc(item.detail)}</span>
+      <small>${esc(item.table)}</small>
+    </button>`).join("");
+  const inputs = category.fields.map(([key, label]) => `
+    <label>${esc(label)}
+      <input data-est-master-field="${esc(key)}" value="${esc(edit[key] ?? "")}">
+    </label>`).join("");
+  return `
+    <div class="est-page">
+      <div class="report-title">
+        <div>
+          <h2>ข้อมูลหลัก</h2>
+          <p>แยกหมวดย่อยตามโครงสร้างระบบสวนปาล์ม เพิ่ม/แก้ไขเป็น draft และ map ไป Supabase ตามแต่ละตาราง</p>
+        </div>
+      </div>
+      <section class="est-master-grid">${cards}</section>
+      <section class="est-master-actions">
+        <button type="button" data-est-db-load ${state.estMasterSyncBusy ? "disabled" : ""}>เรียกดู/แก้ไข ข้อมูลในฐานข้อมูล</button>
+        <button type="button" data-est-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกข้อมูลในฐานข้อมูล</button>
+        <span>ปลายทาง: <code>${esc(category.table)}</code></span>
+      </section>
+      ${syncMessage}
+      <section class="est-entry-grid">
+        <form class="est-entry-form">
+          ${inputs}
+          <label class="est-form-wide">หมายเหตุ<input data-est-master-field="note" value="${esc(edit.note ?? "")}"></label>
+          <div class="est-form-actions">
+            <button type="button" data-est-save-master>${state.estMasterEditId ? "บันทึกแก้ไข" : "เพิ่มข้อมูล"}</button>
+          </div>
+        </form>
+        <section class="est-panel est-source-card">
+          <div class="section-head"><h3>${esc(category.title)}</h3><span>${fmt(draftRows.length)} draft records</span></div>
+          <div class="est-source-list">
+            <p><strong>รายละเอียด:</strong> ${esc(category.detail)}</p>
+            <p><strong>Supabase:</strong> <code>${esc(category.table)}</code></p>
+            <p><strong>ข้อมูลอ้างอิง:</strong> ${categoryKey === "areas" || categoryKey === "budget" || categoryKey === "activities" ? "ประมาณการค่าใช้จ่าย 2569.xlsx" : "บันทึกเพิ่ม/แก้ไขในระบบ"}</p>
+          </div>
+        </section>
+      </section>
+      <section class="est-panel">
+        <div class="section-head"><h3>${esc(category.title)}</h3><span>${fmt(rows.length)} records</span></div>
+        <div class="table-wrap est-table-wrap">
+          <table class="mini-table est-table">
+            <thead><tr><th></th>${category.fields.map(([, label]) => `<th>${esc(label)}</th>`).join("")}<th>ที่มา</th></tr></thead>
+            <tbody>${rows.slice(0, 220).map((row) => `<tr class="${row.readonly ? "" : "is-added"}">
+              <td>${row.readonly ? "" : `<button type="button" data-est-edit-master="${esc(row.id)}">แก้ไข</button> <button type="button" data-est-del-master="${esc(row.id)}">ลบ</button>`}</td>
+              ${category.fields.map(([key]) => `<td>${esc(row[key] ?? "")}</td>`).join("")}
+              <td>${esc(row._source || (row.readonly ? "source" : "draft"))}</td>
+            </tr>`).join("")}</tbody>
+          </table>
+        </div>
+      </section>
+    </div>`;
+}
+
+function renderEstWorkflow(kind) {
+  const workflow = {
+    "est-plan": ["สร้างแผนรายเดือน/รายปี", "เลือกแปลงและบล็อกจากข้อมูลหลัก", "เลือกกิจกรรมและอัตราค่าแรง", "ประเมินคนงาน วัสดุ และเครื่องจักร", "ส่งต่อเป็นใบสั่งงาน"],
+    "est-workorder": ["รับงานจากแผน", "กำหนดหัวหน้า/กลุ่มคนงาน/ผู้รับเหมา", "แนบรายการเบิกพัสดุ", "ออกใบสั่งงาน", "ติดตามสถานะ Scheduled / In Progress / Done"],
+    "est-daily": ["เลือกใบสั่งงาน", "บันทึกงานจริงสิ้นวัน", "บันทึกคนงาน รายคน/รายทีม", "บันทึกเงินหักรวมและรายคน", "ปิดงานและส่งต่อค่าแรง"],
+    "est-payroll": ["ตั้งอัตราค่าแรงตามกิจกรรม", "บันทึกเงินเพิ่ม/หัก/ล่วงเวลา/ลา", "คำนวณค่าแรงรายคน", "ตรวจเทียบผลงานและประสิทธิภาพ", "ส่งออกสรุปค่าแรง"],
+    "est-report": ["สรุปตามช่วงวันที่", "แยกตามแปลง/บล็อก/กิจกรรม", "เปรียบเทียบแผนกับงานจริง", "วิเคราะห์ค่าแรงรายคน", "ส่งออกรายงานผู้บริหาร"],
+  };
+  const labels = { "est-plan": "วางแผนงาน", "est-workorder": "สั่งงาน", "est-daily": "บันทึกทำงาน", "est-payroll": "อัตราค่าแรง", "est-report": "รายงาน" };
+  const steps = workflow[kind] || [];
+  return `
+    <div class="est-page">
+      <div class="report-title"><h2>${esc(labels[kind] || "ระบบงาน")}</h2><p>ออกแบบตาม flow จากไฟล์ est.docx และเชื่อมกับงบประมาณ 2569</p></div>
+      <section class="est-panel">
+        <div class="est-process">${steps.map((step, index) => `<article><b>${index + 1}</b><span>${esc(step)}</span></article>`).join("")}</div>
+      </section>
+      ${renderEstToolbar()}
+      ${renderEstBudgetTable()}
+    </div>`;
+}
+
+function renderEstStack() {
+  return `
+    <div class="est-page">
+      <div class="report-title"><h2>Vercel + Supabase + GitHub</h2><p>ออกแบบระบบใหม่ให้ใช้ 3 ส่วนนี้เท่านั้น</p></div>
+      <section class="est-stack-grid">
+        <article><strong>GitHub</strong><span>เก็บ source code, schema, migration และ trigger deploy</span></article>
+        <article><strong>Vercel</strong><span>host webapp, preview/production deploy, environment variables</span></article>
+        <article><strong>Supabase</strong><span>Postgres, Auth, Row Level Security, Storage, Realtime</span></article>
+      </section>
+      <section class="est-panel">
+        <div class="section-head"><h3>ตารางหลักใน Supabase</h3><span>ดูไฟล์ supabase/schema.sql</span></div>
+        <div class="palm-chip-list database">
+          ${["est_areas", "est_blocks", "est_workers", "est_contractors", "est_activities", "est_budget_lines", "est_work_plans", "est_work_orders", "est_daily_entries", "est_payroll_lines"].map((name) => `<span>${name}</span>`).join("")}
+        </div>
+      </section>
+    </div>`;
+}
+
+function renderEstBudget() {
+  return `<div class="est-page"><div class="report-title"><h2>งบประมาณ 2569</h2><p>ข้อมูลหลักจากไฟล์ประมาณการค่าใช้จ่าย 2569</p></div>${renderEstToolbar()}${renderEstBudgetTable()}</div>`;
+}
+
+function renderEstView() {
+  if (!state.estData) {
+    els.reportPage.innerHTML = `<p class="analytics-empty">กำลังโหลดข้อมูล EST...</p>`;
+    return;
+  }
+  if (state.view === "est-dashboard") els.reportPage.innerHTML = renderEstDashboard();
+  else if (state.view === "est-master") els.reportPage.innerHTML = renderEstMaster();
+  else if (state.view === "est-budget") els.reportPage.innerHTML = renderEstBudget();
+  else if (state.view === "est-plan") els.reportPage.innerHTML = renderEstPlanPage();
+  else if (state.view === "est-workorder") els.reportPage.innerHTML = renderEstWorkOrderPage();
+  else if (state.view === "est-daily") els.reportPage.innerHTML = renderEstDailyEntryPage();
+  else if (state.view === "est-stack") els.reportPage.innerHTML = renderEstStack();
+  else els.reportPage.innerHTML = renderEstWorkflow(state.view);
+}
+
+function masterDatasets() {
+  return state.masterData?.datasets || [];
+}
+
+function selectedMasterDataset() {
+  const datasets = masterDatasets();
+  let dataset = datasets.find((item) => item.id === state.masterFilters.datasetId);
+  if (!dataset && state.masterFilters.group !== "all") {
+    dataset = datasets.find((item) => item.group === state.masterFilters.group);
+  }
+  return dataset || datasets[0] || null;
+}
+
+function masterRows(dataset) {
+  if (!dataset) return [];
+  const query = state.masterFilters.query.trim().toLowerCase();
+  const rows = Array.isArray(dataset.rows) ? dataset.rows : [];
+  if (!query) return rows;
+  return rows.filter((row) => dataset.headers.some((header) => String(row[header] ?? "").toLowerCase().includes(query)));
+}
+
+function renderMasterData() {
+  const data = state.masterData || { source: {}, groups: [], datasets: [] };
+  const groups = data.groups || [];
+  const datasets = masterDatasets();
+  const groupDatasets = state.masterFilters.group === "all"
+    ? datasets
+    : datasets.filter((item) => item.group === state.masterFilters.group);
+  const current = selectedMasterDataset();
+  if (current && !groupDatasets.some((item) => item.id === current.id)) {
+    state.masterFilters.datasetId = groupDatasets[0]?.id || datasets[0]?.id || "";
+  }
+  const dataset = selectedMasterDataset();
+  const headers = (dataset?.headers || []).filter((header) => !String(header).startsWith("_"));
+  const displayHeaders = headers.slice(0, 10);
+  const rows = masterRows(dataset);
+  const editRow = state.masterFilters.editRowId === "__new__"
+    ? {}
+    : (dataset?.rows || []).find((row) => row._id === state.masterFilters.editRowId);
+  const editedAt = data.source?.editsUpdatedAt ? ` · แก้ไขล่าสุด ${esc(data.source.editsUpdatedAt)}` : "";
+  const groupOptions = [
+    `<option value="all"${state.masterFilters.group === "all" ? " selected" : ""}>ทุกกลุ่ม</option>`,
+    ...groups.map((group) => `<option value="${esc(group.name)}"${state.masterFilters.group === group.name ? " selected" : ""}>${esc(group.name)} (${fmt(group.rowCount)})</option>`),
+  ].join("");
+  const datasetOptions = groupDatasets.map((item) => `<option value="${esc(item.id)}"${dataset?.id === item.id ? " selected" : ""}>${esc(item.sheet)} · ${esc(item.file)} (${fmt(item.rowCount)})</option>`).join("");
+  const form = editRow ? `
+    <section class="master-edit-card">
+      <div class="master-edit-head">
+        <strong>${state.masterFilters.editRowId === "__new__" ? "เพิ่มข้อมูลใหม่" : "แก้ไขข้อมูล"}</strong>
+        <button type="button" data-master-cancel>ปิด</button>
+      </div>
+      <div class="master-form-grid">
+        ${headers.map((header) => `
+          <label>${esc(header)}
+            <input data-master-field="${esc(header)}" value="${esc(editRow[header] ?? "")}">
+          </label>
+        `).join("")}
+      </div>
+      <div class="master-edit-actions">
+        <button type="button" data-master-save="${state.masterFilters.editRowId === "__new__" ? "add" : "save"}">บันทึก</button>
+      </div>
+    </section>` : "";
+
+  els.reportPage.innerHTML = `
+    <div class="master-page">
+      <div class="report-title">
+        <div>
+          <h2>Master Data</h2>
+          <p>อ่านจากทุกไฟล์และทุกชีตในโฟลเดอร์ Master Data${editedAt}</p>
+        </div>
+        <button type="button" data-master-refresh>Refresh Master</button>
+      </div>
+      <section class="master-kpis">
+        <article><span>ไฟล์</span><strong>${fmt(data.source?.fileCount || 0)}</strong></article>
+        <article><span>ชุดข้อมูล</span><strong>${fmt(data.source?.datasetCount || datasets.length)}</strong></article>
+        <article><span>แถวข้อมูล</span><strong>${fmt(data.source?.rowCount || 0)}</strong></article>
+        <article><span>กลุ่ม</span><strong>${fmt(groups.length)}</strong></article>
+      </section>
+      <section class="master-toolbar">
+        <label>กลุ่มข้อมูล<select id="masterGroup">${groupOptions}</select></label>
+        <label>ชีต / Dataset<select id="masterDataset">${datasetOptions}</select></label>
+        <label>ค้นหา<input id="masterSearch" type="search" value="${esc(state.masterFilters.query)}" placeholder="ค้นหาในชุดข้อมูล"></label>
+        <button type="button" data-master-add>เพิ่มข้อมูล</button>
+      </section>
+      ${form}
+      <section class="master-detail">
+        <div class="master-detail-head">
+          <div>
+            <strong>${esc(dataset?.sheet || "ไม่มีข้อมูล")}</strong>
+            <span>${esc(dataset?.group || "")} · ${esc(dataset?.file || "")}</span>
+          </div>
+          <span>${fmt(rows.length)} / ${fmt(dataset?.rowCount || 0)} rows</span>
+        </div>
+        <div class="table-wrap master-table-wrap">
+          <table class="master-table">
+            <thead><tr><th></th>${displayHeaders.map((header) => `<th>${esc(header)}</th>`).join("")}</tr></thead>
+            <tbody>
+              ${rows.slice(0, 250).map((row) => `
+                <tr class="${row._edited ? "is-edited" : row._added ? "is-added" : ""}">
+                  <td><button type="button" data-master-edit="${esc(row._id)}">แก้ไข</button></td>
+                  ${displayHeaders.map((header) => `<td>${esc(row[header] ?? "")}</td>`).join("")}
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+        ${rows.length > 250 ? `<p class="master-note">แสดง 250 แถวแรกจากผลค้นหา ${fmt(rows.length)} แถว</p>` : ""}
+      </section>
+    </div>`;
+}
+
+async function saveMasterDataRow(action) {
+  const dataset = selectedMasterDataset();
+  if (!dataset) return;
+  const editRow = state.masterFilters.editRowId === "__new__"
+    ? {}
+    : (dataset.rows || []).find((row) => row._id === state.masterFilters.editRowId) || {};
+  const row = { ...editRow };
+  for (const input of els.reportPage.querySelectorAll("[data-master-field]")) {
+    row[input.dataset.masterField] = input.value.trim();
+  }
+  const res = await fetch(MASTER_DATA_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: action === "add" ? "add" : "save", datasetId: dataset.id, row }),
+  });
+  const payload = await res.json();
+  if (!res.ok || payload.ok === false) throw new Error(payload.error || "Save Master Data failed");
+  state.masterData = payload;
+  state.masterDataSignature = masterDataSignature(payload);
+  state.masterFilters.editRowId = "";
+  render();
+}
+
+function palmRecordDate(record) {
+  return isoDay(record.date || record.scheduledStart || record.plannedStart || record.executedStart);
+}
+
+function palmRecordTime(record) {
+  return record.startTime || "";
+}
+
+function palmRecordJob(record) {
+  return record.job || record.activity || "ไม่ระบุงาน";
+}
+
+function palmRecordArea(record) {
+  return record.area || record.terrain || "ไม่ระบุพื้นที่";
+}
+
+function palmRecordGroup(record) {
+  return record.group || record.activityGroup || "ไม่ระบุกลุ่ม";
+}
+
+function palmActualWeight(record) {
+  return Math.abs(n(record.actualValue));
+}
+
+function uniquePalmOptions(rows, getter) {
+  return [...new Set(rows.map(getter).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "th"));
+}
+
+function optionHtml(value, selected) {
+  return `<option value="${esc(value)}"${String(value) === String(selected) ? " selected" : ""}>${esc(value)}</option>`;
+}
+
+function initializePalmFilters() {
+  const dates = (state.cultivateWork?.workRows || []).map((row) => palmRecordDate(row)).filter(Boolean).sort();
+  if (!state.palmFilters.from) state.palmFilters.from = dates[0] || "";
+  if (!state.palmFilters.to) state.palmFilters.to = dates[dates.length - 1] || "";
+}
+
+function palmWorkScopeForView(view) {
+  const id = String(view || "");
+  if (id.includes("plan-and-schedule") || id === "palm-plan") {
+    return { title: "Plan & Schedule", match: (record) => /scheduled|planned/i.test(record.status || "") || n(record.scheduleValue) > 0 };
+  }
+  if (id.includes("daily-operations") || id === "palm-daily") {
+    return { title: "Daily Operations", match: () => true };
+  }
+  if (id === "palm-harvest" || id.includes("reports")) {
+    return { title: "Harvest / Reports", match: (record) => /AG08|เก็บเกี่ยว|Harvest/i.test([record.activityGroup, record.job, record.activity, record.group].join(" ")) };
+  }
+  if (id === "palm-inventory" || id.includes("maintenance")) {
+    return { title: "Inventory / Maintenance", match: (record) => /AG10|ขนส่ง|stock|warehouse|material|nursery/i.test([record.activityGroup, record.job, record.activity, record.group].join(" ")) };
+  }
+  if (id === "palm-payroll" || id.includes("cheque-roll")) {
+    return { title: "Cheque-roll", match: (record) => /Harvest|ฝ่ายสวน|Nursery|ขนส่ง/i.test([record.group, record.activityGroup, record.job].join(" ")) };
+  }
+  if (id === "palm-master" || id.includes("master-data") || id.includes("settings") || id.includes("security")) {
+    return { title: "Master Data Link", match: () => true };
+  }
+  return { title: "Work Orders", match: () => true };
+}
+
+function palmScopedSourceRows(view) {
+  const scope = palmWorkScopeForView(view);
+  const scoped = (state.cultivateWork?.workRows || []).filter((record) => palmRecordDate(record) && scope.match(record));
+  return scoped.length ? scoped : (state.cultivateWork?.workRows || []).filter((record) => palmRecordDate(record));
+}
+
+function buildPalmWorkRows(view = state.view) {
+  initializePalmFilters();
+  const filters = state.palmFilters;
+  const scope = palmWorkScopeForView(view);
+  const scopedRows = palmScopedSourceRows(view);
+  const rows = [];
+
+  for (const record of scopedRows) {
+    const date = palmRecordDate(record);
+    const job = palmRecordJob(record);
+    const area = palmRecordArea(record);
+    const group = palmRecordGroup(record);
+    const workOrder = record.workOrder || "-";
+    const activity = record.activity || "";
+    const haystack = [
+      job,
+      date,
+      area,
+      group,
+      workOrder,
+      record.activityGroup,
+      activity,
+      record.status,
+      record.terrain,
+    ].join(" ").toLowerCase();
+
+    if (filters.from && date < filters.from) continue;
+    if (filters.to && date > filters.to) continue;
+    if (filters.job !== "all" && job !== filters.job) continue;
+    if (filters.area !== "all" && area !== filters.area) continue;
+    if (filters.group !== "all" && group !== filters.group) continue;
+    if (filters.query && !haystack.includes(filters.query.toLowerCase())) continue;
+
+    const planKg = Math.abs(n(record.planValue));
+    const scheduledKg = Math.abs(n(record.scheduleValue));
+    const actualKg = palmActualWeight(record);
+    const progress = scheduledKg ? (actualKg / scheduledKg) * 100 : 0;
+    rows.push({
+      date,
+      job,
+      area,
+      group,
+      firstTime: record.startTime || "",
+      lastTime: record.endTime || "",
+      tickets: record.workOrder ? 1 : 0,
+      workOrder,
+      planKg,
+      scheduledKg,
+      actualKg,
+      progress,
+      status: record.status || (actualKg > 0 ? "Executed" : "Scheduled"),
+      standardsText: record.activityGroup || "",
+      driverText: record.group || "",
+      docText: workOrder,
+      activity,
+      unit: record.unit || "",
+      moduleScope: scope.title,
+    });
+  }
+
+  return rows.sort((a, b) => b.date.localeCompare(a.date) || a.job.localeCompare(b.job, "th"));
+}
+
+function renderPalmFilters(rows) {
+  const filters = state.palmFilters;
+  const jobs = uniquePalmOptions(rows, palmRecordJob);
+  const areas = uniquePalmOptions(rows, palmRecordArea);
+  const groups = uniquePalmOptions(rows, palmRecordGroup);
+  return `
+    <section class="palm-work-filters">
+      <label>งาน
+        <select id="palmJobFilter">
+          ${optionHtml("all", filters.job).replace(">all<", ">ทั้งหมด<")}
+          ${jobs.map((job) => optionHtml(job, filters.job)).join("")}
+        </select>
+      </label>
+      <label>ตั้งแต่วันที่
+        <input id="palmFromDate" type="date" value="${esc(filters.from)}">
+      </label>
+      <label>ถึงวันที่
+        <input id="palmToDate" type="date" value="${esc(filters.to)}">
+      </label>
+      <label>พื้นที่
+        <select id="palmAreaFilter">
+          ${optionHtml("all", filters.area).replace(">all<", ">ทั้งหมด<")}
+          ${areas.map((area) => optionHtml(area, filters.area)).join("")}
+        </select>
+      </label>
+      <label>กลุ่มทำงาน
+        <select id="palmGroupFilter">
+          ${optionHtml("all", filters.group).replace(">all<", ">ทั้งหมด<")}
+          ${groups.map((group) => optionHtml(group, filters.group)).join("")}
+        </select>
+      </label>
+      <label class="palm-search">ค้นหา
+        <input id="palmSearch" type="search" value="${esc(filters.query)}" placeholder="งาน / เวลา / พื้นที่ / กลุ่ม / ใบชั่ง">
+      </label>
+    </section>`;
+}
+
+function renderCultivateImportPanel() {
+  const source = state.cultivateWork?.source || {};
+  const masterSource = state.cultivateMaster?.source || {};
+  const credentials = state.cultivateCredentials || {};
+  const files = Array.isArray(source.files) ? source.files : [];
+  const defaultMode = String(state.view).includes("master-data") ? "master" : "work";
+  return `
+    <section class="cultivate-credential-panel">
+      <div>
+        <strong>เชื่อมต่อ Cultivate อัตโนมัติ</strong>
+        <span>${credentials.hasCredentials ? "บันทึก user/password แล้ว" : "ยังไม่ได้บันทึก user/password"}</span>
+        <small>${credentials.savedAt ? `updated ${esc(credentials.savedAt)}` : "รหัสผ่านเก็บใน private/cultivate_credentials.json บนเครื่องนี้เท่านั้น"}</small>
+      </div>
+      <input id="cultivateBaseUrl" type="url" value="${esc(credentials.baseUrl || "https://spc.cultivate-agri.com")}" placeholder="Cultivate URL">
+      <input id="cultivateUsername" type="text" placeholder="user">
+      <input id="cultivatePassword" type="password" placeholder="password">
+      <button id="cultivateSaveCredentialBtn" type="button">บันทึก</button>
+      <span id="cultivateCredentialStatus" class="import-status"></span>
+    </section>
+    <section class="cultivate-import-panel">
+      <div>
+        <strong>นำเข้า Export จาก Cultivate</strong>
+        <span>Work: ${esc(source.mode || "cache")} ${source.capturedAt ? `· ${esc(source.capturedAt)}` : ""}</span>
+        <span>Master: ${esc(masterSource.mode || "cache")} ${masterSource.capturedAt ? `· ${esc(masterSource.capturedAt)}` : ""}</span>
+        <small>${files.length ? esc(files.join(", ")) : "รองรับ CSV / Excel จาก Planner, Scheduler, Daily Entries, Work Order"}</small>
+      </div>
+      <select id="cultivateImportMode" aria-label="ชนิดข้อมูลนำเข้า">
+        <option value="work"${defaultMode === "work" ? " selected" : ""}>Work Order</option>
+        <option value="master"${defaultMode === "master" ? " selected" : ""}>Master Data</option>
+      </select>
+      <label class="import-file-button">
+        เลือกไฟล์ CSV/Excel
+        <input id="cultivateImportFiles" type="file" accept=".csv,.xlsx,.xls" multiple>
+      </label>
+      <button id="cultivateImportBtn" type="button">นำเข้า</button>
+      <button id="cultivateAutoMasterBtn" type="button">ดึง Master Data อัตโนมัติ</button>
+      <span id="cultivateImportStatus" class="import-status"></span>
+    </section>`;
+}
+
+function masterRecordLabel(row) {
+  if (!row || typeof row !== "object") return "";
+  const keys = Object.keys(row);
+  const preferred = keys.find((key) => /name|description|title|ชื่อ/i.test(key))
+    || keys.find((key) => /code|id|รหัส/i.test(key))
+    || "_id";
+  return row[preferred] || row._id || "";
+}
+
+function renderCultivateMasterDataPanel() {
+  const master = state.cultivateMaster || {};
+  const groups = [
+    ["Terrains", master.terrains || []],
+    ["Activities", master.activities || []],
+    ["Activity Groups", master.activityGroups || []],
+    ["Gangs", master.gangs || []],
+    ["Partners", master.partners || []],
+    ["Materials", master.materials || []],
+    ["Warehouses", master.warehouses || []],
+    ["Weighbridges", master.weighbridges || []],
+  ];
+  const cards = groups.map(([label, rows]) => `
+    <article>
+      <span>${esc(label)}</span>
+      <strong>${fmt(rows.length)}</strong>
+      <small>${esc(rows.slice(0, 3).map(masterRecordLabel).filter(Boolean).join(" · ") || "รอนำเข้า export")}</small>
+    </article>`).join("");
+  const rawCount = (master.rawTables || []).reduce((sum, table) => sum + ((table.rows || []).length), 0);
+  return `
+    <section class="palm-work-board cultivate-master-panel">
+      <div class="section-head">
+        <h3>Master Data จาก Cultivate</h3>
+        <span>${esc(master.source?.mode || "cache")} ${master.source?.capturedAt ? `· ${esc(master.source.capturedAt)}` : ""}</span>
+      </div>
+      <div class="palm-stage-grid">${cards}</div>
+      <div class="palm-pipeline">
+        <div><b>ข้อมูลหลัก</b><span>ใช้เป็นฐานอ้างอิงของแปลง กิจกรรม กลุ่มคนงาน คู่ค้า วัสดุ คลัง และเครื่องชั่งในงานจัดการสวนปาล์ม</span></div>
+        <div><b>ไฟล์ไม่รู้ประเภท</b><span>${fmt(rawCount)} แถวใน raw tables จะเก็บไว้ไม่ทิ้งข้อมูล เพื่อให้ตรวจ mapping เพิ่มได้</span></div>
+      </div>
+    </section>`;
+}
+
+function renderPalmWorkBoard(workRows, menu) {
+  const totals = workRows.reduce((acc, row) => {
+    acc.plan += row.planKg;
+    acc.schedule += row.scheduledKg;
+    acc.actual += row.actualKg;
+    acc.tickets += row.tickets;
+    acc.groups.add(row.group);
+    acc.areas.add(row.area);
+    return acc;
+  }, { plan: 0, schedule: 0, actual: 0, tickets: 0, groups: new Set(), areas: new Set() });
+  const progress = totals.plan ? (totals.actual / totals.plan) * 100 : 0;
+  const topRows = workRows.slice(0, 80);
+  const scope = palmWorkScopeForView(state.view);
+  const shownWorkOrders = new Set(workRows.map((row) => row.workOrder).filter((value) => value && value !== "-")).size;
+
+  return `
+    <section class="palm-work-board">
+      <div class="section-head">
+        <h3>${esc(menu?.title || "การทำงานสวน")}: ระดับ Work Order</h3>
+        <span>${esc(scope.title)} · ดึงจากโปรแกรม SPC Cultivate ไม่ใช้ข้อมูลงานขนส่งออก</span>
+        <h3>การทำงาน: แผน → กำหนดการทำงาน → ทำงานจริง</h3>
+        <span>ดึงจากโปรแกรม SPC Cultivate ไม่ใช้ข้อมูลจากงานขนส่งออก</span>
+      </div>
+      <div class="palm-stage-grid">
+        <article><span>แผนจาก Cultivate</span><strong>${fmt(totals.plan)}</strong><small>planned value</small></article>
+        <article><span>กำหนดการ</span><strong>${fmt(totals.schedule)}</strong><small>${fmt(totals.tickets)} work orders</small></article>
+        <article><span>ทำงานจริง</span><strong>${fmt(totals.actual)}</strong><small>${progress.toFixed(1)}%</small></article>
+        <article><span>พื้นที่ / กลุ่ม</span><strong>${fmt(totals.areas.size)} / ${fmt(totals.groups.size)}</strong><small>รายการ</small></article>
+      </div>
+      <div class="palm-pipeline">
+        <div><b>แผน</b><span>ข้อมูลจาก Planner Workbench และ Work Order ใน Cultivate</span></div>
+        <div><b>กำหนดการทำงาน</b><span>ข้อมูลจาก Scheduler Workbench แยกวันที่ เวลา พื้นที่ และกลุ่มทำงาน</span></div>
+        <div><b>ทำงาน</b><span>ข้อมูลจาก Daily Entries / Operations Dashboard ของ Cultivate</span></div>
+      </div>
+      <div class="table-wrap">
+        <table class="mini-table palm-work-table">
+          <thead>
+            <tr>
+              <th>วันที่</th>
+              <th>เวลา</th>
+              <th>งาน</th>
+              <th>พื้นที่</th>
+              <th>กลุ่มทำงาน</th>
+              <th>WO</th>
+              <th>Activity</th>
+              <th>แผน</th>
+              <th>กำหนด</th>
+              <th>ทำจริง</th>
+              <th>%</th>
+              <th>สถานะ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${topRows.map((row) => `
+              <tr>
+                <td>${displayDate(row.date)}</td>
+                <td>${esc(row.firstTime || "-")}${row.lastTime && row.lastTime !== row.firstTime ? `-${esc(row.lastTime)}` : ""}</td>
+                <td class="left"><strong>${esc(row.job)}</strong><small>${esc(row.standardsText)}</small></td>
+                <td class="left">${esc(row.area)}</td>
+                <td class="left">${esc(row.group)}</td>
+                <td class="left"><strong>${esc(row.workOrder)}</strong></td>
+                <td class="left">${esc(row.activity || "-")}</td>
+                <td class="num">${fmt(row.planKg)}</td>
+                <td class="num">${fmt(row.scheduledKg)}</td>
+                <td class="num">${fmt(row.actualKg)}</td>
+                <td class="num">${row.progress.toFixed(1)}%</td>
+                <td><span class="status-pill">${esc(row.status)}</span></td>
+              </tr>`).join("") || `<tr><td colspan="11">ไม่มีข้อมูลตามเงื่อนไขที่เลือก</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function renderPalmManagement() {
+  const menuMap = palmMenuMap();
+  const menu = menuMap[state.view] || menuMap["palm-overview"] || palmMenuModules()[0] || fallbackCultivateMenu().modules[0];
+  const allMenus = palmMenuModules().map((module) => [module.id, module]);
+  const sourceRowsForFilters = palmScopedSourceRows(state.view);
+  const workRows = buildPalmWorkRows(state.view);
+  state.currentRows = [
+    { section: "palm-menu", title: menu.title, accent: menu.accent, sources: menu.sources.join(" | ") },
+    ...workRows.map((row) => ({
+      section: "palm-work",
+      date: row.date,
+      time: `${row.firstTime || ""}-${row.lastTime || ""}`,
+      job: row.job,
+      area: row.area,
+      group: row.group,
+      workOrder: row.workOrder,
+      activity: row.activity,
+      tickets: row.tickets,
+      planKg: Math.round(row.planKg),
+      scheduledKg: Math.round(row.scheduledKg),
+      actualKg: Math.round(row.actualKg),
+      progress: row.progress.toFixed(1),
+      status: row.status,
+    })),
+    ...menu.steps.map((step, index) => ({ section: "workflow", order: index + 1, step })),
+    ...menu.tables.map((table) => ({ section: "database", table })),
+  ];
+
+  const flowRows = menu.steps.map((step, index) => `
+    <li>
+      <span>${index + 1}</span>
+      <strong>${step}</strong>
+    </li>`).join("");
+
+  const sourceRows = menu.sources.map((source) => `<span>${source}</span>`).join("");
+  const tableRows = menu.tables.map((table) => `<span>${table}</span>`).join("");
+  const cultivateGroupRows = cultivateGroups().map((group) => `
+    <article class="cultivate-menu-card">
+      <h3>${esc(group.title)}</h3>
+      <div>
+        ${(group.items || []).map((item) => `
+          <span>
+            <strong>${esc(item.title)}</strong>
+            <small>${esc(item.path || item.url || "")}</small>
+          </span>`).join("")}
+      </div>
+    </article>`).join("");
+  const dbRows = palmDatabaseGroups().map(([group, tables]) => `
+    <tr>
+      <td class="left">${group}</td>
+      <td>${tables}</td>
+    </tr>`).join("");
+
+  if (String(state.view).includes("master-data") && !state.autoMasterImportAttempted) {
+    const masterCount = ["terrains", "activities", "activityGroups", "gangs", "partners", "materials", "warehouses", "weighbridges"]
+      .reduce((sum, key) => sum + ((state.cultivateMaster?.[key] || []).length), 0);
+    if (!masterCount) {
+      state.autoMasterImportAttempted = true;
+      window.setTimeout(() => importCultivateFromServer("master"), 250);
+    }
+  }
+
+  const moduleCards = allMenus.map(([view, item]) => `
+    <button class="palm-module-card${view === state.view ? " active" : ""}" type="button" data-view="${view}">
+      <span>${item.accent}</span>
+      <strong>${item.title}</strong>
+      <small>${item.sources[0]}</small>
+    </button>`).join("");
+
+  els.reportPage.innerHTML = `
+    <div class="palm-page">
+      <section class="palm-hero">
+        <div>
+          <span>${menu.accent}</span>
+          <h2>${menu.pageTitle || menu.title}</h2>
+          <p>${menu.subtitle}</p>
+        </div>
+        <div class="palm-hero-panel">
+          <strong>งานจัดการสวนปาล์ม</strong>
+          <small>จัดจากระบบ SPC Cultivate + Superset</small>
+          <em>พร้อมออกแบบฐานข้อมูล PHP/MySQL</em>
+        </div>
+      </section>
+
+      ${renderCultivateImportPanel()}
+      ${renderCultivateMasterDataPanel()}
+      ${renderPalmFilters(sourceRowsForFilters)}
+      ${renderPalmWorkBoard(workRows, menu)}
+
+      <section class="palm-module-grid">
+        ${moduleCards}
+      </section>
+
+      <section class="palm-card palm-wide">
+        <div class="section-head">
+          <h3>เมนูทั้งหมดจาก Cultivate</h3>
+          <span>${cultivateGroups().reduce((sum, group) => sum + ((group.items || []).length), 0)} เมนูจาก ${cultivateGroups().length} กลุ่ม</span>
+        </div>
+        <div class="cultivate-menu-grid">
+          ${cultivateGroupRows || '<p class="analytics-empty">ยังไม่มีข้อมูลเมนูจาก Cultivate</p>'}
+        </div>
+      </section>
+
+      <section class="palm-layout">
+        <article class="palm-card palm-wide">
+          <div class="section-head">
+            <h3>ขั้นตอนงาน</h3>
+            <span>${menu.steps.length} ขั้นตอนหลัก</span>
+          </div>
+          <ol class="palm-flow">${flowRows}</ol>
+        </article>
+
+        <article class="palm-card">
+          <div class="section-head">
+            <h3>แหล่งข้อมูลระบบ</h3>
+            <span>เมนู/รายงานที่ตรวจพบ</span>
+          </div>
+          <div class="palm-chip-list">${sourceRows}</div>
+        </article>
+
+        <article class="palm-card">
+          <div class="section-head">
+            <h3>ตารางฐานข้อมูลที่เกี่ยวข้อง</h3>
+            <span>จาก php_backend/schema.sql</span>
+          </div>
+          <div class="palm-chip-list database">${tableRows}</div>
+        </article>
+
+        <article class="palm-card palm-wide">
+          <div class="section-head">
+            <h3>กลุ่มฐานข้อมูล PHP/MySQL</h3>
+            <span>โครงสร้างรวมของงานจัดการสวนปาล์ม</span>
+          </div>
+          <div class="table-wrap">
+            <table class="mini-table">
+              <thead><tr><th>กลุ่มข้อมูล</th><th>ตารางหลัก</th></tr></thead>
+              <tbody>${dbRows}</tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </div>`;
+}
+
+function renderClear() {
+  const rows = clearRows().filter((r) => inRange(r.date));
+  els.clearTable.innerHTML = `
+    <thead><tr><th>วันที่</th><th>เคลียร์ปลายราง</th><th>เคลียร์ตะกุก</th><th>Loss แรมป์</th><th>Loss ขนส่ง</th><th>รวมปรับยอด</th><th class="left">หมายเหตุ</th><th></th></tr></thead>
+    <tbody>${rows.map((r) => `<tr>
+      <td>${displayDate(r.date)}</td>
+      <td class="num">${fmt(r.clearPr)}</td>
+      <td class="num">${fmt(r.clearTk)}</td>
+      <td class="num loss">${fmt(r.lossRamp)}</td>
+      <td class="num loss">${fmt(r.lossTransport)}</td>
+      <td class="num">${fmt(n(r.clearPr) + n(r.clearTk) + n(r.lossRamp) + n(r.lossTransport))}</td>
+      <td class="left">${r.note || ""}</td>
+      <td>${r.source === "manual" ? `<button data-del="${r.date}" type="button">ลบ</button>` : ""}</td>
+    </tr>`).join("")}</tbody>`;
+}
+
+function render() {
+  syncGlobalFilterBar();
+  for (const btn of els.tabs.querySelectorAll("button[data-view]")) {
+    btn.classList.toggle("active", btn.dataset.view === state.view);
+  }
+  const isClear = state.view === "clear";
+  const isEst = isEstView(state.view);
+  els.reportPage.className = "report-page";
+  els.reportPage.classList.toggle("hidden", isClear);
+  els.clearPage.classList.toggle("hidden", !isClear);
+  els.dashboard.classList.toggle("hidden", isEst);
+  els.datePanel?.classList.toggle("hidden", isEst);
+  els.globalFilterPanel?.classList.toggle("hidden", isEst);
+
+  if (isEst) renderEstView();
+  if (state.view === "dashboard") renderAdvancedDashboard();
+  if (state.view === "stock") renderStock(yardScope());
+  if (state.view === "rspo") renderRspo();
+  if (state.view === "daily") renderDailyReport();
+  if (state.view === "summary") renderSummary();
+  if (state.view === "clear") {
+    renderDashboard(buildStockFromData(yardScope()));
+    renderClear();
+  }
+}
+
+function setView(view) {
+  state.view = view;
+  for (const btn of els.tabs.querySelectorAll("button")) btn.classList.toggle("active", btn.dataset.view === view);
+  render();
+}
+
+function addClear() {
+  if (!els.clearDate.value) return;
+  const row = {
+    date: els.clearDate.value,
+    note: els.clearNote.value.trim(),
+    updatedAt: new Date().toISOString(),
+  };
+  if (els.clearPr.value !== "") {
+    row.clearPrSet = true;
+    row.clearPr = n(els.clearPr.value);
+  }
+  if (els.clearTk.value !== "") {
+    row.clearTkSet = true;
+    row.clearTk = n(els.clearTk.value);
+  }
+  state.clearOverrides = state.clearOverrides.filter((x) => x.date !== row.date);
+  state.clearOverrides.push(row);
+  state.clearOverrides.sort((a, b) => a.date.localeCompare(b.date));
+  saveClearOverrides();
+  for (const el of [els.clearPr, els.clearTk, els.clearNote]) el.value = "";
+  render();
+}
+
+function downloadCsv() {
+  const rows = state.currentRows;
+  const headers = rows[0] ? Object.keys(rows[0]).filter((h) => typeof rows[0][h] !== "object") : [];
+  const lines = [headers.join(",")];
+  for (const row of rows) {
+    lines.push(headers.map((h) => `"${String(row[h] ?? "").replaceAll('"', '""')}"`).join(","));
+  }
+  const blob = new Blob(["\ufeff", lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  const name = state.view === "stock" ? `stock-${yardScope()}` : state.view;
+  link.download = `${name}-${dateValue(els.startDate)}-${dateValue(els.endDate)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function init() {
+  ensurePrintPreviewElements();
+  applySidebarState();
+  loadClearOverrides();
+  loadEstDailyEntries();
+  await Promise.all([loadPayload(), loadEstData()]);
+  state.view = initialViewFromUrl();
+  setDateValue(els.startDate, state.payload.source.dateMin);
+  setDateValue(els.endDate, state.payload.source.dateMax);
+  els.clearDate.value = state.payload.source.dateMax;
+
+  els.startDate.addEventListener("input", () => {
+    syncDatePickerFromText(els.startDate);
+    render();
+  });
+  els.endDate.addEventListener("input", () => {
+    syncDatePickerFromText(els.endDate);
+    render();
+  });
+  els.startDate.addEventListener("blur", () => {
+    normalizeDateInput(els.startDate);
+    render();
+  });
+  els.endDate.addEventListener("blur", () => {
+    normalizeDateInput(els.endDate);
+    render();
+  });
+  for (const btn of document.querySelectorAll(".calendar-btn")) {
+    btn.addEventListener("click", () => {
+      const picker = document.querySelector(`#${btn.dataset.picker}`);
+      if (!picker) return;
+      if (picker.id === "startDatePicker") picker.value = dateValue(els.startDate);
+      if (picker.id === "endDatePicker") picker.value = dateValue(els.endDate);
+      if (picker.showPicker) picker.showPicker();
+      else picker.focus();
+    });
+  }
+  els.startDatePicker.addEventListener("change", () => {
+    setDateValue(els.startDate, els.startDatePicker.value);
+    render();
+  });
+  els.endDatePicker.addEventListener("change", () => {
+    setDateValue(els.endDate, els.endDatePicker.value);
+    render();
+  });
+  els.yardFilter.addEventListener("change", () => {
+    render();
+  });
+  wireGlobalFilterBar();
+  els.applyBtn.addEventListener("click", () => {
+    normalizeDateInput(els.startDate);
+    normalizeDateInput(els.endDate);
+    render();
+  });
+  els.tabs.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-view]");
+    if (btn) setView(btn.dataset.view);
+  });
+  els.sidebarToggle?.addEventListener("click", () => {
+    state.sidebarCollapsed = !state.sidebarCollapsed;
+    localStorage.setItem("sidebarCollapsed", state.sidebarCollapsed ? "1" : "0");
+    applySidebarState();
+  });
+  document.querySelector(".brand-lockup")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    setView("dashboard");
+  });
+  els.reportPage.addEventListener("change", (e) => {
+    if (e.target.id === "estActivity") {
+      state.estFilters.activity = e.target.value;
+      const next = state.estFilters.activity === "all"
+        ? estDatasets()[0]
+        : estDatasets().find((item) => item.activity === state.estFilters.activity);
+      state.estFilters.datasetId = next?.id || "";
+      render();
+      return;
+    }
+    if (e.target.id === "estDataset") {
+      state.estFilters.datasetId = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.id === "estWorkBlock") {
+      const selected = e.target.selectedOptions?.[0];
+      const activity = document.querySelector("#estWorkActivity");
+      const rate = document.querySelector("#estRate");
+      if (activity && selected?.dataset.activity) activity.value = selected.dataset.activity;
+      if (rate && selected?.dataset.rate) rate.value = selected.dataset.rate;
+      return;
+    }
+    if (e.target.id === "estWorkOrderSelect") {
+      const selected = e.target.selectedOptions?.[0];
+      const activity = document.querySelector("#estWorkActivity");
+      const block = document.querySelector("#estWorkBlock");
+      const order = document.querySelector("#estWorkOrder");
+      const rate = document.querySelector("#estRate");
+      if (activity && selected?.dataset.activity) activity.value = selected.dataset.activity;
+      if (order && selected?.dataset.order) order.value = selected.dataset.order;
+      if (rate && selected?.dataset.rate) rate.value = selected.dataset.rate;
+      if (block && selected?.dataset.block) {
+        const option = Array.from(block.options).find((item) => item.value === selected.dataset.block);
+        if (option) block.value = option.value;
+      }
+      return;
+    }
+    if (e.target.id === "yieldCompareMode") {
+      state.dashboardCompareMode = e.target.value;
+      render();
+    }
+  });
+  els.reportPage.addEventListener("input", (e) => {
+    if (e.target.id !== "estSearch") return;
+    state.estFilters.query = e.target.value.trim();
+    clearTimeout(state.estSearchTimer);
+    state.estSearchTimer = setTimeout(render, 250);
+  });
+  els.reportPage.addEventListener("click", (e) => {
+    const masterCategory = e.target.closest("[data-est-master-category]");
+    if (masterCategory) {
+      state.estMasterCategory = masterCategory.dataset.estMasterCategory;
+      state.estMasterEditId = "";
+      render();
+      return;
+    }
+    if (e.target.closest("[data-est-save-master]")) {
+      saveEstMasterRecord();
+      return;
+    }
+    if (e.target.closest("[data-est-db-save]")) {
+      syncEstMasterToDatabase();
+      return;
+    }
+    if (e.target.closest("[data-est-db-load]")) {
+      loadEstMasterFromDatabase();
+      return;
+    }
+    const editMaster = e.target.closest("[data-est-edit-master]");
+    if (editMaster) {
+      state.estMasterEditId = editMaster.dataset.estEditMaster;
+      render();
+      return;
+    }
+    const delMaster = e.target.closest("[data-est-del-master]");
+    if (delMaster) {
+      state.estMasterRecords = state.estMasterRecords.filter((row) => row.id !== delMaster.dataset.estDelMaster);
+      if (state.estMasterEditId === delMaster.dataset.estDelMaster) state.estMasterEditId = "";
+      saveEstMasterRecords();
+      render();
+      return;
+    }
+    if (e.target.closest("[data-est-save-plan]")) {
+      saveEstWorkPlan();
+      return;
+    }
+    if (e.target.closest("[data-est-save-order]")) {
+      saveEstWorkOrder();
+      return;
+    }
+    const planToOrder = e.target.closest("[data-est-plan-to-order]");
+    if (planToOrder) {
+      const plan = state.estWorkPlans.find((item) => item.id === planToOrder.dataset.estPlanToOrder);
+      createEstWorkOrderFromPlan(plan);
+      render();
+      return;
+    }
+    const delOrder = e.target.closest("[data-est-del-order]");
+    if (delOrder) {
+      state.estWorkOrders = state.estWorkOrders.filter((row) => row.id !== delOrder.dataset.estDelOrder);
+      saveEstWorkOrders();
+      render();
+      return;
+    }
+    if (e.target.closest("[data-est-save-work]")) {
+      saveEstDailyWorkEntry();
+      return;
+    }
+    const delWork = e.target.closest("[data-est-del-work]");
+    if (delWork) {
+      state.estDailyEntries = state.estDailyEntries.filter((row) => row.id !== delWork.dataset.estDelWork);
+      saveEstDailyEntries();
+      render();
+      return;
+    }
+    const btn = e.target.closest("button[data-view]");
+    if (!btn) return;
+    setView(btn.dataset.view);
+  });
+  els.printBtn.addEventListener("click", openPrintPreview);
+  els.refreshTransportBtn?.addEventListener("click", refreshTransportFromQuery);
+  els.previewCloseBtn.addEventListener("click", closePrintPreview);
+  els.previewPrintBtn.addEventListener("click", () => {
+    if (state.view === "stock") renderStock(yardScope());
+    window.print();
+  });
+  els.printPreviewModal.addEventListener("click", (e) => {
+    if (e.target === els.printPreviewModal) closePrintPreview();
+  });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !els.printPreviewModal.classList.contains("hidden")) closePrintPreview();
+  });
+  els.csvBtn.addEventListener("click", downloadCsv);
+  els.addClearRow.addEventListener("click", addClear);
+  els.clearTable.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-del]");
+    if (!btn) return;
+    state.clearOverrides = state.clearOverrides.filter((x) => x.date !== btn.dataset.del);
+    saveClearOverrides();
+    render();
+  });
+
+  render();
+  startLiveRefresh();
+  autoRefreshTransportFromQuery();
+}
+
+init().catch((error) => {
+  els.sourceInfo.textContent = "โหลดข้อมูลไม่สำเร็จ";
+  els.reportPage.innerHTML = `<div class="report-title"><h2>${error.message}</h2></div>`;
+});

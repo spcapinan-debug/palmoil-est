@@ -1,0 +1,7 @@
+[build]
+  publish = "online_export/stock-report-online"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-cache"

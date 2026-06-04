@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>รายงานสต๊อคผลปาล์มสด</title>
+    <link rel="stylesheet" href="./styles.css?v=est-master-db-1">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="appSidebar">
+        <div class="brand">
+          <a href="#" class="brand-lockup" data-view="dashboard">
+            <span class="brand-logo">R</span>
+            <span class="brand-text">
+              <strong>RSPO Ramp</strong>
+              <small>Stock Report</small>
+            </span>
+          </a>
+          <button id="sidebarToggle" class="sidebar-trigger" type="button" aria-label="ย่อ/ขยายเมนู">☰</button>
+        </div>
+
+        <nav id="tabs" class="side-nav">
+          <section class="menu-section">
+            <p class="menu-section-title">งานขนส่งออก</p>
+            <button class="active" type="button" data-view="dashboard" data-icon="⌂"><span>Dashboard</span></button>
+            <button type="button" data-view="stock" data-icon="▣"><span>Stock Report</span></button>
+            <button type="button" data-view="rspo" data-icon="◎"><span>RSPO</span></button>
+            <button type="button" data-view="daily" data-icon="◫"><span>Daily Report</span></button>
+            <button type="button" data-view="summary" data-icon="Σ"><span>Summary</span></button>
+            <button type="button" data-view="clear" data-icon="✓"><span>Clear Ramp</span></button>
+          </section>
+
+          <section class="menu-section">
+            <p class="menu-section-title">EST Palm Management</p>
+            <button type="button" data-view="est-dashboard" data-icon="E"><span>Dashboard EST</span></button>
+            <button type="button" data-view="est-master" data-icon="M"><span>ข้อมูลหลัก</span></button>
+            <button type="button" data-view="est-budget" data-icon="B"><span>งบประมาณ 2569</span></button>
+            <button type="button" data-view="est-plan" data-icon="P"><span>วางแผนงาน</span></button>
+            <button type="button" data-view="est-workorder" data-icon="W"><span>สั่งงาน</span></button>
+            <button type="button" data-view="est-daily" data-icon="D"><span>บันทึกทำงาน</span></button>
+            <button type="button" data-view="est-payroll" data-icon="฿"><span>อัตราค่าแรง</span></button>
+            <button type="button" data-view="est-report" data-icon="R"><span>รายงาน</span></button>
+            <button type="button" data-view="est-stack" data-icon="S"><span>Stack</span></button>
+          </section>
+        </nav>
+
+        <div id="sourceInfo" class="source-info">กำลังโหลดข้อมูล...</div>
+        <div class="sidebar-footer">
+          <span class="team-logo">SP</span>
+          <span class="team-text">
+            <strong>SPC Estate</strong>
+            <small>Local backend</small>
+          </span>
+        </div>
+      </aside>
+
+      <main class="content">
+        <header class="content-head">
+          <div>
+            <p class="eyebrow">Summary_Palm_RSPO-Ramp.xlsx</p>
+            <h1>รายงานสต๊อคผลปาล์มสด</h1>
+          </div>
+          <div class="actions">
+            <button id="refreshTransportBtn" type="button">Refresh Query</button>
+            <button id="printBtn" type="button">พิมพ์ / PDF</button>
+          </div>
+        </header>
+
+        <section class="date-panel">
+          <label>วันที่เริ่ม
+            <span class="date-input-control">
+              <input id="startDate" type="text" inputmode="numeric" placeholder="dd/mm/yyyy">
+              <button class="calendar-btn" type="button" data-picker="startDatePicker" aria-label="เลือกวันที่เริ่ม"></button>
+              <input id="startDatePicker" class="native-date-picker" type="date" tabindex="-1" aria-hidden="true">
+            </span>
+          </label>
+          <label>วันที่สิ้นสุด
+            <span class="date-input-control">
+              <input id="endDate" type="text" inputmode="numeric" placeholder="dd/mm/yyyy">
+              <button class="calendar-btn" type="button" data-picker="endDatePicker" aria-label="เลือกวันที่สิ้นสุด"></button>
+              <input id="endDatePicker" class="native-date-picker" type="date" tabindex="-1" aria-hidden="true">
+            </span>
+          </label>
+          <label>
+            ลานเท
+            <select id="yardFilter">
+              <option value="all">ทั้งหมด</option>
+              <option value="garden">ปลายราง</option>
+              <option value="takuk">ตะกุก</option>
+            </select>
+          </label>
+          <button id="applyBtn" type="button">ส่งข้อมูล</button>
+          <button id="csvBtn" type="button">Export CSV</button>
+        </section>
+
+        <section id="globalFilterPanel" class="global-filter-panel daily-filter-panel">
+          <div class="filter-row" data-filter="standard">
+            <span>มาตรฐาน</span>
+            <button class="active" type="button" data-daily-filter="standard" data-value="all">รวมทั้งหมด</button>
+            <button type="button" data-daily-filter="standard" data-value="RSPO">RSPO</button>
+            <button type="button" data-daily-filter="standard" data-value="NON-RSPO">NON-RSPO</button>
+            <button type="button" data-daily-filter="standard" data-value="Contract Farmer">Contract Farmer</button>
+          </div>
+          <div class="filter-row" data-filter="flow">
+            <span>รายการ</span>
+            <button class="active" type="button" data-daily-filter="flow" data-value="all">รวมทั้งหมด</button>
+            <button type="button" data-daily-filter="flow" data-value="รับเข้า">รับเข้า</button>
+            <button type="button" data-daily-filter="flow" data-value="ส่งออก">ส่งออก</button>
+          </div>
+        </section>
+
+        <section id="dashboard" class="dashboard">
+          <article><span>น้ำหนักยกมา</span><strong id="kpiOpening">0</strong></article>
+          <article><span>ลงแรมป์รวม</span><strong id="kpiInbound">0</strong></article>
+          <article><span>ส่งออกรวม</span><strong id="kpiOutbound">0</strong></article>
+          <article><span>สูญหาย</span><strong id="kpiLoss">0</strong></article>
+          <article><span>คงเหลือ</span><strong id="kpiBalance">0</strong></article>
+        </section>
+
+        <section id="reportPage" class="report-page"></section>
+
+        <section id="clearPage" class="hidden">
+          <div class="input-panel">
+            <label>วันที่<input type="date" id="clearDate"></label>
+            <label>เคลียร์ปลายราง<input type="number" id="clearPr" step="1"></label>
+            <label>เคลียร์ตะกุก<input type="number" id="clearTk" step="1"></label>
+            <label>หมายเหตุ<input type="text" id="clearNote"></label>
+            <button id="addClearRow" type="button">บันทึก</button>
+          </div>
+          <div class="report-page">
+            <div class="report-title">
+              <h2>Clear_Ramp_Log</h2>
+              <p>บันทึกยอดเคลียร์น้ำหนักและยกยอดคงเหลือ</p>
+            </div>
+            <div class="table-wrap"><table id="clearTable"></table></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="printPreviewModal" class="print-preview-modal hidden" aria-hidden="true">
+      <div class="print-preview-panel">
+        <div class="print-preview-bar">
+          <div>
+            <strong>Print Preview</strong>
+            <span>ตรวจสอบหน้ารายงานก่อนพิมพ์หรือบันทึก PDF</span>
+          </div>
+          <div class="print-preview-actions">
+            <button id="previewPrintBtn" type="button">พิมพ์ / PDF</button>
+            <button id="previewCloseBtn" type="button">ปิด</button>
+          </div>
+        </div>
+        <div id="printPreviewBody" class="print-preview-body"></div>
+      </div>
+    </div>
+
+    <script src="./app.js?v=est-master-db-1"></script>
+  </body>
+</html>

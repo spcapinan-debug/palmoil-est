@@ -1,0 +1,84 @@
+{
+  "menu_group": "งานจัดการสวนปาล์ม",
+  "items": [
+    {
+      "title": "Dashboard",
+      "children": [
+        { "title": "ภาพรวมสวนปาล์ม", "source": "Superset / Dashboard" },
+        { "title": "Work Order Workflow", "source": "01 - OPERATIONS - WORK ORDER WORKFLOWS" },
+        { "title": "Harvest", "source": "02 - Harvest" },
+        { "title": "แผนที่แปลง", "source": "/web/maps" }
+      ]
+    },
+    {
+      "title": "แผนงานและใบงาน",
+      "children": [
+        { "title": "วางแผนงาน", "source": "/web/planner_workbench" },
+        { "title": "จัดตารางงาน", "source": "/web/scheduler_workbench" },
+        { "title": "พิมพ์ใบงาน", "source": "/web/workOrderPrintOut" },
+        { "title": "อนุมัติงาน", "source": "/web/approvalInbox" }
+      ]
+    },
+    {
+      "title": "บันทึกงานประจำวัน",
+      "children": [
+        { "title": "Daily Entries", "source": "/web/dailyEntry" },
+        { "title": "สแกน QR ใบงาน", "source": "/web/dailyEntry" },
+        { "title": "บันทึกผลปฏิบัติงาน", "source": "/web/dailyEntry" }
+      ]
+    },
+    {
+      "title": "เก็บเกี่ยวและชั่งน้ำหนัก",
+      "children": [
+        { "title": "Weighbridge Console", "source": "/web/weighbridge" },
+        { "title": "ไฟล์เครื่องชั่ง", "source": "/web/weighbridge" },
+        { "title": "ตั๋วชั่งน้ำหนัก", "source": "/web/weighbridge" },
+        { "title": "ผลผลิตรายแปลง", "source": "Reporting 18/19 - FFB Block Yield" }
+      ]
+    },
+    {
+      "title": "คลังและสต๊อก",
+      "children": [
+        { "title": "Stock Management", "source": "/web/stockManagement" },
+        { "title": "รับเข้า", "source": "Good Receipt" },
+        { "title": "ส่งออก/เบิกใช้", "source": "Good Issue / Good Delivery" },
+        { "title": "โอนคลัง", "source": "Transfer" },
+        { "title": "ตรวจนับสต๊อก", "source": "Stock Take" }
+      ]
+    },
+    {
+      "title": "ค่าแรงและผู้รับเหมา",
+      "children": [
+        { "title": "Cheque-roll Console", "source": "/web/checkroll_console" },
+        { "title": "Allowance / Deduction", "source": "/web/employeead" },
+        { "title": "กลุ่มค่าแรง", "source": "/web/chequeroll_groups" },
+        { "title": "คู่ค้า/พนักงาน", "source": "/web/partnersMaster" },
+        { "title": "สัญญา", "source": "/web/master_contracts" }
+      ]
+    },
+    {
+      "title": "ข้อมูลหลัก",
+      "children": [
+        { "title": "แปลง/บล็อก", "source": "/web/terrains_master" },
+        { "title": "กิจกรรม", "source": "/web/activities_master" },
+        { "title": "กลุ่มกิจกรรม", "source": "/web/activityGroups" },
+        { "title": "วัสดุ", "source": "/web/materials_master" },
+        { "title": "กลุ่มวัสดุ", "source": "/web/materialGroups" },
+        { "title": "คลัง", "source": "/web/warehouseMaster" },
+        { "title": "เครื่องชั่ง", "source": "/web/weighbridgeMaster" },
+        { "title": "วัสดุตามแปลง", "source": "/web/terrain-materials" }
+      ]
+    },
+    {
+      "title": "รายงาน",
+      "children": [
+        { "title": "Oil Palm Crop Statement", "source": "Reporting 22" },
+        { "title": "Stock Inventory Report", "source": "Reporting 23" },
+        { "title": "Ramp Inbound / Outbound", "source": "Reporting 30/31" },
+        { "title": "Material Management Report", "source": "Reporting 9" },
+        { "title": "Harvest Incentives", "source": "Reporting 15" }
+      ]
+    }
+  ]
+}
+
