@@ -14,6 +14,7 @@ const state = {
   estWorkPlans: [],
   estWorkOrders: [],
   estDailyEntries: [],
+  estBudgetRateEdits: [],
   estMasterCategory: "areas",
   estMasterEditId: "",
   estMasterRecords: [],
@@ -2825,12 +2826,14 @@ function loadEstDailyEntries() {
     state.estWorkPlans = JSON.parse(localStorage.getItem("est-work-plans") || "[]");
     state.estWorkOrders = JSON.parse(localStorage.getItem("est-work-orders") || "[]");
     state.estDailyEntries = JSON.parse(localStorage.getItem("est-daily-entries") || "[]");
+    state.estBudgetRateEdits = JSON.parse(localStorage.getItem("est-budget-rate-edits") || "[]");
     state.estMasterRecords = JSON.parse(localStorage.getItem("est-master-records") || "[]");
     state.masterFolderRecords = JSON.parse(localStorage.getItem("master-folder-records") || "[]").filter((row) => row._source !== "editing");
   } catch {
     state.estWorkPlans = [];
     state.estWorkOrders = [];
     state.estDailyEntries = [];
+    state.estBudgetRateEdits = [];
     state.estMasterRecords = [];
     state.masterFolderRecords = [];
   }
@@ -2846,6 +2849,10 @@ function saveEstWorkOrders() {
 
 function saveEstDailyEntries() {
   localStorage.setItem("est-daily-entries", JSON.stringify(state.estDailyEntries));
+}
+
+function saveEstBudgetRateEdits() {
+  localStorage.setItem("est-budget-rate-edits", JSON.stringify(state.estBudgetRateEdits));
 }
 
 function saveEstMasterRecords() {
@@ -2891,6 +2898,112 @@ function estBudgetOptions() {
     seen.add(key);
     return true;
   }).slice(0, 1200);
+}
+
+function estFirstNumericByHeaders(row, matchers) {
+  const entries = Object.entries(row || {}).filter(([key]) => !String(key).startsWith("_"));
+  for (const [key, value] of entries) {
+    const lower = String(key).toLowerCase();
+    if (!matchers.some((matcher) => lower.includes(matcher))) continue;
+    const amount = n(value);
+    if (amount) return { key, value: amount };
+  }
+  return { key: "", value: 0 };
+}
+
+function estBudgetRateEditsMap() {
+  return new Map((state.estBudgetRateEdits || []).map((row) => [row.id, row]));
+}
+
+function estBudgetRateLines() {
+  const edits = estBudgetRateEditsMap();
+  const lines = [];
+  for (const dataset of estDatasets()) {
+    for (const row of dataset.rows || []) {
+      if (row._isTotal) continue;
+      const block = String(estField(row, ["บล็อก", "รหัสบล็อก", "แปลง", "แปลงปฏิบัติการ"]) || "").trim();
+      if (!block || block.includes("รวม")) continue;
+      const rate = estFirstNumericByHeaders(row, ["อัตรา", "ค่าแรง", "บาท/"]);
+      const budget = estFirstNumericByHeaders(row, ["รวม", "ค่าใช้จ่าย", "ค่าตัด", "ค่าแรง"]);
+      const rai = n(estField(row, ["ไร่", "จำนวน(ไร่)", "จำนวนไร่", "พื้นที่"]));
+      const trees = n(estField(row, ["ต้น", "จำนวน(ต้น)", "จำนวนต้น"]));
+      const quantity = n(estField(row, ["ผลผลิต", "จำนวน", "ปริมาณ"])) || trees || rai;
+      if (!rate.value && !budget.value) continue;
+      const unit = rate.key.includes("ตัน") ? "บาท/ตัน" : rate.key.includes("ต้น") ? "บาท/ต้น" : rate.key.includes("ไร่") ? "บาท/ไร่" : "บาท/งาน";
+      const budgetValue = budget.key && budget.key !== rate.key ? budget.value : (rate.value && quantity ? rate.value * quantity : budget.value);
+      const id = `${dataset.id || dataset.sheet}::${row._rowNumber || lines.length}`;
+      const base = {
+        id,
+        fiscalYear: "2569",
+        activity: dataset.activity || dataset.sheet,
+        contractName: dataset.sheet,
+        block,
+        area: String(estField(row, ["แปลง", "แปลงปฏิบัติการ"]) || "").trim(),
+        rai,
+        trees,
+        quantity,
+        rate: rate.value,
+        rateField: rate.key,
+        unit,
+        budget: budgetValue,
+        sourceSheet: dataset.sheet,
+        sourceRow: row._rowNumber || "",
+      };
+      lines.push({ ...base, ...(edits.get(id) || {}) });
+    }
+  }
+  return lines;
+}
+
+function filteredEstBudgetRateLines() {
+  const query = state.estFilters.query.trim().toLowerCase();
+  return estBudgetRateLines().filter((line) => {
+    const activityOk = state.estFilters.activity === "all" || line.activity === state.estFilters.activity;
+    const queryOk = !query || [line.activity, line.contractName, line.block, line.area, line.unit, line.sourceSheet].join(" ").toLowerCase().includes(query);
+    return activityOk && queryOk;
+  });
+}
+
+function updateEstBudgetRateLine(id, patch) {
+  const current = state.estBudgetRateEdits.find((row) => row.id === id);
+  if (current) Object.assign(current, patch, { updatedAt: new Date().toISOString() });
+  else state.estBudgetRateEdits.push({ id, ...patch, updatedAt: new Date().toISOString() });
+  saveEstBudgetRateEdits();
+}
+
+function createEstPlanFromRateLine(id) {
+  const line = estBudgetRateLines().find((item) => item.id === id);
+  if (!line) return;
+  const plan = {
+    id: `plan-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    planNo: `PLAN-${line.fiscalYear || "2569"}-${String(state.estWorkPlans.length + 1).padStart(3, "0")}`,
+    startDate: "",
+    endDate: "",
+    activity: line.activity,
+    block: line.block,
+    workers: 0,
+    quantity: n(line.quantity),
+    budget: n(line.budget) || n(line.rate) * n(line.quantity),
+    note: `จากอัตรา ${line.contractName}`,
+    rate: n(line.rate),
+    sourceSheet: line.sourceSheet,
+    sourceRow: line.sourceRow,
+    status: "Planned",
+    createdAt: new Date().toISOString(),
+    targetTable: "est_work_plans",
+  };
+  state.estWorkPlans.push(plan);
+  saveEstWorkPlans();
+  render();
+  return plan;
+}
+
+function rollEstBudgetRatesToNextYear() {
+  const nextYear = "2570";
+  for (const line of filteredEstBudgetRateLines()) {
+    updateEstBudgetRateLine(line.id, { nextFiscalYear: nextYear, nextRate: n(line.rate), nextBudget: n(line.budget) });
+  }
+  render();
 }
 
 function estSelectedBudgetMeta(selectId = "estPlanBlock") {
@@ -4362,6 +4475,89 @@ function renderEstBudget() {
   return `<div class="est-page"><div class="report-title"><h2>งบประมาณ 2569</h2><p>ข้อมูลหลักจากไฟล์ประมาณการค่าใช้จ่าย 2569</p></div>${renderEstToolbar()}${renderEstBudgetTable()}</div>`;
 }
 
+function renderEstBudgetContract() {
+  const lines = filteredEstBudgetRateLines();
+  const allLines = estBudgetRateLines();
+  const activities = Object.keys(state.estData?.activityTotals || {}).sort();
+  const totalBudget = lines.reduce((sum, line) => sum + n(line.budget), 0);
+  const avgRate = lines.length ? lines.reduce((sum, line) => sum + n(line.rate), 0) / lines.length : 0;
+  const nextYearCount = lines.filter((line) => line.nextFiscalYear).length;
+  const grouped = Object.entries(lines.reduce((acc, line) => {
+    const key = line.activity || "ไม่ระบุกิจกรรม";
+    acc[key] ||= { count: 0, budget: 0, rate: 0 };
+    acc[key].count += 1;
+    acc[key].budget += n(line.budget);
+    acc[key].rate += n(line.rate);
+    return acc;
+  }, {})).sort((a, b) => b[1].budget - a[1].budget).slice(0, 6);
+  return `
+    <div class="est-page est-budget-designer">
+      <div class="report-title">
+        <div>
+          <h2>สัญญาหลักอัตรางาน 2569</h2>
+          <p>กำหนดอัตรางานตามพื้นที่และกิจกรรม เพื่อใช้วางแผนงาน สั่งงาน และยกอัตราไปปีถัดไป</p>
+        </div>
+        <div class="est-budget-title-actions">
+          <button type="button" data-est-roll-budget>ยกอัตราไปปี 2570</button>
+        </div>
+      </div>
+      <section class="est-contract-summary">
+        <article><span>รายการอัตรา</span><strong>${fmt(lines.length)}</strong><small>จากทั้งหมด ${fmt(allLines.length)} รายการ</small></article>
+        <article><span>งบตามตัวกรอง</span><strong>${moneyNf.format(totalBudget)}</strong><small>รวมจากอัตราและปริมาณฐาน</small></article>
+        <article><span>อัตราเฉลี่ย</span><strong>${moneyNf.format(avgRate)}</strong><small>ใช้ประเมินแผนเบื้องต้น</small></article>
+        <article><span>เตรียมยกปี</span><strong>${fmt(nextYearCount)}</strong><small>รายการที่ตั้งค่าไว้แล้ว</small></article>
+      </section>
+      <section class="est-budget-flow">
+        <article><b>1</b><strong>สัญญาหลัก</strong><span>กำหนดอัตราตามกิจกรรม พื้นที่ และหน่วยงาน</span></article>
+        <article><b>2</b><strong>วางแผน</strong><span>เลือกอัตราแล้วสร้างแผนงานตามพื้นที่</span></article>
+        <article><b>3</b><strong>สั่งงาน</strong><span>ส่งแผนไปเป็นใบสั่งงานและบันทึกงานจริง</span></article>
+      </section>
+      <section class="est-budget-filters">
+        <label>กิจกรรม
+          <select id="estActivity">
+            <option value="all"${state.estFilters.activity === "all" ? " selected" : ""}>ทุกกิจกรรม</option>
+            ${activities.map((activity) => `<option value="${esc(activity)}"${activity === state.estFilters.activity ? " selected" : ""}>${esc(activity)}</option>`).join("")}
+          </select>
+        </label>
+        <label>ค้นหา
+          <input id="estSearch" type="search" value="${esc(state.estFilters.query)}" placeholder="ค้นหาแปลง บล็อก กิจกรรม อัตรา">
+        </label>
+      </section>
+      <section class="est-budget-groups">
+        ${grouped.map(([activity, item]) => `
+          <article>
+            <span>${esc(activity)}</span>
+            <strong>${moneyNf.format(item.budget)}</strong>
+            <small>${fmt(item.count)} รายการ · เฉลี่ย ${moneyNf.format(item.count ? item.rate / item.count : 0)}</small>
+          </article>`).join("")}
+      </section>
+      <section class="est-panel">
+        <div class="section-head">
+          <h3>รายการอัตรางานตามพื้นที่</h3>
+          <span>แก้ไขอัตราแล้วกดสร้างแผนเพื่อส่งต่อไปเมนูวางแผนงาน</span>
+        </div>
+        <div class="table-wrap est-rate-table-wrap">
+          <table class="mini-table est-table est-rate-table">
+            <thead><tr><th>กิจกรรม / สัญญา</th><th>พื้นที่</th><th>ฐานงาน</th><th>อัตรา</th><th>งบประมาณ</th><th>ปีถัดไป</th><th>จัดการ</th></tr></thead>
+            <tbody>${lines.slice(0, 260).map((line) => `
+              <tr>
+                <td class="left"><strong>${esc(line.activity)}</strong><small>${esc(line.contractName)} · ${esc(line.sourceSheet)} #${esc(line.sourceRow)}</small></td>
+                <td class="left"><strong>${esc(line.block)}</strong><small>${esc(line.area || "-")}</small></td>
+                <td><strong>${fmt(n(line.quantity))}</strong><small>${fmt(n(line.rai))} ไร่ · ${fmt(n(line.trees))} ต้น</small></td>
+                <td><input data-est-rate-edit="${esc(line.id)}" data-field="rate" type="number" step="0.01" value="${esc(n(line.rate))}"><small>${esc(line.unit)}</small></td>
+                <td><input data-est-rate-edit="${esc(line.id)}" data-field="budget" type="number" step="0.01" value="${esc(n(line.budget))}"></td>
+                <td><input data-est-rate-edit="${esc(line.id)}" data-field="nextRate" type="number" step="0.01" value="${esc(line.nextRate ?? "")}" placeholder="อัตรา 2570"><small>${esc(line.nextFiscalYear || "")}</small></td>
+                <td class="est-rate-actions">
+                  <button type="button" data-est-rate-plan="${esc(line.id)}">สร้างแผน</button>
+                  <button type="button" data-est-rate-order="${esc(line.id)}">สั่งงาน</button>
+                </td>
+              </tr>`).join("") || `<tr><td colspan="7">ไม่พบรายการตามตัวกรอง</td></tr>`}</tbody>
+          </table>
+        </div>
+      </section>
+    </div>`;
+}
+
 function renderEstView() {
   if (!state.estData) {
     els.reportPage.innerHTML = `<p class="analytics-empty">กำลังโหลดข้อมูล EST...</p>`;
@@ -4369,7 +4565,7 @@ function renderEstView() {
   }
   if (state.view === "est-dashboard") els.reportPage.innerHTML = renderEstDashboard();
   else if (state.view === "est-master") els.reportPage.innerHTML = renderEstMaster();
-  else if (state.view === "est-budget") els.reportPage.innerHTML = renderEstBudget();
+  else if (state.view === "est-budget") els.reportPage.innerHTML = renderEstBudgetContract();
   else if (state.view === "est-plan") els.reportPage.innerHTML = renderEstPlanPage();
   else if (state.view === "est-workorder") els.reportPage.innerHTML = renderEstWorkOrderPage();
   else if (state.view === "est-daily") els.reportPage.innerHTML = renderEstDailyEntryPage();
@@ -5205,6 +5401,17 @@ async function init() {
     }
   });
   els.reportPage.addEventListener("input", (e) => {
+    if (e.target.matches("[data-est-rate-edit]")) {
+      const id = e.target.dataset.estRateEdit;
+      const field = e.target.dataset.field;
+      const value = e.target.value === "" ? "" : n(e.target.value);
+      const line = estBudgetRateLines().find((item) => item.id === id);
+      const patch = { [field]: value };
+      if (field === "nextRate") patch.nextFiscalYear = value === "" ? "" : "2570";
+      if (field === "rate" && line?.quantity && !line?.budget) patch.budget = n(value) * n(line.quantity);
+      updateEstBudgetRateLine(id, patch);
+      return;
+    }
     if (e.target.id === "masterFolderSearch") {
       state.masterFolderSearch = e.target.value.trim();
       state.masterFolderDetailId = "";
@@ -5262,6 +5469,24 @@ async function init() {
     }
     if (e.target.closest("[data-folder-db-import-all]")) {
       importAllMasterFolderTablesToDatabase();
+      return;
+    }
+    if (e.target.closest("[data-est-roll-budget]")) {
+      rollEstBudgetRatesToNextYear();
+      return;
+    }
+    const ratePlan = e.target.closest("[data-est-rate-plan]");
+    if (ratePlan) {
+      createEstPlanFromRateLine(ratePlan.dataset.estRatePlan);
+      return;
+    }
+    const rateOrder = e.target.closest("[data-est-rate-order]");
+    if (rateOrder) {
+      const before = state.estWorkPlans.length;
+      createEstPlanFromRateLine(rateOrder.dataset.estRateOrder);
+      const plan = state.estWorkPlans[before];
+      if (plan) createEstWorkOrderFromPlan(plan, { status: "Scheduled" });
+      render();
       return;
     }
     const folderSort = e.target.closest("[data-folder-sort]");

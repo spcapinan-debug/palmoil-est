@@ -2789,6 +2789,145 @@ tfoot td {
   color: var(--ink);
 }
 
+.est-budget-designer {
+  gap: 12px;
+}
+
+.est-budget-title-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.est-budget-title-actions button,
+.est-rate-actions button {
+  min-height: 34px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: var(--primary);
+  color: #111827;
+  font-weight: 900;
+}
+
+.est-contract-summary,
+.est-budget-flow,
+.est-budget-groups {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.est-contract-summary article,
+.est-budget-flow article,
+.est-budget-groups article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.est-contract-summary span,
+.est-contract-summary small,
+.est-budget-flow span,
+.est-budget-groups span,
+.est-budget-groups small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.est-contract-summary strong,
+.est-budget-groups strong {
+  color: var(--navy);
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.est-budget-flow {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.est-budget-flow b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #eaf2fb;
+  color: var(--primary);
+}
+
+.est-budget-flow strong {
+  color: var(--ink);
+}
+
+.est-budget-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(260px, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.est-budget-filters label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.est-budget-filters select,
+.est-budget-filters input,
+.est-rate-table input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 9px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.est-rate-table-wrap {
+  max-height: 560px;
+  overflow: auto;
+}
+
+.est-rate-table {
+  min-width: 1040px;
+}
+
+.est-rate-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+}
+
+.est-rate-table td strong,
+.est-rate-table td small {
+  display: block;
+}
+
+.est-rate-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.est-rate-actions button:last-child {
+  background: #fff;
+  color: var(--primary);
+}
+
 .palm-stage-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
