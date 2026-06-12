@@ -3919,7 +3919,7 @@ function isHiddenCultivateTerrainColumn(key) {
 function masterFolderReadableColumns(table, limit = 8) {
   const columns = table?.columns || [];
   if (table?.id === "cultivate_terrains") {
-    const terrainPriority = ["superior_code", "superior_name", "terrain", "description", "estate_code", "area", "area_planted", "tree_count", "rspo", "payroll_description", "status"];
+    const terrainPriority = ["superior_name", "terrain", "description", "estate_code", "area", "tree_count", "rspo", "status"];
     const priorityColumns = terrainPriority.map((key) => columns.find((column) => column.key === key)).filter(Boolean);
     const hiddenInTable = new Set(["ap_code", "ap_name", "company", "company_name", "company_code"]);
     const regularColumns = columns.filter((column) => !terrainPriority.includes(column.key) && !hiddenInTable.has(column.key) && !isMasterFolderTechnicalColumn(column));
@@ -4070,7 +4070,7 @@ function renderMasterFolderPanel() {
     const edit = state.masterFolderRecords.find((row) => row.tableId === table.id && (row.id === state.masterFolderEditId || row._overrideOf === state.masterFolderEditId))
       || allRows.find((row) => row.id === state.masterFolderEditId)
       || {};
-    const visibleColumns = masterFolderReadableColumns(table, table.id === "cultivate_terrains" ? 11 : 8);
+    const visibleColumns = masterFolderReadableColumns(table, table.id === "cultivate_terrains" ? 8 : 6);
     const requiredKeys = masterFolderRequiredColumns(table);
     const formColumns = [
       ...(table.columns || []).filter((column) => requiredKeys.has(column.key)),
@@ -4195,15 +4195,14 @@ function renderMasterFolderPanel() {
             </div>
             <div class="table-wrap est-table-wrap master-data-table-wrap">
               <table class="mini-table est-table master-table">
-                <thead><tr>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>แหล่งข้อมูล</th><th>จัดการ</th></tr></thead>
+                <thead><tr>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>จัดการ</th></tr></thead>
                 <tbody>${displayRows.slice(0, 500).map((row) => `<tr data-folder-detail-row="${esc(row.id)}" class="${row.readonly ? "" : "is-added"} ${row.id === detailRow?.id ? "is-selected" : ""}">
                   ${visibleColumns.map((col) => `<td>${esc(row[col.key] ?? "")}</td>`).join("")}
-                  <td>${esc(row._source || (row.readonly ? "ข้อมูลหลัก" : "แก้ไข"))}</td>
                   <td class="master-row-actions">
                     <button type="button" data-folder-edit-row="${esc(row.id)}">แก้ไข</button>
                     <button type="button" data-folder-del-row="${esc(row.id)}">ลบ</button>
                   </td>
-                </tr>`).join("") || `<tr><td colspan="${visibleColumns.length + 2}">ไม่พบข้อมูลตามคำค้นหา</td></tr>`}</tbody>
+                </tr>`).join("") || `<tr><td colspan="${visibleColumns.length + 1}">ไม่พบข้อมูลตามคำค้นหา</td></tr>`}</tbody>
               </table>
             </div>
           </section>

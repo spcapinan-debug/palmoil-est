@@ -2467,14 +2467,15 @@ tfoot td {
   display: block;
   width: 100%;
   max-width: 100%;
-  overflow-x: scroll;
+  overflow-x: hidden;
   overflow-y: hidden;
   border-top: 1px solid var(--line);
 }
 
 .master-data-table-wrap .master-table {
-  width: max-content;
-  min-width: 1680px;
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
 }
 
 .master-data-table-wrap::-webkit-scrollbar {
@@ -2670,6 +2671,13 @@ tfoot td {
 .master-table th,
 .master-table td {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.master-table th:last-child,
+.master-table td.master-row-actions {
+  width: 118px;
 }
 
 .est-entry-grid {
