@@ -2582,6 +2582,30 @@ tfoot td {
   font-weight: 700;
 }
 
+.master-editor-top-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.master-editor-top-actions button {
+  min-height: 34px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 14px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 900;
+}
+
+.master-editor-top-actions button + button {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+
 .required-mark {
   color: #dc2626;
   font-weight: 900;

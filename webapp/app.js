@@ -3858,7 +3858,15 @@ function isMasterFolderTechnicalColumn(column) {
 
 function masterFolderReadableColumns(table, limit = 8) {
   const columns = table?.columns || [];
-  const priorityKeys = new Set([table?.primaryKey, "description", "name", "Name", "estate", "zone", "area_group", "rspo", "status", "activity", "material", "partner_code", "gang"].filter(Boolean));
+  if (table?.id === "cultivate_terrains") {
+    const terrainPriority = ["terrain", "description", "estate_code", "area", "area_planted", "tree_count", "rspo", "payroll_department_code", "payroll_description", "work_code", "work_name", "ap_code", "ap_name", "status"];
+    const priorityColumns = terrainPriority.map((key) => columns.find((column) => column.key === key)).filter(Boolean);
+    const regularColumns = columns.filter((column) => !terrainPriority.includes(column.key) && !isMasterFolderTechnicalColumn(column));
+    const selected = [...priorityColumns, ...regularColumns].slice(0, limit);
+    return selected.length ? selected : regularColumns.slice(0, limit);
+  }
+  const basePriority = [table?.primaryKey, "description", "name", "Name", "estate", "zone", "area_group", "rspo", "status", "activity", "material", "partner_code", "gang"];
+  const priorityKeys = new Set(basePriority.filter(Boolean));
   const prioritized = columns.filter((column) => priorityKeys.has(column.key) && (!isMasterFolderTechnicalColumn(column) || column.key === table?.primaryKey));
   const regular = columns.filter((column) => !priorityKeys.has(column.key) && !isMasterFolderTechnicalColumn(column));
   const selected = [...prioritized, ...regular].slice(0, limit);
@@ -3990,19 +3998,19 @@ function renderMasterFolderPanel() {
     const edit = state.masterFolderRecords.find((row) => row.tableId === table.id && (row.id === state.masterFolderEditId || row._overrideOf === state.masterFolderEditId))
       || allRows.find((row) => row.id === state.masterFolderEditId)
       || {};
-    const visibleColumns = masterFolderReadableColumns(table, 8);
+    const visibleColumns = masterFolderReadableColumns(table, table.id === "cultivate_terrains" ? 14 : 8);
     const requiredKeys = masterFolderRequiredColumns(table);
     const formColumns = [
       ...(table.columns || []).filter((column) => requiredKeys.has(column.key)),
-      ...masterFolderReadableColumns(table, 16),
+      ...masterFolderReadableColumns(table, table.id === "cultivate_terrains" ? 24 : 16),
       ...(table.columns || []).filter((column) => !isMasterFolderTechnicalColumn(column)),
-    ].filter((column, index, columns) => column && columns.findIndex((item) => item.key === column.key) === index).slice(0, 18);
+    ].filter((column, index, columns) => column && columns.findIndex((item) => item.key === column.key) === index).slice(0, table.id === "cultivate_terrains" ? 28 : 18);
     const detailRow = displayRows.find((row) => row.id === state.masterFolderDetailId)
       || allRows.find((row) => row.id === state.masterFolderDetailId)
       || allRows.find((row) => row.id === state.masterFolderEditId)
       || displayRows[0]
       || null;
-    const detailColumns = masterFolderReadableColumns(table, 16).filter((column) => detailRow && detailRow[column.key] !== undefined && detailRow[column.key] !== "");
+    const detailColumns = masterFolderReadableColumns(table, table.id === "cultivate_terrains" ? 28 : 16).filter((column) => detailRow && detailRow[column.key] !== undefined && detailRow[column.key] !== "");
     const selectedGroups = state.masterFolderGroupFilters || [];
     const groupOptions = masterFolderGroups().map((group) => `
       <option value="${esc(group.id)}" ${selectedGroups.includes(group.id) ? "selected" : ""}>
@@ -4090,6 +4098,10 @@ function renderMasterFolderPanel() {
             </article>
             <details class="master-editor" ${state.masterFolderEditId ? "open" : ""}>
               <summary>${state.masterFolderEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูลใหม่"} <span>ช่องที่มี * จำเป็นต้องใส่</span></summary>
+              <div class="master-editor-top-actions">
+                <button type="button" data-folder-save-row>${state.masterFolderEditId ? "บันทึก" : "บันทึกข้อมูลใหม่"}</button>
+                <button type="button" data-folder-cancel-edit>ล้างฟอร์ม</button>
+              </div>
               <form class="est-entry-form folder-master-form">
                 ${formColumns.map((column) => renderMasterFolderInput(column, table, edit)).join("")}
                 <div class="est-form-actions est-form-wide">
