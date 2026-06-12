@@ -3769,6 +3769,7 @@ function buildMasterAreaGroupTable(tables) {
     source: "cultivate_terrains.superior_code",
     primaryKey: "area_parent_code",
     primaryLabel: "รหัสพื้นที่แม่",
+    hiddenInNav: true,
     columns: [
       { key: "area_parent_code", label: "รหัสพื้นที่แม่" },
       { key: "area_parent_name", label: "ชื่อ" },
@@ -3784,6 +3785,12 @@ function normalizeMasterFolderTable(table) {
   if (table?.id !== "cultivate_terrains") return table;
   return {
     ...table,
+    title: "ข้อมูลพื้นที่",
+    columns: (table.columns || []).map((column) => {
+      if (column.key === "superior_code") return { ...column, label: "รหัสพื้นที่แม่" };
+      if (column.key === "superior_name") return { ...column, label: "แปลง" };
+      return column;
+    }),
     references: [
       ...(table.references || []).filter((ref) => ref.field !== "superior_code"),
       { field: "superior_code", refTable: "master_area_groups", refKey: "area_parent_code" },
@@ -3798,8 +3805,13 @@ function masterFolderTables() {
   return [areaGroupTable, ...baseTables.filter((table) => table.id !== areaGroupTable.id)];
 }
 
+function masterFolderVisibleTables() {
+  return masterFolderTables().filter((table) => !table.hiddenInNav);
+}
+
 function activeMasterFolderTable() {
-  return masterFolderTables().find((table) => table.id === state.masterFolderTableId) || masterFolderTables()[0] || null;
+  const visibleTables = masterFolderVisibleTables();
+  return visibleTables.find((table) => table.id === state.masterFolderTableId) || visibleTables[0] || masterFolderTables()[0] || null;
 }
 
 function masterFolderDraftRows(tableId) {
@@ -3869,7 +3881,7 @@ function masterFolderGroups() {
   ];
   const tables = masterFolderTables();
   return groups.map((group) => {
-    const groupTables = tables.filter((table) => masterFolderGroupForTable(table) === group.id);
+    const groupTables = tables.filter((table) => !table.hiddenInNav && masterFolderGroupForTable(table) === group.id);
     return {
       ...group,
       tables: groupTables,
@@ -3913,9 +3925,9 @@ function isHiddenCultivateTerrainColumn(key) {
 function masterFolderReadableColumns(table, limit = 8) {
   const columns = table?.columns || [];
   if (table?.id === "cultivate_terrains") {
-    const terrainPriority = ["terrain", "description", "estate_code", "area", "area_planted", "tree_count", "rspo", "payroll_description", "status"];
+    const terrainPriority = ["superior_code", "superior_name", "terrain", "description", "estate_code", "area", "area_planted", "tree_count", "rspo", "payroll_description", "status"];
     const priorityColumns = terrainPriority.map((key) => columns.find((column) => column.key === key)).filter(Boolean);
-    const hiddenInTable = new Set(["superior_code", "superior_name", "ap_code", "ap_name", "company", "company_name", "company_code"]);
+    const hiddenInTable = new Set(["ap_code", "ap_name", "company", "company_name", "company_code"]);
     const regularColumns = columns.filter((column) => !terrainPriority.includes(column.key) && !hiddenInTable.has(column.key) && !isMasterFolderTechnicalColumn(column));
     const selected = [...priorityColumns, ...regularColumns].slice(0, limit);
     return selected.length ? selected : regularColumns.slice(0, limit);
@@ -4064,7 +4076,7 @@ function renderMasterFolderPanel() {
     const edit = state.masterFolderRecords.find((row) => row.tableId === table.id && (row.id === state.masterFolderEditId || row._overrideOf === state.masterFolderEditId))
       || allRows.find((row) => row.id === state.masterFolderEditId)
       || {};
-    const visibleColumns = masterFolderReadableColumns(table, table.id === "cultivate_terrains" ? 9 : 8);
+    const visibleColumns = masterFolderReadableColumns(table, table.id === "cultivate_terrains" ? 11 : 8);
     const requiredKeys = masterFolderRequiredColumns(table);
     const formColumns = [
       ...(table.columns || []).filter((column) => requiredKeys.has(column.key)),
@@ -4112,7 +4124,8 @@ function renderMasterFolderPanel() {
         <button type="button" data-folder-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึก table นี้</button>
         <button type="button" data-folder-db-import-all ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกทุก table</button>
       </div>`;
-    const totalRows = data.rowCount || masterFolderTables().reduce((sum, item) => sum + n(item.rowCount), 0);
+    const visibleTables = masterFolderVisibleTables();
+    const totalRows = visibleTables.reduce((sum, item) => sum + n(item.rowCount || masterFolderRows(item).length), 0);
     const editedCount = masterFolderDraftRows(table.id).filter((row) => !row._deleted).length;
     const deletedCount = masterFolderDraftRows(table.id).filter((row) => row._deleted).length;
     return `
@@ -4120,7 +4133,7 @@ function renderMasterFolderPanel() {
         <aside class="master-nav master-nav-v2">
           <div class="master-nav-title">
             <strong>ข้อมูลหลัก</strong>
-            <span>${fmt(masterFolderTables().length)} tables · ${fmt(totalRows)} rows</span>
+            <span>${fmt(visibleTables.length)} tables · ${fmt(totalRows)} rows</span>
           </div>
           <label class="master-search">
             <span>ค้นหา</span>
@@ -5179,7 +5192,7 @@ async function init() {
       state.masterFolderSearch = e.target.value.trim();
       state.masterFolderDetailId = "";
       if (state.masterFolderSearch) {
-        const matchedTables = masterFolderTables().filter((table) => {
+        const matchedTables = masterFolderVisibleTables().filter((table) => {
           const tableText = `${table.id} ${table.title} ${table.domain}`.toLowerCase();
           return tableText.includes(state.masterFolderSearch.toLowerCase())
             || masterFolderRows(table).some((row) => masterFolderMatchesSearch(table, row, state.masterFolderSearch));
