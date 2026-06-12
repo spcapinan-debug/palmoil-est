@@ -152,8 +152,8 @@ def build_tables():
                 ("ap_name", "ชื่อ AP", "text"),
             ],
             [
-                {"field": "work_code", "refDomain": "system", "refKey": "work_code"},
-                {"field": "ap_code", "refDomain": "ap", "refKey": "ap_code"},
+                {"field": "work_code", "refTable": "master_work_systems", "refDomain": "system", "refKey": "work_code"},
+                {"field": "ap_code", "refTable": "master_ap", "refDomain": "ap", "refKey": "ap_code"},
             ],
             terrains,
         ),
@@ -181,7 +181,7 @@ def build_tables():
             "activities",
             "activity_key",
             [("activity_key", "คีย์กิจกรรม", "text"), ("activity_name", "ชื่อกิจกรรม", "text"), ("activity_group_key", "คีย์กลุ่มกิจกรรม", "text"), ("status", "สถานะ", "text")],
-            [{"field": "activity_group_key", "refDomain": "activities", "refKey": "activity_group_key"}],
+            [{"field": "activity_group_key", "refTable": "master_activity_groups", "refDomain": "activities", "refKey": "activity_group_key"}],
             activities,
         ),
         table_config(

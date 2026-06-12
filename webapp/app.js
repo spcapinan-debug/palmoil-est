@@ -3751,12 +3751,13 @@ function masterFolderLabel(row, table) {
   return values.slice(0, 3).join(" / ") || String(masterFolderPkValue(row, table));
 }
 
-function masterFolderReferenceOptions(refDomain) {
+function masterFolderReferenceOptions(refOrDomain) {
+  const ref = typeof refOrDomain === "string" ? { refDomain: refOrDomain } : (refOrDomain || {});
   const seen = new Set();
   const options = [];
-  for (const table of masterFolderTables().filter((item) => item.domain === refDomain)) {
+  for (const table of masterFolderTables().filter((item) => ref.refTable ? item.id === ref.refTable : item.domain === ref.refDomain)) {
     for (const row of masterFolderRows(table)) {
-      const value = String(masterFolderPkValue(row, table) || "").trim();
+      const value = String((ref.refKey ? row[ref.refKey] : "") || masterFolderPkValue(row, table) || "").trim();
       if (!value || seen.has(value)) continue;
       seen.add(value);
       options.push({ value, label: `${masterFolderLabel(row, table)} (${table.title})` });
@@ -3837,7 +3838,7 @@ function renderMasterFolderInput(column, table, edit) {
     }
   }
   if (ref) {
-    const options = masterFolderReferenceOptions(ref.refDomain);
+    const options = masterFolderReferenceOptions(ref);
     return `
       <label>${esc(column.label)}
         <select data-folder-master-field="${esc(column.key)}">
@@ -3862,7 +3863,7 @@ function renderMasterFolderPanel() {
       <span>${esc(item.title)}</span>
       <b>${fmt(item.rowCount)}</b>
     </button>`).join("");
-  const refBadges = (table.references || []).map((ref) => `<span>${esc(ref.field)} -> ${esc(ref.refDomain)}</span>`).join("") || "<span>ไม่มี foreign key ที่ตรวจพบ</span>";
+  const refBadges = (table.references || []).map((ref) => `<span>${esc(ref.field)} -> ${esc(ref.refTable || ref.refDomain)}.${esc(ref.refKey || "")}</span>`).join("") || "<span>ไม่มี foreign key ที่ตรวจพบ</span>";
   const dbButtons = `
     <div class="folder-command-bar">
       <button type="button" data-folder-db-load ${state.estMasterSyncBusy ? "disabled" : ""}>ดึงข้อมูลจากฐานข้อมูล</button>
