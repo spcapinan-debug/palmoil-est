@@ -3856,12 +3856,17 @@ function isMasterFolderTechnicalColumn(column) {
   ].some((part) => key.includes(part));
 }
 
+function isHiddenCultivateTerrainColumn(key) {
+  return ["ap_code", "ap_name", "company", "company_name", "company_code"].includes(String(key || ""));
+}
+
 function masterFolderReadableColumns(table, limit = 8) {
   const columns = table?.columns || [];
   if (table?.id === "cultivate_terrains") {
-    const terrainPriority = ["terrain", "description", "estate_code", "area", "area_planted", "tree_count", "rspo", "payroll_department_code", "payroll_description", "work_code", "work_name", "ap_code", "ap_name", "status"];
+    const terrainPriority = ["terrain", "description", "estate_code", "area", "area_planted", "tree_count", "rspo", "payroll_department_code", "payroll_description", "work_code", "work_name", "status"];
     const priorityColumns = terrainPriority.map((key) => columns.find((column) => column.key === key)).filter(Boolean);
-    const regularColumns = columns.filter((column) => !terrainPriority.includes(column.key) && !isMasterFolderTechnicalColumn(column));
+    const hiddenInTable = new Set(["superior_code", "superior_name", "ap_code", "ap_name", "company", "company_name", "company_code"]);
+    const regularColumns = columns.filter((column) => !terrainPriority.includes(column.key) && !hiddenInTable.has(column.key) && !isMasterFolderTechnicalColumn(column));
     const selected = [...priorityColumns, ...regularColumns].slice(0, limit);
     return selected.length ? selected : regularColumns.slice(0, limit);
   }
@@ -4004,7 +4009,9 @@ function renderMasterFolderPanel() {
       ...(table.columns || []).filter((column) => requiredKeys.has(column.key)),
       ...masterFolderReadableColumns(table, table.id === "cultivate_terrains" ? 24 : 16),
       ...(table.columns || []).filter((column) => !isMasterFolderTechnicalColumn(column)),
-    ].filter((column, index, columns) => column && columns.findIndex((item) => item.key === column.key) === index).slice(0, table.id === "cultivate_terrains" ? 28 : 18);
+    ].filter((column, index, columns) => column
+      && !(table.id === "cultivate_terrains" && isHiddenCultivateTerrainColumn(column.key))
+      && columns.findIndex((item) => item.key === column.key) === index).slice(0, table.id === "cultivate_terrains" ? 28 : 18);
     const detailRow = displayRows.find((row) => row.id === state.masterFolderDetailId)
       || allRows.find((row) => row.id === state.masterFolderDetailId)
       || allRows.find((row) => row.id === state.masterFolderEditId)

@@ -2621,6 +2621,9 @@ tfoot td {
 }
 
 .master-editor-top-actions {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   gap: 8px;
   padding: 10px 12px;
