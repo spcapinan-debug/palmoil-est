@@ -3749,8 +3749,53 @@ function renderEstMasterSchema(categoryKey) {
     </section>`;
 }
 
+function buildMasterAreaGroupTable(tables) {
+  const terrainTable = (tables || []).find((table) => table.id === "cultivate_terrains");
+  if (!terrainTable) return null;
+  const rowsByCode = new Map();
+  for (const row of terrainTable.rows || []) {
+    const code = String(row.superior_code || "").trim();
+    if (!code || rowsByCode.has(code)) continue;
+    rowsByCode.set(code, {
+      area_parent_code: code,
+      area_parent_name: String(row.superior_name || code).trim(),
+      source_table: terrainTable.id,
+    });
+  }
+  return {
+    id: "master_area_groups",
+    title: "แปลง",
+    domain: "area",
+    source: "cultivate_terrains.superior_code",
+    primaryKey: "area_parent_code",
+    primaryLabel: "รหัสพื้นที่แม่",
+    columns: [
+      { key: "area_parent_code", label: "รหัสพื้นที่แม่" },
+      { key: "area_parent_name", label: "ชื่อ" },
+    ],
+    references: [],
+    rows: Array.from(rowsByCode.values()).sort((a, b) => String(a.area_parent_code).localeCompare(String(b.area_parent_code), "th")),
+    rowCount: rowsByCode.size,
+    virtual: true,
+  };
+}
+
+function normalizeMasterFolderTable(table) {
+  if (table?.id !== "cultivate_terrains") return table;
+  return {
+    ...table,
+    references: [
+      ...(table.references || []).filter((ref) => ref.field !== "superior_code"),
+      { field: "superior_code", refTable: "master_area_groups", refKey: "area_parent_code" },
+    ],
+  };
+}
+
 function masterFolderTables() {
-  return state.masterFolderData?.tables || [];
+  const baseTables = (state.masterFolderData?.tables || []).map(normalizeMasterFolderTable);
+  const areaGroupTable = buildMasterAreaGroupTable(baseTables);
+  if (!areaGroupTable) return baseTables;
+  return [areaGroupTable, ...baseTables.filter((table) => table.id !== areaGroupTable.id)];
 }
 
 function activeMasterFolderTable() {
@@ -3792,6 +3837,7 @@ function masterFolderPkValue(row, table) {
 }
 
 function masterFolderLabel(row, table) {
+  if (table?.id === "master_area_groups") return String(row.area_parent_name || row.area_parent_code || "").trim();
   if (table?.id === "cultivate_terrains") return String(row.description || row.terrain || "").trim();
   if (table?.id === "master_work_systems") return String(row.work_name || row.work_code || "").trim();
   if (table?.id === "master_ap") return String(row.ap_name || row.ap_code || "").trim();
