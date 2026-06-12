@@ -22,6 +22,8 @@ const state = {
   masterFolderData: null,
   masterFolderTableId: "",
   masterFolderEditId: "",
+  masterFolderDetailId: "",
+  masterFolderSearch: "",
   masterFolderRecords: [],
   estSearchTimer: null,
   sidebarCollapsed: localStorage.getItem("sidebarCollapsed") === "1",
@@ -2821,7 +2823,7 @@ function loadEstDailyEntries() {
     state.estWorkOrders = JSON.parse(localStorage.getItem("est-work-orders") || "[]");
     state.estDailyEntries = JSON.parse(localStorage.getItem("est-daily-entries") || "[]");
     state.estMasterRecords = JSON.parse(localStorage.getItem("est-master-records") || "[]");
-    state.masterFolderRecords = JSON.parse(localStorage.getItem("master-folder-records") || "[]");
+    state.masterFolderRecords = JSON.parse(localStorage.getItem("master-folder-records") || "[]").filter((row) => row._source !== "editing");
   } catch {
     state.estWorkPlans = [];
     state.estWorkOrders = [];
@@ -3297,14 +3299,22 @@ async function loadEstMasterFromDatabase() {
 function saveMasterFolderRow() {
   const table = activeMasterFolderTable();
   if (!table) return;
-  const current = state.masterFolderEditId
-    ? state.masterFolderRecords.find((row) => row.id === state.masterFolderEditId && row.tableId === table.id)
+  const form = els.reportPage.querySelector(".folder-master-form");
+  if (form && !form.reportValidity()) {
+    setEstMasterSyncMessage("กรุณากรอกช่องที่มีเครื่องหมาย * ให้ครบก่อนบันทึก");
+    return;
+  }
+  const editingId = state.masterFolderEditId;
+  const sourceRow = editingId ? masterFolderRows(table).find((item) => item.id === editingId) : null;
+  const current = editingId
+    ? state.masterFolderRecords.find((row) => row.tableId === table.id && (row.id === editingId || row._overrideOf === editingId))
     : null;
   const row = current || {
-    id: `folder-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    id: sourceRow?.readonly ? sourceRow.id : `folder-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     tableId: table.id,
     category: table.id,
     targetTable: `master:${table.id}`,
+    _overrideOf: sourceRow?.readonly ? sourceRow.id : "",
     createdAt: new Date().toISOString(),
   };
   for (const input of els.reportPage.querySelectorAll("[data-folder-master-field]")) {
@@ -3314,6 +3324,7 @@ function saveMasterFolderRow() {
   row._source = "draft";
   if (!current) state.masterFolderRecords.push(row);
   state.masterFolderEditId = "";
+  state.masterFolderDetailId = row.id;
   saveMasterFolderRecords();
   render();
 }
@@ -3323,6 +3334,34 @@ function startEditMasterFolderRow(rowId) {
   if (!table) return;
   const row = masterFolderRows(table).find((item) => item.id === rowId);
   if (!row) return;
+  if (row.readonly) {
+    state.masterFolderEditId = row.id;
+    state.masterFolderDetailId = row.id;
+    render();
+    return;
+  }
+  if (row.readonly) {
+    const current = state.masterFolderRecords.find((item) => item.tableId === table.id && item._overrideOf === row.id);
+    if (!current) {
+      state.masterFolderRecords.push({
+        ...row,
+        id: row.id,
+        tableId: table.id,
+        category: table.id,
+        targetTable: `master:${table.id}`,
+        _overrideOf: row.id,
+        readonly: false,
+        _source: "editing",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      saveMasterFolderRecords();
+    }
+    state.masterFolderEditId = row.id;
+    state.masterFolderDetailId = row.id;
+    render();
+    return;
+  }
   if (row.readonly) {
     const draft = {
       ...row,
@@ -3347,12 +3386,7 @@ function startEditMasterFolderRow(rowId) {
 async function syncMasterFolderTableToDatabase() {
   const table = activeMasterFolderTable();
   if (!table) return;
-  const sourceRows = (table.rows || []).map((row, index) => ({
-    ...row,
-    id: masterFolderRowId(table, index),
-    tableId: table.id,
-  }));
-  const rows = [...sourceRows, ...masterFolderDraftRows(table.id)];
+  const rows = masterFolderRows(table).map(({ readonly, _deleted, _overrideOf, ...row }) => row);
   if (!rows.length) {
     setEstMasterSyncMessage("table นี้ไม่มีข้อมูลสำหรับบันทึก");
     render();
@@ -3415,11 +3449,7 @@ async function importAllMasterFolderTablesToDatabase() {
   let importedTables = 0;
   try {
     for (const table of tables) {
-      const rows = (table.rows || []).map((row, index) => ({
-        ...row,
-        id: masterFolderRowId(table, index),
-        tableId: table.id,
-      }));
+      const rows = masterFolderRows(table).map(({ readonly, _deleted, _overrideOf, ...row }) => row);
       if (!rows.length) continue;
       setEstMasterSyncMessage(`กำลังนำเข้า ${table.title}: ${fmt(rows.length)} rows (${fmt(imported)} rows แล้ว)`);
       render();
@@ -3731,6 +3761,20 @@ function masterFolderDraftRows(tableId) {
 
 function masterFolderRows(table) {
   if (!table) return [];
+  const draftRows = masterFolderDraftRows(table.id);
+  const deletedIds = new Set(draftRows.filter((row) => row._deleted).map((row) => row.id));
+  const overrides = new Map(draftRows.filter((row) => row._overrideOf && !row._deleted).map((row) => [row._overrideOf, row]));
+  const baseRows = (table.rows || []).map((row, index) => {
+    const id = `master-${table.id}-${index}`;
+    const override = overrides.get(id);
+    if (override) {
+      return { ...row, ...override, id, tableId: table.id, readonly: false, _source: "แก้ไข" };
+    }
+    return { ...row, id, tableId: table.id, readonly: true, _source: "ข้อมูลหลัก" };
+  }).filter((row) => !deletedIds.has(row.id));
+  const baseIds = new Set(baseRows.map((row) => row.id));
+  const newRows = draftRows.filter((row) => !row._deleted && !row._overrideOf && !baseIds.has(row.id));
+  return [...baseRows, ...newRows];
   return [
     ...(table.rows || []).map((row, index) => ({ ...row, id: `master-${table.id}-${index}`, tableId: table.id, readonly: true, _source: "ข้อมูลหลัก" })),
     ...masterFolderDraftRows(table.id),
@@ -3749,6 +3793,85 @@ function masterFolderLabel(row, table) {
   const keys = [table?.primaryKey, "name", "Name", "description", "Description", "ชื่อ", "แปลง", "บล็อก", "Activity", "Material Name", "partner"].filter(Boolean);
   const values = keys.map((key) => row[key]).filter((value) => value !== undefined && value !== "");
   return values.slice(0, 3).join(" / ") || String(masterFolderPkValue(row, table));
+}
+
+function masterFolderGroupForTable(table) {
+  const id = `${table?.id || ""} ${table?.domain || ""}`.toLowerCase();
+  if (id.includes("terrain") || id.includes("estate") || id.includes("area")) return "area";
+  if (id.includes("partner") || id.includes("gang") || id.includes("designation") || id.includes("nationalit") || id.includes("race") || id.includes("religion") || id.includes("payroll") || id.includes("leave") || id.includes("chequeroll") || id.includes("settlement")) return "people";
+  if (id.includes("activity") || id.includes("work_system")) return "activity";
+  if (id.includes("material") || id.includes("warehouse") || id.includes("weighbridge") || id.includes("equipment") || id.includes("unit")) return "supply";
+  if (id.includes("budget") || id.includes("ap")) return "budget";
+  return "general";
+}
+
+function masterFolderGroups() {
+  const groups = [
+    { id: "area", title: "ข้อมูลพื้นที่", hint: "Estate, โซน, แปลง, พื้นที่และโครงสร้างสวน" },
+    { id: "people", title: "ข้อมูลพนักงาน/ผู้รับเหมา", hint: "คู่ค้า กลุ่มทำงาน ค่าแรง การลา และข้อมูลบุคคล" },
+    { id: "activity", title: "ข้อมูลกิจกรรม", hint: "กลุ่มกิจกรรม กิจกรรม และระบบงาน" },
+    { id: "supply", title: "ข้อมูลพัสดุ/อุปกรณ์", hint: "วัสดุ คลัง หน่วยนับ เครื่องชั่ง และอุปกรณ์" },
+    { id: "budget", title: "ข้อมูลงบประมาณ/บัญชี", hint: "งบประมาณ AP และข้อมูลการคิดต้นทุน" },
+    { id: "general", title: "ข้อมูลทั่วไป", hint: "บริษัท ปฏิทิน สิทธิ์ และรายการกลางของระบบ" },
+  ];
+  const tables = masterFolderTables();
+  return groups.map((group) => {
+    const groupTables = tables.filter((table) => masterFolderGroupForTable(table) === group.id);
+    return {
+      ...group,
+      tables: groupTables,
+      rowCount: groupTables.reduce((sum, table) => sum + n(table.rowCount || masterFolderRows(table).length), 0),
+    };
+  }).filter((group) => group.tables.length);
+}
+
+function masterFolderMatchesSearch(table, row, query) {
+  if (!query) return true;
+  const haystack = [
+    table?.id,
+    table?.title,
+    table?.domain,
+    ...Object.values(row || {}).slice(0, 60),
+  ].join(" ").toLowerCase();
+  return haystack.includes(query.toLowerCase());
+}
+
+function masterFolderFilteredRows(table) {
+  const query = state.masterFolderSearch.trim();
+  return masterFolderRows(table).filter((row) => masterFolderMatchesSearch(table, row, query));
+}
+
+function isMasterFolderTechnicalColumn(column) {
+  const key = String(column?.key || "").toLowerCase();
+  const label = String(column?.label || "").toLowerCase();
+  if (label.includes("master key")) return false;
+  return [
+    "created_by", "modified_by", "creation_stamp", "modification_stamp", "updatedat", "createdat",
+    "geom", "tag_id", "characteristic_class_id",
+  ].some((part) => key.includes(part));
+}
+
+function masterFolderReadableColumns(table, limit = 8) {
+  const columns = table?.columns || [];
+  const priorityKeys = new Set([table?.primaryKey, "description", "name", "Name", "estate", "zone", "area_group", "rspo", "status", "activity", "material", "partner_code", "gang"].filter(Boolean));
+  const prioritized = columns.filter((column) => priorityKeys.has(column.key) && !isMasterFolderTechnicalColumn(column));
+  const regular = columns.filter((column) => !priorityKeys.has(column.key) && !isMasterFolderTechnicalColumn(column));
+  const selected = [...prioritized, ...regular].slice(0, limit);
+  return selected.length ? selected : columns.slice(0, limit);
+}
+
+function masterFolderRequiredColumns(table) {
+  const required = new Set([table?.primaryKey].filter(Boolean));
+  for (const ref of table?.references || []) required.add(ref.field);
+  return required;
+}
+
+function isMasterFolderRequired(table, column) {
+  return masterFolderRequiredColumns(table).has(column.key);
+}
+
+function masterFolderFieldLabel(column, required = false) {
+  return `${esc(column.label)}${required ? ' <span class="required-mark">*</span>' : ""}`;
 }
 
 function masterFolderReferenceOptions(refOrDomain) {
@@ -3789,10 +3912,10 @@ function masterFolderCodeNameOptions(tableId, codeField, nameField) {
   }).filter(Boolean).sort((a, b) => a.label.localeCompare(b.label, "th"));
 }
 
-function renderMasterSelectField(column, value, options, attrs = "") {
+function renderMasterSelectField(column, value, options, attrs = "", required = false) {
   return `
-    <label>${esc(column.label)}
-      <select data-folder-master-field="${esc(column.key)}" ${attrs}>
+    <label>${masterFolderFieldLabel(column, required)}
+      <select data-folder-master-field="${esc(column.key)}" ${attrs} ${required ? "required" : ""}>
         <option value="">เลือก${esc(column.label)}</option>
         ${options.map((item) => {
           const option = typeof item === "string" ? { value: item, label: item } : { value: item.value ?? item.code, label: item.label, data: item };
@@ -3812,12 +3935,13 @@ function datasetKeyFromSnake(key) {
 function renderMasterFolderInput(column, table, edit) {
   const ref = (table.references || []).find((item) => item.field === column.key);
   const value = edit[column.key] ?? "";
+  const required = isMasterFolderRequired(table, column);
   if (table.id === "master_terrains") {
     if (["estate", "zone", "area_group"].includes(column.key)) {
-      return renderMasterSelectField(column, value, masterFolderUniqueOptions(table, column.key));
+      return renderMasterSelectField(column, value, masterFolderUniqueOptions(table, column.key), "", required);
     }
     if (column.key === "rspo") {
-      return renderMasterSelectField(column, value, ["RSPO", "NON-RSPO"]);
+      return renderMasterSelectField(column, value, ["RSPO", "NON-RSPO"], "", required);
     }
     if (column.key === "payroll_department_code") {
       const options = masterFolderRows(table).map((row) => ({
@@ -3825,35 +3949,163 @@ function renderMasterFolderInput(column, table, edit) {
         label: row.payroll_description ? `${row.payroll_department_code} · ${row.payroll_description}` : row.payroll_department_code,
         payrollDescription: row.payroll_description,
       })).filter((item, index, arr) => item.value && arr.findIndex((x) => x.value === item.value) === index);
-      return renderMasterSelectField(column, value, options, 'data-folder-autofill="payroll_description"');
+      return renderMasterSelectField(column, value, options, 'data-folder-autofill="payroll_description"', required);
     }
     if (column.key === "work_code") {
-      return renderMasterSelectField(column, value, masterFolderCodeNameOptions("master_work_systems", "work_code", "work_name").map((item) => ({ value: item.code, label: item.label, workName: item.name })), 'data-folder-autofill="work_name"');
+      return renderMasterSelectField(column, value, masterFolderCodeNameOptions("master_work_systems", "work_code", "work_name").map((item) => ({ value: item.code, label: item.label, workName: item.name })), 'data-folder-autofill="work_name"', required);
     }
     if (column.key === "ap_code") {
-      return renderMasterSelectField(column, value, masterFolderCodeNameOptions("master_ap", "ap_code", "ap_name").map((item) => ({ value: item.code, label: item.label, apName: item.name })), 'data-folder-autofill="ap_name"');
+      return renderMasterSelectField(column, value, masterFolderCodeNameOptions("master_ap", "ap_code", "ap_name").map((item) => ({ value: item.code, label: item.label, apName: item.name })), 'data-folder-autofill="ap_name"', required);
     }
     if (["payroll_description", "work_name", "ap_name"].includes(column.key)) {
-      return `<label>${esc(column.label)}<input data-folder-master-field="${esc(column.key)}" value="${esc(value)}" readonly></label>`;
+      return `<label>${masterFolderFieldLabel(column, required)}<input data-folder-master-field="${esc(column.key)}" value="${esc(value)}" ${required ? "required" : ""} readonly></label>`;
     }
   }
   if (ref) {
     const options = masterFolderReferenceOptions(ref);
     return `
-      <label>${esc(column.label)}
-        <select data-folder-master-field="${esc(column.key)}">
+      <label>${masterFolderFieldLabel(column, required)}
+        <select data-folder-master-field="${esc(column.key)}" ${required ? "required" : ""}>
           <option value="">เลือกจาก ${esc(ref.refDomain)}</option>
           ${options.map((item) => `<option value="${esc(item.value)}" ${String(value) === String(item.value) ? "selected" : ""}>${esc(item.label)}</option>`).join("")}
         </select>
       </label>`;
   }
-  return `<label>${esc(column.label)}<input data-folder-master-field="${esc(column.key)}" value="${esc(value)}"></label>`;
+  return `<label>${masterFolderFieldLabel(column, required)}<input data-folder-master-field="${esc(column.key)}" value="${esc(value)}" ${required ? "required" : ""}></label>`;
 }
 
 function renderMasterFolderPanel() {
   const data = state.masterFolderData || { domains: [], tables: [], skipped: [] };
   const table = activeMasterFolderTable();
   if (!table) return `<section class="est-panel"><div class="empty-state">ยังไม่มีข้อมูลจาก folder Master Data</div></section>`;
+  {
+    const query = state.masterFolderSearch.trim();
+    const allRows = masterFolderRows(table);
+    const displayRows = masterFolderFilteredRows(table);
+    const edit = state.masterFolderRecords.find((row) => row.tableId === table.id && (row.id === state.masterFolderEditId || row._overrideOf === state.masterFolderEditId))
+      || allRows.find((row) => row.id === state.masterFolderEditId)
+      || {};
+    const visibleColumns = masterFolderReadableColumns(table, 8);
+    const requiredKeys = masterFolderRequiredColumns(table);
+    const formColumns = [
+      ...(table.columns || []).filter((column) => requiredKeys.has(column.key)),
+      ...masterFolderReadableColumns(table, 16),
+      ...(table.columns || []).filter((column) => !isMasterFolderTechnicalColumn(column)),
+    ].filter((column, index, columns) => column && columns.findIndex((item) => item.key === column.key) === index).slice(0, 18);
+    const detailRow = displayRows.find((row) => row.id === state.masterFolderDetailId)
+      || allRows.find((row) => row.id === state.masterFolderDetailId)
+      || allRows.find((row) => row.id === state.masterFolderEditId)
+      || displayRows[0]
+      || null;
+    const detailColumns = masterFolderReadableColumns(table, 16).filter((column) => detailRow && detailRow[column.key] !== undefined && detailRow[column.key] !== "");
+    const groups = masterFolderGroups().map((group) => ({
+      ...group,
+      tables: group.tables.filter((item) => {
+        if (!query) return true;
+        const tableText = `${item.id} ${item.title} ${item.domain}`.toLowerCase();
+        return tableText.includes(query.toLowerCase()) || masterFolderRows(item).some((row) => masterFolderMatchesSearch(item, row, query));
+      }),
+    })).filter((group) => group.tables.length);
+    const navItems = groups.map((group) => `
+      <section class="master-nav-group">
+        <div class="master-nav-group-head">
+          <strong>${esc(group.title)}</strong>
+          <span>${fmt(group.tables.length)} table · ${fmt(group.rowCount)} row</span>
+        </div>
+        <small>${esc(group.hint)}</small>
+        ${group.tables.map((item) => `
+          <button type="button" class="${item.id === table.id ? "active" : ""}" data-folder-master-nav="${esc(item.id)}">
+            <span>${esc(item.title)}</span>
+            <b>${fmt(item.rowCount || masterFolderRows(item).length)}</b>
+          </button>`).join("")}
+      </section>`).join("");
+    const refBadges = (table.references || []).map((ref) => `<span>${esc(ref.field)} -> ${esc(ref.refTable || ref.refDomain)}.${esc(ref.refKey || "")}</span>`).join("") || "<span>ไม่มี foreign key ที่ตรวจพบ</span>";
+    const dbButtons = `
+      <div class="folder-command-bar">
+        <button type="button" data-folder-db-load ${state.estMasterSyncBusy ? "disabled" : ""}>ดึงข้อมูล</button>
+        <button type="button" data-folder-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึก table นี้</button>
+        <button type="button" data-folder-db-import-all ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกทุก table</button>
+      </div>`;
+    const totalRows = data.rowCount || masterFolderTables().reduce((sum, item) => sum + n(item.rowCount), 0);
+    const editedCount = masterFolderDraftRows(table.id).filter((row) => !row._deleted).length;
+    const deletedCount = masterFolderDraftRows(table.id).filter((row) => row._deleted).length;
+    return `
+      <section class="master-console master-console-v2">
+        <aside class="master-nav master-nav-v2">
+          <div class="master-nav-title">
+            <strong>ข้อมูลหลัก</strong>
+            <span>${fmt(masterFolderTables().length)} tables · ${fmt(totalRows)} rows</span>
+          </div>
+          <label class="master-search">
+            <span>ค้นหา</span>
+            <input id="masterFolderSearch" value="${esc(state.masterFolderSearch)}" placeholder="ค้นหา table, รหัส, ชื่อ, รายละเอียด">
+          </label>
+          <div class="master-nav-scroll">${navItems || `<div class="empty-state compact">ไม่พบข้อมูลตามคำค้นหา</div>`}</div>
+        </aside>
+        <div class="master-workspace">
+          <section class="master-toolbar master-toolbar-v2">
+            <div>
+              <h3>${esc(table.title)}</h3>
+              <span>${esc(table.id)} · ${esc(table.domain)}</span>
+            </div>
+            ${dbButtons}
+          </section>
+          <section class="master-meta-grid">
+            <article><span>คีย์หลัก</span><strong>${esc(table.primaryLabel || table.primaryKey)}</strong></article>
+            <article><span>ข้อมูลที่แสดง</span><strong>${fmt(displayRows.length)} / ${fmt(allRows.length)}</strong></article>
+            <article><span>แก้ไขในเครื่อง</span><strong>${fmt(editedCount)}</strong></article>
+            <article><span>ลบ/ซ่อน</span><strong>${fmt(deletedCount)}</strong></article>
+          </section>
+          <section class="master-relations">${refBadges}</section>
+          <section class="master-table-panel">
+            <div class="master-section-head">
+              <div>
+                <strong>รายการข้อมูล</strong>
+                <span>แสดงเฉพาะคอลัมน์สำคัญเพื่อให้อ่านง่าย</span>
+              </div>
+              <button type="button" data-folder-new-row>เพิ่มข้อมูลใหม่</button>
+            </div>
+            <div class="table-wrap est-table-wrap">
+              <table class="mini-table est-table master-table">
+                <thead><tr><th>จัดการ</th>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>สถานะ</th></tr></thead>
+                <tbody>${displayRows.slice(0, 500).map((row) => `<tr class="${row.readonly ? "" : "is-added"} ${row.id === detailRow?.id ? "is-selected" : ""}">
+                  <td class="master-row-actions">
+                    <button type="button" data-folder-detail-row="${esc(row.id)}">ดู</button>
+                    <button type="button" data-folder-edit-row="${esc(row.id)}">แก้ไข</button>
+                    <button type="button" data-folder-del-row="${esc(row.id)}">ลบ</button>
+                  </td>
+                  ${visibleColumns.map((col) => `<td>${esc(row[col.key] ?? "")}</td>`).join("")}
+                  <td>${esc(row._source || (row.readonly ? "ข้อมูลหลัก" : "แก้ไข"))}</td>
+                </tr>`).join("") || `<tr><td colspan="${visibleColumns.length + 2}">ไม่พบข้อมูลตามคำค้นหา</td></tr>`}</tbody>
+              </table>
+            </div>
+          </section>
+          <section class="master-detail-grid">
+            <article class="master-detail-card">
+              <div class="master-section-head">
+                <div>
+                  <strong>รายละเอียดที่เลือก</strong>
+                  <span>${detailRow ? esc(masterFolderLabel(detailRow, table)) : "เลือกแถวเพื่อดูรายละเอียด"}</span>
+                </div>
+              </div>
+              <dl>
+                ${detailColumns.map((column) => `<div><dt>${esc(column.label)}</dt><dd>${esc(detailRow?.[column.key] ?? "")}</dd></div>`).join("") || `<div><dt>รายละเอียด</dt><dd>ยังไม่มีข้อมูลที่เลือก</dd></div>`}
+              </dl>
+            </article>
+            <details class="master-editor" ${state.masterFolderEditId ? "open" : ""}>
+              <summary>${state.masterFolderEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูลใหม่"} <span>ช่องที่มี * จำเป็นต้องใส่</span></summary>
+              <form class="est-entry-form folder-master-form">
+                ${formColumns.map((column) => renderMasterFolderInput(column, table, edit)).join("")}
+                <div class="est-form-actions est-form-wide">
+                  <button type="button" data-folder-save-row>${state.masterFolderEditId ? "บันทึกแก้ไข" : "เพิ่มข้อมูล"}</button>
+                  <button type="button" data-folder-cancel-edit>ล้างฟอร์ม</button>
+                </div>
+              </form>
+            </details>
+          </section>
+        </div>
+      </section>`;
+  }
   const rows = masterFolderRows(table);
   const edit = state.masterFolderRecords.find((row) => row.id === state.masterFolderEditId && row.tableId === table.id) || {};
   const visibleColumns = (table.columns || []).slice(0, 10);
@@ -4771,6 +5023,7 @@ async function init() {
     if (e.target.matches("[data-folder-master-table]")) {
       state.masterFolderTableId = e.target.value;
       state.masterFolderEditId = "";
+      state.masterFolderDetailId = "";
       render();
       return;
     }
@@ -4810,6 +5063,24 @@ async function init() {
     }
   });
   els.reportPage.addEventListener("input", (e) => {
+    if (e.target.id === "masterFolderSearch") {
+      state.masterFolderSearch = e.target.value.trim();
+      state.masterFolderDetailId = "";
+      if (state.masterFolderSearch) {
+        const matchedTables = masterFolderTables().filter((table) => {
+          const tableText = `${table.id} ${table.title} ${table.domain}`.toLowerCase();
+          return tableText.includes(state.masterFolderSearch.toLowerCase())
+            || masterFolderRows(table).some((row) => masterFolderMatchesSearch(table, row, state.masterFolderSearch));
+        });
+        if (matchedTables.length && !matchedTables.some((table) => table.id === state.masterFolderTableId)) {
+          state.masterFolderTableId = matchedTables[0].id;
+          state.masterFolderEditId = "";
+        }
+      }
+      clearTimeout(state.estSearchTimer);
+      state.estSearchTimer = setTimeout(render, 200);
+      return;
+    }
     if (e.target.id !== "estSearch") return;
     state.estFilters.query = e.target.value.trim();
     clearTimeout(state.estSearchTimer);
@@ -4855,6 +5126,24 @@ async function init() {
     if (folderNav) {
       state.masterFolderTableId = folderNav.dataset.folderMasterNav;
       state.masterFolderEditId = "";
+      state.masterFolderDetailId = "";
+      render();
+      return;
+    }
+    const folderDetail = e.target.closest("[data-folder-detail-row]");
+    if (folderDetail) {
+      state.masterFolderDetailId = folderDetail.dataset.folderDetailRow;
+      render();
+      return;
+    }
+    if (e.target.closest("[data-folder-new-row]")) {
+      state.masterFolderEditId = "";
+      state.masterFolderDetailId = "";
+      render();
+      return;
+    }
+    if (e.target.closest("[data-folder-cancel-edit]")) {
+      state.masterFolderEditId = "";
       render();
       return;
     }
@@ -4865,8 +5154,23 @@ async function init() {
     }
     const folderDel = e.target.closest("[data-folder-del-row]");
     if (folderDel) {
-      state.masterFolderRecords = state.masterFolderRecords.filter((row) => row.id !== folderDel.dataset.folderDelRow);
-      if (state.masterFolderEditId === folderDel.dataset.folderDelRow) state.masterFolderEditId = "";
+      const table = activeMasterFolderTable();
+      const rowId = folderDel.dataset.folderDelRow;
+      const isBaseRow = table && rowId.startsWith(`master-${table.id}-`);
+      state.masterFolderRecords = state.masterFolderRecords.filter((row) => row.tableId !== table?.id || (row.id !== rowId && row._overrideOf !== rowId));
+      if (isBaseRow && table) {
+        state.masterFolderRecords.push({
+          id: rowId,
+          tableId: table.id,
+          category: table.id,
+          targetTable: `master:${table.id}`,
+          _deleted: true,
+          _source: "deleted",
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      if (state.masterFolderEditId === rowId) state.masterFolderEditId = "";
+      if (state.masterFolderDetailId === rowId) state.masterFolderDetailId = "";
       saveMasterFolderRecords();
       render();
       return;

@@ -2348,6 +2348,222 @@ tfoot td {
   box-shadow: none;
 }
 
+.master-console-v2 {
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.master-nav-v2 {
+  max-height: calc(100vh - 96px);
+  overflow: hidden;
+}
+
+.master-nav-title {
+  display: grid;
+  gap: 2px;
+}
+
+.master-search {
+  display: grid;
+  gap: 5px;
+  padding: 8px 6px;
+}
+
+.master-search span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.master-search input {
+  min-height: 34px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.master-nav-scroll {
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.master-nav-group {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.master-nav-group-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.master-nav-group-head strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.master-nav-group-head span,
+.master-nav-group small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.master-toolbar-v2 {
+  align-items: flex-start;
+}
+
+.master-table-panel,
+.master-detail-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.master-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.master-section-head strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.master-section-head span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.master-section-head button {
+  min-height: 32px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.master-row-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.master-row-actions button {
+  min-height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.master-row-actions button:nth-child(2) {
+  border-color: #bfdbfe;
+  color: var(--primary);
+}
+
+.master-row-actions button:last-child {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.master-table tr.is-selected td {
+  background: #eff6ff;
+}
+
+.master-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.master-detail-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+}
+
+.master-detail-card dl div {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #eef2f7;
+  border-radius: 7px;
+  background: #f8fafc;
+}
+
+.master-detail-card dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.master-detail-card dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.master-editor summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.master-editor summary span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.required-mark {
+  color: #dc2626;
+  font-weight: 900;
+}
+
+.folder-master-form .est-form-actions {
+  gap: 8px;
+}
+
+.folder-master-form .est-form-actions button {
+  flex: 1;
+  width: auto;
+}
+
+.folder-master-form .est-form-actions button + button {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+
 .master-table th,
 .master-table td {
   white-space: nowrap;
@@ -2700,6 +2916,15 @@ tfoot td {
     position: static;
   }
 
+  .master-console-v2,
+  .master-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .folder-master-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .master-toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -2756,6 +2981,11 @@ tfoot td {
 
   .rspo-detail {
     grid-column: auto;
+  }
+
+  .folder-master-form,
+  .master-detail-card dl {
+    grid-template-columns: 1fr;
   }
 }
 
