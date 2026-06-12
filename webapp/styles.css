@@ -2810,6 +2810,12 @@ tfoot td {
   font-weight: 900;
 }
 
+.est-rate-actions .danger {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #991b1b;
+}
+
 .est-contract-summary,
 .est-budget-flow,
 .est-budget-groups {
@@ -2886,6 +2892,8 @@ tfoot td {
 
 .est-budget-filters select,
 .est-budget-filters input,
+.est-rate-form select,
+.est-rate-form input,
 .est-rate-table input {
   width: 100%;
   min-height: 34px;
@@ -2894,6 +2902,35 @@ tfoot td {
   padding: 0 9px;
   background: #fff;
   color: var(--ink);
+}
+
+.est-rate-form-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.est-rate-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.est-rate-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.est-rate-form button {
+  align-self: end;
+  min-height: 34px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  background: var(--primary);
+  color: #111827;
+  font-weight: 900;
 }
 
 .est-rate-table-wrap {
@@ -3190,6 +3227,9 @@ tfoot td {
   .palm-work-filters,
   .palm-stage-grid,
   .palm-pipeline,
+  .est-contract-summary,
+  .est-budget-groups,
+  .est-rate-form,
   .master-console,
   .cultivate-menu-grid,
   .cultivate-menu-card div {
@@ -3256,6 +3296,10 @@ tfoot td {
   .palm-work-filters,
   .palm-stage-grid,
   .palm-pipeline,
+  .est-contract-summary,
+  .est-budget-groups,
+  .est-budget-filters,
+  .est-rate-form,
   .master-console,
   .master-meta-grid,
   .cultivate-menu-grid,

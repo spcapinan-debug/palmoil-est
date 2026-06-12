@@ -2949,8 +2949,33 @@ function estBudgetRateLines() {
         sourceSheet: dataset.sheet,
         sourceRow: row._rowNumber || "",
       };
-      lines.push({ ...base, ...(edits.get(id) || {}) });
+      const edit = edits.get(id);
+      if (edit?._deleted) continue;
+      lines.push({ ...base, ...(edit || {}) });
     }
+  }
+  for (const edit of state.estBudgetRateEdits || []) {
+    if (!edit.customRate || edit._deleted) continue;
+    lines.push({
+      id: edit.id,
+      fiscalYear: edit.fiscalYear || "2569",
+      activity: edit.activity || "ไม่ระบุกิจกรรม",
+      contractName: edit.contractName || "อัตราเพิ่มเอง",
+      block: edit.block || "",
+      area: edit.area || "",
+      rai: n(edit.rai),
+      trees: n(edit.trees),
+      quantity: n(edit.quantity),
+      rate: n(edit.rate),
+      rateField: "manual",
+      unit: edit.unit || "บาท/งาน",
+      budget: n(edit.budget) || n(edit.rate) * n(edit.quantity),
+      nextRate: edit.nextRate ?? "",
+      nextFiscalYear: edit.nextFiscalYear || "",
+      sourceSheet: "เพิ่มเอง",
+      sourceRow: "",
+      customRate: true,
+    });
   }
   return lines;
 }
@@ -2969,6 +2994,37 @@ function updateEstBudgetRateLine(id, patch) {
   if (current) Object.assign(current, patch, { updatedAt: new Date().toISOString() });
   else state.estBudgetRateEdits.push({ id, ...patch, updatedAt: new Date().toISOString() });
   saveEstBudgetRateEdits();
+}
+
+function addEstBudgetRateLine() {
+  const activity = document.querySelector("#estRateActivity")?.value || "ไม่ระบุกิจกรรม";
+  const row = {
+    id: `manual-rate-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    customRate: true,
+    fiscalYear: "2569",
+    activity,
+    contractName: document.querySelector("#estRateContract")?.value.trim() || activity,
+    block: document.querySelector("#estRateBlock")?.value.trim() || "",
+    area: document.querySelector("#estRateArea")?.value.trim() || "",
+    quantity: n(document.querySelector("#estRateQuantity")?.value),
+    rate: n(document.querySelector("#estRateValue")?.value),
+    unit: document.querySelector("#estRateUnit")?.value || "บาท/งาน",
+    budget: n(document.querySelector("#estRateBudget")?.value),
+    sourceSheet: "เพิ่มเอง",
+    createdAt: new Date().toISOString(),
+  };
+  row.budget = row.budget || row.rate * row.quantity;
+  state.estBudgetRateEdits.push(row);
+  saveEstBudgetRateEdits();
+  render();
+}
+
+function deleteEstBudgetRateLine(id) {
+  const current = state.estBudgetRateEdits.find((row) => row.id === id);
+  if (current) current._deleted = true;
+  else state.estBudgetRateEdits.push({ id, _deleted: true, updatedAt: new Date().toISOString() });
+  saveEstBudgetRateEdits();
+  render();
 }
 
 function createEstPlanFromRateLine(id) {
@@ -4494,8 +4550,8 @@ function renderEstBudgetContract() {
     <div class="est-page est-budget-designer">
       <div class="report-title">
         <div>
-          <h2>สัญญาหลักอัตรางาน 2569</h2>
-          <p>กำหนดอัตรางานตามพื้นที่และกิจกรรม เพื่อใช้วางแผนงาน สั่งงาน และยกอัตราไปปีถัดไป</p>
+          <h2>ทะเบียนอัตราการทำงาน 2569</h2>
+          <p>แสดงเรทกิจกรรมตามหมวดกิจกรรมและพื้นที่ สำหรับเป็นฐานข้อมูลอัตรางาน สามารถเพิ่มและแก้ไขได้</p>
         </div>
         <div class="est-budget-title-actions">
           <button type="button" data-est-roll-budget>ยกอัตราไปปี 2570</button>
@@ -4504,13 +4560,8 @@ function renderEstBudgetContract() {
       <section class="est-contract-summary">
         <article><span>รายการอัตรา</span><strong>${fmt(lines.length)}</strong><small>จากทั้งหมด ${fmt(allLines.length)} รายการ</small></article>
         <article><span>งบตามตัวกรอง</span><strong>${moneyNf.format(totalBudget)}</strong><small>รวมจากอัตราและปริมาณฐาน</small></article>
-        <article><span>อัตราเฉลี่ย</span><strong>${moneyNf.format(avgRate)}</strong><small>ใช้ประเมินแผนเบื้องต้น</small></article>
-        <article><span>เตรียมยกปี</span><strong>${fmt(nextYearCount)}</strong><small>รายการที่ตั้งค่าไว้แล้ว</small></article>
-      </section>
-      <section class="est-budget-flow">
-        <article><b>1</b><strong>สัญญาหลัก</strong><span>กำหนดอัตราตามกิจกรรม พื้นที่ และหน่วยงาน</span></article>
-        <article><b>2</b><strong>วางแผน</strong><span>เลือกอัตราแล้วสร้างแผนงานตามพื้นที่</span></article>
-        <article><b>3</b><strong>สั่งงาน</strong><span>ส่งแผนไปเป็นใบสั่งงานและบันทึกงานจริง</span></article>
+        <article><span>อัตราเฉลี่ย</span><strong>${moneyNf.format(avgRate)}</strong><small>ค่าเฉลี่ยของเรทตามตัวกรอง</small></article>
+        <article><span>อัตราปีถัดไป</span><strong>${fmt(nextYearCount)}</strong><small>รายการที่ตั้งค่าไว้แล้ว</small></article>
       </section>
       <section class="est-budget-filters">
         <label>กิจกรรม
@@ -4534,7 +4585,7 @@ function renderEstBudgetContract() {
       <section class="est-panel">
         <div class="section-head">
           <h3>รายการอัตรางานตามพื้นที่</h3>
-          <span>แก้ไขอัตราแล้วกดสร้างแผนเพื่อส่งต่อไปเมนูวางแผนงาน</span>
+          <span>แก้ไขอัตราและงบประมาณได้จากตารางนี้ โดยไม่มีขั้นตอนวางแผนหรือสั่งงานในหน้านี้</span>
         </div>
         <div class="table-wrap est-rate-table-wrap">
           <table class="mini-table est-table est-rate-table">
@@ -4548,14 +4599,82 @@ function renderEstBudgetContract() {
                 <td><input data-est-rate-edit="${esc(line.id)}" data-field="budget" type="number" step="0.01" value="${esc(n(line.budget))}"></td>
                 <td><input data-est-rate-edit="${esc(line.id)}" data-field="nextRate" type="number" step="0.01" value="${esc(line.nextRate ?? "")}" placeholder="อัตรา 2570"><small>${esc(line.nextFiscalYear || "")}</small></td>
                 <td class="est-rate-actions">
-                  <button type="button" data-est-rate-plan="${esc(line.id)}">สร้างแผน</button>
-                  <button type="button" data-est-rate-order="${esc(line.id)}">สั่งงาน</button>
+                  ${line.customRate ? `<button type="button" class="danger" data-est-rate-delete="${esc(line.id)}">ลบ</button>` : `<span class="status-pill">รายการหลัก</span>`}
                 </td>
               </tr>`).join("") || `<tr><td colspan="7">ไม่พบรายการตามตัวกรอง</td></tr>`}</tbody>
           </table>
         </div>
       </section>
     </div>`;
+}
+
+function mountEstBudgetRateControls() {
+  const page = document.querySelector(".est-budget-designer");
+  if (!page) return;
+  page.querySelector(".est-budget-flow")?.remove();
+  page.querySelectorAll("[data-est-rate-plan], [data-est-rate-order]").forEach((button) => button.remove());
+
+  const tableHint = page.querySelector(".est-panel .section-head span");
+  if (tableHint) tableHint.textContent = "แก้ไขอัตราและงบประมาณได้จากตารางนี้ โดยไม่มีขั้นตอนวางแผนหรือสั่งงานในหน้านี้";
+
+  const actionHead = Array.from(page.querySelectorAll(".est-rate-table thead th")).at(-1);
+  if (actionHead) actionHead.textContent = "สถานะ";
+
+  page.querySelectorAll("td.est-rate-actions").forEach((cell) => {
+    const input = cell.closest("tr")?.querySelector("[data-est-rate-edit]");
+    const id = input?.dataset.estRateEdit || "";
+    const line = estBudgetRateLines().find((item) => item.id === id);
+    cell.innerHTML = line?.customRate
+      ? `<button type="button" class="danger" data-est-rate-delete="${esc(id)}">ลบ</button>`
+      : `<span class="status-pill">รายการหลัก</span>`;
+  });
+
+  const filters = page.querySelector(".est-budget-filters");
+  if (!filters || page.querySelector(".est-rate-form-panel")) return;
+
+  const activities = Object.keys(state.estData?.activityTotals || {}).sort();
+  const activityOptions = [`<option value="ไม่ระบุกิจกรรม">ไม่ระบุกิจกรรม</option>`]
+    .concat(activities.map((activity) => `<option value="${esc(activity)}">${esc(activity)}</option>`))
+    .join("");
+  filters.insertAdjacentHTML("afterend", `
+    <section class="est-panel est-rate-form-panel">
+      <div class="section-head">
+        <h3>เพิ่มอัตรางาน</h3>
+        <span>บันทึกเรทกิจกรรมตามหมวดกิจกรรม พื้นที่ และหน่วยงาน</span>
+      </div>
+      <div class="est-rate-form">
+        <label>หมวดกิจกรรม
+          <select id="estRateActivity">${activityOptions}</select>
+        </label>
+        <label>ชื่ออัตรา/สัญญา
+          <input id="estRateContract" type="text" placeholder="เช่น ถางป่า ตามไร่">
+        </label>
+        <label>พื้นที่/บล็อก
+          <input id="estRateBlock" type="text" placeholder="รหัสพื้นที่หรือบล็อก">
+        </label>
+        <label>รายละเอียดพื้นที่
+          <input id="estRateArea" type="text" placeholder="แปลง/โซน/หมายเหตุ">
+        </label>
+        <label>ฐานงาน
+          <input id="estRateQuantity" type="number" step="0.01" placeholder="จำนวน">
+        </label>
+        <label>หน่วย
+          <select id="estRateUnit">
+            <option value="บาท/งาน">บาท/งาน</option>
+            <option value="บาท/ไร่">บาท/ไร่</option>
+            <option value="บาท/ต้น">บาท/ต้น</option>
+            <option value="บาท/ตัน">บาท/ตัน</option>
+          </select>
+        </label>
+        <label>อัตรา
+          <input id="estRateValue" type="number" step="0.01" placeholder="0.00">
+        </label>
+        <label>งบประมาณ
+          <input id="estRateBudget" type="number" step="0.01" placeholder="คำนวณจากอัตรา x ฐานงานถ้าเว้นว่าง">
+        </label>
+        <button type="button" data-est-add-rate>เพิ่มอัตรา</button>
+      </div>
+    </section>`);
 }
 
 function renderEstView() {
@@ -4565,7 +4684,10 @@ function renderEstView() {
   }
   if (state.view === "est-dashboard") els.reportPage.innerHTML = renderEstDashboard();
   else if (state.view === "est-master") els.reportPage.innerHTML = renderEstMaster();
-  else if (state.view === "est-budget") els.reportPage.innerHTML = renderEstBudgetContract();
+  else if (state.view === "est-budget") {
+    els.reportPage.innerHTML = renderEstBudgetContract();
+    mountEstBudgetRateControls();
+  }
   else if (state.view === "est-plan") els.reportPage.innerHTML = renderEstPlanPage();
   else if (state.view === "est-workorder") els.reportPage.innerHTML = renderEstWorkOrderPage();
   else if (state.view === "est-daily") els.reportPage.innerHTML = renderEstDailyEntryPage();
@@ -5475,18 +5597,13 @@ async function init() {
       rollEstBudgetRatesToNextYear();
       return;
     }
-    const ratePlan = e.target.closest("[data-est-rate-plan]");
-    if (ratePlan) {
-      createEstPlanFromRateLine(ratePlan.dataset.estRatePlan);
+    if (e.target.closest("[data-est-add-rate]")) {
+      addEstBudgetRateLine();
       return;
     }
-    const rateOrder = e.target.closest("[data-est-rate-order]");
-    if (rateOrder) {
-      const before = state.estWorkPlans.length;
-      createEstPlanFromRateLine(rateOrder.dataset.estRateOrder);
-      const plan = state.estWorkPlans[before];
-      if (plan) createEstWorkOrderFromPlan(plan, { status: "Scheduled" });
-      render();
+    const rateDelete = e.target.closest("[data-est-rate-delete]");
+    if (rateDelete) {
+      deleteEstBudgetRateLine(rateDelete.dataset.estRateDelete);
       return;
     }
     const folderSort = e.target.closest("[data-folder-sort]");
