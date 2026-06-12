@@ -4002,10 +4002,10 @@ function renderMasterFolderPanel() {
       || null;
     const detailColumns = masterFolderReadableColumns(table, 16).filter((column) => detailRow && detailRow[column.key] !== undefined && detailRow[column.key] !== "");
     const selectedGroups = state.masterFolderGroupFilters || [];
-    const groupChips = masterFolderGroups().map((group) => `
-      <button type="button" class="${selectedGroups.includes(group.id) ? "active" : ""}" data-folder-group-filter="${esc(group.id)}">
+    const groupOptions = masterFolderGroups().map((group) => `
+      <option value="${esc(group.id)}" ${selectedGroups.includes(group.id) ? "selected" : ""}>
         ${esc(group.title)}
-      </button>`).join("");
+      </option>`).join("");
     const groups = masterFolderGroups().filter((group) => !selectedGroups.length || selectedGroups.includes(group.id)).map((group) => ({
       ...group,
       tables: group.tables.filter((item) => {
@@ -4049,11 +4049,13 @@ function renderMasterFolderPanel() {
             <input id="masterFolderSearch" value="${esc(state.masterFolderSearch)}" placeholder="ค้นหา table, รหัส, ชื่อ, รายละเอียด">
           </label>
           <div class="master-group-filter">
-            <span>เลือกกลุ่ม</span>
-            <div>
-              <button type="button" class="${selectedGroups.length ? "" : "active"}" data-folder-group-filter="all">ทั้งหมด</button>
-              ${groupChips}
-            </div>
+            <label>
+              <span>เลือกกลุ่ม</span>
+              <select data-folder-group-select>
+                <option value="all" ${selectedGroups.length ? "" : "selected"}>ทั้งหมด</option>
+                ${groupOptions}
+              </select>
+            </label>
           </div>
           <div class="master-nav-scroll">${navItems || `<div class="empty-state compact">ไม่พบข้อมูลตามคำค้นหา</div>`}</div>
         </aside>
@@ -5048,6 +5050,20 @@ async function init() {
       if (target && selected) target.value = selected.dataset[datasetKeyFromSnake(targetField)] || "";
       return;
     }
+    if (e.target.matches("[data-folder-group-select]")) {
+      const value = e.target.value;
+      state.masterFolderGroupFilters = value === "all" ? [] : [value];
+      const allowedTables = masterFolderGroups()
+        .filter((group) => !state.masterFolderGroupFilters.length || state.masterFolderGroupFilters.includes(group.id))
+        .flatMap((group) => group.tables);
+      if (allowedTables.length && !allowedTables.some((table) => table.id === state.masterFolderTableId)) {
+        state.masterFolderTableId = allowedTables[0].id;
+        state.masterFolderEditId = "";
+        state.masterFolderDetailId = "";
+      }
+      render();
+      return;
+    }
     if (e.target.id === "estWorkBlock") {
       const selected = e.target.selectedOptions?.[0];
       const activity = document.querySelector("#estWorkActivity");
@@ -5141,28 +5157,6 @@ async function init() {
       state.masterFolderTableId = folderNav.dataset.folderMasterNav;
       state.masterFolderEditId = "";
       state.masterFolderDetailId = "";
-      render();
-      return;
-    }
-    const folderGroup = e.target.closest("[data-folder-group-filter]");
-    if (folderGroup) {
-      const value = folderGroup.dataset.folderGroupFilter;
-      if (value === "all") {
-        state.masterFolderGroupFilters = [];
-      } else {
-        const current = new Set(state.masterFolderGroupFilters || []);
-        if (current.has(value)) current.delete(value);
-        else current.add(value);
-        state.masterFolderGroupFilters = Array.from(current);
-      }
-      const allowedTables = masterFolderGroups()
-        .filter((group) => !state.masterFolderGroupFilters.length || state.masterFolderGroupFilters.includes(group.id))
-        .flatMap((group) => group.tables);
-      if (allowedTables.length && !allowedTables.some((table) => table.id === state.masterFolderTableId)) {
-        state.masterFolderTableId = allowedTables[0].id;
-        state.masterFolderEditId = "";
-        state.masterFolderDetailId = "";
-      }
       render();
       return;
     }
