@@ -24,6 +24,7 @@ const state = {
   masterFolderEditId: "",
   masterFolderDetailId: "",
   masterFolderSearch: "",
+  masterFolderGroupFilters: [],
   masterFolderRecords: [],
   estSearchTimer: null,
   sidebarCollapsed: localStorage.getItem("sidebarCollapsed") === "1",
@@ -3844,7 +3845,9 @@ function masterFolderFilteredRows(table) {
 function isMasterFolderTechnicalColumn(column) {
   const key = String(column?.key || "").toLowerCase();
   const label = String(column?.label || "").toLowerCase();
-  if (label.includes("master key")) return false;
+  if (label.includes("master key")) return true;
+  if (label.startsWith("fk ") || label.startsWith("fk_")) return true;
+  if (key === "id" || key.endsWith("_id") || key.includes("_uuid") || key.includes("guid")) return true;
   return [
     "created_by", "modified_by", "creation_stamp", "modification_stamp", "updatedat", "createdat",
     "geom", "tag_id", "characteristic_class_id",
@@ -3854,10 +3857,10 @@ function isMasterFolderTechnicalColumn(column) {
 function masterFolderReadableColumns(table, limit = 8) {
   const columns = table?.columns || [];
   const priorityKeys = new Set([table?.primaryKey, "description", "name", "Name", "estate", "zone", "area_group", "rspo", "status", "activity", "material", "partner_code", "gang"].filter(Boolean));
-  const prioritized = columns.filter((column) => priorityKeys.has(column.key) && !isMasterFolderTechnicalColumn(column));
+  const prioritized = columns.filter((column) => priorityKeys.has(column.key) && (!isMasterFolderTechnicalColumn(column) || column.key === table?.primaryKey));
   const regular = columns.filter((column) => !priorityKeys.has(column.key) && !isMasterFolderTechnicalColumn(column));
   const selected = [...prioritized, ...regular].slice(0, limit);
-  return selected.length ? selected : columns.slice(0, limit);
+  return selected.length ? selected : columns.filter((column) => !isMasterFolderTechnicalColumn(column)).slice(0, limit);
 }
 
 function masterFolderRequiredColumns(table) {
@@ -3998,7 +4001,12 @@ function renderMasterFolderPanel() {
       || displayRows[0]
       || null;
     const detailColumns = masterFolderReadableColumns(table, 16).filter((column) => detailRow && detailRow[column.key] !== undefined && detailRow[column.key] !== "");
-    const groups = masterFolderGroups().map((group) => ({
+    const selectedGroups = state.masterFolderGroupFilters || [];
+    const groupChips = masterFolderGroups().map((group) => `
+      <button type="button" class="${selectedGroups.includes(group.id) ? "active" : ""}" data-folder-group-filter="${esc(group.id)}">
+        ${esc(group.title)}
+      </button>`).join("");
+    const groups = masterFolderGroups().filter((group) => !selectedGroups.length || selectedGroups.includes(group.id)).map((group) => ({
       ...group,
       tables: group.tables.filter((item) => {
         if (!query) return true;
@@ -4040,6 +4048,13 @@ function renderMasterFolderPanel() {
             <span>ค้นหา</span>
             <input id="masterFolderSearch" value="${esc(state.masterFolderSearch)}" placeholder="ค้นหา table, รหัส, ชื่อ, รายละเอียด">
           </label>
+          <div class="master-group-filter">
+            <span>เลือกกลุ่ม</span>
+            <div>
+              <button type="button" class="${selectedGroups.length ? "" : "active"}" data-folder-group-filter="all">ทั้งหมด</button>
+              ${groupChips}
+            </div>
+          </div>
           <div class="master-nav-scroll">${navItems || `<div class="empty-state compact">ไม่พบข้อมูลตามคำค้นหา</div>`}</div>
         </aside>
         <div class="master-workspace">
@@ -4057,29 +4072,6 @@ function renderMasterFolderPanel() {
             <article><span>ลบ/ซ่อน</span><strong>${fmt(deletedCount)}</strong></article>
           </section>
           <section class="master-relations">${refBadges}</section>
-          <section class="master-table-panel">
-            <div class="master-section-head">
-              <div>
-                <strong>รายการข้อมูล</strong>
-                <span>แสดงเฉพาะคอลัมน์สำคัญเพื่อให้อ่านง่าย</span>
-              </div>
-              <button type="button" data-folder-new-row>เพิ่มข้อมูลใหม่</button>
-            </div>
-            <div class="table-wrap est-table-wrap">
-              <table class="mini-table est-table master-table">
-                <thead><tr><th>จัดการ</th>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>สถานะ</th></tr></thead>
-                <tbody>${displayRows.slice(0, 500).map((row) => `<tr class="${row.readonly ? "" : "is-added"} ${row.id === detailRow?.id ? "is-selected" : ""}">
-                  <td class="master-row-actions">
-                    <button type="button" data-folder-detail-row="${esc(row.id)}">ดู</button>
-                    <button type="button" data-folder-edit-row="${esc(row.id)}">แก้ไข</button>
-                    <button type="button" data-folder-del-row="${esc(row.id)}">ลบ</button>
-                  </td>
-                  ${visibleColumns.map((col) => `<td>${esc(row[col.key] ?? "")}</td>`).join("")}
-                  <td>${esc(row._source || (row.readonly ? "ข้อมูลหลัก" : "แก้ไข"))}</td>
-                </tr>`).join("") || `<tr><td colspan="${visibleColumns.length + 2}">ไม่พบข้อมูลตามคำค้นหา</td></tr>`}</tbody>
-              </table>
-            </div>
-          </section>
           <section class="master-detail-grid">
             <article class="master-detail-card">
               <div class="master-section-head">
@@ -4097,11 +4089,33 @@ function renderMasterFolderPanel() {
               <form class="est-entry-form folder-master-form">
                 ${formColumns.map((column) => renderMasterFolderInput(column, table, edit)).join("")}
                 <div class="est-form-actions est-form-wide">
-                  <button type="button" data-folder-save-row>${state.masterFolderEditId ? "บันทึกแก้ไข" : "เพิ่มข้อมูล"}</button>
+                  <button type="button" data-folder-save-row>${state.masterFolderEditId ? "บันทึก" : "บันทึกข้อมูลใหม่"}</button>
                   <button type="button" data-folder-cancel-edit>ล้างฟอร์ม</button>
                 </div>
               </form>
             </details>
+          </section>
+          <section class="master-table-panel">
+            <div class="master-section-head">
+              <div>
+                <strong>รายการข้อมูล</strong>
+                <span>คลิกแถวเพื่อดูรายละเอียด แสดงเฉพาะคอลัมน์สำคัญ</span>
+              </div>
+              <button type="button" data-folder-new-row>เพิ่มข้อมูลใหม่</button>
+            </div>
+            <div class="table-wrap est-table-wrap">
+              <table class="mini-table est-table master-table">
+                <thead><tr>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>แหล่งข้อมูล</th><th>จัดการ</th></tr></thead>
+                <tbody>${displayRows.slice(0, 500).map((row) => `<tr data-folder-detail-row="${esc(row.id)}" class="${row.readonly ? "" : "is-added"} ${row.id === detailRow?.id ? "is-selected" : ""}">
+                  ${visibleColumns.map((col) => `<td>${esc(row[col.key] ?? "")}</td>`).join("")}
+                  <td>${esc(row._source || (row.readonly ? "ข้อมูลหลัก" : "แก้ไข"))}</td>
+                  <td class="master-row-actions">
+                    <button type="button" data-folder-edit-row="${esc(row.id)}">แก้ไข</button>
+                    <button type="button" data-folder-del-row="${esc(row.id)}">ลบ</button>
+                  </td>
+                </tr>`).join("") || `<tr><td colspan="${visibleColumns.length + 2}">ไม่พบข้อมูลตามคำค้นหา</td></tr>`}</tbody>
+              </table>
+            </div>
           </section>
         </div>
       </section>`;
@@ -5130,9 +5144,25 @@ async function init() {
       render();
       return;
     }
-    const folderDetail = e.target.closest("[data-folder-detail-row]");
-    if (folderDetail) {
-      state.masterFolderDetailId = folderDetail.dataset.folderDetailRow;
+    const folderGroup = e.target.closest("[data-folder-group-filter]");
+    if (folderGroup) {
+      const value = folderGroup.dataset.folderGroupFilter;
+      if (value === "all") {
+        state.masterFolderGroupFilters = [];
+      } else {
+        const current = new Set(state.masterFolderGroupFilters || []);
+        if (current.has(value)) current.delete(value);
+        else current.add(value);
+        state.masterFolderGroupFilters = Array.from(current);
+      }
+      const allowedTables = masterFolderGroups()
+        .filter((group) => !state.masterFolderGroupFilters.length || state.masterFolderGroupFilters.includes(group.id))
+        .flatMap((group) => group.tables);
+      if (allowedTables.length && !allowedTables.some((table) => table.id === state.masterFolderTableId)) {
+        state.masterFolderTableId = allowedTables[0].id;
+        state.masterFolderEditId = "";
+        state.masterFolderDetailId = "";
+      }
       render();
       return;
     }
@@ -5172,6 +5202,12 @@ async function init() {
       if (state.masterFolderEditId === rowId) state.masterFolderEditId = "";
       if (state.masterFolderDetailId === rowId) state.masterFolderDetailId = "";
       saveMasterFolderRecords();
+      render();
+      return;
+    }
+    const folderDetail = e.target.closest("[data-folder-detail-row]");
+    if (folderDetail) {
+      state.masterFolderDetailId = folderDetail.dataset.folderDetailRow;
       render();
       return;
     }
