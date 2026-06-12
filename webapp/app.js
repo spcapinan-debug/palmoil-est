@@ -4119,7 +4119,7 @@ function renderMasterFolderPanel() {
               </div>
               <button type="button" data-folder-new-row>เพิ่มข้อมูลใหม่</button>
             </div>
-            <div class="table-wrap est-table-wrap">
+            <div class="table-wrap est-table-wrap master-data-table-wrap">
               <table class="mini-table est-table master-table">
                 <thead><tr>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>แหล่งข้อมูล</th><th>จัดการ</th></tr></thead>
                 <tbody>${displayRows.slice(0, 500).map((row) => `<tr data-folder-detail-row="${esc(row.id)}" class="${row.readonly ? "" : "is-added"} ${row.id === detailRow?.id ? "is-selected" : ""}">
