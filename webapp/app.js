@@ -3856,10 +3856,11 @@ function masterFolderLabel(row, table) {
 
 function masterFolderGroupForTable(table) {
   const id = `${table?.id || ""} ${table?.domain || ""}`.toLowerCase();
+  const title = String(table?.title || "").toLowerCase();
   if (table?.id === "cultivate_estates") return "general";
   if (id.includes("terrain") || id.includes("area")) return "area";
   if (id.includes("partner") || id.includes("gang") || id.includes("designation") || id.includes("nationalit") || id.includes("race") || id.includes("religion") || id.includes("payroll") || id.includes("leave") || id.includes("chequeroll") || id.includes("settlement")) return "people";
-  if (id.includes("activity") || id.includes("work_system")) return "activity";
+  if (id.includes("activity") || id.includes("activities") || id.includes("work_system") || title.includes("กิจกรรม")) return "activity";
   if (id.includes("material") || id.includes("warehouse") || id.includes("weighbridge") || id.includes("equipment") || id.includes("unit")) return "supply";
   if (id.includes("budget") || id.includes("ap")) return "budget";
   return "general";
