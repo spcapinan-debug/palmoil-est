@@ -3769,7 +3769,6 @@ function buildMasterAreaGroupTable(tables) {
     source: "cultivate_terrains.superior_code",
     primaryKey: "area_parent_code",
     primaryLabel: "รหัสพื้นที่แม่",
-    hiddenInNav: true,
     columns: [
       { key: "area_parent_code", label: "รหัสพื้นที่แม่" },
       { key: "area_parent_name", label: "ชื่อ" },
@@ -3805,13 +3804,8 @@ function masterFolderTables() {
   return [areaGroupTable, ...baseTables.filter((table) => table.id !== areaGroupTable.id)];
 }
 
-function masterFolderVisibleTables() {
-  return masterFolderTables().filter((table) => !table.hiddenInNav);
-}
-
 function activeMasterFolderTable() {
-  const visibleTables = masterFolderVisibleTables();
-  return visibleTables.find((table) => table.id === state.masterFolderTableId) || visibleTables[0] || masterFolderTables()[0] || null;
+  return masterFolderTables().find((table) => table.id === state.masterFolderTableId) || masterFolderTables()[0] || null;
 }
 
 function masterFolderDraftRows(tableId) {
@@ -3881,7 +3875,7 @@ function masterFolderGroups() {
   ];
   const tables = masterFolderTables();
   return groups.map((group) => {
-    const groupTables = tables.filter((table) => !table.hiddenInNav && masterFolderGroupForTable(table) === group.id);
+    const groupTables = tables.filter((table) => masterFolderGroupForTable(table) === group.id);
     return {
       ...group,
       tables: groupTables,
@@ -4124,8 +4118,7 @@ function renderMasterFolderPanel() {
         <button type="button" data-folder-db-save ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึก table นี้</button>
         <button type="button" data-folder-db-import-all ${state.estMasterSyncBusy ? "disabled" : ""}>บันทึกทุก table</button>
       </div>`;
-    const visibleTables = masterFolderVisibleTables();
-    const totalRows = visibleTables.reduce((sum, item) => sum + n(item.rowCount || masterFolderRows(item).length), 0);
+    const totalRows = masterFolderTables().reduce((sum, item) => sum + n(item.rowCount || masterFolderRows(item).length), 0);
     const editedCount = masterFolderDraftRows(table.id).filter((row) => !row._deleted).length;
     const deletedCount = masterFolderDraftRows(table.id).filter((row) => row._deleted).length;
     return `
@@ -4133,7 +4126,7 @@ function renderMasterFolderPanel() {
         <aside class="master-nav master-nav-v2">
           <div class="master-nav-title">
             <strong>ข้อมูลหลัก</strong>
-            <span>${fmt(visibleTables.length)} tables · ${fmt(totalRows)} rows</span>
+            <span>${fmt(masterFolderTables().length)} tables · ${fmt(totalRows)} rows</span>
           </div>
           <label class="master-search">
             <span>ค้นหา</span>
@@ -5192,7 +5185,7 @@ async function init() {
       state.masterFolderSearch = e.target.value.trim();
       state.masterFolderDetailId = "";
       if (state.masterFolderSearch) {
-        const matchedTables = masterFolderVisibleTables().filter((table) => {
+        const matchedTables = masterFolderTables().filter((table) => {
           const tableText = `${table.id} ${table.title} ${table.domain}`.toLowerCase();
           return tableText.includes(state.masterFolderSearch.toLowerCase())
             || masterFolderRows(table).some((row) => masterFolderMatchesSearch(table, row, state.masterFolderSearch));
