@@ -209,8 +209,77 @@ def cultivate_tables():
     return [table for table in tables if isinstance(table, dict) and table.get("id")]
 
 
+def merge_terrain_tables(tables):
+    master = next((table for table in tables if table.get("id") == "master_terrains"), None)
+    cultivate = next((table for table in tables if table.get("id") == "cultivate_terrains"), None)
+    if not master or not cultivate:
+        return [table for table in tables if table.get("id") != "master_terrains"]
+
+    extra_columns = [
+        ("area_planted", "พื้นที่ปลูก", "number"),
+        ("tree_count", "จำนวนต้น", "number"),
+        ("rspo", "RSPO", "text"),
+        ("payroll_department_code", "รหัสฝ่ายค่าแรง", "text"),
+        ("payroll_description", "ฝ่ายค่าแรง", "text"),
+        ("work_code", "คีย์ระบบงาน", "text"),
+        ("work_name", "ชื่อระบบงาน", "text"),
+        ("ap_code", "คีย์ AP", "text"),
+        ("ap_name", "ชื่อ AP", "text"),
+    ]
+    existing_columns = {column.get("key") for column in cultivate.get("columns", [])}
+    for key, label, kind in extra_columns:
+        if key not in existing_columns:
+            cultivate.setdefault("columns", []).append({"key": key, "label": label, "type": kind})
+            existing_columns.add(key)
+
+    existing_refs = {(ref.get("field"), ref.get("refTable"), ref.get("refKey")) for ref in cultivate.get("references", [])}
+    for ref in [
+        {"field": "work_code", "refTable": "master_work_systems", "refDomain": "system", "refKey": "work_code"},
+        {"field": "ap_code", "refTable": "master_ap", "refDomain": "ap", "refKey": "ap_code"},
+    ]:
+        key = (ref["field"], ref["refTable"], ref["refKey"])
+        if key not in existing_refs:
+            cultivate.setdefault("references", []).append(ref)
+            existing_refs.add(key)
+
+    cultivate_rows = cultivate.setdefault("rows", [])
+    by_terrain = {str(row.get("terrain", "")).strip(): row for row in cultivate_rows if str(row.get("terrain", "")).strip()}
+    for row in master.get("rows", []):
+        terrain = str(row.get("terrain_key", "")).strip()
+        if not terrain:
+            continue
+        target = by_terrain.get(terrain)
+        if target is None:
+            target = {
+                "terrain": terrain,
+                "description": terrain,
+                "estate_code": row.get("estate", ""),
+                "estate": row.get("estate", ""),
+                "area": row.get("area_rai", ""),
+                "status": "Active",
+                "terrain_type": "Terrain",
+                "structure_level": "",
+            }
+            cultivate_rows.append(target)
+            by_terrain[terrain] = target
+        if not target.get("area"):
+            target["area"] = row.get("area_rai", "")
+        for key, _, _ in extra_columns:
+            value = row.get(key, "")
+            if value != "":
+                target[key] = value
+
+    cultivate["title"] = "พื้นที่จาก Cultivate"
+    cultivate["domain"] = "cultivate_area"
+    cultivate["primaryKey"] = "terrain"
+    cultivate["primaryLabel"] = "รหัสพื้นที่"
+    cultivate["rowCount"] = len(cultivate_rows)
+    cultivate["columnCount"] = len(cultivate.get("columns", []))
+    return [table for table in tables if table.get("id") != "master_terrains"]
+
+
 def main():
-    tables = [*build_tables(), *cultivate_tables()]
+    tables = merge_terrain_tables([*build_tables(), *cultivate_tables()])
     domains = {}
     for table in tables:
         domains.setdefault(table["domain"], {"id": table["domain"], "tableCount": 0, "rowCount": 0})

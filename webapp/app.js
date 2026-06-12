@@ -637,7 +637,8 @@ async function loadMasterFolderData() {
     .catch(() => ({ ok: false, domains: [], tables: [], skipped: [] }));
   state.masterFolderData = payload;
   if (!state.masterFolderTableId && payload.tables?.[0]) {
-    const priority = payload.tables.find((table) => table.domain === "terrains")
+    const priority = payload.tables.find((table) => table.id === "cultivate_terrains")
+      || payload.tables.find((table) => table.domain === "terrains")
       || payload.tables.find((table) => table.domain === "activities")
       || payload.tables[0];
     state.masterFolderTableId = priority.id;
@@ -3798,7 +3799,8 @@ function masterFolderLabel(row, table) {
 
 function masterFolderGroupForTable(table) {
   const id = `${table?.id || ""} ${table?.domain || ""}`.toLowerCase();
-  if (id.includes("terrain") || id.includes("estate") || id.includes("area")) return "area";
+  if (table?.id === "cultivate_estates") return "general";
+  if (id.includes("terrain") || id.includes("area")) return "area";
   if (id.includes("partner") || id.includes("gang") || id.includes("designation") || id.includes("nationalit") || id.includes("race") || id.includes("religion") || id.includes("payroll") || id.includes("leave") || id.includes("chequeroll") || id.includes("settlement")) return "people";
   if (id.includes("activity") || id.includes("work_system")) return "activity";
   if (id.includes("material") || id.includes("warehouse") || id.includes("weighbridge") || id.includes("equipment") || id.includes("unit")) return "supply";
@@ -3939,7 +3941,7 @@ function renderMasterFolderInput(column, table, edit) {
   const ref = (table.references || []).find((item) => item.field === column.key);
   const value = edit[column.key] ?? "";
   const required = isMasterFolderRequired(table, column);
-  if (table.id === "master_terrains") {
+  if (table.id === "master_terrains" || table.id === "cultivate_terrains") {
     if (["estate", "zone", "area_group"].includes(column.key)) {
       return renderMasterSelectField(column, value, masterFolderUniqueOptions(table, column.key), "", required);
     }
