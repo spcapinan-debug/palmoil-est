@@ -25,6 +25,7 @@ const state = {
   masterFolderDetailId: "",
   masterFolderSearch: "",
   masterFolderGroupFilters: [],
+  masterFolderSort: { tableId: "", key: "", dir: "asc" },
   masterFolderRecords: [],
   estSearchTimer: null,
   sidebarCollapsed: localStorage.getItem("sidebarCollapsed") === "1",
@@ -3900,6 +3901,25 @@ function masterFolderFilteredRows(table) {
   return masterFolderRows(table).filter((row) => masterFolderMatchesSearch(table, row, query));
 }
 
+function masterFolderComparableValue(value) {
+  const raw = String(value ?? "").trim();
+  const numeric = Number(raw.replace(/,/g, ""));
+  if (raw && Number.isFinite(numeric) && /^-?[\d,]+(\.\d+)?$/.test(raw)) return numeric;
+  return raw.toLocaleLowerCase("th");
+}
+
+function masterFolderSortedRows(table, rows) {
+  const sort = state.masterFolderSort || {};
+  if (!sort.key || sort.tableId !== table?.id) return rows;
+  const dir = sort.dir === "desc" ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    const av = masterFolderComparableValue(a?.[sort.key]);
+    const bv = masterFolderComparableValue(b?.[sort.key]);
+    if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+    return String(av).localeCompare(String(bv), "th", { numeric: true, sensitivity: "base" }) * dir;
+  });
+}
+
 function isMasterFolderTechnicalColumn(column) {
   const key = String(column?.key || "").toLowerCase();
   const label = String(column?.label || "").toLowerCase();
@@ -4066,7 +4086,7 @@ function renderMasterFolderPanel() {
   {
     const query = state.masterFolderSearch.trim();
     const allRows = masterFolderRows(table);
-    const displayRows = masterFolderFilteredRows(table);
+    const displayRows = masterFolderSortedRows(table, masterFolderFilteredRows(table));
     const edit = state.masterFolderRecords.find((row) => row.tableId === table.id && (row.id === state.masterFolderEditId || row._overrideOf === state.masterFolderEditId))
       || allRows.find((row) => row.id === state.masterFolderEditId)
       || {};
@@ -4195,7 +4215,11 @@ function renderMasterFolderPanel() {
             </div>
             <div class="table-wrap est-table-wrap master-data-table-wrap">
               <table class="mini-table est-table master-table">
-                <thead><tr>${visibleColumns.map((col) => `<th>${esc(col.label)}</th>`).join("")}<th>จัดการ</th></tr></thead>
+                <thead><tr>${visibleColumns.map((col) => {
+                  const active = state.masterFolderSort?.tableId === table.id && state.masterFolderSort?.key === col.key;
+                  const arrow = active ? (state.masterFolderSort.dir === "desc" ? "↓" : "↑") : "";
+                  return `<th><button type="button" class="master-sort-btn ${active ? "active" : ""}" data-folder-sort="${esc(col.key)}"><span>${esc(col.label)}</span><b>${arrow}</b></button></th>`;
+                }).join("")}<th>จัดการ</th></tr></thead>
                 <tbody>${displayRows.slice(0, 500).map((row) => `<tr data-folder-detail-row="${esc(row.id)}" class="${row.readonly ? "" : "is-added"} ${row.id === detailRow?.id ? "is-selected" : ""}">
                   ${visibleColumns.map((col) => `<td>${esc(row[col.key] ?? "")}</td>`).join("")}
                   <td class="master-row-actions">
@@ -5239,11 +5263,25 @@ async function init() {
       importAllMasterFolderTablesToDatabase();
       return;
     }
+    const folderSort = e.target.closest("[data-folder-sort]");
+    if (folderSort) {
+      const table = activeMasterFolderTable();
+      const key = folderSort.dataset.folderSort;
+      const current = state.masterFolderSort || {};
+      state.masterFolderSort = {
+        tableId: table?.id || "",
+        key,
+        dir: current.tableId === table?.id && current.key === key && current.dir === "asc" ? "desc" : "asc",
+      };
+      render();
+      return;
+    }
     const folderNav = e.target.closest("[data-folder-master-nav]");
     if (folderNav) {
       state.masterFolderTableId = folderNav.dataset.folderMasterNav;
       state.masterFolderEditId = "";
       state.masterFolderDetailId = "";
+      state.masterFolderSort = { tableId: "", key: "", dir: "asc" };
       render();
       return;
     }

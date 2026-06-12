@@ -2468,7 +2468,8 @@ tfoot td {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
-  overflow-y: hidden;
+  overflow-y: auto;
+  max-height: 520px;
   border-top: 1px solid var(--line);
 }
 
@@ -2476,6 +2477,13 @@ tfoot td {
   width: 100%;
   min-width: 0;
   table-layout: fixed;
+}
+
+.master-data-table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
 }
 
 .master-data-table-wrap::-webkit-scrollbar {
@@ -2678,6 +2686,32 @@ tfoot td {
 .master-table th:last-child,
 .master-table td.master-row-actions {
   width: 118px;
+}
+
+.master-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.master-sort-btn span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.master-sort-btn b {
+  min-width: 10px;
+  color: var(--primary);
 }
 
 .est-entry-grid {
