@@ -8,6 +8,7 @@ import openpyxl
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "Master Data" / "data plant.xlsx"
 OUT = ROOT / "webapp" / "data" / "master_data_full.json"
+CULTIVATE_LIVE = ROOT / "webapp" / "data" / "cultivate_master_live.json"
 
 
 def clean(value):
@@ -195,8 +196,21 @@ def build_tables():
     ]
 
 
+def cultivate_tables():
+    if not CULTIVATE_LIVE.exists():
+        return []
+    try:
+        data = json.loads(CULTIVATE_LIVE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    tables = data.get("tables")
+    if not isinstance(tables, list):
+        return []
+    return [table for table in tables if isinstance(table, dict) and table.get("id")]
+
+
 def main():
-    tables = build_tables()
+    tables = [*build_tables(), *cultivate_tables()]
     domains = {}
     for table in tables:
         domains.setdefault(table["domain"], {"id": table["domain"], "tableCount": 0, "rowCount": 0})
