@@ -3708,7 +3708,7 @@ function renderEstMasterField(field, edit, category) {
       <label>${esc(label)}
         <select data-est-master-field="${esc(key)}">
           <option value="">เลือก${esc(ref.label || label)}</option>
-          ${options.map((item) => `<option value="${esc(item.value)}" ${String(value) === String(item.value) ? "selected" : ""}>${esc(item.label)}</option>`).join("")}
+          ${options.map((item) => `<option value="${esc(item.value)}" ${String(value) === String(item.value) ? "selected" : ""}>${esc(masterFolderOptionDisplayLabel(item))}</option>`).join("")}
         </select>
       </label>`;
   }
@@ -3792,6 +3792,10 @@ function masterFolderPkValue(row, table) {
 }
 
 function masterFolderLabel(row, table) {
+  if (table?.id === "cultivate_terrains") return String(row.description || row.terrain || "").trim();
+  if (table?.id === "master_work_systems") return String(row.work_name || row.work_code || "").trim();
+  if (table?.id === "master_ap") return String(row.ap_name || row.ap_code || "").trim();
+  if (table?.id === "cultivate_estates") return String(row.description || row.estate_name || row.estate || "").trim();
   const keys = [table?.primaryKey, "name", "Name", "description", "Description", "ชื่อ", "แปลง", "บล็อก", "Activity", "Material Name", "partner"].filter(Boolean);
   const values = keys.map((key) => row[key]).filter((value) => value !== undefined && value !== "");
   return values.slice(0, 3).join(" / ") || String(masterFolderPkValue(row, table));
@@ -3863,7 +3867,7 @@ function isHiddenCultivateTerrainColumn(key) {
 function masterFolderReadableColumns(table, limit = 8) {
   const columns = table?.columns || [];
   if (table?.id === "cultivate_terrains") {
-    const terrainPriority = ["terrain", "description", "estate_code", "area", "area_planted", "tree_count", "rspo", "payroll_department_code", "payroll_description", "work_code", "work_name", "status"];
+    const terrainPriority = ["terrain", "description", "estate_code", "area", "area_planted", "tree_count", "rspo", "payroll_description", "status"];
     const priorityColumns = terrainPriority.map((key) => columns.find((column) => column.key === key)).filter(Boolean);
     const hiddenInTable = new Set(["superior_code", "superior_name", "ap_code", "ap_name", "company", "company_name", "company_code"]);
     const regularColumns = columns.filter((column) => !terrainPriority.includes(column.key) && !hiddenInTable.has(column.key) && !isMasterFolderTechnicalColumn(column));
@@ -3901,7 +3905,7 @@ function masterFolderReferenceOptions(refOrDomain) {
       const value = String((ref.refKey ? row[ref.refKey] : "") || masterFolderPkValue(row, table) || "").trim();
       if (!value || seen.has(value)) continue;
       seen.add(value);
-      options.push({ value, label: `${masterFolderLabel(row, table)} (${table.title})` });
+      options.push({ value, label: masterFolderLabel(row, table) || value });
       if (options.length >= 300) return options;
     }
   }
@@ -3930,6 +3934,16 @@ function masterFolderCodeNameOptions(tableId, codeField, nameField) {
   }).filter(Boolean).sort((a, b) => a.label.localeCompare(b.label, "th"));
 }
 
+function masterFolderOptionDisplayLabel(option) {
+  const preferred = option?.data?.payrollDescription || option?.data?.workName || option?.data?.apName || option?.label || option?.value || "";
+  let label = String(preferred).trim();
+  if (!label) return "";
+  if (label.includes(" / ")) label = label.split(" / ").pop().trim();
+  const codeName = label.match(/^[A-Za-z]{1,6}\d{0,4}\s-\s(.+)$/);
+  if (codeName?.[1]) label = codeName[1].trim();
+  return label;
+}
+
 function renderMasterSelectField(column, value, options, attrs = "", required = false) {
   return `
     <label>${masterFolderFieldLabel(column, required)}
@@ -3937,10 +3951,11 @@ function renderMasterSelectField(column, value, options, attrs = "", required = 
         <option value="">เลือก${esc(column.label)}</option>
         ${options.map((item) => {
           const option = typeof item === "string" ? { value: item, label: item } : { value: item.value ?? item.code, label: item.label, data: item };
+          const displayLabel = masterFolderOptionDisplayLabel(option);
           const dataAttrs = option.data ? Object.entries(option.data)
             .filter(([key]) => !["label", "value"].includes(key))
             .map(([key, dataValue]) => ` data-${key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}="${esc(dataValue ?? "")}"`).join("") : "";
-          return `<option value="${esc(option.value)}"${String(value) === String(option.value) ? " selected" : ""}${dataAttrs}>${esc(option.label)}</option>`;
+          return `<option value="${esc(option.value)}"${String(value) === String(option.value) ? " selected" : ""}${dataAttrs}>${esc(displayLabel)}</option>`;
         }).join("")}
       </select>
     </label>`;
@@ -3985,7 +4000,7 @@ function renderMasterFolderInput(column, table, edit) {
       <label>${masterFolderFieldLabel(column, required)}
         <select data-folder-master-field="${esc(column.key)}" ${required ? "required" : ""}>
           <option value="">เลือกจาก ${esc(ref.refDomain)}</option>
-          ${options.map((item) => `<option value="${esc(item.value)}" ${String(value) === String(item.value) ? "selected" : ""}>${esc(item.label)}</option>`).join("")}
+          ${options.map((item) => `<option value="${esc(item.value)}" ${String(value) === String(item.value) ? "selected" : ""}>${esc(masterFolderOptionDisplayLabel(item))}</option>`).join("")}
         </select>
       </label>`;
   }
@@ -4003,7 +4018,7 @@ function renderMasterFolderPanel() {
     const edit = state.masterFolderRecords.find((row) => row.tableId === table.id && (row.id === state.masterFolderEditId || row._overrideOf === state.masterFolderEditId))
       || allRows.find((row) => row.id === state.masterFolderEditId)
       || {};
-    const visibleColumns = masterFolderReadableColumns(table, table.id === "cultivate_terrains" ? 14 : 8);
+    const visibleColumns = masterFolderReadableColumns(table, table.id === "cultivate_terrains" ? 9 : 8);
     const requiredKeys = masterFolderRequiredColumns(table);
     const formColumns = [
       ...(table.columns || []).filter((column) => requiredKeys.has(column.key)),

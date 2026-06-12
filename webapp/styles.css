@@ -2467,11 +2467,9 @@ tfoot td {
   display: block;
   width: 100%;
   max-width: 100%;
-  max-height: 560px;
   overflow-x: scroll;
-  overflow-y: auto;
+  overflow-y: hidden;
   border-top: 1px solid var(--line);
-  scrollbar-gutter: stable both-edges;
 }
 
 .master-data-table-wrap .master-table {
@@ -2637,7 +2635,7 @@ tfoot td {
   border-radius: 7px;
   padding: 0 14px;
   background: var(--primary);
-  color: #fff;
+  color: #111827;
   font-weight: 900;
 }
 
@@ -2660,6 +2658,7 @@ tfoot td {
 .folder-master-form .est-form-actions button {
   flex: 1;
   width: auto;
+  color: #111827;
 }
 
 .folder-master-form .est-form-actions button + button {
