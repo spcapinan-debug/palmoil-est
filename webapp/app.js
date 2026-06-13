@@ -1,4 +1,4 @@
-const state = {
+﻿const state = {
   payload: null,
   records: [],
   view: "dashboard",
@@ -296,7 +296,7 @@ const FARM_MODULES = [
     group: "Master Data",
     accent: "Employees / Contractors / Teams",
     description: "จัดการพนักงาน ผู้รับเหมา ทีม สมาชิกทีม และทักษะตามกิจกรรม โดยเก็บประวัติการย้ายทีม",
-    tables: ["employees", "contractors", "teams", "team_members", "team_activity_skills"],
+    tables: ["departments", "housing_units", "employees", "employee_housing_assignments", "housing_utility_charges", "contractors", "teams", "team_members", "team_activity_skills"],
     fields: [
       ["code", "รหัส", "EMP-001"],
       ["name", "ชื่อ", "หัวหน้าทีมตัวอย่าง"],
@@ -318,7 +318,7 @@ const FARM_MODULES = [
     group: "Master Data",
     accent: "Activity + Material Usage + Survey",
     description: "จัดการกลุ่มกิจกรรม กิจกรรม อัตราใช้วัสดุตามกิจกรรม และแบบประเมินประสิทธิภาพ",
-    tables: ["activity_groups", "activities", "activity_material_usage_rates", "survey_templates", "survey_questions"],
+    tables: ["activity_groups", "wage_codes", "activities", "activity_wage_code_mappings", "activity_material_usage_rates", "survey_templates", "survey_questions"],
     fields: [
       ["code", "รหัสกิจกรรม", "ACT-001"],
       ["name", "กิจกรรม", "ใส่ปุ๋ย"],
@@ -537,6 +537,46 @@ const FARM_TABLE_SCHEMAS = {
       { id: "plot-group-rspo", group_code: "GRP-RSPO", group_name: "กลุ่มแปลง RSPO", group_type: "RSPO", status: "active" },
     ],
   },
+  departments: {
+    moduleId: "farm-people",
+    title: "แผนกงาน",
+    primaryKey: "id",
+    codeField: "department_code",
+    labelField: "department_name",
+    fields: [
+      F("department_code", "รหัสแผนก", { required: true }),
+      F("department_name", "ชื่อแผนก", { required: true }),
+      F("parent_department_id", "แผนกแม่", { references: "departments" }),
+      F("manager_employee_id", "ผู้จัดการ/หัวหน้า", { references: "employees" }),
+      F("cost_center_code", "รหัสศูนย์ต้นทุน"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "dept-field", department_code: "DEPT-FIELD", department_name: "ฝ่ายสวน", cost_center_code: "FIELD", status: "active" },
+      { id: "dept-harvest", department_code: "DEPT-HARVEST", department_name: "ฝ่ายเก็บเกี่ยว", parent_department_id: "dept-field", cost_center_code: "HARVEST", status: "active" },
+    ],
+  },
+  housing_units: {
+    moduleId: "farm-people",
+    title: "ข้อมูลบ้านพัก",
+    primaryKey: "id",
+    codeField: "house_code",
+    labelField: "house_name",
+    fields: [
+      F("house_code", "รหัสบ้านพัก", { required: true }),
+      F("house_name", "ชื่อ/เลขที่บ้านพัก", { required: true }),
+      F("estate_id", "Estate", { references: "estates" }),
+      F("zone_id", "โซน", { references: "zones" }),
+      F("house_type", "ประเภทบ้านพัก", { options: ["staff_house", "worker_room", "contractor_room", "dormitory"] }),
+      F("capacity_person", "จำนวนคนที่พักได้", { type: "number" }),
+      F("water_meter_no", "เลขมิเตอร์น้ำ"),
+      F("electric_meter_no", "เลขมิเตอร์ไฟ"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "house-a01", house_code: "H-A01", house_name: "บ้านพัก A01", estate_id: "estate-spc", zone_id: "zone-north", house_type: "worker_room", capacity_person: "4", water_meter_no: "W-A01", electric_meter_no: "E-A01", status: "active" },
+    ],
+  },
   employees: {
     moduleId: "farm-people",
     title: "พนักงาน",
@@ -546,16 +586,62 @@ const FARM_TABLE_SCHEMAS = {
     fields: [
       F("employee_code", "รหัสพนักงาน", { required: true }),
       F("full_name", "ชื่อ-สกุล", { required: true }),
+      F("department_id", "แผนกงาน", { references: "departments", required: true }),
+      F("default_housing_unit_id", "บ้านพักปัจจุบัน", { references: "housing_units" }),
       F("position", "ตำแหน่ง"),
       F("default_role", "Role", { options: FARM_ROLES }),
       F("daily_wage", "ค่าแรงรายวัน", { type: "number" }),
+      F("normal_hours_per_day", "ชั่วโมงทำงาน/วัน", { type: "number" }),
+      F("hourly_wage_rate", "ค่าแรงรายชั่วโมง", { type: "number", calculated: "daily_wage / normal_hours_per_day" }),
       F("phone", "เบอร์โทร"),
       F("start_date", "เริ่มงาน", { type: "date" }),
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "emp-001", employee_code: "EMP-001", full_name: "หัวหน้าทีมตัวอย่าง", position: "Supervisor", default_role: "supervisor", daily_wage: "650", status: "active" },
-      { id: "emp-002", employee_code: "EMP-002", full_name: "คนงานตัวอย่าง", position: "Worker", default_role: "viewer", daily_wage: "450", status: "active" },
+      { id: "emp-001", employee_code: "EMP-001", full_name: "หัวหน้าทีมตัวอย่าง", department_id: "dept-field", default_housing_unit_id: "house-a01", position: "Supervisor", default_role: "supervisor", daily_wage: "650", normal_hours_per_day: "8", hourly_wage_rate: "81.25", status: "active" },
+      { id: "emp-002", employee_code: "EMP-002", full_name: "คนงานตัวอย่าง", department_id: "dept-harvest", default_housing_unit_id: "house-a01", position: "Worker", default_role: "viewer", daily_wage: "450", normal_hours_per_day: "8", hourly_wage_rate: "56.25", status: "active" },
+    ],
+  },
+  employee_housing_assignments: {
+    moduleId: "farm-people",
+    title: "ประวัติพนักงานเข้าพัก",
+    primaryKey: "id",
+    codeField: "start_date",
+    labelField: "employee_id",
+    fields: [
+      F("employee_id", "พนักงาน", { references: "employees", required: true }),
+      F("housing_unit_id", "บ้านพัก", { references: "housing_units", required: true }),
+      F("start_date", "วันที่เข้าพัก", { type: "date", required: true }),
+      F("end_date", "วันที่ออก", { type: "date" }),
+      F("occupant_count", "จำนวนผู้พักอาศัย", { type: "number" }),
+      F("share_utility_percent", "สัดส่วนค่าน้ำไฟ (%)", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "housing-assign-001", employee_id: "emp-001", housing_unit_id: "house-a01", start_date: "2026-01-01", occupant_count: "1", share_utility_percent: "50", status: "active" },
+      { id: "housing-assign-002", employee_id: "emp-002", housing_unit_id: "house-a01", start_date: "2026-01-01", occupant_count: "1", share_utility_percent: "50", status: "active" },
+    ],
+  },
+  housing_utility_charges: {
+    moduleId: "farm-people",
+    title: "ค่าน้ำ/ค่าไฟบ้านพัก",
+    primaryKey: "id",
+    codeField: "billing_month",
+    labelField: "housing_unit_id",
+    fields: [
+      F("housing_unit_id", "บ้านพัก", { references: "housing_units", required: true }),
+      F("billing_month", "เดือนบิล", { required: true, placeholder: "2026-01" }),
+      F("water_meter_start", "มิเตอร์น้ำต้นงวด", { type: "number" }),
+      F("water_meter_end", "มิเตอร์น้ำปลายงวด", { type: "number" }),
+      F("water_amount", "ค่าน้ำ", { type: "number" }),
+      F("electric_meter_start", "มิเตอร์ไฟต้นงวด", { type: "number" }),
+      F("electric_meter_end", "มิเตอร์ไฟปลายงวด", { type: "number" }),
+      F("electric_amount", "ค่าไฟ", { type: "number" }),
+      F("total_utility_amount", "รวมค่าน้ำค่าไฟ", { type: "number", calculated: "water_amount + electric_amount" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "utility-a01-202601", housing_unit_id: "house-a01", billing_month: "2026-01", water_amount: "120", electric_amount: "480", total_utility_amount: "600", status: "active" },
     ],
   },
   contractors: {
@@ -648,6 +734,26 @@ const FARM_TABLE_SCHEMAS = {
       { id: "act-group-harvest", group_code: "AG08", group_name: "การเก็บเกี่ยว", sort_order: "8", status: "active" },
     ],
   },
+  wage_codes: {
+    moduleId: "farm-activities",
+    title: "รหัสค่าแรง",
+    primaryKey: "id",
+    codeField: "wage_code",
+    labelField: "wage_name",
+    fields: [
+      F("wage_code", "รหัสค่าแรง", { required: true }),
+      F("wage_name", "ชื่อรหัสค่าแรง", { required: true }),
+      F("activity_group_id", "กลุ่มกิจกรรม", { references: "activity_groups" }),
+      F("payroll_rate_type", "ประเภทค่าแรง", { options: ["daily", "hourly", "piece", "contract", "pool"] }),
+      F("default_unit", "หน่วยคิดค่าแรง"),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [
+      { id: "wage-fertilizer", wage_code: "W-FERT", wage_name: "ค่าแรงใส่ปุ๋ย", activity_group_id: "act-group-fertilizer", payroll_rate_type: "piece", default_unit: "ไร่", status: "active", note: "ใช้ร่วมกับใส่ปุ๋ยหลายสูตร" },
+      { id: "wage-harvest", wage_code: "W-HARVEST", wage_name: "ค่าแรงเก็บเกี่ยว", activity_group_id: "act-group-harvest", payroll_rate_type: "piece", default_unit: "ตัน", status: "active" },
+    ],
+  },
   activities: {
     moduleId: "farm-activities",
     title: "กิจกรรม",
@@ -656,6 +762,7 @@ const FARM_TABLE_SCHEMAS = {
     labelField: "activity_name",
     fields: [
       F("activity_group_id", "กลุ่มกิจกรรม", { references: "activity_groups", required: true }),
+      F("wage_code_id", "รหัสค่าแรง", { references: "wage_codes", required: true }),
       F("activity_code", "รหัสกิจกรรม", { required: true }),
       F("activity_name", "ชื่อกิจกรรม", { required: true }),
       F("default_unit", "หน่วยงาน"),
@@ -665,8 +772,28 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "activity-fertilizer", activity_group_id: "act-group-fertilizer", activity_code: "AG01-01", activity_name: "ใส่ปุ๋ย", default_unit: "ต้น", work_type: "maintenance", require_material: "true", allow_mobile_record: "true", status: "active" },
-      { id: "activity-harvest", activity_group_id: "act-group-harvest", activity_code: "AG08-01", activity_name: "ตัดปาล์ม", default_unit: "ตัน", work_type: "harvest", require_material: "false", allow_mobile_record: "true", status: "active" },
+      { id: "activity-fertilizer-0030", activity_group_id: "act-group-fertilizer", wage_code_id: "wage-fertilizer", activity_code: "AG01-0030", activity_name: "ใส่ปุ๋ย 0-0-30", default_unit: "ต้น", work_type: "maintenance", require_material: "true", allow_mobile_record: "true", status: "active" },
+      { id: "activity-fertilizer-dolomite", activity_group_id: "act-group-fertilizer", wage_code_id: "wage-fertilizer", activity_code: "AG01-DOLO", activity_name: "ใส่ปุ๋ยโดโลไมท์", default_unit: "ต้น", work_type: "maintenance", require_material: "true", allow_mobile_record: "true", status: "active" },
+      { id: "activity-harvest", activity_group_id: "act-group-harvest", wage_code_id: "wage-harvest", activity_code: "AG08-01", activity_name: "ตัดปาล์ม", default_unit: "ตัน", work_type: "harvest", require_material: "false", allow_mobile_record: "true", status: "active" },
+    ],
+  },
+  activity_wage_code_mappings: {
+    moduleId: "farm-activities",
+    title: "ผูกกิจกรรมเข้ารหัสค่าแรง",
+    primaryKey: "id",
+    codeField: "effective_start_date",
+    labelField: "activity_id",
+    fields: [
+      F("activity_id", "กิจกรรม", { references: "activities", required: true }),
+      F("wage_code_id", "รหัสค่าแรง", { references: "wage_codes", required: true }),
+      F("effective_start_date", "เริ่มใช้", { type: "date", required: true }),
+      F("effective_end_date", "สิ้นสุด", { type: "date" }),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [
+      { id: "map-fert-0030", activity_id: "activity-fertilizer-0030", wage_code_id: "wage-fertilizer", effective_start_date: "2026-01-01", status: "active", note: "0-0-30 ใช้รหัสค่าแรงใส่ปุ๋ย" },
+      { id: "map-fert-dolomite", activity_id: "activity-fertilizer-dolomite", wage_code_id: "wage-fertilizer", effective_start_date: "2026-01-01", status: "active", note: "โดโลไมท์ใช้รหัสค่าแรงใส่ปุ๋ยเดียวกัน" },
     ],
   },
   material_categories: {
@@ -728,7 +855,7 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "usage-fert-tree", activity_id: "activity-fertilizer", material_id: "material-fert-25", usage_basis: "per_tree", usage_rate: "2", usage_unit: "kg", status: "active" },
+      { id: "usage-fert-tree", activity_id: "activity-fertilizer-0030", material_id: "material-fert-25", usage_basis: "per_tree", usage_rate: "2", usage_unit: "kg", status: "active" },
     ],
   },
   survey_templates: {
@@ -795,7 +922,7 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "plan-item-001", annual_plan_id: "plan-2569", plot_id: "plot-plt001", activity_id: "activity-fertilizer", planned_month: "1", planned_quantity: "2640", unit: "ต้น", status: "planned" },
+      { id: "plan-item-001", annual_plan_id: "plan-2569", plot_id: "plot-plt001", activity_id: "activity-fertilizer-0030", planned_month: "1", planned_quantity: "2640", unit: "ต้น", status: "planned" },
     ],
   },
   planned_work_materials: {
@@ -830,7 +957,7 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "wo-001", planned_work_item_id: "plan-item-001", work_order_no: "WO-2569-001", work_order_title: "ใส่ปุ๋ยแปลง PLT-001", plot_id: "plot-plt001", activity_id: "activity-fertilizer", team_id: "team-a", scheduled_date: "2026-01-15", status: "sent_to_mobile" },
+      { id: "wo-001", planned_work_item_id: "plan-item-001", work_order_no: "WO-2569-001", work_order_title: "ใส่ปุ๋ยแปลง PLT-001", plot_id: "plot-plt001", activity_id: "activity-fertilizer-0030", team_id: "team-a", scheduled_date: "2026-01-15", status: "sent_to_mobile" },
     ],
   },
   work_order_workers: {
@@ -1449,7 +1576,7 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "budget-rate-001", budget_rate_code: "BUD-2569-001", fiscal_year: "2569", estate_id: "estate-spc", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer", material_id: "material-fert-25", team_id: "team-a", rate_type: "labor", unit_id: "unit-kg", rate_amount: "250", status: "active" },
+      { id: "budget-rate-001", budget_rate_code: "BUD-2569-001", fiscal_year: "2569", estate_id: "estate-spc", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer-0030", material_id: "material-fert-25", team_id: "team-a", rate_type: "labor", unit_id: "unit-kg", rate_amount: "250", status: "active" },
     ],
   },
   contractor_period_estimates: {
