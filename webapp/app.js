@@ -28,6 +28,10 @@ const state = {
   masterFolderGroupFilters: [],
   masterFolderSort: { tableId: "", key: "", dir: "asc" },
   masterFolderRecords: [],
+  farmRecords: [],
+  farmFilters: { query: "", status: "all", role: "super_admin" },
+  farmDetailId: "",
+  farmEditId: "",
   estSearchTimer: null,
   sidebarCollapsed: localStorage.getItem("sidebarCollapsed") === "1",
 };
@@ -237,11 +241,233 @@ function cultivateGroups() {
 
 const PALM_MENU_ICONS = ["◇", "◷", "▤", "◫", "◉", "▣", "฿", "⌘", "↗", "◆", "●"];
 
+const FARM_ROLES = [
+  "super_admin",
+  "director",
+  "estate_manager",
+  "supervisor",
+  "store_officer",
+  "fuel_officer",
+  "accounting",
+  "auditor",
+  "viewer",
+];
+
+const FARM_ROLE_PERMISSIONS = {
+  super_admin: ["read", "create", "update", "delete", "approve", "export"],
+  director: ["read", "create", "update", "approve", "export"],
+  estate_manager: ["read", "create", "update", "export"],
+  supervisor: ["read", "create", "update"],
+  store_officer: ["read", "create", "update", "export"],
+  fuel_officer: ["read", "create", "update", "export"],
+  accounting: ["read", "update", "approve", "export"],
+  auditor: ["read", "approve", "export"],
+  viewer: ["read", "export"],
+};
+
+const FARM_MODULES = [
+  {
+    id: "farm-area",
+    title: "ข้อมูลพื้นที่",
+    group: "Master Data",
+    accent: "Estate → Zone → Plot",
+    description: "จัดการ Estate, Zone, Plot / Block และ Plot Group พร้อมคำนวณอายุปาล์ม จำนวนต้นต่อไร่ และสถานะผลผลิต",
+    tables: ["estates", "zones", "plots", "plot_groups"],
+    fields: [
+      ["code", "รหัสพื้นที่", "PLT-001"],
+      ["name", "ชื่อพื้นที่ / แปลง", "แปลงตัวอย่าง 01"],
+      ["estate", "Estate", "SPC Estate"],
+      ["zone", "Zone", "Zone A"],
+      ["areaRai", "พื้นที่ไร่", "120"],
+      ["plantingYear", "ปีปลูก", "2562"],
+      ["treeCount", "จำนวนต้น", "2640"],
+      ["rspoStatus", "RSPO", "RSPO"],
+      ["status", "สถานะ", "active"],
+    ],
+    seed: [
+      { code: "PLT-001", name: "แปลงตัวอย่าง 01", estate: "SPC Estate", zone: "Zone A", areaRai: "120", plantingYear: "2562", treeCount: "2640", rspoStatus: "RSPO", status: "active" },
+      { code: "GRP-RSPO", name: "กลุ่มแปลง RSPO", estate: "SPC Estate", zone: "ทุกโซน", areaRai: "420", plantingYear: "-", treeCount: "9240", rspoStatus: "RSPO", status: "active" },
+    ],
+  },
+  {
+    id: "farm-people",
+    title: "ข้อมูลพนักงาน / ผู้รับเหมา",
+    group: "Master Data",
+    accent: "Employees / Contractors / Teams",
+    description: "จัดการพนักงาน ผู้รับเหมา ทีม สมาชิกทีม และทักษะตามกิจกรรม โดยเก็บประวัติการย้ายทีม",
+    tables: ["employees", "contractors", "teams", "team_members", "team_activity_skills"],
+    fields: [
+      ["code", "รหัส", "EMP-001"],
+      ["name", "ชื่อ", "หัวหน้าทีมตัวอย่าง"],
+      ["type", "ประเภท", "supervisor"],
+      ["team", "ทีม", "ทีมตัดปาล์ม A"],
+      ["role", "บทบาท", "supervisor"],
+      ["dailyWage", "ค่าแรง", "450"],
+      ["phone", "เบอร์โทร", ""],
+      ["status", "สถานะ", "active"],
+    ],
+    seed: [
+      { code: "EMP-001", name: "หัวหน้าทีมตัวอย่าง", type: "supervisor", team: "ทีมตัดปาล์ม A", role: "supervisor", dailyWage: "650", phone: "", status: "active" },
+      { code: "CON-001", name: "ผู้รับเหมางานเก็บเกี่ยว", type: "harvest_contractor", team: "ผู้รับเหมา", role: "contractor", dailyWage: "0", phone: "", status: "active" },
+    ],
+  },
+  {
+    id: "farm-activities",
+    title: "ข้อมูลกิจกรรม",
+    group: "Master Data",
+    accent: "Activity + Material Usage + Survey",
+    description: "จัดการกลุ่มกิจกรรม กิจกรรม อัตราใช้วัสดุตามกิจกรรม และแบบประเมินประสิทธิภาพ",
+    tables: ["activity_groups", "activities", "activity_material_usage_rates", "survey_templates", "survey_questions"],
+    fields: [
+      ["code", "รหัสกิจกรรม", "ACT-001"],
+      ["name", "กิจกรรม", "ใส่ปุ๋ย"],
+      ["group", "กลุ่มกิจกรรม", "ใส่ปุ๋ย"],
+      ["unit", "หน่วยงาน", "ไร่"],
+      ["material", "วัสดุหลัก", "ปุ๋ย"],
+      ["usageRate", "อัตราใช้", "2"],
+      ["usageBasis", "ฐานคำนวณ", "per_tree"],
+      ["status", "สถานะ", "active"],
+    ],
+    seed: [
+      { code: "ACT-001", name: "ใส่ปุ๋ย", group: "ใส่ปุ๋ย", unit: "ต้น", material: "ปุ๋ย", usageRate: "2", usageBasis: "per_tree", status: "active" },
+      { code: "ACT-002", name: "ตัดปาล์ม", group: "เก็บเกี่ยว", unit: "ตัน", material: "-", usageRate: "0", usageBasis: "per_work_order", status: "active" },
+    ],
+  },
+  {
+    id: "farm-work",
+    title: "ระบบทำงาน",
+    group: "Operation",
+    accent: "Plan → Work Order → Daily Record",
+    description: "วางแผน สั่งงาน อนุมัติ QR Code Work Order เช็คอิน GPS และบันทึกประจำวันผ่านมือถือ",
+    tables: ["annual_work_plans", "planned_work_items", "planned_work_materials", "work_orders", "work_order_workers", "work_order_materials", "work_order_qr_codes", "work_attendance", "work_results"],
+    fields: [
+      ["code", "เลขที่งาน", "WO-2569-001"],
+      ["name", "ชื่องาน", "ใส่ปุ๋ยแปลง PLT-001"],
+      ["plot", "แปลง", "PLT-001"],
+      ["activity", "กิจกรรม", "ใส่ปุ๋ย"],
+      ["team", "ทีม", "ทีมตัดปาล์ม A"],
+      ["scheduledDate", "วันที่", "2026-01-15"],
+      ["status", "สถานะ", "draft"],
+    ],
+    seed: [
+      { code: "PLAN-2569-001", name: "แผนใส่ปุ๋ยไตรมาส 1", plot: "PLT-001", activity: "ใส่ปุ๋ย", team: "ทีมสวน A", scheduledDate: "2026-01-15", status: "planned" },
+      { code: "WO-2569-001", name: "ใบสั่งงานตัดปาล์ม", plot: "PLT-001", activity: "ตัดปาล์ม", team: "ทีมตัดปาล์ม A", scheduledDate: "2026-01-20", status: "sent_to_mobile" },
+    ],
+  },
+  {
+    id: "farm-inventory",
+    title: "พัสดุ / อุปกรณ์",
+    group: "Inventory",
+    accent: "Stock Transactions",
+    description: "รับพัสดุ จ่ายพัสดุ คืนพัสดุ โอนย้าย ปรับยอด ตรวจนับ แปลง SKU รถ เครื่องจักร และน้ำมัน",
+    tables: ["materials", "material_categories", "units", "warehouses", "goods_receipts", "goods_issues", "goods_returns", "stock_transactions", "stock_balances", "vehicles", "fuel_requisitions"],
+    fields: [
+      ["code", "รหัส", "MAT-001"],
+      ["name", "รายการ", "ปุ๋ย 25kg"],
+      ["category", "หมวด", "ปุ๋ย"],
+      ["warehouse", "คลัง", "คลังกลาง"],
+      ["quantity", "จำนวน", "100"],
+      ["unit", "หน่วย", "กระสอบ"],
+      ["status", "สถานะ", "active"],
+    ],
+    seed: [
+      { code: "MAT-001", name: "ปุ๋ย 25kg", category: "ปุ๋ย", warehouse: "คลังกลาง", quantity: "100", unit: "กระสอบ", status: "active" },
+      { code: "FUEL-001", name: "น้ำมันดีเซล", category: "น้ำมัน", warehouse: "ถังน้ำมันหลัก", quantity: "5000", unit: "ลิตร", status: "active" },
+    ],
+  },
+  {
+    id: "farm-payroll",
+    title: "ระบบคำนวณค่าแรง",
+    group: "Payroll",
+    accent: "Rate / OT / Deduction / Allowance",
+    description: "คำนวณค่าแรงจาก work_results, OT, เงินหัก, เงินเพิ่ม, งวดค่าแรง และปิดงวด",
+    tables: ["payroll_periods", "payroll_period_lines", "payroll_rates", "overtime_rules", "payroll_overtime_records", "deduction_types", "payroll_deductions", "allowance_types", "payroll_allowances"],
+    fields: [
+      ["code", "งวด/รหัส", "PAY-2569-01"],
+      ["name", "รายการ", "งวดค่าแรงมกราคม"],
+      ["employee", "พนักงาน/ผู้รับเหมา", "EMP-001"],
+      ["method", "วิธีคำนวณ", "daily"],
+      ["amount", "ยอดเงิน", "0"],
+      ["status", "สถานะ", "open"],
+    ],
+    seed: [
+      { code: "PAY-2569-01", name: "งวดค่าแรงมกราคม", employee: "EMP-001", method: "daily", amount: "0", status: "open" },
+      { code: "DED-LATE", name: "มาสาย", employee: "-", method: "deduction", amount: "50", status: "active" },
+    ],
+  },
+  {
+    id: "farm-budget",
+    title: "อัตรางบประมาณ",
+    group: "Budget",
+    accent: "Budget Rates / Contractor Estimate",
+    description: "ตั้ง budget rates ตาม Estate, Activity, Plot Group, Material และประมาณผลงานผู้รับเหมาเป็นงวด",
+    tables: ["budget_rates", "contractor_period_estimates", "cost_entries"],
+    fields: [
+      ["code", "รหัสอัตรา", "BUD-001"],
+      ["name", "ชื่ออัตรา", "ค่าแรงใส่ปุ๋ย"],
+      ["estate", "Estate", "SPC Estate"],
+      ["activity", "กิจกรรม", "ใส่ปุ๋ย"],
+      ["budgetType", "ประเภท", "labor"],
+      ["unit", "หน่วย", "ไร่"],
+      ["rate", "อัตรา", "250"],
+      ["status", "สถานะ", "active"],
+    ],
+    seed: [
+      { code: "BUD-001", name: "ค่าแรงใส่ปุ๋ย", estate: "SPC Estate", activity: "ใส่ปุ๋ย", budgetType: "labor", unit: "ไร่", rate: "250", status: "active" },
+      { code: "BUD-002", name: "ค่าวัสดุปุ๋ย", estate: "SPC Estate", activity: "ใส่ปุ๋ย", budgetType: "material", unit: "กก.", rate: "18", status: "active" },
+    ],
+  },
+  {
+    id: "farm-general",
+    title: "ข้อมูลทั่วไป",
+    group: "System",
+    accent: "Users / Permissions / Settings / Audit",
+    description: "จัดการผู้ใช้ Supabase Auth, สิทธิ์, access scope, system settings, attachments และ audit log",
+    tables: ["profiles", "permissions", "role_permissions", "user_access_scopes", "system_settings", "attachments", "audit_logs"],
+    fields: [
+      ["code", "รหัส", "PERM-001"],
+      ["name", "ชื่อรายการ", "work_orders.approve"],
+      ["module", "Module", "work_orders"],
+      ["action", "Action", "approve"],
+      ["role", "Role", "director"],
+      ["status", "สถานะ", "active"],
+    ],
+    seed: [
+      { code: "PERM-001", name: "อนุมัติใบสั่งงาน", module: "work_orders", action: "approve", role: "director", status: "active" },
+      { code: "SET-001", name: "ค่าเริ่มต้น GPS radius", module: "system", action: "settings", role: "super_admin", status: "active" },
+    ],
+  },
+  {
+    id: "farm-reports",
+    title: "รายงาน",
+    group: "Reports",
+    accent: "Excel / PDF / Print",
+    description: "ศูนย์รวมรายงานพื้นที่ พนักงาน กิจกรรม แผน ใบสั่งงาน บันทึกประจำวัน พัสดุ ค่าแรง งบประมาณ Survey และ Audit Log",
+    tables: ["report_exports", "cost_entries", "audit_logs"],
+    fields: [
+      ["code", "รหัสรายงาน", "RPT-001"],
+      ["name", "ชื่อรายงาน", "รายงานแผนงาน"],
+      ["module", "Module", "planning"],
+      ["filter", "ตัวกรองหลัก", "วันที่ / Estate / Activity"],
+      ["format", "Format", "Excel/PDF"],
+      ["status", "สถานะ", "ready"],
+    ],
+    seed: [
+      { code: "RPT-001", name: "รายงานแผนงาน", module: "planning", filter: "วันที่ / Estate / Activity", format: "Excel/PDF", status: "ready" },
+      { code: "RPT-002", name: "รายงานค่าแรงรายงวด", module: "payroll", filter: "งวด / ทีม / พนักงาน", format: "Excel/PDF", status: "ready" },
+    ],
+  },
+];
+
+function farmModuleMap() {
+  return Object.fromEntries(FARM_MODULES.map((module) => [module.id, module]));
+}
+
 function initialViewFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const requested = params.get("view") || params.get("page") || params.get("v") || "";
   const transportViews = new Set(["dashboard", "stock", "rspo", "daily", "summary", "clear", "master-data"]);
-  if (requested.startsWith("est-")) return requested;
+  if (requested.startsWith("farm-")) return requested;
   if (transportViews.has(requested) && requested !== "master-data") return requested;
   return state.view;
 }
@@ -2829,6 +3055,7 @@ function loadEstDailyEntries() {
     state.estBudgetRateEdits = JSON.parse(localStorage.getItem("est-budget-rate-edits") || "[]");
     state.estMasterRecords = JSON.parse(localStorage.getItem("est-master-records") || "[]");
     state.masterFolderRecords = JSON.parse(localStorage.getItem("master-folder-records") || "[]").filter((row) => row._source !== "editing");
+    state.farmRecords = JSON.parse(localStorage.getItem("prompt-est-farm-records") || "[]");
   } catch {
     state.estWorkPlans = [];
     state.estWorkOrders = [];
@@ -2836,6 +3063,7 @@ function loadEstDailyEntries() {
     state.estBudgetRateEdits = [];
     state.estMasterRecords = [];
     state.masterFolderRecords = [];
+    state.farmRecords = [];
   }
 }
 
@@ -2861,6 +3089,10 @@ function saveEstMasterRecords() {
 
 function saveMasterFolderRecords() {
   localStorage.setItem("master-folder-records", JSON.stringify(state.masterFolderRecords));
+}
+
+function saveFarmRecords() {
+  localStorage.setItem("prompt-est-farm-records", JSON.stringify(state.farmRecords));
 }
 
 function estField(row, names) {
@@ -3845,7 +4077,7 @@ function renderEstDashboard() {
     <div class="est-page">
       <div class="report-title">
         <div>
-          <h2>EST Palm Management</h2>
+          <h2>ระบบบริหารงานสวนปาล์ม</h2>
           <p>ใช้ ${esc(source.budgetFile || "ประมาณการค่าใช้จ่าย 2569.xlsx")} เป็นหลัก และรวมข้อมูลอ้างอิงจากโฟลเดอร์ Master Data</p>
         </div>
       </div>
@@ -4974,6 +5206,233 @@ function selectedMasterDataset() {
   return dataset || datasets[0] || null;
 }
 
+function isFarmView(view) {
+  return FARM_MODULES.some((module) => module.id === view);
+}
+
+function selectedFarmModule() {
+  return farmModuleMap()[state.view] || FARM_MODULES[0];
+}
+
+function farmSeedRows(module) {
+  return (module.seed || []).map((row, index) => ({
+    ...row,
+    id: `seed-${module.id}-${index}`,
+    moduleId: module.id,
+    readonly: true,
+    createdAt: "seed",
+    updatedAt: "seed",
+  }));
+}
+
+function farmRows(module = selectedFarmModule()) {
+  const overrides = new Map(state.farmRecords.filter((row) => row.moduleId === module.id && row._overrideOf && !row._deleted).map((row) => [row._overrideOf, row]));
+  const deleted = new Set(state.farmRecords.filter((row) => row.moduleId === module.id && row._deleted).map((row) => row._overrideOf || row.id));
+  const seedRows = farmSeedRows(module).map((row) => overrides.has(row.id) ? { ...row, ...overrides.get(row.id), id: row.id, readonly: false } : row).filter((row) => !deleted.has(row.id));
+  const customRows = state.farmRecords.filter((row) => row.moduleId === module.id && !row._overrideOf && !row._deleted);
+  return [...seedRows, ...customRows];
+}
+
+function filteredFarmRows(module = selectedFarmModule()) {
+  const query = state.farmFilters.query.trim().toLowerCase();
+  return farmRows(module).filter((row) => {
+    const statusOk = state.farmFilters.status === "all" || String(row.status || "").toLowerCase() === state.farmFilters.status;
+    const queryOk = !query || Object.values(row).join(" ").toLowerCase().includes(query);
+    return statusOk && queryOk;
+  });
+}
+
+function farmCan(action) {
+  return (FARM_ROLE_PERMISSIONS[state.farmFilters.role] || FARM_ROLE_PERMISSIONS.viewer).includes(action);
+}
+
+function farmFieldKey(field) {
+  return Array.isArray(field) ? field[0] : field.key;
+}
+
+function farmFieldLabel(field) {
+  return Array.isArray(field) ? field[1] : field.label;
+}
+
+function farmFieldPlaceholder(field) {
+  return Array.isArray(field) ? field[2] || "" : field.placeholder || "";
+}
+
+function farmSelectedRow(module = selectedFarmModule()) {
+  return farmRows(module).find((row) => row.id === state.farmDetailId || row.id === state.farmEditId) || {};
+}
+
+function renderFarmInput(field, value = "") {
+  const key = farmFieldKey(field);
+  const label = farmFieldLabel(field);
+  const placeholder = farmFieldPlaceholder(field);
+  if (key === "status") {
+    return `
+      <label>${esc(label)}
+        <select data-farm-field="${esc(key)}">
+          ${["active", "draft", "planned", "submitted", "approved", "sent_to_mobile", "open", "ready", "inactive"].map((status) => `<option value="${esc(status)}"${String(value || "active") === status ? " selected" : ""}>${esc(status)}</option>`).join("")}
+        </select>
+      </label>`;
+  }
+  return `
+    <label>${esc(label)}
+      <input data-farm-field="${esc(key)}" value="${esc(value)}" placeholder="${esc(placeholder)}">
+    </label>`;
+}
+
+function saveFarmRow() {
+  const module = selectedFarmModule();
+  const editId = state.farmEditId;
+  const original = editId ? farmRows(module).find((row) => row.id === editId) : null;
+  const row = {
+    id: original?.readonly ? `override-${editId}` : (editId || `farm-${module.id}-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    moduleId: module.id,
+    updatedAt: new Date().toISOString(),
+  };
+  if (original?.readonly) row._overrideOf = original.id;
+  for (const input of els.reportPage.querySelectorAll("[data-farm-field]")) {
+    row[input.dataset.farmField] = input.value.trim();
+  }
+  if (!row.status) row.status = "active";
+  state.farmRecords = state.farmRecords.filter((item) => !(item.moduleId === module.id && (item.id === row.id || item._overrideOf === row._overrideOf || item.id === editId)));
+  state.farmRecords.push(row);
+  state.farmEditId = "";
+  state.farmDetailId = original?.id || row.id;
+  saveFarmRecords();
+  render();
+}
+
+function editFarmRow(id) {
+  state.farmEditId = id;
+  state.farmDetailId = id;
+  render();
+}
+
+function setFarmInactive(id) {
+  const module = selectedFarmModule();
+  const row = farmRows(module).find((item) => item.id === id);
+  if (!row) return;
+  if (row.readonly) {
+    state.farmRecords.push({ id: `delete-${id}`, moduleId: module.id, _overrideOf: id, _deleted: true, updatedAt: new Date().toISOString() });
+  } else {
+    const current = state.farmRecords.find((item) => item.id === id);
+    if (current) current._deleted = true;
+  }
+  state.farmDetailId = "";
+  state.farmEditId = "";
+  saveFarmRecords();
+  render();
+}
+
+function exportFarmCsv() {
+  const module = selectedFarmModule();
+  const rows = filteredFarmRows(module);
+  const headers = module.fields.map(farmFieldKey);
+  const csv = [headers.join(",")].concat(rows.map((row) => headers.map((key) => `"${String(row[key] ?? "").replace(/"/g, '""')}"`).join(","))).join("\n");
+  const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${module.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function renderFarmPage() {
+  const module = selectedFarmModule();
+  const rows = filteredFarmRows(module);
+  const allRows = farmRows(module);
+  const selected = farmSelectedRow(module);
+  const editing = state.farmEditId ? selected : {};
+  const inactiveCount = allRows.filter((row) => String(row.status).toLowerCase() === "inactive").length;
+  return `
+    <div class="farm-page">
+      <div class="report-title">
+        <div>
+          <h2>${esc(module.title)}</h2>
+          <p>${esc(module.description)}</p>
+        </div>
+      </div>
+      <section class="farm-hero">
+        <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
+        <article><span>ตาราง Supabase</span><strong>${fmt(module.tables.length)}</strong><small>${module.tables.slice(0, 3).map((item) => `<code>${esc(item)}</code>`).join(" ")}</small></article>
+        <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
+        <article><span>Inactive</span><strong>${fmt(inactiveCount)}</strong><small>ใช้ Set Inactive แทนลบจริง</small></article>
+      </section>
+      <section class="farm-toolbar">
+        <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหารหัส ชื่อ สถานะ ตาราง"></label>
+        <label>สถานะ
+          <select id="farmStatusFilter">
+            ${["all", "active", "draft", "planned", "submitted", "approved", "sent_to_mobile", "open", "ready", "inactive"].map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${status === "all" ? "ทั้งหมด" : esc(status)}</option>`).join("")}
+          </select>
+        </label>
+        <label>Role
+          <select id="farmRoleFilter">
+            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(role)}</option>`).join("")}
+          </select>
+        </label>
+        <button type="button" data-farm-new ${farmCan("create") ? "" : "disabled"}>Add</button>
+        <button type="button" data-farm-export ${farmCan("export") ? "" : "disabled"}>Export Excel</button>
+      </section>
+      <section class="farm-layout">
+        <article class="farm-panel">
+          <div class="section-head"><h3>${state.farmEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูล"}</h3><span>* ช่องหลักควรผูกกับ key ใน Supabase</span></div>
+          <form class="farm-form">
+            ${module.fields.map((field) => renderFarmInput(field, editing[farmFieldKey(field)] ?? "")).join("")}
+            <div class="farm-form-actions">
+              <button type="button" data-farm-save ${farmCan(state.farmEditId ? "update" : "create") ? "" : "disabled"}>${state.farmEditId ? "บันทึกแก้ไข" : "บันทึกเพิ่ม"}</button>
+              <button type="button" data-farm-clear>ล้างฟอร์ม</button>
+            </div>
+          </form>
+        </article>
+        <article class="farm-panel">
+          <div class="section-head"><h3>รายละเอียดที่เลือก</h3><span>${selected.id ? esc(selected.code || selected.name || selected.id) : "เลือกแถวในตารางเพื่อดูรายละเอียด"}</span></div>
+          <dl class="farm-detail">
+            ${selected.id ? module.fields.map((field) => {
+              const key = farmFieldKey(field);
+              return `<dt>${esc(farmFieldLabel(field))}</dt><dd>${esc(selected[key] ?? "-")}</dd>`;
+            }).join("") : `<dt>ยังไม่ได้เลือก</dt><dd>กดแถวหรือปุ่มดูในตาราง</dd>`}
+          </dl>
+          <div class="farm-table-list">${module.tables.map((table) => `<span>${esc(table)}</span>`).join("")}</div>
+        </article>
+      </section>
+      <section class="farm-panel">
+        <div class="section-head"><h3>ตารางรายการ</h3><span>Search / Filter / Add / Edit / Set Inactive / Detail / Export</span></div>
+        <div class="table-wrap farm-table-wrap">
+          <table class="mini-table farm-table">
+            <thead>
+              <tr><th>จัดการ</th>${module.fields.map((field) => `<th>${esc(farmFieldLabel(field))}</th>`).join("")}</tr>
+            </thead>
+            <tbody>
+              ${rows.map((row) => `
+                <tr data-farm-row="${esc(row.id)}">
+                  <td class="farm-actions">
+                    <button type="button" data-farm-view="${esc(row.id)}">ดู</button>
+                    <button type="button" data-farm-edit="${esc(row.id)}" ${farmCan("update") ? "" : "disabled"}>แก้ไข</button>
+                    <button type="button" data-farm-inactive="${esc(row.id)}" ${farmCan("delete") ? "" : "disabled"}>ปิดใช้งาน</button>
+                  </td>
+                  ${module.fields.map((field) => `<td>${esc(row[farmFieldKey(field)] ?? "")}</td>`).join("")}
+                </tr>`).join("") || `<tr><td colspan="${module.fields.length + 1}">ไม่พบรายการ</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      ${module.id === "farm-reports" ? renderFarmReportMatrix() : ""}
+    </div>`;
+}
+
+function renderFarmReportMatrix() {
+  const reports = ["รายงานพื้นที่", "รายงานพนักงาน / ผู้รับเหมา", "รายงานกิจกรรม", "รายงานแผนงาน", "รายงานใบสั่งงาน", "รายงานบันทึกประจำวัน", "รายงาน Attendance", "รายงานพัสดุ", "รายงาน Stock Card", "รายงานค่าแรงรายงวด", "รายงานงบประมาณ", "รายงาน Survey", "รายงาน Audit Log"];
+  const filters = ["วันที่", "Estate", "Zone", "Plot", "Activity Group", "Activity", "Team", "Contractor", "Status"];
+  return `
+    <section class="farm-panel">
+      <div class="section-head"><h3>รายงานที่ต้องมีตาม Prompt EST</h3><span>ทุก Report ต้องมี Filter + Export Excel/PDF/Print</span></div>
+      <div class="farm-report-grid">
+        ${reports.map((report) => `<article><strong>${esc(report)}</strong><span>${filters.map((filter) => `<em>${esc(filter)}</em>`).join("")}</span><b>Excel / PDF / Print</b></article>`).join("")}
+      </div>
+    </section>`;
+}
+
 function masterRows(dataset) {
   if (!dataset) return [];
   const query = state.masterFilters.query.trim().toLowerCase();
@@ -5585,14 +6044,16 @@ function render() {
   }
   const isClear = state.view === "clear";
   const isEst = isEstView(state.view);
+  const isFarm = isFarmView(state.view);
   els.reportPage.className = "report-page";
   els.reportPage.classList.toggle("hidden", isClear);
   els.clearPage.classList.toggle("hidden", !isClear);
-  els.dashboard.classList.toggle("hidden", isEst);
-  els.datePanel?.classList.toggle("hidden", isEst);
-  els.globalFilterPanel?.classList.toggle("hidden", isEst);
+  els.dashboard.classList.toggle("hidden", isEst || isFarm);
+  els.datePanel?.classList.toggle("hidden", isEst || isFarm);
+  els.globalFilterPanel?.classList.toggle("hidden", isEst || isFarm);
 
   if (isEst) renderEstView();
+  if (isFarm) els.reportPage.innerHTML = renderFarmPage();
   if (state.view === "dashboard") renderAdvancedDashboard();
   if (state.view === "stock") renderStock(yardScope());
   if (state.view === "rspo") renderRspo();
@@ -5718,6 +6179,16 @@ async function init() {
     setView("dashboard");
   });
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.id === "farmStatusFilter") {
+      state.farmFilters.status = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.id === "farmRoleFilter") {
+      state.farmFilters.role = e.target.value;
+      render();
+      return;
+    }
     if (e.target.id === "estFiscalYear") {
       state.estFilters.fiscalYear = e.target.value;
       render();
@@ -5830,6 +6301,12 @@ async function init() {
     }
   });
   els.reportPage.addEventListener("input", (e) => {
+    if (e.target.id === "farmSearch") {
+      state.farmFilters.query = e.target.value.trim();
+      state.farmDetailId = "";
+      render();
+      return;
+    }
     if (e.target.matches("[data-est-rate-edit]")) {
       const id = e.target.dataset.estRateEdit;
       const field = e.target.dataset.field;
@@ -5865,6 +6342,50 @@ async function init() {
     state.estSearchTimer = setTimeout(render, 250);
   });
   els.reportPage.addEventListener("click", (e) => {
+    if (e.target.closest("[data-farm-new]")) {
+      state.farmEditId = "";
+      state.farmDetailId = "";
+      render();
+      return;
+    }
+    if (e.target.closest("[data-farm-save]")) {
+      saveFarmRow();
+      return;
+    }
+    if (e.target.closest("[data-farm-clear]")) {
+      state.farmEditId = "";
+      state.farmDetailId = "";
+      render();
+      return;
+    }
+    if (e.target.closest("[data-farm-export]")) {
+      exportFarmCsv();
+      return;
+    }
+    const farmView = e.target.closest("[data-farm-view]");
+    if (farmView) {
+      state.farmDetailId = farmView.dataset.farmView;
+      state.farmEditId = "";
+      render();
+      return;
+    }
+    const farmEdit = e.target.closest("[data-farm-edit]");
+    if (farmEdit) {
+      editFarmRow(farmEdit.dataset.farmEdit);
+      return;
+    }
+    const farmInactive = e.target.closest("[data-farm-inactive]");
+    if (farmInactive) {
+      setFarmInactive(farmInactive.dataset.farmInactive);
+      return;
+    }
+    const farmRow = e.target.closest("[data-farm-row]");
+    if (farmRow && !e.target.closest("button")) {
+      state.farmDetailId = farmRow.dataset.farmRow;
+      state.farmEditId = "";
+      render();
+      return;
+    }
     const masterCategory = e.target.closest("[data-est-master-category]");
     if (masterCategory) {
       state.estMasterCategory = masterCategory.dataset.estMasterCategory;

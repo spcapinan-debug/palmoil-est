@@ -3258,6 +3258,206 @@ tfoot td {
   display: none !important;
 }
 
+.farm-page {
+  display: grid;
+  gap: 12px;
+}
+
+.farm-hero {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.farm-hero article,
+.farm-panel {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.farm-hero article {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+}
+
+.farm-hero span,
+.farm-hero small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.farm-hero strong {
+  color: var(--navy);
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.farm-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) 180px 190px auto auto;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.farm-toolbar label,
+.farm-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.farm-toolbar input,
+.farm-toolbar select,
+.farm-form input,
+.farm-form select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 9px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.farm-toolbar button,
+.farm-form-actions button,
+.farm-actions button {
+  min-height: 34px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: var(--primary);
+  color: #111827;
+  font-weight: 900;
+}
+
+.farm-toolbar button:disabled,
+.farm-form-actions button:disabled,
+.farm-actions button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.farm-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr);
+  gap: 12px;
+}
+
+.farm-panel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.farm-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.farm-form-actions {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  grid-column: 1 / -1;
+}
+
+.farm-detail {
+  display: grid;
+  grid-template-columns: minmax(110px, .6fr) minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0;
+}
+
+.farm-detail dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.farm-detail dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.farm-table-list,
+.farm-report-grid article span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.farm-table-list span,
+.farm-report-grid em {
+  border: 1px solid #dbe5f2;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.farm-table-wrap {
+  max-height: 520px;
+  overflow: auto;
+}
+
+.farm-table {
+  min-width: 960px;
+}
+
+.farm-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+}
+
+.farm-actions {
+  display: flex;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.farm-actions button:last-child {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+.farm-report-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.farm-report-grid article {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.farm-report-grid b {
+  color: var(--primary);
+  font-size: 12px;
+}
+
 @media (max-width: 1100px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -3290,6 +3490,11 @@ tfoot td {
   .palm-work-filters,
   .palm-stage-grid,
   .palm-pipeline,
+  .farm-hero,
+  .farm-toolbar,
+  .farm-layout,
+  .farm-form,
+  .farm-report-grid,
   .est-contract-summary,
   .est-budget-groups,
   .est-contract-fields,
@@ -3361,6 +3566,11 @@ tfoot td {
   .palm-work-filters,
   .palm-stage-grid,
   .palm-pipeline,
+  .farm-hero,
+  .farm-toolbar,
+  .farm-layout,
+  .farm-form,
+  .farm-report-grid,
   .est-contract-summary,
   .est-budget-groups,
   .est-contract-fields,
