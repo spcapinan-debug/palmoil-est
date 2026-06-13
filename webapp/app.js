@@ -10,7 +10,7 @@ const state = {
   payloadSignature: "",
   liveMode: !window.__PALM_DATA__,
   estData: null,
-  estFilters: { activity: "all", datasetId: "", query: "" },
+  estFilters: { fiscalYear: "2569", area: "all", activityGroup: "all", activity: "all", material: "all", workerGroup: "all", rateGroup: "all", datasetId: "", query: "" },
   estWorkPlans: [],
   estWorkOrders: [],
   estDailyEntries: [],
@@ -2915,6 +2915,105 @@ function estBudgetRateEditsMap() {
   return new Map((state.estBudgetRateEdits || []).map((row) => [row.id, row]));
 }
 
+function estBudgetUniqueOptions(values) {
+  const seen = new Set();
+  return values.map((value) => String(value ?? "").trim()).filter((value) => {
+    if (!value || seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  }).sort((a, b) => a.localeCompare(b, "th", { numeric: true }));
+}
+
+function estBudgetOptionHtml(options, selected, allLabel = "ทั้งหมด") {
+  return `<option value="all"${String(selected) === "all" ? " selected" : ""}>${esc(allLabel)}</option>${options.map((item) => {
+    const value = typeof item === "string" ? item : item.value;
+    const label = typeof item === "string" ? item : item.label;
+    return `<option value="${esc(value)}"${String(selected) === String(value) ? " selected" : ""}>${esc(label)}</option>`;
+  }).join("")}`;
+}
+
+function estBudgetPlainOptionHtml(options, selected, placeholder = "เลือก") {
+  return `<option value="">${esc(placeholder)}</option>${options.map((item) => {
+    const value = typeof item === "string" ? item : item.value;
+    const label = typeof item === "string" ? item : item.label;
+    const attrs = typeof item === "string" ? "" : Object.entries(item)
+      .filter(([key]) => !["value", "label", "row", "table"].includes(key))
+      .map(([key, value]) => ` data-${key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}="${esc(value ?? "")}"`).join("");
+    return `<option value="${esc(value)}"${String(selected) === String(value) ? " selected" : ""}${attrs}>${esc(label)}</option>`;
+  }).join("")}`;
+}
+
+function estBudgetMasterOptions(groupId, fallbackValues = []) {
+  const seen = new Set();
+  const options = [];
+  for (const table of masterFolderTables().filter((item) => masterFolderGroupForTable(item) === groupId)) {
+    for (const row of masterFolderRows(table)) {
+      const value = String(masterFolderPkValue(row, table) || masterFolderLabel(row, table) || "").trim();
+      const label = String(masterFolderLabel(row, table) || value).trim();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      options.push({ value, label, name: label, table: table.id, row });
+      if (options.length >= 500) return options;
+    }
+  }
+  for (const value of fallbackValues) {
+    const clean = String(value ?? "").trim();
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
+    options.push({ value: clean, label: clean, name: clean, table: "fallback", row: {} });
+  }
+  return options.sort((a, b) => a.label.localeCompare(b.label, "th", { numeric: true }));
+}
+
+function estBudgetAreaOptions() {
+  const fromMaster = estBudgetMasterOptions("area");
+  const fromBudget = estBudgetUniqueOptions(estBudgetOptions().flatMap((row) => [row.block, row.area])).map((value) => ({ value, label: value, name: value, table: "budget", row: {} }));
+  const seen = new Set();
+  return [...fromMaster, ...fromBudget].filter((item) => {
+    const key = String(item.value || "").trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 500);
+}
+
+function estBudgetActivityOptions() {
+  const fromMaster = estMasterRows("activities").map((row) => {
+    const value = String(row.code || row.name || row.group || "").trim();
+    const label = [row.code, row.name || row.group].filter(Boolean).join(" · ") || value;
+    return value ? { value, label, name: row.name || row.group || value, group: row.group || row.name || "" } : null;
+  }).filter(Boolean);
+  const fromBudget = Object.keys(state.estData?.activityTotals || {}).map((activity) => ({ value: activity, label: activity, name: activity, group: activity }));
+  const seen = new Set();
+  return [...fromMaster, ...fromBudget].filter((item) => {
+    if (!item.value || seen.has(item.value)) return false;
+    seen.add(item.value);
+    return true;
+  }).sort((a, b) => a.label.localeCompare(b.label, "th", { numeric: true }));
+}
+
+function estBudgetMaterialOptions() {
+  const fallback = ["น้ำมัน", "ปุ๋ย", "สารกำจัดวัชพืช", "สารป้องกันศัตรูพืช", "อุปกรณ์สิ้นเปลือง"];
+  return estBudgetMasterOptions("supply", fallback);
+}
+
+function estBudgetWorkerGroupOptions() {
+  const peopleRows = estMasterRows("people");
+  const fallback = ["คนงาน (Worker)", "คนขับ (Driver)", "ผู้รับเหมา (Contractor)", "ทีมตอนบน", "ทีมตอนล่าง"];
+  const fromPeople = estBudgetUniqueOptions(peopleRows.flatMap((row) => [row.team, row.role, row.zone])).map((value) => ({ value, label: value }));
+  const seen = new Set();
+  return [...fromPeople, ...fallback.map((value) => ({ value, label: value }))].filter((item) => {
+    if (!item.value || seen.has(item.value)) return false;
+    seen.add(item.value);
+    return true;
+  });
+}
+
+function estBudgetRateGroupOptions() {
+  const defaults = ["คนงาน", "คนขับ", "ผู้รับเหมา", "Role Based", "Role Based Compounded", "เหมารวม"];
+  return estBudgetUniqueOptions([...(state.estBudgetRateEdits || []).map((row) => row.rateGroup), ...defaults]).map((value) => ({ value, label: value }));
+}
+
 function estBudgetRateLines() {
   const edits = estBudgetRateEditsMap();
   const lines = [];
@@ -2935,8 +3034,11 @@ function estBudgetRateLines() {
       const base = {
         id,
         fiscalYear: "2569",
+        activityGroup: dataset.activity || dataset.sheet,
+        activityKey: dataset.activity || dataset.sheet,
         activity: dataset.activity || dataset.sheet,
         contractName: dataset.sheet,
+        blockKey: block,
         block,
         area: String(estField(row, ["แปลง", "แปลงปฏิบัติการ"]) || "").trim(),
         rai,
@@ -2945,6 +3047,15 @@ function estBudgetRateLines() {
         rate: rate.value,
         rateField: rate.key,
         unit,
+        materialKey: "",
+        material: "",
+        materialUnit: "",
+        materialQty: 0,
+        materialRate: 0,
+        workerGroup: "คนงาน (Worker)",
+        rateGroup: "คนงาน",
+        roleName: "คนงาน (Worker)",
+        disableMaterial: false,
         budget: budgetValue,
         sourceSheet: dataset.sheet,
         sourceRow: row._rowNumber || "",
@@ -2959,8 +3070,11 @@ function estBudgetRateLines() {
     lines.push({
       id: edit.id,
       fiscalYear: edit.fiscalYear || "2569",
+      activityGroup: edit.activityGroup || edit.activity || "ไม่ระบุกลุ่มกิจกรรม",
+      activityKey: edit.activityKey || edit.activity || "",
       activity: edit.activity || "ไม่ระบุกิจกรรม",
       contractName: edit.contractName || "อัตราเพิ่มเอง",
+      blockKey: edit.blockKey || edit.block || "",
       block: edit.block || "",
       area: edit.area || "",
       rai: n(edit.rai),
@@ -2969,6 +3083,15 @@ function estBudgetRateLines() {
       rate: n(edit.rate),
       rateField: "manual",
       unit: edit.unit || "บาท/งาน",
+      materialKey: edit.materialKey || "",
+      material: edit.material || "",
+      materialUnit: edit.materialUnit || "",
+      materialQty: n(edit.materialQty),
+      materialRate: n(edit.materialRate),
+      workerGroup: edit.workerGroup || "คนงาน (Worker)",
+      rateGroup: edit.rateGroup || "คนงาน",
+      roleName: edit.roleName || edit.workerGroup || "",
+      disableMaterial: !!edit.disableMaterial,
       budget: n(edit.budget) || n(edit.rate) * n(edit.quantity),
       nextRate: edit.nextRate ?? "",
       nextFiscalYear: edit.nextFiscalYear || "",
@@ -2983,9 +3106,15 @@ function estBudgetRateLines() {
 function filteredEstBudgetRateLines() {
   const query = state.estFilters.query.trim().toLowerCase();
   return estBudgetRateLines().filter((line) => {
-    const activityOk = state.estFilters.activity === "all" || line.activity === state.estFilters.activity;
-    const queryOk = !query || [line.activity, line.contractName, line.block, line.area, line.unit, line.sourceSheet].join(" ").toLowerCase().includes(query);
-    return activityOk && queryOk;
+    const fiscalOk = state.estFilters.fiscalYear === "all" || String(line.fiscalYear || "") === String(state.estFilters.fiscalYear);
+    const areaOk = state.estFilters.area === "all" || [line.blockKey, line.block, line.area].map(String).includes(String(state.estFilters.area));
+    const groupOk = state.estFilters.activityGroup === "all" || String(line.activityGroup || "") === String(state.estFilters.activityGroup);
+    const activityOk = state.estFilters.activity === "all" || [line.activityKey, line.activity].map(String).includes(String(state.estFilters.activity));
+    const materialOk = state.estFilters.material === "all" || [line.materialKey, line.material].map(String).includes(String(state.estFilters.material));
+    const workerOk = state.estFilters.workerGroup === "all" || String(line.workerGroup || "") === String(state.estFilters.workerGroup);
+    const rateGroupOk = state.estFilters.rateGroup === "all" || String(line.rateGroup || "") === String(state.estFilters.rateGroup);
+    const queryOk = !query || [line.activityGroup, line.activity, line.contractName, line.blockKey, line.block, line.area, line.material, line.workerGroup, line.rateGroup, line.roleName, line.unit, line.sourceSheet].join(" ").toLowerCase().includes(query);
+    return fiscalOk && areaOk && groupOk && activityOk && materialOk && workerOk && rateGroupOk && queryOk;
   });
 }
 
@@ -2997,23 +3126,42 @@ function updateEstBudgetRateLine(id, patch) {
 }
 
 function addEstBudgetRateLine() {
-  const activity = document.querySelector("#estRateActivity")?.value || "ไม่ระบุกิจกรรม";
+  const activitySelect = document.querySelector("#estRateActivity");
+  const activityOption = activitySelect?.selectedOptions?.[0];
+  const activity = activityOption?.dataset.name || activitySelect?.value || "ไม่ระบุกิจกรรม";
+  const areaSelect = document.querySelector("#estRateBlock");
+  const areaOption = areaSelect?.selectedOptions?.[0];
+  const materialSelect = document.querySelector("#estRateMaterial");
+  const materialOption = materialSelect?.selectedOptions?.[0];
   const row = {
     id: `manual-rate-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     customRate: true,
-    fiscalYear: "2569",
+    fiscalYear: document.querySelector("#estRateYear")?.value || state.estFilters.fiscalYear || "2569",
+    activityGroup: document.querySelector("#estRateActivityGroup")?.value || activityOption?.dataset.group || activity,
+    activityKey: activitySelect?.value || activity,
     activity,
     contractName: document.querySelector("#estRateContract")?.value.trim() || activity,
-    block: document.querySelector("#estRateBlock")?.value.trim() || "",
-    area: document.querySelector("#estRateArea")?.value.trim() || "",
+    blockKey: areaSelect?.value || "",
+    block: areaOption?.dataset.name || areaSelect?.value || "",
+    area: document.querySelector("#estRateArea")?.value.trim() || areaOption?.dataset.name || "",
     quantity: n(document.querySelector("#estRateQuantity")?.value),
     rate: n(document.querySelector("#estRateValue")?.value),
     unit: document.querySelector("#estRateUnit")?.value || "บาท/งาน",
+    materialKey: materialSelect?.value || "",
+    material: materialOption?.dataset.name || materialSelect?.value || "",
+    materialUnit: document.querySelector("#estRateMaterialUnit")?.value || "",
+    materialQty: n(document.querySelector("#estRateMaterialQty")?.value),
+    materialRate: n(document.querySelector("#estRateMaterialRate")?.value),
+    workerGroup: document.querySelector("#estRateWorkerGroup")?.value || "",
+    rateGroup: document.querySelector("#estRateGroup")?.value || "",
+    roleName: document.querySelector("#estRateRoleName")?.value.trim() || document.querySelector("#estRateWorkerGroup")?.value || "",
+    disableMaterial: !!document.querySelector("#estRateDisableMaterial")?.checked,
     budget: n(document.querySelector("#estRateBudget")?.value),
     sourceSheet: "เพิ่มเอง",
     createdAt: new Date().toISOString(),
   };
-  row.budget = row.budget || row.rate * row.quantity;
+  const materialCost = row.disableMaterial ? 0 : row.materialQty * row.materialRate;
+  row.budget = row.budget || (row.rate * row.quantity) + materialCost;
   state.estBudgetRateEdits.push(row);
   saveEstBudgetRateEdits();
   render();
@@ -4534,12 +4682,19 @@ function renderEstBudget() {
 function renderEstBudgetContract() {
   const lines = filteredEstBudgetRateLines();
   const allLines = estBudgetRateLines();
-  const activities = Object.keys(state.estData?.activityTotals || {}).sort();
+  const areaOptions = estBudgetAreaOptions();
+  const activityOptions = estBudgetActivityOptions();
+  const activityGroups = estBudgetUniqueOptions(activityOptions.map((item) => item.group || item.label));
+  const materialOptions = estBudgetMaterialOptions();
+  const workerGroupOptions = estBudgetWorkerGroupOptions();
+  const rateGroupOptions = estBudgetRateGroupOptions();
+  const fiscalYears = estBudgetUniqueOptions(["2569", "2570", ...allLines.map((line) => line.fiscalYear), ...allLines.map((line) => line.nextFiscalYear)]);
   const totalBudget = lines.reduce((sum, line) => sum + n(line.budget), 0);
   const avgRate = lines.length ? lines.reduce((sum, line) => sum + n(line.rate), 0) / lines.length : 0;
+  const materialCost = lines.reduce((sum, line) => sum + (line.disableMaterial ? 0 : n(line.materialQty) * n(line.materialRate)), 0);
   const nextYearCount = lines.filter((line) => line.nextFiscalYear).length;
   const grouped = Object.entries(lines.reduce((acc, line) => {
-    const key = line.activity || "ไม่ระบุกิจกรรม";
+    const key = line.activityGroup || line.activity || "ไม่ระบุกลุ่มกิจกรรม";
     acc[key] ||= { count: 0, budget: 0, rate: 0 };
     acc[key].count += 1;
     acc[key].budget += n(line.budget);
@@ -4550,28 +4705,60 @@ function renderEstBudgetContract() {
     <div class="est-page est-budget-designer">
       <div class="report-title">
         <div>
-          <h2>ทะเบียนอัตราการทำงาน 2569</h2>
-          <p>แสดงเรทกิจกรรมตามหมวดกิจกรรมและพื้นที่ สำหรับเป็นฐานข้อมูลอัตรางาน สามารถเพิ่มและแก้ไขได้</p>
+          <h2>อัตรางบประมาณ</h2>
+          <p>กำหนดอัตรางานรายปีตามพื้นที่ กลุ่มกิจกรรม กิจกรรม วัสดุ และกลุ่มคนงาน โดยเชื่อมกับข้อมูลหลักและแก้ไขได้ในหน้าเดียว</p>
         </div>
         <div class="est-budget-title-actions">
-          <button type="button" data-est-roll-budget>ยกอัตราไปปี 2570</button>
+          <button type="button" data-est-roll-budget>ยกอัตราไปปีถัดไป</button>
         </div>
       </div>
       <section class="est-contract-summary">
         <article><span>รายการอัตรา</span><strong>${fmt(lines.length)}</strong><small>จากทั้งหมด ${fmt(allLines.length)} รายการ</small></article>
         <article><span>งบตามตัวกรอง</span><strong>${moneyNf.format(totalBudget)}</strong><small>รวมจากอัตราและปริมาณฐาน</small></article>
-        <article><span>อัตราเฉลี่ย</span><strong>${moneyNf.format(avgRate)}</strong><small>ค่าเฉลี่ยของเรทตามตัวกรอง</small></article>
-        <article><span>อัตราปีถัดไป</span><strong>${fmt(nextYearCount)}</strong><small>รายการที่ตั้งค่าไว้แล้ว</small></article>
+        <article><span>ค่าวัสดุ</span><strong>${moneyNf.format(materialCost)}</strong><small>อัตราใช้วัสดุ x ราคาวัสดุ</small></article>
+        <article><span>กลุ่มเรท</span><strong>${fmt(new Set(lines.map((line) => line.rateGroup).filter(Boolean)).size)}</strong><small>ตั้งค่าอัตราไม่เหมือนกันได้</small></article>
+      </section>
+      <section class="est-contract-card">
+        <div class="est-contract-head">
+          <div>
+            <h3>ข้อมูลสัญญาอัตรา</h3>
+            <p>ใช้เป็นทะเบียนเรทประจำปี ไม่ใช่หน้าวางแผนหรือสั่งงาน</p>
+          </div>
+          <span class="status-pill">อนุมัติ</span>
+        </div>
+        <div class="est-contract-fields">
+          <label>ปีอัตรางบประมาณ
+            <select id="estFiscalYear">${estBudgetOptionHtml(fiscalYears, state.estFilters.fiscalYear, "ทุกปี")}</select>
+          </label>
+          <label>สถานะ
+            <select disabled><option>อนุมัติ</option></select>
+          </label>
+          <label>ประเภท
+            <select disabled><option>Role Based Compounded</option></select>
+          </label>
+          <label>ค้นหา
+            <input id="estSearch" type="search" value="${esc(state.estFilters.query)}" placeholder="ค้นหาพื้นที่ กิจกรรม วัสดุ กลุ่มคนงาน">
+          </label>
+        </div>
       </section>
       <section class="est-budget-filters">
-        <label>กิจกรรม
-          <select id="estActivity">
-            <option value="all"${state.estFilters.activity === "all" ? " selected" : ""}>ทุกกิจกรรม</option>
-            ${activities.map((activity) => `<option value="${esc(activity)}"${activity === state.estFilters.activity ? " selected" : ""}>${esc(activity)}</option>`).join("")}
-          </select>
+        <label>พื้นที่
+          <select id="estBudgetArea">${estBudgetOptionHtml(areaOptions, state.estFilters.area, "ทุกพื้นที่")}</select>
         </label>
-        <label>ค้นหา
-          <input id="estSearch" type="search" value="${esc(state.estFilters.query)}" placeholder="ค้นหาแปลง บล็อก กิจกรรม อัตรา">
+        <label>กลุ่มกิจกรรม
+          <select id="estActivityGroup">${estBudgetOptionHtml(activityGroups, state.estFilters.activityGroup, "ทุกกลุ่มกิจกรรม")}</select>
+        </label>
+        <label>กิจกรรม
+          <select id="estActivity">${estBudgetOptionHtml(activityOptions, state.estFilters.activity, "ทุกกิจกรรม")}</select>
+        </label>
+        <label>วัสดุ
+          <select id="estBudgetMaterial">${estBudgetOptionHtml(materialOptions, state.estFilters.material, "ทุกวัสดุ")}</select>
+        </label>
+        <label>กลุ่มคนงาน
+          <select id="estBudgetWorkerGroup">${estBudgetOptionHtml(workerGroupOptions, state.estFilters.workerGroup, "ทุกกลุ่มคนงาน")}</select>
+        </label>
+        <label>กลุ่มเรท
+          <select id="estBudgetRateGroup">${estBudgetOptionHtml(rateGroupOptions, state.estFilters.rateGroup, "ทุกกลุ่มเรท")}</select>
         </label>
       </section>
       <section class="est-budget-groups">
@@ -4582,18 +4769,98 @@ function renderEstBudgetContract() {
             <small>${fmt(item.count)} รายการ · เฉลี่ย ${moneyNf.format(item.count ? item.rate / item.count : 0)}</small>
           </article>`).join("")}
       </section>
+      <section class="est-panel est-rate-form-panel">
+        <div class="section-head">
+          <h3>เพิ่มอัตรางาน</h3>
+          <span>เลือก key จากข้อมูลหลักเพื่อเก็บทั้งรหัสและชื่อ แล้วกำหนดอัตราค่าแรงและอัตราการใช้วัสดุ</span>
+        </div>
+        <div class="est-rate-form est-rate-form-wide">
+          <label>ปี
+            <select id="estRateYear">${estBudgetPlainOptionHtml(fiscalYears, state.estFilters.fiscalYear === "all" ? "2569" : state.estFilters.fiscalYear, "เลือกปี")}</select>
+          </label>
+          <label>พื้นที่
+            <select id="estRateBlock">${estBudgetPlainOptionHtml(areaOptions, "", "เลือกพื้นที่")}</select>
+          </label>
+          <label>กลุ่มกิจกรรม
+            <select id="estRateActivityGroup">${estBudgetPlainOptionHtml(activityGroups, "", "เลือกกลุ่มกิจกรรม")}</select>
+          </label>
+          <label>กิจกรรม
+            <select id="estRateActivity">${estBudgetPlainOptionHtml(activityOptions, "", "เลือกกิจกรรม")}</select>
+          </label>
+          <label>ชื่ออัตรา/สัญญา
+            <input id="estRateContract" type="text" placeholder="เช่น ถางป่า ปี 2 Kg 6 ปี หรือ น้อยกว่า">
+          </label>
+          <label>รายละเอียดพื้นที่
+            <input id="estRateArea" type="text" placeholder="แปลง/โซน/หมายเหตุ">
+          </label>
+          <label>กลุ่มคนงาน
+            <select id="estRateWorkerGroup">${estBudgetPlainOptionHtml(workerGroupOptions, "", "เลือกกลุ่มคนงาน")}</select>
+          </label>
+          <label>Role Name
+            <input id="estRateRoleName" type="text" placeholder="เช่น คนงาน (Worker)">
+          </label>
+          <label>กลุ่มเรท
+            <select id="estRateGroup">${estBudgetPlainOptionHtml(rateGroupOptions, "Role Based", "เลือกกลุ่มเรท")}</select>
+          </label>
+          <label>ฐานงาน
+            <input id="estRateQuantity" type="number" step="0.01" placeholder="จำนวน">
+          </label>
+          <label>หน่วยงาน
+            <select id="estRateUnit">
+              <option value="บาท/งาน">บาท/งาน</option>
+              <option value="บาท/ไร่">บาท/ไร่</option>
+              <option value="บาท/ต้น">บาท/ต้น</option>
+              <option value="บาท/ตัน">บาท/ตัน</option>
+              <option value="บาท/ชั่วโมง">บาท/ชั่วโมง</option>
+            </select>
+          </label>
+          <label>อัตราค่าแรง
+            <input id="estRateValue" type="number" step="0.01" placeholder="0.00">
+          </label>
+          <label>วัสดุ
+            <select id="estRateMaterial">${estBudgetPlainOptionHtml(materialOptions, "", "เลือกวัสดุ")}</select>
+          </label>
+          <label>หน่วยวัสดุ
+            <input id="estRateMaterialUnit" type="text" placeholder="เช่น ลิตร / กก. / ถุง">
+          </label>
+          <label>อัตราการใช้
+            <input id="estRateMaterialQty" type="number" step="0.0001" placeholder="ปริมาณต่อหน่วยงาน">
+          </label>
+          <label>ราคาวัสดุ
+            <input id="estRateMaterialRate" type="number" step="0.01" placeholder="บาทต่อหน่วยวัสดุ">
+          </label>
+          <label class="est-check-field">
+            <input id="estRateDisableMaterial" type="checkbox">
+            <span>ไม่คิดวัสดุในอัตรานี้</span>
+          </label>
+          <label>งบประมาณ
+            <input id="estRateBudget" type="number" step="0.01" placeholder="คำนวณอัตโนมัติถ้าเว้นว่าง">
+          </label>
+          <button type="button" data-est-add-rate>เพิ่มอัตรา</button>
+        </div>
+      </section>
       <section class="est-panel">
         <div class="section-head">
-          <h3>รายการอัตรางานตามพื้นที่</h3>
-          <span>แก้ไขอัตราและงบประมาณได้จากตารางนี้ โดยไม่มีขั้นตอนวางแผนหรือสั่งงานในหน้านี้</span>
+          <h3>รายการอัตราตามปีและความสัมพันธ์ข้อมูลหลัก</h3>
+          <span>แก้ไขกลุ่มเรท กลุ่มคนงาน วัสดุ อัตราการใช้ และงบประมาณได้จากตารางนี้</span>
         </div>
         <div class="table-wrap est-rate-table-wrap">
           <table class="mini-table est-table est-rate-table">
-            <thead><tr><th>กิจกรรม / สัญญา</th><th>พื้นที่</th><th>ฐานงาน</th><th>อัตรา</th><th>งบประมาณ</th><th>ปีถัดไป</th><th>จัดการ</th></tr></thead>
+            <thead><tr><th>ปี / สัญญา</th><th>พื้นที่</th><th>กลุ่มกิจกรรม / กิจกรรม</th><th>กลุ่มคนงาน / เรท</th><th>วัสดุ / อัตราใช้</th><th>ฐานงาน</th><th>อัตราค่าแรง</th><th>งบประมาณ</th><th>ปีถัดไป</th><th>สถานะ</th></tr></thead>
             <tbody>${lines.slice(0, 260).map((line) => `
               <tr>
-                <td class="left"><strong>${esc(line.activity)}</strong><small>${esc(line.contractName)} · ${esc(line.sourceSheet)} #${esc(line.sourceRow)}</small></td>
+                <td class="left"><strong>${esc(line.fiscalYear || "2569")}</strong><small>${esc(line.contractName)} · ${esc(line.sourceSheet)} #${esc(line.sourceRow)}</small></td>
                 <td class="left"><strong>${esc(line.block)}</strong><small>${esc(line.area || "-")}</small></td>
+                <td class="left"><strong>${esc(line.activityGroup || "-")}</strong><small>${esc(line.activity)}</small></td>
+                <td>
+                  <select data-est-rate-select="${esc(line.id)}" data-field="workerGroup">${estBudgetPlainOptionHtml(workerGroupOptions, line.workerGroup, "เลือกกลุ่ม")}</select>
+                  <select data-est-rate-select="${esc(line.id)}" data-field="rateGroup">${estBudgetPlainOptionHtml(rateGroupOptions, line.rateGroup, "เลือกเรท")}</select>
+                </td>
+                <td>
+                  <select data-est-rate-select="${esc(line.id)}" data-field="materialKey">${estBudgetPlainOptionHtml(materialOptions, line.materialKey || line.material, "เลือกวัสดุ")}</select>
+                  <input data-est-rate-edit="${esc(line.id)}" data-field="materialQty" type="number" step="0.0001" value="${esc(n(line.materialQty))}" placeholder="อัตราใช้">
+                  <input data-est-rate-edit="${esc(line.id)}" data-field="materialRate" type="number" step="0.01" value="${esc(n(line.materialRate))}" placeholder="ราคาวัสดุ">
+                </td>
                 <td><strong>${fmt(n(line.quantity))}</strong><small>${fmt(n(line.rai))} ไร่ · ${fmt(n(line.trees))} ต้น</small></td>
                 <td><input data-est-rate-edit="${esc(line.id)}" data-field="rate" type="number" step="0.01" value="${esc(n(line.rate))}"><small>${esc(line.unit)}</small></td>
                 <td><input data-est-rate-edit="${esc(line.id)}" data-field="budget" type="number" step="0.01" value="${esc(n(line.budget))}"></td>
@@ -4601,7 +4868,7 @@ function renderEstBudgetContract() {
                 <td class="est-rate-actions">
                   ${line.customRate ? `<button type="button" class="danger" data-est-rate-delete="${esc(line.id)}">ลบ</button>` : `<span class="status-pill">รายการหลัก</span>`}
                 </td>
-              </tr>`).join("") || `<tr><td colspan="7">ไม่พบรายการตามตัวกรอง</td></tr>`}</tbody>
+              </tr>`).join("") || `<tr><td colspan="10">ไม่พบรายการตามตัวกรอง</td></tr>`}</tbody>
           </table>
         </div>
       </section>
@@ -4686,7 +4953,6 @@ function renderEstView() {
   else if (state.view === "est-master") els.reportPage.innerHTML = renderEstMaster();
   else if (state.view === "est-budget") {
     els.reportPage.innerHTML = renderEstBudgetContract();
-    mountEstBudgetRateControls();
   }
   else if (state.view === "est-plan") els.reportPage.innerHTML = renderEstPlanPage();
   else if (state.view === "est-workorder") els.reportPage.innerHTML = renderEstWorkOrderPage();
@@ -5452,12 +5718,53 @@ async function init() {
     setView("dashboard");
   });
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.id === "estFiscalYear") {
+      state.estFilters.fiscalYear = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.id === "estBudgetArea") {
+      state.estFilters.area = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.id === "estActivityGroup") {
+      state.estFilters.activityGroup = e.target.value;
+      render();
+      return;
+    }
     if (e.target.id === "estActivity") {
       state.estFilters.activity = e.target.value;
-      const next = state.estFilters.activity === "all"
-        ? estDatasets()[0]
-        : estDatasets().find((item) => item.activity === state.estFilters.activity);
-      state.estFilters.datasetId = next?.id || "";
+      render();
+      return;
+    }
+    if (e.target.id === "estBudgetMaterial") {
+      state.estFilters.material = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.id === "estBudgetWorkerGroup") {
+      state.estFilters.workerGroup = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.id === "estBudgetRateGroup") {
+      state.estFilters.rateGroup = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.matches("[data-est-rate-select]")) {
+      const id = e.target.dataset.estRateSelect;
+      const field = e.target.dataset.field;
+      const selected = e.target.selectedOptions?.[0];
+      const patch = { [field]: e.target.value };
+      if (field === "materialKey") patch.material = selected?.dataset.name || selected?.textContent?.trim() || e.target.value;
+      updateEstBudgetRateLine(id, patch);
+      render();
+      return;
+    }
+    if (e.target.matches("[data-est-rate-check]")) {
+      updateEstBudgetRateLine(e.target.dataset.estRateCheck, { [e.target.dataset.field]: e.target.checked });
       render();
       return;
     }

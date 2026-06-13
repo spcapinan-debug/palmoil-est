@@ -2874,7 +2874,7 @@ tfoot td {
 
 .est-budget-filters {
   display: grid;
-  grid-template-columns: minmax(180px, 260px) minmax(260px, 1fr);
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -2890,10 +2890,57 @@ tfoot td {
   font-weight: 800;
 }
 
+.est-contract-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.est-contract-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.est-contract-head h3,
+.est-contract-head p {
+  margin: 0;
+}
+
+.est-contract-head p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.est-contract-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.est-contract-fields label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.est-contract-fields select,
+.est-contract-fields input,
 .est-budget-filters select,
 .est-budget-filters input,
 .est-rate-form select,
 .est-rate-form input,
+.est-rate-table select,
 .est-rate-table input {
   width: 100%;
   min-height: 34px;
@@ -2915,6 +2962,10 @@ tfoot td {
   gap: 10px;
 }
 
+.est-rate-form-wide {
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+}
+
 .est-rate-form label {
   display: grid;
   gap: 6px;
@@ -2933,13 +2984,25 @@ tfoot td {
   font-weight: 900;
 }
 
+.est-check-field {
+  align-items: end;
+  grid-template-columns: auto 1fr;
+  min-height: 56px;
+}
+
+.est-check-field input {
+  width: 16px;
+  min-height: 16px;
+  align-self: center;
+}
+
 .est-rate-table-wrap {
   max-height: 560px;
   overflow: auto;
 }
 
 .est-rate-table {
-  min-width: 1040px;
+  min-width: 1480px;
 }
 
 .est-rate-table thead th {
@@ -3229,6 +3292,8 @@ tfoot td {
   .palm-pipeline,
   .est-contract-summary,
   .est-budget-groups,
+  .est-contract-fields,
+  .est-budget-filters,
   .est-rate-form,
   .master-console,
   .cultivate-menu-grid,
@@ -3298,6 +3363,7 @@ tfoot td {
   .palm-pipeline,
   .est-contract-summary,
   .est-budget-groups,
+  .est-contract-fields,
   .est-budget-filters,
   .est-rate-form,
   .master-console,
