@@ -3298,7 +3298,7 @@ tfoot td {
 
 .farm-toolbar {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) 180px 190px auto auto;
+  grid-template-columns: minmax(240px, 1.1fr) minmax(220px, 1fr) 150px 170px auto auto;
   gap: 10px;
   align-items: end;
   padding: 12px;
@@ -3373,6 +3373,51 @@ tfoot td {
   grid-column: 1 / -1;
 }
 
+.farm-key-panel {
+  gap: 10px;
+}
+
+.farm-key-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.farm-key-flow article {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.farm-key-flow b {
+  width: max-content;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #eaf1ff;
+  color: var(--primary);
+  font-size: 10px;
+}
+
+.farm-key-flow strong {
+  overflow: hidden;
+  color: var(--navy);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-key-flow span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .farm-detail {
   display: grid;
   grid-template-columns: minmax(110px, .6fr) minmax(0, 1fr);
@@ -3416,7 +3461,9 @@ tfoot td {
 }
 
 .farm-table {
-  min-width: 960px;
+  width: 100%;
+  min-width: 860px;
+  table-layout: auto;
 }
 
 .farm-table thead th {
@@ -3494,6 +3541,7 @@ tfoot td {
   .farm-toolbar,
   .farm-layout,
   .farm-form,
+  .farm-key-flow,
   .farm-report-grid,
   .est-contract-summary,
   .est-budget-groups,
@@ -3570,6 +3618,7 @@ tfoot td {
   .farm-toolbar,
   .farm-layout,
   .farm-form,
+  .farm-key-flow,
   .farm-report-grid,
   .est-contract-summary,
   .est-budget-groups,

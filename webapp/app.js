@@ -30,6 +30,7 @@ const state = {
   masterFolderRecords: [],
   farmRecords: [],
   farmFilters: { query: "", status: "all", role: "super_admin" },
+  farmTableId: "",
   farmDetailId: "",
   farmEditId: "",
   estSearchTimer: null,
@@ -458,6 +459,1169 @@ const FARM_MODULES = [
     ],
   },
 ];
+
+const F = (key, label, options = {}) => ({ key, label, ...options });
+
+const FARM_TABLE_SCHEMAS = {
+  estates: {
+    moduleId: "farm-area",
+    title: "Estate / บริษัท / สวน",
+    primaryKey: "id",
+    codeField: "estate_code",
+    labelField: "estate_name",
+    fields: [
+      F("estate_code", "รหัส Estate", { required: true }),
+      F("estate_name", "ชื่อ Estate", { required: true }),
+      F("company_name", "บริษัท"),
+      F("manager_id", "ผู้จัดการ", { references: "employees" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "estate-spc", estate_code: "SPC", estate_name: "SPC Estate", company_name: "SPC", status: "active" },
+    ],
+  },
+  zones: {
+    moduleId: "farm-area",
+    title: "โซน",
+    primaryKey: "id",
+    codeField: "zone_code",
+    labelField: "zone_name",
+    fields: [
+      F("estate_id", "Estate", { references: "estates", required: true }),
+      F("zone_code", "รหัสโซน", { required: true }),
+      F("zone_name", "ชื่อโซน", { required: true }),
+      F("supervisor_id", "หัวหน้าโซน", { references: "employees" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "zone-north", estate_id: "estate-spc", zone_code: "N", zone_name: "โซนบน", status: "active" },
+      { id: "zone-south", estate_id: "estate-spc", zone_code: "S", zone_name: "โซนล่าง", status: "active" },
+    ],
+  },
+  plots: {
+    moduleId: "farm-area",
+    title: "แปลง / บล็อก",
+    primaryKey: "id",
+    codeField: "plot_code",
+    labelField: "plot_name",
+    fields: [
+      F("estate_id", "Estate", { references: "estates", required: true }),
+      F("zone_id", "โซน", { references: "zones", required: true }),
+      F("plot_code", "รหัสแปลง", { required: true }),
+      F("plot_name", "ชื่อแปลง"),
+      F("area_rai", "พื้นที่ไร่", { type: "number" }),
+      F("planting_year", "ปีปลูก", { type: "number" }),
+      F("tree_count", "จำนวนต้น", { type: "number" }),
+      F("rspo_status", "RSPO", { options: ["RSPO", "Non-RSPO"] }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "plot-plt001", estate_id: "estate-spc", zone_id: "zone-north", plot_code: "PLT-001", plot_name: "แปลงตัวอย่าง 01", area_rai: "120", planting_year: "2562", tree_count: "2640", rspo_status: "RSPO", status: "active" },
+      { id: "plot-plt002", estate_id: "estate-spc", zone_id: "zone-south", plot_code: "PLT-002", plot_name: "แปลงตัวอย่าง 02", area_rai: "95", planting_year: "2564", tree_count: "2090", rspo_status: "Non-RSPO", status: "active" },
+    ],
+  },
+  plot_groups: {
+    moduleId: "farm-area",
+    title: "กลุ่มแปลง",
+    primaryKey: "id",
+    codeField: "group_code",
+    labelField: "group_name",
+    fields: [
+      F("group_code", "รหัสกลุ่มแปลง", { required: true }),
+      F("group_name", "ชื่อกลุ่มแปลง", { required: true }),
+      F("group_type", "ประเภทกลุ่ม", { options: ["RSPO", "Zone", "Harvest", "Budget", "Custom"] }),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [
+      { id: "plot-group-rspo", group_code: "GRP-RSPO", group_name: "กลุ่มแปลง RSPO", group_type: "RSPO", status: "active" },
+    ],
+  },
+  employees: {
+    moduleId: "farm-people",
+    title: "พนักงาน",
+    primaryKey: "id",
+    codeField: "employee_code",
+    labelField: "full_name",
+    fields: [
+      F("employee_code", "รหัสพนักงาน", { required: true }),
+      F("full_name", "ชื่อ-สกุล", { required: true }),
+      F("position", "ตำแหน่ง"),
+      F("default_role", "Role", { options: FARM_ROLES }),
+      F("daily_wage", "ค่าแรงรายวัน", { type: "number" }),
+      F("phone", "เบอร์โทร"),
+      F("start_date", "เริ่มงาน", { type: "date" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "emp-001", employee_code: "EMP-001", full_name: "หัวหน้าทีมตัวอย่าง", position: "Supervisor", default_role: "supervisor", daily_wage: "650", status: "active" },
+      { id: "emp-002", employee_code: "EMP-002", full_name: "คนงานตัวอย่าง", position: "Worker", default_role: "viewer", daily_wage: "450", status: "active" },
+    ],
+  },
+  contractors: {
+    moduleId: "farm-people",
+    title: "ผู้รับเหมา",
+    primaryKey: "id",
+    codeField: "contractor_code",
+    labelField: "contractor_name",
+    fields: [
+      F("contractor_code", "รหัสผู้รับเหมา", { required: true }),
+      F("contractor_name", "ชื่อผู้รับเหมา", { required: true }),
+      F("contractor_type", "ประเภท"),
+      F("default_activity_group_id", "กลุ่มกิจกรรมหลัก", { references: "activity_groups" }),
+      F("contact_person", "ผู้ติดต่อ"),
+      F("phone", "เบอร์โทร"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "con-001", contractor_code: "CON-001", contractor_name: "ผู้รับเหมางานเก็บเกี่ยว", contractor_type: "harvest", status: "active" },
+    ],
+  },
+  teams: {
+    moduleId: "farm-people",
+    title: "ทีมงาน",
+    primaryKey: "id",
+    codeField: "team_code",
+    labelField: "team_name",
+    fields: [
+      F("team_code", "รหัสทีม", { required: true }),
+      F("team_name", "ชื่อทีม", { required: true }),
+      F("team_type", "ประเภททีม", { options: ["worker", "contractor", "driver", "store", "supervisor"] }),
+      F("supervisor_employee_id", "หัวหน้าทีม", { references: "employees" }),
+      F("contractor_id", "ผู้รับเหมา", { references: "contractors" }),
+      F("default_activity_group_id", "กลุ่มกิจกรรมหลัก", { references: "activity_groups" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "team-a", team_code: "TEAM-A", team_name: "ทีมสวน A", team_type: "worker", supervisor_employee_id: "emp-001", status: "active" },
+    ],
+  },
+  team_members: {
+    moduleId: "farm-people",
+    title: "สมาชิกทีม",
+    primaryKey: "id",
+    codeField: "member_role",
+    labelField: "employee_id",
+    fields: [
+      F("team_id", "ทีม", { references: "teams", required: true }),
+      F("employee_id", "พนักงาน", { references: "employees", required: true }),
+      F("member_role", "หน้าที่ในทีม"),
+      F("start_date", "วันที่เริ่ม", { type: "date" }),
+      F("end_date", "วันที่สิ้นสุด", { type: "date" }),
+      F("is_active", "ใช้งาน", { type: "boolean" }),
+    ],
+    seed: [
+      { id: "team-member-001", team_id: "team-a", employee_id: "emp-001", member_role: "หัวหน้าทีม", is_active: "true" },
+      { id: "team-member-002", team_id: "team-a", employee_id: "emp-002", member_role: "คนงาน", is_active: "true" },
+    ],
+  },
+  team_activity_skills: {
+    moduleId: "farm-people",
+    title: "ทักษะทีมตามกิจกรรม",
+    primaryKey: "id",
+    codeField: "skill_level",
+    labelField: "team_id",
+    fields: [
+      F("team_id", "ทีม", { references: "teams", required: true }),
+      F("activity_id", "กิจกรรม", { references: "activities", required: true }),
+      F("skill_level", "ระดับทักษะ", { options: ["basic", "standard", "expert"] }),
+      F("rate_group", "กลุ่มเรท"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  activity_groups: {
+    moduleId: "farm-activities",
+    title: "กลุ่มกิจกรรม",
+    primaryKey: "id",
+    codeField: "group_code",
+    labelField: "group_name",
+    fields: [
+      F("group_code", "รหัสกลุ่มกิจกรรม", { required: true }),
+      F("group_name", "ชื่อกลุ่มกิจกรรม", { required: true }),
+      F("description", "รายละเอียด"),
+      F("sort_order", "ลำดับ", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "act-group-fertilizer", group_code: "AG01", group_name: "การใส่ปุ๋ย", sort_order: "1", status: "active" },
+      { id: "act-group-harvest", group_code: "AG08", group_name: "การเก็บเกี่ยว", sort_order: "8", status: "active" },
+    ],
+  },
+  activities: {
+    moduleId: "farm-activities",
+    title: "กิจกรรม",
+    primaryKey: "id",
+    codeField: "activity_code",
+    labelField: "activity_name",
+    fields: [
+      F("activity_group_id", "กลุ่มกิจกรรม", { references: "activity_groups", required: true }),
+      F("activity_code", "รหัสกิจกรรม", { required: true }),
+      F("activity_name", "ชื่อกิจกรรม", { required: true }),
+      F("default_unit", "หน่วยงาน"),
+      F("work_type", "ประเภทงาน"),
+      F("require_material", "ใช้วัสดุ", { type: "boolean" }),
+      F("allow_mobile_record", "บันทึกผ่านมือถือ", { type: "boolean" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "activity-fertilizer", activity_group_id: "act-group-fertilizer", activity_code: "AG01-01", activity_name: "ใส่ปุ๋ย", default_unit: "ต้น", work_type: "maintenance", require_material: "true", allow_mobile_record: "true", status: "active" },
+      { id: "activity-harvest", activity_group_id: "act-group-harvest", activity_code: "AG08-01", activity_name: "ตัดปาล์ม", default_unit: "ตัน", work_type: "harvest", require_material: "false", allow_mobile_record: "true", status: "active" },
+    ],
+  },
+  material_categories: {
+    moduleId: "farm-inventory",
+    title: "หมวดวัสดุ",
+    primaryKey: "id",
+    codeField: "category_code",
+    labelField: "category_name",
+    fields: [F("category_code", "รหัสหมวด", { required: true }), F("category_name", "ชื่อหมวด", { required: true }), F("status", "สถานะ", { type: "status" })],
+    seed: [
+      { id: "mat-cat-fertilizer", category_code: "FERT", category_name: "ปุ๋ย", status: "active" },
+      { id: "mat-cat-fuel", category_code: "FUEL", category_name: "น้ำมัน", status: "active" },
+    ],
+  },
+  units: {
+    moduleId: "farm-inventory",
+    title: "หน่วยนับ",
+    primaryKey: "id",
+    codeField: "unit_code",
+    labelField: "unit_name",
+    fields: [F("unit_code", "รหัสหน่วย", { required: true }), F("unit_name", "ชื่อหน่วย", { required: true }), F("base_unit", "หน่วยฐาน"), F("conversion_rate", "อัตราแปลง", { type: "number" }), F("status", "สถานะ", { type: "status" })],
+    seed: [
+      { id: "unit-kg", unit_code: "KG", unit_name: "กิโลกรัม", base_unit: "KG", conversion_rate: "1", status: "active" },
+      { id: "unit-bag", unit_code: "BAG", unit_name: "กระสอบ", base_unit: "KG", conversion_rate: "25", status: "active" },
+      { id: "unit-liter", unit_code: "L", unit_name: "ลิตร", base_unit: "L", conversion_rate: "1", status: "active" },
+    ],
+  },
+  materials: {
+    moduleId: "farm-inventory",
+    title: "วัสดุ / อุปกรณ์",
+    primaryKey: "id",
+    codeField: "material_code",
+    labelField: "material_name",
+    fields: [
+      F("material_code", "รหัสวัสดุ", { required: true }),
+      F("material_name", "ชื่อวัสดุ", { required: true }),
+      F("category_id", "หมวดวัสดุ", { references: "material_categories" }),
+      F("base_unit_id", "หน่วยฐาน", { references: "units" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "material-fert-25", material_code: "MAT-001", material_name: "ปุ๋ย 25kg", category_id: "mat-cat-fertilizer", base_unit_id: "unit-bag", status: "active" },
+      { id: "material-diesel", material_code: "FUEL-001", material_name: "น้ำมันดีเซล", category_id: "mat-cat-fuel", base_unit_id: "unit-liter", status: "active" },
+    ],
+  },
+  activity_material_usage_rates: {
+    moduleId: "farm-activities",
+    title: "อัตราใช้วัสดุตามกิจกรรม",
+    primaryKey: "id",
+    codeField: "usage_basis",
+    labelField: "activity_id",
+    fields: [
+      F("activity_id", "กิจกรรม", { references: "activities", required: true }),
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("usage_basis", "ฐานคำนวณ", { options: ["per_tree", "per_rai", "per_work_order", "per_ton"] }),
+      F("usage_rate", "อัตราใช้", { type: "number", required: true }),
+      F("usage_unit", "หน่วยใช้"),
+      F("effective_start_date", "เริ่มใช้", { type: "date" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "usage-fert-tree", activity_id: "activity-fertilizer", material_id: "material-fert-25", usage_basis: "per_tree", usage_rate: "2", usage_unit: "kg", status: "active" },
+    ],
+  },
+  survey_templates: {
+    moduleId: "farm-activities",
+    title: "แบบประเมิน",
+    primaryKey: "id",
+    codeField: "template_code",
+    labelField: "template_name",
+    fields: [
+      F("template_code", "รหัสแบบประเมิน", { required: true }),
+      F("template_name", "ชื่อแบบประเมิน", { required: true }),
+      F("activity_id", "กิจกรรม", { references: "activities" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  survey_questions: {
+    moduleId: "farm-activities",
+    title: "คำถามประเมิน",
+    primaryKey: "id",
+    codeField: "question_code",
+    labelField: "question_text",
+    fields: [
+      F("template_id", "แบบประเมิน", { references: "survey_templates", required: true }),
+      F("question_code", "รหัสคำถาม", { required: true }),
+      F("question_text", "คำถาม", { required: true }),
+      F("answer_type", "ชนิดคำตอบ", { options: ["number", "text", "yes_no", "choice"] }),
+      F("required", "จำเป็น", { type: "boolean" }),
+      F("sort_order", "ลำดับ", { type: "number" }),
+    ],
+    seed: [],
+  },
+  annual_work_plans: {
+    moduleId: "farm-work",
+    title: "แผนงานรายปี",
+    primaryKey: "id",
+    codeField: "plan_year",
+    labelField: "plan_name",
+    fields: [
+      F("plan_year", "ปีแผน", { type: "number", required: true }),
+      F("estate_id", "Estate", { references: "estates", required: true }),
+      F("plan_name", "ชื่อแผน", { required: true }),
+      F("created_by", "ผู้สร้าง", { references: "profiles" }),
+      F("approved_by", "ผู้อนุมัติ", { references: "profiles" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "plan-2569", plan_year: "2569", estate_id: "estate-spc", plan_name: "แผนงานสวนปาล์ม 2569", status: "draft" },
+    ],
+  },
+  planned_work_items: {
+    moduleId: "farm-work",
+    title: "รายการแผนงาน",
+    primaryKey: "id",
+    codeField: "planned_month",
+    labelField: "activity_id",
+    fields: [
+      F("annual_plan_id", "แผนรายปี", { references: "annual_work_plans", required: true }),
+      F("plot_id", "แปลง", { references: "plots", required: true }),
+      F("activity_id", "กิจกรรม", { references: "activities", required: true }),
+      F("planned_month", "เดือนแผน", { type: "number" }),
+      F("planned_quantity", "ปริมาณแผน", { type: "number" }),
+      F("unit", "หน่วย"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "plan-item-001", annual_plan_id: "plan-2569", plot_id: "plot-plt001", activity_id: "activity-fertilizer", planned_month: "1", planned_quantity: "2640", unit: "ต้น", status: "planned" },
+    ],
+  },
+  planned_work_materials: {
+    moduleId: "farm-work",
+    title: "วัสดุตามแผนงาน",
+    primaryKey: "id",
+    codeField: "planned_quantity",
+    labelField: "material_id",
+    fields: [
+      F("planned_work_item_id", "รายการแผนงาน", { references: "planned_work_items", required: true }),
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("planned_quantity", "ปริมาณแผน", { type: "number" }),
+      F("unit_id", "หน่วย", { references: "units" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  work_orders: {
+    moduleId: "farm-work",
+    title: "ใบสั่งงาน",
+    primaryKey: "id",
+    codeField: "work_order_no",
+    labelField: "work_order_title",
+    fields: [
+      F("planned_work_item_id", "รายการแผนงาน", { references: "planned_work_items" }),
+      F("work_order_no", "เลขที่ WO", { required: true }),
+      F("work_order_title", "ชื่องาน", { required: true }),
+      F("plot_id", "แปลง", { references: "plots", required: true }),
+      F("activity_id", "กิจกรรม", { references: "activities", required: true }),
+      F("team_id", "ทีม", { references: "teams" }),
+      F("scheduled_date", "วันที่ทำงาน", { type: "date" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "wo-001", planned_work_item_id: "plan-item-001", work_order_no: "WO-2569-001", work_order_title: "ใส่ปุ๋ยแปลง PLT-001", plot_id: "plot-plt001", activity_id: "activity-fertilizer", team_id: "team-a", scheduled_date: "2026-01-15", status: "sent_to_mobile" },
+    ],
+  },
+  work_order_workers: {
+    moduleId: "farm-work",
+    title: "คนงานในใบสั่งงาน",
+    primaryKey: "id",
+    codeField: "role",
+    labelField: "employee_id",
+    fields: [
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders", required: true }),
+      F("employee_id", "พนักงาน", { references: "employees", required: true }),
+      F("role", "หน้าที่"),
+      F("planned_hours", "ชั่วโมงแผน", { type: "number" }),
+      F("rate", "อัตรา", { type: "number" }),
+    ],
+    seed: [],
+  },
+  work_order_materials: {
+    moduleId: "farm-work",
+    title: "วัสดุในใบสั่งงาน",
+    primaryKey: "id",
+    codeField: "planned_quantity",
+    labelField: "material_id",
+    fields: [
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders", required: true }),
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("planned_quantity", "ปริมาณแผน", { type: "number" }),
+      F("issued_quantity", "จ่ายจริง", { type: "number" }),
+      F("unit_id", "หน่วย", { references: "units" }),
+    ],
+    seed: [],
+  },
+  work_order_machines: {
+    moduleId: "farm-work",
+    title: "รถ/เครื่องจักรในใบสั่งงาน",
+    primaryKey: "id",
+    codeField: "planned_hours",
+    labelField: "vehicle_id",
+    fields: [
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders", required: true }),
+      F("vehicle_id", "รถ/เครื่องจักร", { references: "vehicles", required: true }),
+      F("driver_employee_id", "พนักงานขับ", { references: "employees" }),
+      F("planned_hours", "ชั่วโมงแผน", { type: "number" }),
+      F("fuel_plan_liter", "น้ำมันแผน", { type: "number" }),
+    ],
+    seed: [],
+  },
+  work_order_approvals: {
+    moduleId: "farm-work",
+    title: "อนุมัติใบสั่งงาน",
+    primaryKey: "id",
+    codeField: "approval_level",
+    labelField: "work_order_id",
+    fields: [
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders", required: true }),
+      F("approval_level", "ระดับอนุมัติ", { type: "number" }),
+      F("approver_profile_id", "ผู้อนุมัติ", { references: "profiles" }),
+      F("decision", "ผลอนุมัติ", { options: ["pending", "approved", "rejected"] }),
+      F("decided_at", "วันที่อนุมัติ", { type: "date" }),
+    ],
+    seed: [],
+  },
+  work_order_qr_codes: {
+    moduleId: "farm-work",
+    title: "QR Code ใบสั่งงาน",
+    primaryKey: "id",
+    codeField: "qr_token",
+    labelField: "work_order_id",
+    fields: [
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders", required: true }),
+      F("qr_token", "QR Token", { required: true }),
+      F("expires_at", "หมดอายุ", { type: "date" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  work_order_locations: {
+    moduleId: "farm-work",
+    title: "พิกัดงาน",
+    primaryKey: "id",
+    codeField: "location_type",
+    labelField: "work_order_id",
+    fields: [
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders", required: true }),
+      F("location_type", "ชนิดพิกัด", { options: ["planned", "check_in", "check_out", "actual"] }),
+      F("gps_lat", "Latitude", { type: "number" }),
+      F("gps_lng", "Longitude", { type: "number" }),
+      F("recorded_by", "ผู้บันทึก", { references: "profiles" }),
+    ],
+    seed: [],
+  },
+  work_order_status_logs: {
+    moduleId: "farm-work",
+    title: "ประวัติสถานะใบสั่งงาน",
+    primaryKey: "id",
+    codeField: "to_status",
+    labelField: "work_order_id",
+    fields: [
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders", required: true }),
+      F("from_status", "จากสถานะ"),
+      F("to_status", "เป็นสถานะ", { required: true }),
+      F("changed_by", "ผู้เปลี่ยน", { references: "profiles" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [],
+  },
+  work_attendance: {
+    moduleId: "farm-work",
+    title: "Attendance",
+    primaryKey: "id",
+    codeField: "attendance_date",
+    labelField: "employee_id",
+    fields: [
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders", required: true }),
+      F("employee_id", "พนักงาน", { references: "employees", required: true }),
+      F("attendance_date", "วันที่", { type: "date" }),
+      F("check_in_time", "เวลาเข้า"),
+      F("check_out_time", "เวลาออก"),
+      F("work_hours", "ชั่วโมงทำงาน", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  work_results: {
+    moduleId: "farm-work",
+    title: "บันทึกผลงานจริง",
+    primaryKey: "id",
+    codeField: "result_date",
+    labelField: "work_order_id",
+    fields: [
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders", required: true }),
+      F("result_date", "วันที่ผลงาน", { type: "date" }),
+      F("actual_quantity", "ผลงานจริง", { type: "number" }),
+      F("actual_unit", "หน่วย"),
+      F("quality_score", "คะแนนคุณภาพ", { type: "number" }),
+      F("recorded_by", "ผู้บันทึก", { references: "profiles" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  warehouses: {
+    moduleId: "farm-inventory",
+    title: "คลัง",
+    primaryKey: "id",
+    codeField: "warehouse_code",
+    labelField: "warehouse_name",
+    fields: [
+      F("warehouse_code", "รหัสคลัง", { required: true }),
+      F("warehouse_name", "ชื่อคลัง", { required: true }),
+      F("estate_id", "Estate", { references: "estates" }),
+      F("keeper_employee_id", "ผู้ดูแลคลัง", { references: "employees" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "wh-main", warehouse_code: "WH-001", warehouse_name: "คลังกลาง", estate_id: "estate-spc", status: "active" },
+    ],
+  },
+  bin_locations: {
+    moduleId: "farm-inventory",
+    title: "ตำแหน่งเก็บ",
+    primaryKey: "id",
+    codeField: "bin_code",
+    labelField: "bin_name",
+    fields: [
+      F("warehouse_id", "คลัง", { references: "warehouses", required: true }),
+      F("bin_code", "รหัสตำแหน่ง", { required: true }),
+      F("bin_name", "ชื่อตำแหน่ง"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  goods_receipts: {
+    moduleId: "farm-inventory",
+    title: "รับพัสดุ",
+    primaryKey: "id",
+    codeField: "receipt_no",
+    labelField: "supplier_name",
+    fields: [
+      F("receipt_no", "เลขที่รับ", { required: true }),
+      F("warehouse_id", "คลัง", { references: "warehouses", required: true }),
+      F("receipt_date", "วันที่รับ", { type: "date" }),
+      F("supplier_name", "ผู้ขาย"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  goods_receipt_lines: {
+    moduleId: "farm-inventory",
+    title: "รายการรับพัสดุ",
+    primaryKey: "id",
+    codeField: "quantity",
+    labelField: "material_id",
+    fields: [
+      F("receipt_id", "เอกสารรับ", { references: "goods_receipts", required: true }),
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("quantity", "จำนวน", { type: "number" }),
+      F("unit_id", "หน่วย", { references: "units" }),
+      F("unit_cost", "ต้นทุน/หน่วย", { type: "number" }),
+    ],
+    seed: [],
+  },
+  goods_issues: {
+    moduleId: "farm-inventory",
+    title: "จ่ายพัสดุ",
+    primaryKey: "id",
+    codeField: "issue_no",
+    labelField: "work_order_id",
+    fields: [
+      F("issue_no", "เลขที่จ่าย", { required: true }),
+      F("warehouse_id", "คลัง", { references: "warehouses", required: true }),
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders" }),
+      F("issue_date", "วันที่จ่าย", { type: "date" }),
+      F("issued_to_employee_id", "ผู้รับ", { references: "employees" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  goods_issue_lines: {
+    moduleId: "farm-inventory",
+    title: "รายการจ่ายพัสดุ",
+    primaryKey: "id",
+    codeField: "quantity",
+    labelField: "material_id",
+    fields: [
+      F("issue_id", "เอกสารจ่าย", { references: "goods_issues", required: true }),
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("quantity", "จำนวน", { type: "number" }),
+      F("unit_id", "หน่วย", { references: "units" }),
+      F("bin_id", "ตำแหน่งเก็บ", { references: "bin_locations" }),
+    ],
+    seed: [],
+  },
+  goods_returns: {
+    moduleId: "farm-inventory",
+    title: "คืนพัสดุ",
+    primaryKey: "id",
+    codeField: "return_no",
+    labelField: "work_order_id",
+    fields: [
+      F("return_no", "เลขที่คืน", { required: true }),
+      F("warehouse_id", "คลัง", { references: "warehouses", required: true }),
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders" }),
+      F("return_date", "วันที่คืน", { type: "date" }),
+      F("returned_by_employee_id", "ผู้คืน", { references: "employees" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  goods_return_lines: {
+    moduleId: "farm-inventory",
+    title: "รายการคืนพัสดุ",
+    primaryKey: "id",
+    codeField: "quantity",
+    labelField: "material_id",
+    fields: [
+      F("return_id", "เอกสารคืน", { references: "goods_returns", required: true }),
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("quantity", "จำนวน", { type: "number" }),
+      F("unit_id", "หน่วย", { references: "units" }),
+      F("condition_note", "สภาพ/หมายเหตุ"),
+    ],
+    seed: [],
+  },
+  stock_transactions: {
+    moduleId: "farm-inventory",
+    title: "เคลื่อนไหวสต๊อค",
+    primaryKey: "id",
+    codeField: "transaction_type",
+    labelField: "material_id",
+    fields: [
+      F("warehouse_id", "คลัง", { references: "warehouses", required: true }),
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("transaction_date", "วันที่", { type: "date" }),
+      F("transaction_type", "ประเภท", { options: ["receipt", "issue", "return", "transfer", "adjustment", "count"] }),
+      F("quantity_in", "รับเข้า", { type: "number" }),
+      F("quantity_out", "จ่ายออก", { type: "number" }),
+      F("unit_id", "หน่วย", { references: "units" }),
+    ],
+    seed: [],
+  },
+  stock_balances: {
+    moduleId: "farm-inventory",
+    title: "ยอดคงเหลือสต๊อค",
+    primaryKey: "id",
+    codeField: "quantity_on_hand",
+    labelField: "material_id",
+    fields: [
+      F("warehouse_id", "คลัง", { references: "warehouses", required: true }),
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("bin_id", "ตำแหน่งเก็บ", { references: "bin_locations" }),
+      F("quantity_on_hand", "คงเหลือ", { type: "number" }),
+      F("unit_id", "หน่วย", { references: "units" }),
+      F("last_count_date", "ตรวจนับล่าสุด", { type: "date" }),
+    ],
+    seed: [],
+  },
+  stock_transfers: {
+    moduleId: "farm-inventory",
+    title: "โอนย้ายสต๊อค",
+    primaryKey: "id",
+    codeField: "transfer_no",
+    labelField: "material_id",
+    fields: [
+      F("transfer_no", "เลขที่โอน", { required: true }),
+      F("from_warehouse_id", "จากคลัง", { references: "warehouses", required: true }),
+      F("to_warehouse_id", "เข้าคลัง", { references: "warehouses", required: true }),
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("quantity", "จำนวน", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  stock_adjustments: {
+    moduleId: "farm-inventory",
+    title: "ปรับยอดสต๊อค",
+    primaryKey: "id",
+    codeField: "adjustment_no",
+    labelField: "material_id",
+    fields: [
+      F("adjustment_no", "เลขที่ปรับ", { required: true }),
+      F("warehouse_id", "คลัง", { references: "warehouses", required: true }),
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("adjustment_quantity", "จำนวนปรับ", { type: "number" }),
+      F("reason", "เหตุผล"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  stock_counts: {
+    moduleId: "farm-inventory",
+    title: "ตรวจนับสต๊อค",
+    primaryKey: "id",
+    codeField: "count_no",
+    labelField: "warehouse_id",
+    fields: [
+      F("count_no", "เลขที่ตรวจนับ", { required: true }),
+      F("warehouse_id", "คลัง", { references: "warehouses", required: true }),
+      F("count_date", "วันที่ตรวจนับ", { type: "date" }),
+      F("counted_by", "ผู้ตรวจนับ", { references: "employees" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  material_lots: {
+    moduleId: "farm-inventory",
+    title: "ล็อตวัสดุ",
+    primaryKey: "id",
+    codeField: "lot_no",
+    labelField: "material_id",
+    fields: [
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("lot_no", "Lot No.", { required: true }),
+      F("expiry_date", "วันหมดอายุ", { type: "date" }),
+      F("received_quantity", "จำนวนรับ", { type: "number" }),
+      F("remaining_quantity", "คงเหลือ", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  unit_conversions: {
+    moduleId: "farm-inventory",
+    title: "แปลงหน่วย",
+    primaryKey: "id",
+    codeField: "conversion_rate",
+    labelField: "from_unit_id",
+    fields: [
+      F("from_unit_id", "จากหน่วย", { references: "units", required: true }),
+      F("to_unit_id", "เป็นหน่วย", { references: "units", required: true }),
+      F("conversion_rate", "อัตราแปลง", { type: "number", required: true }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  sku_conversions: {
+    moduleId: "farm-inventory",
+    title: "แปลง SKU",
+    primaryKey: "id",
+    codeField: "conversion_rate",
+    labelField: "material_id",
+    fields: [
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("from_unit_id", "จากหน่วย", { references: "units", required: true }),
+      F("to_unit_id", "เป็นหน่วย", { references: "units", required: true }),
+      F("conversion_rate", "อัตราแปลง", { type: "number", required: true }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  vehicles: {
+    moduleId: "farm-inventory",
+    title: "รถ / เครื่องจักร",
+    primaryKey: "id",
+    codeField: "vehicle_code",
+    labelField: "vehicle_name",
+    fields: [
+      F("vehicle_code", "รหัสรถ", { required: true }),
+      F("vehicle_name", "ชื่อรถ/เครื่องจักร", { required: true }),
+      F("vehicle_type", "ประเภท"),
+      F("plate_no", "ทะเบียน"),
+      F("default_driver_id", "คนขับประจำ", { references: "employees" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "vehicle-tractor-1", vehicle_code: "VEH-001", vehicle_name: "รถแทรกเตอร์ 1", vehicle_type: "tractor", default_driver_id: "emp-001", status: "active" },
+    ],
+  },
+  fuel_tanks: {
+    moduleId: "farm-inventory",
+    title: "ถังน้ำมัน",
+    primaryKey: "id",
+    codeField: "tank_code",
+    labelField: "tank_name",
+    fields: [
+      F("tank_code", "รหัสถัง", { required: true }),
+      F("tank_name", "ชื่อถัง", { required: true }),
+      F("warehouse_id", "คลัง", { references: "warehouses" }),
+      F("capacity_liter", "ความจุ", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  fuel_requisitions: {
+    moduleId: "farm-inventory",
+    title: "เบิกน้ำมัน",
+    primaryKey: "id",
+    codeField: "requisition_no",
+    labelField: "work_order_id",
+    fields: [
+      F("requisition_no", "เลขที่เบิก", { required: true }),
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders" }),
+      F("vehicle_id", "รถ/เครื่องจักร", { references: "vehicles" }),
+      F("requested_liter", "ขอเบิก (ลิตร)", { type: "number" }),
+      F("requested_by", "ผู้ขอเบิก", { references: "employees" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  fuel_issues: {
+    moduleId: "farm-inventory",
+    title: "จ่ายน้ำมัน",
+    primaryKey: "id",
+    codeField: "issue_no",
+    labelField: "fuel_requisition_id",
+    fields: [
+      F("fuel_requisition_id", "ใบเบิกน้ำมัน", { references: "fuel_requisitions", required: true }),
+      F("issue_no", "เลขที่จ่าย", { required: true }),
+      F("tank_id", "ถังน้ำมัน", { references: "fuel_tanks" }),
+      F("issued_liter", "จ่ายจริง (ลิตร)", { type: "number" }),
+      F("issued_by", "ผู้จ่าย", { references: "employees" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  payroll_periods: {
+    moduleId: "farm-payroll",
+    title: "งวดค่าแรง",
+    primaryKey: "id",
+    codeField: "period_code",
+    labelField: "period_name",
+    fields: [
+      F("period_code", "รหัสงวด", { required: true }),
+      F("period_name", "ชื่องวด", { required: true }),
+      F("start_date", "วันที่เริ่ม", { type: "date" }),
+      F("end_date", "วันที่สิ้นสุด", { type: "date" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "pay-period-2569-01", period_code: "PAY-2569-01", period_name: "งวดค่าแรงมกราคม 2569", start_date: "2026-01-01", end_date: "2026-01-31", status: "open" },
+    ],
+  },
+  payroll_period_lines: {
+    moduleId: "farm-payroll",
+    title: "รายการค่าแรงรายงวด",
+    primaryKey: "id",
+    codeField: "gross_amount",
+    labelField: "employee_id",
+    fields: [
+      F("payroll_period_id", "งวดค่าแรง", { references: "payroll_periods", required: true }),
+      F("employee_id", "พนักงาน", { references: "employees" }),
+      F("contractor_id", "ผู้รับเหมา", { references: "contractors" }),
+      F("work_result_id", "ผลงานจริง", { references: "work_results" }),
+      F("gross_amount", "ยอดก่อนหัก", { type: "number" }),
+      F("net_amount", "ยอดสุทธิ", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  payroll_rates: {
+    moduleId: "farm-payroll",
+    title: "เรทค่าแรง",
+    primaryKey: "id",
+    codeField: "rate_code",
+    labelField: "activity_id",
+    fields: [
+      F("rate_code", "รหัสเรท", { required: true }),
+      F("activity_id", "กิจกรรม", { references: "activities", required: true }),
+      F("team_id", "ทีม", { references: "teams" }),
+      F("rate_type", "ประเภทเรท", { options: ["daily", "piece", "hourly", "driver", "pool"] }),
+      F("unit_id", "หน่วย", { references: "units" }),
+      F("rate_amount", "อัตรา", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  overtime_rules: {
+    moduleId: "farm-payroll",
+    title: "กฎ OT",
+    primaryKey: "id",
+    codeField: "rule_code",
+    labelField: "rule_name",
+    fields: [
+      F("rule_code", "รหัสกฎ", { required: true }),
+      F("rule_name", "ชื่อกฎ", { required: true }),
+      F("multiplier", "ตัวคูณ", { type: "number" }),
+      F("start_time", "เวลาเริ่ม"),
+      F("end_time", "เวลาสิ้นสุด"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  payroll_overtime_records: {
+    moduleId: "farm-payroll",
+    title: "บันทึก OT",
+    primaryKey: "id",
+    codeField: "ot_date",
+    labelField: "employee_id",
+    fields: [
+      F("payroll_period_id", "งวดค่าแรง", { references: "payroll_periods", required: true }),
+      F("employee_id", "พนักงาน", { references: "employees", required: true }),
+      F("overtime_rule_id", "กฎ OT", { references: "overtime_rules" }),
+      F("ot_date", "วันที่ OT", { type: "date" }),
+      F("ot_hours", "ชั่วโมง OT", { type: "number" }),
+      F("amount", "ยอดเงิน", { type: "number" }),
+    ],
+    seed: [],
+  },
+  deduction_types: {
+    moduleId: "farm-payroll",
+    title: "ประเภทเงินหัก",
+    primaryKey: "id",
+    codeField: "deduction_code",
+    labelField: "deduction_name",
+    fields: [
+      F("deduction_code", "รหัสเงินหัก", { required: true }),
+      F("deduction_name", "ชื่อเงินหัก", { required: true }),
+      F("calculation_type", "วิธีคำนวณ", { options: ["fixed", "percent", "per_day", "per_hour"] }),
+      F("default_amount", "ยอดเริ่มต้น", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "ded-late", deduction_code: "DED-LATE", deduction_name: "มาสาย", calculation_type: "fixed", default_amount: "50", status: "active" },
+    ],
+  },
+  payroll_deductions: {
+    moduleId: "farm-payroll",
+    title: "เงินหักพนักงาน",
+    primaryKey: "id",
+    codeField: "amount",
+    labelField: "employee_id",
+    fields: [
+      F("payroll_period_id", "งวดค่าแรง", { references: "payroll_periods", required: true }),
+      F("employee_id", "พนักงาน", { references: "employees", required: true }),
+      F("deduction_type_id", "ประเภทเงินหัก", { references: "deduction_types", required: true }),
+      F("amount", "ยอดหัก", { type: "number" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [],
+  },
+  allowance_types: {
+    moduleId: "farm-payroll",
+    title: "ประเภทเงินเพิ่ม",
+    primaryKey: "id",
+    codeField: "allowance_code",
+    labelField: "allowance_name",
+    fields: [
+      F("allowance_code", "รหัสเงินเพิ่ม", { required: true }),
+      F("allowance_name", "ชื่อเงินเพิ่ม", { required: true }),
+      F("calculation_type", "วิธีคำนวณ", { options: ["fixed", "percent", "per_day", "per_hour"] }),
+      F("default_amount", "ยอดเริ่มต้น", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  payroll_allowances: {
+    moduleId: "farm-payroll",
+    title: "เงินเพิ่มพนักงาน",
+    primaryKey: "id",
+    codeField: "amount",
+    labelField: "employee_id",
+    fields: [
+      F("payroll_period_id", "งวดค่าแรง", { references: "payroll_periods", required: true }),
+      F("employee_id", "พนักงาน", { references: "employees", required: true }),
+      F("allowance_type_id", "ประเภทเงินเพิ่ม", { references: "allowance_types", required: true }),
+      F("amount", "ยอดเพิ่ม", { type: "number" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [],
+  },
+  budget_rates: {
+    moduleId: "farm-budget",
+    title: "อัตรางบประมาณ",
+    primaryKey: "id",
+    codeField: "budget_rate_code",
+    labelField: "activity_id",
+    fields: [
+      F("budget_rate_code", "รหัสอัตรา", { required: true }),
+      F("fiscal_year", "ปีงบประมาณ", { type: "number", required: true }),
+      F("estate_id", "Estate", { references: "estates", required: true }),
+      F("plot_group_id", "กลุ่มแปลง", { references: "plot_groups" }),
+      F("activity_id", "กิจกรรม", { references: "activities", required: true }),
+      F("material_id", "วัสดุ", { references: "materials" }),
+      F("team_id", "กลุ่มคนงาน", { references: "teams" }),
+      F("rate_type", "ประเภทเรท", { options: ["labor", "material", "contractor", "fuel", "machine"] }),
+      F("unit_id", "หน่วย", { references: "units" }),
+      F("rate_amount", "อัตรา", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "budget-rate-001", budget_rate_code: "BUD-2569-001", fiscal_year: "2569", estate_id: "estate-spc", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer", material_id: "material-fert-25", team_id: "team-a", rate_type: "labor", unit_id: "unit-kg", rate_amount: "250", status: "active" },
+    ],
+  },
+  contractor_period_estimates: {
+    moduleId: "farm-budget",
+    title: "ประมาณงานผู้รับเหมารายงวด",
+    primaryKey: "id",
+    codeField: "estimate_code",
+    labelField: "contractor_id",
+    fields: [
+      F("estimate_code", "รหัสประมาณการ", { required: true }),
+      F("fiscal_year", "ปี", { type: "number" }),
+      F("period_month", "เดือน", { type: "number" }),
+      F("contractor_id", "ผู้รับเหมา", { references: "contractors", required: true }),
+      F("activity_id", "กิจกรรม", { references: "activities" }),
+      F("estimated_quantity", "ปริมาณประมาณการ", { type: "number" }),
+      F("estimated_amount", "มูลค่าประมาณการ", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  cost_entries: {
+    moduleId: "farm-budget",
+    title: "บันทึกต้นทุน",
+    primaryKey: "id",
+    codeField: "cost_date",
+    labelField: "activity_id",
+    fields: [
+      F("cost_date", "วันที่ต้นทุน", { type: "date" }),
+      F("estate_id", "Estate", { references: "estates" }),
+      F("plot_id", "แปลง", { references: "plots" }),
+      F("activity_id", "กิจกรรม", { references: "activities" }),
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders" }),
+      F("cost_type", "ประเภทต้นทุน", { options: ["labor", "material", "fuel", "machine", "other"] }),
+      F("amount", "มูลค่า", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  profiles: {
+    moduleId: "farm-general",
+    title: "ผู้ใช้ระบบ",
+    primaryKey: "id",
+    codeField: "role",
+    labelField: "full_name",
+    fields: [
+      F("full_name", "ชื่อผู้ใช้", { required: true }),
+      F("employee_id", "พนักงาน", { references: "employees" }),
+      F("role", "Role", { options: FARM_ROLES }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "profile-admin", full_name: "ผู้ดูแลระบบ", role: "super_admin", status: "active" },
+    ],
+  },
+  permissions: {
+    moduleId: "farm-general",
+    title: "สิทธิ์ระบบ",
+    primaryKey: "id",
+    codeField: "permission_key",
+    labelField: "permission_name",
+    fields: [
+      F("permission_key", "Permission Key", { required: true }),
+      F("permission_name", "ชื่อสิทธิ์", { required: true }),
+      F("module_key", "Module"),
+      F("action_key", "Action"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "perm-work-approve", permission_key: "work_orders.approve", permission_name: "อนุมัติใบสั่งงาน", module_key: "work_orders", action_key: "approve", status: "active" },
+    ],
+  },
+  role_permissions: {
+    moduleId: "farm-general",
+    title: "สิทธิ์ตาม Role",
+    primaryKey: "id",
+    codeField: "role",
+    labelField: "permission_id",
+    fields: [
+      F("role", "Role", { options: FARM_ROLES, required: true }),
+      F("permission_id", "สิทธิ์", { references: "permissions", required: true }),
+      F("is_allowed", "อนุญาต", { type: "boolean" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "role-perm-admin-approve", role: "super_admin", permission_id: "perm-work-approve", is_allowed: "true", status: "active" },
+    ],
+  },
+  user_access_scopes: {
+    moduleId: "farm-general",
+    title: "ขอบเขตการเข้าถึง",
+    primaryKey: "id",
+    codeField: "scope_type",
+    labelField: "profile_id",
+    fields: [
+      F("profile_id", "ผู้ใช้", { references: "profiles", required: true }),
+      F("estate_id", "Estate", { references: "estates" }),
+      F("zone_id", "โซน", { references: "zones" }),
+      F("plot_id", "แปลง", { references: "plots" }),
+      F("scope_type", "ชนิดสิทธิ์", { options: ["read", "write", "approve"] }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  system_settings: {
+    moduleId: "farm-general",
+    title: "ตั้งค่าระบบ",
+    primaryKey: "id",
+    codeField: "setting_key",
+    labelField: "setting_value",
+    fields: [
+      F("setting_key", "Setting Key", { required: true }),
+      F("setting_value", "ค่า"),
+      F("setting_group", "กลุ่มค่า"),
+      F("description", "คำอธิบาย"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "setting-gps-radius", setting_key: "mobile.gps_radius_meter", setting_value: "100", setting_group: "mobile", description: "รัศมีเช็คอิน", status: "active" },
+    ],
+  },
+  attachments: {
+    moduleId: "farm-general",
+    title: "ไฟล์แนบ",
+    primaryKey: "id",
+    codeField: "file_name",
+    labelField: "entity_table",
+    fields: [
+      F("entity_table", "ตารางอ้างอิง", { required: true }),
+      F("entity_id", "รหัสรายการ", { required: true }),
+      F("file_name", "ชื่อไฟล์", { required: true }),
+      F("file_url", "URL"),
+      F("uploaded_by", "ผู้อัปโหลด", { references: "profiles" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  audit_logs: {
+    moduleId: "farm-general",
+    title: "Audit Log",
+    primaryKey: "id",
+    codeField: "action",
+    labelField: "entity_table",
+    fields: [
+      F("entity_table", "ตาราง"),
+      F("entity_id", "รหัสรายการ"),
+      F("action", "Action"),
+      F("changed_by", "ผู้ทำรายการ", { references: "profiles" }),
+      F("changed_at", "วันที่ทำรายการ", { type: "date" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [],
+  },
+  report_exports: {
+    moduleId: "farm-reports",
+    title: "ประวัติออกรายงาน",
+    primaryKey: "id",
+    codeField: "report_key",
+    labelField: "report_name",
+    fields: [
+      F("report_key", "Report Key", { required: true }),
+      F("report_name", "ชื่อรายงาน", { required: true }),
+      F("module_key", "Module"),
+      F("export_format", "Format", { options: ["Excel", "PDF", "Print"] }),
+      F("created_by", "ผู้สร้าง", { references: "profiles" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "rpt-plan", report_key: "planning.work_plan", report_name: "รายงานแผนงาน", module_key: "planning", export_format: "Excel", status: "ready" },
+      { id: "rpt-payroll", report_key: "payroll.period", report_name: "รายงานค่าแรงรายงวด", module_key: "payroll", export_format: "PDF", status: "ready" },
+    ],
+  },
+};
 
 function farmModuleMap() {
   return Object.fromEntries(FARM_MODULES.map((module) => [module.id, module]));
@@ -5214,28 +6378,55 @@ function selectedFarmModule() {
   return farmModuleMap()[state.view] || FARM_MODULES[0];
 }
 
-function farmSeedRows(module) {
-  return (module.seed || []).map((row, index) => ({
-    ...row,
-    id: `seed-${module.id}-${index}`,
+function farmTablesForModule(module = selectedFarmModule()) {
+  return Object.entries(FARM_TABLE_SCHEMAS)
+    .filter(([, table]) => table.moduleId === module.id)
+    .map(([key, table]) => ({ key, ...table }));
+}
+
+function selectedFarmTable(module = selectedFarmModule()) {
+  const tables = farmTablesForModule(module);
+  const selected = tables.find((table) => table.key === state.farmTableId);
+  return selected || tables[0] || {
+    key: module.id,
+    title: module.title,
+    primaryKey: "id",
+    codeField: "code",
+    labelField: "name",
     moduleId: module.id,
+    fields: module.fields.map(([key, label, placeholder]) => F(key, label, { placeholder })),
+    seed: module.seed || [],
+  };
+}
+
+function farmTableDisplayName(table) {
+  return `${table.title} (${table.key})`;
+}
+
+function farmSeedRows(table = selectedFarmTable()) {
+  return (table.seed || []).map((row, index) => ({
+    ...row,
+    id: row.id || `seed-${table.key}-${index}`,
+    tableId: table.key,
+    moduleId: table.moduleId,
     readonly: true,
     createdAt: "seed",
     updatedAt: "seed",
   }));
 }
 
-function farmRows(module = selectedFarmModule()) {
-  const overrides = new Map(state.farmRecords.filter((row) => row.moduleId === module.id && row._overrideOf && !row._deleted).map((row) => [row._overrideOf, row]));
-  const deleted = new Set(state.farmRecords.filter((row) => row.moduleId === module.id && row._deleted).map((row) => row._overrideOf || row.id));
-  const seedRows = farmSeedRows(module).map((row) => overrides.has(row.id) ? { ...row, ...overrides.get(row.id), id: row.id, readonly: false } : row).filter((row) => !deleted.has(row.id));
-  const customRows = state.farmRecords.filter((row) => row.moduleId === module.id && !row._overrideOf && !row._deleted);
+function farmRows(table = selectedFarmTable()) {
+  const tableId = table.key;
+  const overrides = new Map(state.farmRecords.filter((row) => row.tableId === tableId && row._overrideOf && !row._deleted).map((row) => [row._overrideOf, row]));
+  const deleted = new Set(state.farmRecords.filter((row) => row.tableId === tableId && row._deleted).map((row) => row._overrideOf || row.id));
+  const seedRows = farmSeedRows(table).map((row) => overrides.has(row.id) ? { ...row, ...overrides.get(row.id), id: row.id, readonly: false } : row).filter((row) => !deleted.has(row.id));
+  const customRows = state.farmRecords.filter((row) => row.tableId === tableId && !row._overrideOf && !row._deleted);
   return [...seedRows, ...customRows];
 }
 
-function filteredFarmRows(module = selectedFarmModule()) {
+function filteredFarmRows(table = selectedFarmTable()) {
   const query = state.farmFilters.query.trim().toLowerCase();
-  return farmRows(module).filter((row) => {
+  return farmRows(table).filter((row) => {
     const statusOk = state.farmFilters.status === "all" || String(row.status || "").toLowerCase() === state.farmFilters.status;
     const queryOk = !query || Object.values(row).join(" ").toLowerCase().includes(query);
     return statusOk && queryOk;
@@ -5258,35 +6449,91 @@ function farmFieldPlaceholder(field) {
   return Array.isArray(field) ? field[2] || "" : field.placeholder || "";
 }
 
-function farmSelectedRow(module = selectedFarmModule()) {
-  return farmRows(module).find((row) => row.id === state.farmDetailId || row.id === state.farmEditId) || {};
+function farmFieldReferences(field) {
+  return Array.isArray(field) ? "" : field.references || "";
+}
+
+function farmSelectedRow(table = selectedFarmTable()) {
+  return farmRows(table).find((row) => row.id === state.farmDetailId || row.id === state.farmEditId) || {};
+}
+
+function farmRecordLabel(table, row) {
+  if (!row) return "";
+  const code = row[table.codeField] || row.code || row.id;
+  const name = row[table.labelField] || row.name || row.full_name || row.title || "";
+  return [code, name].filter(Boolean).join(" - ");
+}
+
+function farmReferenceOptions(tableKey) {
+  const schema = FARM_TABLE_SCHEMAS[tableKey];
+  if (!schema) return [];
+  const table = { key: tableKey, ...schema };
+  return farmRows(table).map((row) => ({ value: row.id, label: farmRecordLabel(table, row) }));
+}
+
+function renderFarmOptionList(options, value, placeholder = "เลือก") {
+  return `<option value="">${esc(placeholder)}</option>${options.map((option) => {
+    const optionValue = typeof option === "string" ? option : option.value;
+    const label = typeof option === "string" ? option : option.label;
+    return `<option value="${esc(optionValue)}"${String(value ?? "") === String(optionValue) ? " selected" : ""}>${esc(label)}</option>`;
+  }).join("")}`;
 }
 
 function renderFarmInput(field, value = "") {
   const key = farmFieldKey(field);
   const label = farmFieldLabel(field);
   const placeholder = farmFieldPlaceholder(field);
+  const required = !Array.isArray(field) && field.required;
+  const labelText = `${label}${required ? " *" : ""}`;
+  const references = farmFieldReferences(field);
+  if (references) {
+    return `
+      <label>${esc(labelText)}
+        <select data-farm-field="${esc(key)}" ${required ? "required" : ""}>
+          ${renderFarmOptionList(farmReferenceOptions(references), value, `เลือก${label}`)}
+        </select>
+      </label>`;
+  }
+  if (!Array.isArray(field) && Array.isArray(field.options)) {
+    return `
+      <label>${esc(labelText)}
+        <select data-farm-field="${esc(key)}" ${required ? "required" : ""}>
+          ${renderFarmOptionList(field.options, value, `เลือก${label}`)}
+        </select>
+      </label>`;
+  }
   if (key === "status") {
     return `
-      <label>${esc(label)}
+      <label>${esc(labelText)}
         <select data-farm-field="${esc(key)}">
           ${["active", "draft", "planned", "submitted", "approved", "sent_to_mobile", "open", "ready", "inactive"].map((status) => `<option value="${esc(status)}"${String(value || "active") === status ? " selected" : ""}>${esc(status)}</option>`).join("")}
         </select>
       </label>`;
   }
+  if (!Array.isArray(field) && field.type === "boolean") {
+    return `
+      <label>${esc(labelText)}
+        <select data-farm-field="${esc(key)}">
+          ${renderFarmOptionList([{ value: "true", label: "ใช่" }, { value: "false", label: "ไม่ใช่" }], String(value || "false"), `เลือก${label}`)}
+        </select>
+      </label>`;
+  }
+  const type = !Array.isArray(field) && ["date", "number"].includes(field.type) ? field.type : "text";
   return `
-    <label>${esc(label)}
-      <input data-farm-field="${esc(key)}" value="${esc(value)}" placeholder="${esc(placeholder)}">
+    <label>${esc(labelText)}
+      <input data-farm-field="${esc(key)}" type="${esc(type)}" value="${esc(value)}" placeholder="${esc(placeholder)}" ${required ? "required" : ""}>
     </label>`;
 }
 
 function saveFarmRow() {
   const module = selectedFarmModule();
+  const table = selectedFarmTable(module);
   const editId = state.farmEditId;
-  const original = editId ? farmRows(module).find((row) => row.id === editId) : null;
+  const original = editId ? farmRows(table).find((row) => row.id === editId) : null;
   const row = {
-    id: original?.readonly ? `override-${editId}` : (editId || `farm-${module.id}-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    id: original?.readonly ? `override-${editId}` : (editId || `farm-${table.key}-${Date.now()}-${Math.random().toString(16).slice(2)}`),
     moduleId: module.id,
+    tableId: table.key,
     updatedAt: new Date().toISOString(),
   };
   if (original?.readonly) row._overrideOf = original.id;
@@ -5294,7 +6541,7 @@ function saveFarmRow() {
     row[input.dataset.farmField] = input.value.trim();
   }
   if (!row.status) row.status = "active";
-  state.farmRecords = state.farmRecords.filter((item) => !(item.moduleId === module.id && (item.id === row.id || item._overrideOf === row._overrideOf || item.id === editId)));
+  state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === row.id || item._overrideOf === row._overrideOf || item.id === editId)));
   state.farmRecords.push(row);
   state.farmEditId = "";
   state.farmDetailId = original?.id || row.id;
@@ -5310,10 +6557,11 @@ function editFarmRow(id) {
 
 function setFarmInactive(id) {
   const module = selectedFarmModule();
-  const row = farmRows(module).find((item) => item.id === id);
+  const table = selectedFarmTable(module);
+  const row = farmRows(table).find((item) => item.id === id);
   if (!row) return;
   if (row.readonly) {
-    state.farmRecords.push({ id: `delete-${id}`, moduleId: module.id, _overrideOf: id, _deleted: true, updatedAt: new Date().toISOString() });
+    state.farmRecords.push({ id: `delete-${id}`, moduleId: module.id, tableId: table.key, _overrideOf: id, _deleted: true, updatedAt: new Date().toISOString() });
   } else {
     const current = state.farmRecords.find((item) => item.id === id);
     if (current) current._deleted = true;
@@ -5326,25 +6574,49 @@ function setFarmInactive(id) {
 
 function exportFarmCsv() {
   const module = selectedFarmModule();
-  const rows = filteredFarmRows(module);
-  const headers = module.fields.map(farmFieldKey);
+  const table = selectedFarmTable(module);
+  const rows = filteredFarmRows(table);
+  const headers = table.fields.map(farmFieldKey);
   const csv = [headers.join(",")].concat(rows.map((row) => headers.map((key) => `"${String(row[key] ?? "").replace(/"/g, '""')}"`).join(","))).join("\n");
   const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${module.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `${table.key}-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
+function renderFarmKeyBindings(table) {
+  const refs = (table.fields || []).filter((field) => farmFieldReferences(field));
+  return `
+    <section class="farm-key-panel farm-panel">
+      <div class="section-head">
+        <h3>Key Relationship</h3>
+        <span>ผูกข้อมูลด้วย Primary Key / Foreign Key ตาม schema</span>
+      </div>
+      <div class="farm-key-flow">
+        <article><b>PK</b><strong>${esc(table.key)}.${esc(table.primaryKey || "id")}</strong><span>รหัสหลักของตาราง</span></article>
+        ${refs.map((field) => `
+          <article>
+            <b>FK</b>
+            <strong>${esc(table.key)}.${esc(farmFieldKey(field))}</strong>
+            <span>→ ${esc(farmFieldReferences(field))}.id</span>
+          </article>`).join("") || `<article><b>FK</b><strong>ไม่มี foreign key</strong><span>ตารางนี้เป็น master ตั้งต้น</span></article>`}
+      </div>
+    </section>`;
+}
+
 function renderFarmPage() {
   const module = selectedFarmModule();
-  const rows = filteredFarmRows(module);
-  const allRows = farmRows(module);
-  const selected = farmSelectedRow(module);
+  const tables = farmTablesForModule(module);
+  const table = selectedFarmTable(module);
+  const rows = filteredFarmRows(table);
+  const allRows = farmRows(table);
+  const selected = farmSelectedRow(table);
   const editing = state.farmEditId ? selected : {};
   const inactiveCount = allRows.filter((row) => String(row.status).toLowerCase() === "inactive").length;
+  const refCount = (table.fields || []).filter((field) => farmFieldReferences(field)).length;
   return `
     <div class="farm-page">
       <div class="report-title">
@@ -5355,11 +6627,16 @@ function renderFarmPage() {
       </div>
       <section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
-        <article><span>ตาราง Supabase</span><strong>${fmt(module.tables.length)}</strong><small>${module.tables.slice(0, 3).map((item) => `<code>${esc(item)}</code>`).join(" ")}</small></article>
+        <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
-        <article><span>Inactive</span><strong>${fmt(inactiveCount)}</strong><small>ใช้ Set Inactive แทนลบจริง</small></article>
+        <article><span>Foreign Key</span><strong>${fmt(refCount)}</strong><small>Inactive ${fmt(inactiveCount)} รายการ</small></article>
       </section>
       <section class="farm-toolbar">
+        <label>ตารางข้อมูล
+          <select id="farmTableSelect">
+            ${tables.map((item) => `<option value="${esc(item.key)}"${item.key === table.key ? " selected" : ""}>${esc(farmTableDisplayName(item))}</option>`).join("")}
+          </select>
+        </label>
         <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหารหัส ชื่อ สถานะ ตาราง"></label>
         <label>สถานะ
           <select id="farmStatusFilter">
@@ -5374,11 +6651,12 @@ function renderFarmPage() {
         <button type="button" data-farm-new ${farmCan("create") ? "" : "disabled"}>Add</button>
         <button type="button" data-farm-export ${farmCan("export") ? "" : "disabled"}>Export Excel</button>
       </section>
+      ${renderFarmKeyBindings(table)}
       <section class="farm-layout">
         <article class="farm-panel">
-          <div class="section-head"><h3>${state.farmEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูล"}</h3><span>* ช่องหลักควรผูกกับ key ใน Supabase</span></div>
+          <div class="section-head"><h3>${state.farmEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูล"}</h3><span>${esc(table.key)} / * คือข้อมูลจำเป็น</span></div>
           <form class="farm-form">
-            ${module.fields.map((field) => renderFarmInput(field, editing[farmFieldKey(field)] ?? "")).join("")}
+            ${table.fields.map((field) => renderFarmInput(field, editing[farmFieldKey(field)] ?? "")).join("")}
             <div class="farm-form-actions">
               <button type="button" data-farm-save ${farmCan(state.farmEditId ? "update" : "create") ? "" : "disabled"}>${state.farmEditId ? "บันทึกแก้ไข" : "บันทึกเพิ่ม"}</button>
               <button type="button" data-farm-clear>ล้างฟอร์ม</button>
@@ -5388,12 +6666,12 @@ function renderFarmPage() {
         <article class="farm-panel">
           <div class="section-head"><h3>รายละเอียดที่เลือก</h3><span>${selected.id ? esc(selected.code || selected.name || selected.id) : "เลือกแถวในตารางเพื่อดูรายละเอียด"}</span></div>
           <dl class="farm-detail">
-            ${selected.id ? module.fields.map((field) => {
+            ${selected.id ? table.fields.map((field) => {
               const key = farmFieldKey(field);
               return `<dt>${esc(farmFieldLabel(field))}</dt><dd>${esc(selected[key] ?? "-")}</dd>`;
             }).join("") : `<dt>ยังไม่ได้เลือก</dt><dd>กดแถวหรือปุ่มดูในตาราง</dd>`}
           </dl>
-          <div class="farm-table-list">${module.tables.map((table) => `<span>${esc(table)}</span>`).join("")}</div>
+          <div class="farm-table-list">${tables.map((item) => `<span>${esc(item.key)}</span>`).join("")}</div>
         </article>
       </section>
       <section class="farm-panel">
@@ -5401,18 +6679,18 @@ function renderFarmPage() {
         <div class="table-wrap farm-table-wrap">
           <table class="mini-table farm-table">
             <thead>
-              <tr><th>จัดการ</th>${module.fields.map((field) => `<th>${esc(farmFieldLabel(field))}</th>`).join("")}</tr>
+              <tr>${table.fields.map((field) => `<th>${esc(farmFieldLabel(field))}</th>`).join("")}<th>จัดการ</th></tr>
             </thead>
             <tbody>
               ${rows.map((row) => `
                 <tr data-farm-row="${esc(row.id)}">
+                  ${table.fields.map((field) => `<td>${esc(row[farmFieldKey(field)] ?? "")}</td>`).join("")}
                   <td class="farm-actions">
                     <button type="button" data-farm-view="${esc(row.id)}">ดู</button>
                     <button type="button" data-farm-edit="${esc(row.id)}" ${farmCan("update") ? "" : "disabled"}>แก้ไข</button>
                     <button type="button" data-farm-inactive="${esc(row.id)}" ${farmCan("delete") ? "" : "disabled"}>ปิดใช้งาน</button>
                   </td>
-                  ${module.fields.map((field) => `<td>${esc(row[farmFieldKey(field)] ?? "")}</td>`).join("")}
-                </tr>`).join("") || `<tr><td colspan="${module.fields.length + 1}">ไม่พบรายการ</td></tr>`}
+                </tr>`).join("") || `<tr><td colspan="${table.fields.length + 1}">ไม่พบรายการ</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -6067,6 +7345,15 @@ function render() {
 
 function setView(view) {
   state.view = view;
+  if (isFarmView(view)) {
+    const module = farmModuleMap()[view] || FARM_MODULES[0];
+    const tables = farmTablesForModule(module);
+    if (!tables.some((table) => table.key === state.farmTableId)) {
+      state.farmTableId = tables[0]?.key || "";
+    }
+    state.farmEditId = "";
+    state.farmDetailId = "";
+  }
   for (const btn of els.tabs.querySelectorAll("button")) btn.classList.toggle("active", btn.dataset.view === view);
   render();
 }
@@ -6179,6 +7466,13 @@ async function init() {
     setView("dashboard");
   });
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.id === "farmTableSelect") {
+      state.farmTableId = e.target.value;
+      state.farmEditId = "";
+      state.farmDetailId = "";
+      render();
+      return;
+    }
     if (e.target.id === "farmStatusFilter") {
       state.farmFilters.status = e.target.value;
       render();
