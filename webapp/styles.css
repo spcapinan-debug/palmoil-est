@@ -3480,6 +3480,255 @@ tfoot td {
   line-height: 1.45;
 }
 
+.farm-planner-console {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.farm-planner-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.farm-planner-steps article {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #f8fafc;
+}
+
+.farm-planner-steps article.active {
+  border-color: var(--primary);
+  background: #eef6ff;
+}
+
+.farm-planner-steps b {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+}
+
+.farm-planner-steps span {
+  overflow: hidden;
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-planner-taskbar,
+.farm-planner-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.farm-planner-taskbar label,
+.farm-planner-fields label,
+.farm-planner-advanced label,
+.farm-planner-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.farm-planner-taskbar select,
+.farm-planner-taskbar input,
+.farm-planner-fields select,
+.farm-planner-fields input,
+.farm-planner-advanced select,
+.farm-planner-advanced input,
+.farm-planner-card select,
+.farm-planner-card input,
+.farm-planner-card textarea {
+  min-height: 34px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 9px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.farm-planner-card textarea {
+  min-height: 72px;
+  padding-block: 8px;
+}
+
+.farm-planner-taskbar button,
+.farm-planner-card button,
+.farm-planner-card-head button {
+  min-height: 34px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: var(--primary);
+  color: #111827;
+  font-weight: 900;
+}
+
+.farm-planner-selector,
+.farm-planner-resource-grid,
+.farm-planner-advanced {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.farm-planner-advanced {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(220px, .42fr);
+}
+
+.farm-planner-selector > article,
+.farm-planner-resource-grid > article,
+.farm-planner-advanced > article,
+.farm-planner-card {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.farm-planner-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.farm-planner-card-head h4,
+.farm-planner-advanced h4,
+.farm-planner-card h4 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 13px;
+}
+
+.farm-planner-card-head span,
+.farm-planner-card-head label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.farm-planner-tree {
+  display: grid;
+  gap: 4px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  padding: 8px;
+  background: #fbfdff;
+}
+
+.farm-planner-tree > strong {
+  margin-top: 5px;
+  color: var(--primary);
+  font-size: 11px;
+}
+
+.farm-planner-tree-row {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  min-height: 30px;
+  border-radius: 6px;
+  padding: 4px 5px;
+}
+
+.farm-planner-tree-row:hover {
+  background: #eef6ff;
+}
+
+.farm-planner-tree-row span {
+  display: grid;
+  gap: 1px;
+}
+
+.farm-planner-tree-row strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.farm-planner-tree-row small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.farm-planner-resource-grid .mini-table {
+  min-width: 0;
+  width: 100%;
+}
+
+.farm-planner-radio-grid,
+.farm-planner-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.farm-planner-radio-grid label,
+.farm-planner-checks label {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.farm-planner-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.farm-planner-tabs button {
+  min-height: 34px;
+  border: 1px solid #dbe5f2;
+  border-radius: 7px;
+  padding: 0 12px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.farm-planner-tabs button.active {
+  border-color: var(--primary);
+  background: #eef6ff;
+  color: var(--primary);
+}
+
+.farm-planner-preview {
+  max-width: 720px;
+}
+
 .farm-work-console {
   display: grid;
   gap: 12px;
@@ -4058,6 +4307,12 @@ tfoot td {
   .farm-hero,
   .farm-approval-grid,
   .farm-version-notice,
+  .farm-planner-steps,
+  .farm-planner-taskbar,
+  .farm-planner-selector,
+  .farm-planner-resource-grid,
+  .farm-planner-advanced,
+  .farm-planner-fields,
   .farm-work-kpis,
   .farm-work-filters,
   .farm-work-layout,
@@ -4141,6 +4396,14 @@ tfoot td {
   .farm-hero,
   .farm-approval-grid,
   .farm-version-notice,
+  .farm-planner-steps,
+  .farm-planner-taskbar,
+  .farm-planner-selector,
+  .farm-planner-resource-grid,
+  .farm-planner-advanced,
+  .farm-planner-fields,
+  .farm-planner-radio-grid,
+  .farm-planner-checks,
   .farm-work-kpis,
   .farm-work-filters,
   .farm-work-layout,

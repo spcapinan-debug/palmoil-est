@@ -31,6 +31,7 @@
   farmRecords: [],
   farmFilters: { query: "", status: "all", role: "super_admin" },
   farmWorkFilters: { activityGroup: "all", team: "all", zone: "all", plotGroup: "all", status: "all", query: "" },
+  farmPlannerTab: "dates",
   farmWorkDetailId: "",
   farmTableId: "",
   farmDetailId: "",
@@ -7098,6 +7099,177 @@ function renderFarmWorkSelect(id, label, options, value) {
     </label>`;
 }
 
+function renderFarmPlannerOptionRows(tableKey, rows, titleField, subFields = []) {
+  const table = farmTableByKey(tableKey);
+  return rows.map((row, index) => {
+    const title = row[titleField] || farmRecordLabel(table, row);
+    const sub = subFields.map((key) => row[key]).filter(Boolean).join(" · ");
+    return `
+      <label class="farm-planner-tree-row">
+        <input type="checkbox" ${index < 2 ? "checked" : ""}>
+        <span>
+          <strong>${esc(title)}</strong>
+          <small>${esc(sub || row.id)}</small>
+        </span>
+      </label>`;
+  }).join("");
+}
+
+function renderFarmPlannerTabContent(tab) {
+  if (tab === "labour") {
+    return `
+      <div class="farm-planner-card">
+        <h4>Labour Costing</h4>
+        <div class="farm-planner-fields">
+          <label>Costing Type<select><option>Component Based</option><option>Role Based Compound</option><option>Direct Entry</option></select></label>
+          <label>Rate Group<select><option>คนงานรายวัน</option><option>พนักงานรายเดือน</option><option>ผู้รับเหมารายเหมา</option></select></label>
+          <label>Payment Unit<select><option>ต้น</option><option>ไร่</option><option>ตัน</option><option>วัน</option></select></label>
+        </div>
+      </div>`;
+  }
+  if (tab === "survey") {
+    return `
+      <div class="farm-planner-card">
+        <h4>Surveys</h4>
+        <div class="farm-planner-checks">
+          <label><input type="checkbox" checked> เปิดแบบตรวจคุณภาพงาน</label>
+          <label><input type="checkbox"> ต้องแนบรูปก่อนปิดงาน</label>
+          <label><input type="checkbox"> ต้องบันทึก GPS check-in/check-out</label>
+        </div>
+      </div>`;
+  }
+  if (tab === "preview") {
+    return `
+      <div class="farm-planner-card">
+        <h4>Final Preview</h4>
+        <table class="mini-table farm-planner-preview">
+          <thead><tr><th>Terrain</th><th>Qty</th><th>Duration</th><th>Sequence</th><th>Labour</th><th>Material</th><th>Equipment</th></tr></thead>
+          <tbody><tr><td>2 แปลง</td><td>ตามจำนวนต้น</td><td>Parallel</td><td>1</td><td>ตามรหัสค่าแรง</td><td>ปุ๋ย/วัสดุ</td><td>ตามอุปกรณ์</td></tr></tbody>
+        </table>
+      </div>`;
+  }
+  if (tab === "notify") {
+    return `
+      <div class="farm-planner-card">
+        <h4>Create W.O. & Notify</h4>
+        <div class="farm-planner-checks">
+          <label><input type="checkbox" checked> Send Work Order</label>
+          <label><input type="checkbox"> Approve GPS Tracking</label>
+        </div>
+        <label>Note<textarea placeholder="ข้อความส่งถึงทีมงาน"></textarea></label>
+        <button type="button" data-farm-open-work-table="work_orders">สร้าง Draft Work Order</button>
+      </div>`;
+  }
+  return `
+    <div class="farm-planner-card">
+      <h4>Dates and Repetitions</h4>
+      <div class="farm-planner-radio-grid">
+        <label><input type="radio" name="startType" checked> Absolute</label>
+        <label><input type="radio" name="startType"> Relative to a Characteristic</label>
+        <label><input type="radio" name="startType"> Previous Activity</label>
+        <label><input type="radio" name="startType"> Crono</label>
+      </div>
+      <div class="farm-planner-fields">
+        <label>Start Date<input type="date" value="2026-01-15"></label>
+        <label>Repeat<select><option>No repeats</option><option>Until</option><option>After</option></select></label>
+        <label>Sequence<select><option>Parallel</option><option>Sequential</option></select></label>
+      </div>
+    </div>`;
+}
+
+function renderFarmWorkPlanner() {
+  const plots = farmRows(farmTableByKey("plots"));
+  const zones = farmRows(farmTableByKey("zones"));
+  const plotGroups = farmRows(farmTableByKey("plot_groups"));
+  const activityGroups = farmRows(farmTableByKey("activity_groups"));
+  const activities = farmRows(farmTableByKey("activities"));
+  const teams = farmRows(farmTableByKey("teams"));
+  const materials = farmRows(farmTableByKey("materials"));
+  const vehicles = farmRows(farmTableByKey("vehicles"));
+  const tabItems = [
+    ["dates", "Dates and Repetitions"],
+    ["labour", "Labour Costing"],
+    ["survey", "Surveys"],
+    ["preview", "Final Preview"],
+    ["notify", "Create W.O. & Notify"],
+  ];
+  return `
+    <section class="farm-planner-console">
+      <div class="section-head">
+        <h3>Create Work Orders</h3>
+        <span>Task Scheduler → Terrain → Resources → Advanced Options → Preview</span>
+      </div>
+      <div class="farm-planner-steps">
+        ${["Task Scheduler", "Terrains & Controllers", "Materials & Equipment", "Advanced Options", "Final Preview"].map((step, index) => `<article class="${index === 0 ? "active" : ""}"><b>${index + 1}</b><span>${esc(step)}</span></article>`).join("")}
+      </div>
+      <div class="farm-planner-taskbar">
+        <label>Work Order Type<select><option>Task Scheduler</option><option>Corrective Work</option><option>Harvest Work</option></select></label>
+        <label>Activity Group<select>${activityGroups.map((row) => `<option>${esc(row.group_code || row.group_name)} - ${esc(row.group_name || "")}</option>`).join("")}</select></label>
+        <label>Activity<select>${activities.map((row) => `<option>${esc(row.activity_code || "")} - ${esc(row.activity_name || "")}</option>`).join("")}</select></label>
+        <button type="button" data-farm-open-work-table="work_orders">Create Work Orders</button>
+      </div>
+      <div class="farm-planner-selector">
+        <article>
+          <div class="farm-planner-card-head">
+            <h4>Mass Selection Terrains</h4>
+            <label><input type="checkbox"> ทั้งหมด</label>
+          </div>
+          <div class="farm-planner-tree">
+            <strong>โซน</strong>
+            ${renderFarmPlannerOptionRows("zones", zones, "zone_name", ["zone_code"])}
+            <strong>แปลง</strong>
+            ${renderFarmPlannerOptionRows("plots", plots, "plot_code", ["plot_name", "area_rai"])}
+            <strong>กลุ่มแปลง</strong>
+            ${renderFarmPlannerOptionRows("plot_groups", plotGroups, "group_code", ["group_name"])}
+          </div>
+        </article>
+        <article>
+          <div class="farm-planner-card-head">
+            <h4>Job Controllers / Teams</h4>
+            <span>${fmt(teams.length)} team</span>
+          </div>
+          <div class="farm-planner-tree">
+            ${renderFarmPlannerOptionRows("teams", teams, "team_code", ["team_name", "team_type"])}
+          </div>
+        </article>
+      </div>
+      <div class="farm-planner-resource-grid">
+        <article>
+          <div class="farm-planner-card-head"><h4>Materials</h4><button type="button" data-farm-open-work-table="work_order_materials">+ Add</button></div>
+          <table class="mini-table"><thead><tr><th>Material</th><th>Description</th><th>Apply</th><th>UOM</th><th>per</th><th>cost</th></tr></thead><tbody>
+            ${materials.slice(0, 3).map((row) => `<tr><td>${esc(row.material_code || "")}</td><td>${esc(row.material_name || "")}</td><td>Terrain Rate</td><td>${esc(farmLookupLabel("units", row.base_unit_id))}</td><td>per tree</td><td>-</td></tr>`).join("") || `<tr><td colspan="6">No Data Found</td></tr>`}
+          </tbody></table>
+        </article>
+        <article>
+          <div class="farm-planner-card-head"><h4>Equipment</h4><button type="button" data-farm-open-work-table="work_order_machines">+ Add</button></div>
+          <table class="mini-table"><thead><tr><th>Equipment Type</th><th>Equipment</th><th>Description</th></tr></thead><tbody>
+            ${vehicles.slice(0, 3).map((row) => `<tr><td>${esc(row.vehicle_type || "-")}</td><td>${esc(row.vehicle_code || "")}</td><td>${esc(row.vehicle_name || "")}</td></tr>`).join("") || `<tr><td colspan="3">No Data Found</td></tr>`}
+          </tbody></table>
+        </article>
+      </div>
+      <div class="farm-planner-advanced">
+        <article>
+          <h4>Work Order Output Quantity</h4>
+          <div class="farm-planner-radio-grid"><label><input type="radio" checked> By terrain characteristic assigned to activity</label><label><input type="radio"> Direct Entry</label></div>
+          <div class="farm-planner-fields"><label>Characteristic<select><option>S07 # of Trees</option><option>Area Rai</option></select></label><label>Quantity %<input value="100.0000 %"></label></div>
+        </article>
+        <article>
+          <h4>Work Order Duration</h4>
+          <div class="farm-planner-radio-grid"><label><input type="radio"> Activity Standard Based</label><label><input type="radio" checked> Piece Rated Based</label><label><input type="radio"> Direct Entry</label></div>
+          <label>Calculation Method<select><option>Parallel</option><option>Sequential</option></select></label>
+        </article>
+        <article>
+          <h4>Planned Cost Mode</h4>
+          <label>Planned Costing Mode<select><option>Component Based</option><option>Role Based Compound</option><option>Direct Entry</option></select></label>
+        </article>
+      </div>
+      <div class="farm-planner-tabs">
+        ${tabItems.map(([id, label]) => `<button type="button" class="${state.farmPlannerTab === id ? "active" : ""}" data-farm-planner-tab="${esc(id)}">${esc(label)}</button>`).join("")}
+      </div>
+      ${renderFarmPlannerTabContent(state.farmPlannerTab)}
+    </section>`;
+}
+
 function renderFarmWorkBoard() {
   const allRows = farmWorkOrders();
   const rows = filteredFarmWorkOrders();
@@ -7332,7 +7504,7 @@ function renderFarmPage() {
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
         <article><span>Foreign Key</span><strong>${fmt(refCount)}</strong><small>Inactive ${fmt(inactiveCount)} รายการ</small></article>
       </section>
-      ${module.id === "farm-work" ? renderFarmWorkBoard() : ""}
+      ${module.id === "farm-work" ? `${renderFarmWorkPlanner()}${renderFarmWorkBoard()}` : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
       <section class="farm-toolbar">
@@ -8377,6 +8549,12 @@ async function init() {
     state.estSearchTimer = setTimeout(render, 250);
   });
   els.reportPage.addEventListener("click", (e) => {
+    const plannerTab = e.target.closest("[data-farm-planner-tab]");
+    if (plannerTab) {
+      state.farmPlannerTab = plannerTab.dataset.farmPlannerTab;
+      render();
+      return;
+    }
     const workDetail = e.target.closest("[data-farm-work-detail]");
     if (workDetail) {
       state.farmWorkDetailId = workDetail.dataset.farmWorkDetail;
