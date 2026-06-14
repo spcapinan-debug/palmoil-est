@@ -3480,6 +3480,350 @@ tfoot td {
   line-height: 1.45;
 }
 
+.farm-work-console {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.farm-work-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.farm-work-kpis article {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.farm-work-kpis span,
+.farm-work-kpis small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.farm-work-kpis strong {
+  color: var(--navy);
+  font-size: 22px;
+}
+
+.farm-work-filters {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.farm-work-filters label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.farm-work-filters select,
+.farm-work-filters input {
+  min-height: 34px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 9px;
+  background: #fff;
+}
+
+.farm-work-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.farm-work-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dbe5f2;
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.farm-work-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.farm-work-legend b {
+  color: var(--ink);
+}
+
+.farm-work-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, .36fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.farm-work-timeline {
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.farm-work-grid-head,
+.farm-work-row {
+  display: grid;
+  grid-template-columns: 300px max-content;
+  min-width: max-content;
+}
+
+.farm-work-left-head {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 0 12px;
+  background: #f8fafc;
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.farm-work-days {
+  display: grid;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.farm-work-days span {
+  display: grid;
+  place-items: center;
+  border-right: 1px solid #e5edf7;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-work-days small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.farm-work-row {
+  min-height: 58px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.farm-work-row.active .farm-work-left {
+  background: #eef6ff;
+}
+
+.farm-work-left {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  display: grid;
+  gap: 2px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  padding: 8px 10px;
+  background: #fff;
+  text-align: left;
+}
+
+.farm-work-left b {
+  color: var(--primary);
+  font-size: 11px;
+}
+
+.farm-work-left strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-work-left span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-work-lane {
+  position: relative;
+  min-height: 58px;
+  background-image: linear-gradient(to right, #edf2f7 1px, transparent 1px);
+  background-size: 28px 100%;
+}
+
+.farm-work-bar {
+  position: absolute;
+  top: 17px;
+  min-height: 22px;
+  border: 1px solid rgba(15, 23, 42, .28);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  overflow: hidden;
+}
+
+.farm-work-bar.needs-approval {
+  outline: 2px dashed #ef4444;
+  outline-offset: 2px;
+}
+
+.farm-work-bar span {
+  display: block;
+  overflow: hidden;
+  padding: 3px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-work-original {
+  position: absolute;
+  top: 10px;
+  width: 10px;
+  height: 38px;
+  border: 2px solid #ef4444;
+  border-radius: 2px;
+}
+
+.farm-work-empty {
+  padding: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.farm-work-detail-panel {
+  position: sticky;
+  top: 80px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.farm-work-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: start;
+}
+
+.farm-work-detail-head div {
+  display: grid;
+  gap: 3px;
+}
+
+.farm-work-detail-head strong {
+  color: var(--navy);
+  font-size: 15px;
+}
+
+.farm-work-detail-head span,
+.farm-work-shift-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.farm-work-detail-head em {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--status);
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.farm-work-shift-note {
+  border: 1px solid #f5d0fe;
+  border-radius: 8px;
+  padding: 9px;
+  background: #faf5ff;
+  color: #7e22ce;
+  font-weight: 800;
+}
+
+.farm-work-detail-list {
+  display: grid;
+  grid-template-columns: minmax(95px, .45fr) minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0;
+}
+
+.farm-work-detail-list dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-work-detail-list dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.farm-work-approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.farm-work-approval-actions button {
+  min-height: 34px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: var(--primary);
+  color: #111827;
+  font-weight: 900;
+}
+
+.farm-work-approval-actions button:nth-child(2) {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+.farm-work-approval-actions button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
 .farm-toolbar label,
 .farm-form label {
   display: grid;
@@ -3714,6 +4058,9 @@ tfoot td {
   .farm-hero,
   .farm-approval-grid,
   .farm-version-notice,
+  .farm-work-kpis,
+  .farm-work-filters,
+  .farm-work-layout,
   .farm-toolbar,
   .farm-layout,
   .farm-form,
@@ -3794,6 +4141,9 @@ tfoot td {
   .farm-hero,
   .farm-approval-grid,
   .farm-version-notice,
+  .farm-work-kpis,
+  .farm-work-filters,
+  .farm-work-layout,
   .farm-toolbar,
   .farm-layout,
   .farm-form,

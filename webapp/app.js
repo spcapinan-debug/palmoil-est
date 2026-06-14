@@ -30,6 +30,8 @@
   masterFolderRecords: [],
   farmRecords: [],
   farmFilters: { query: "", status: "all", role: "super_admin" },
+  farmWorkFilters: { activityGroup: "all", team: "all", zone: "all", plotGroup: "all", status: "all", query: "" },
+  farmWorkDetailId: "",
   farmTableId: "",
   farmDetailId: "",
   farmEditId: "",
@@ -492,6 +494,8 @@ const FARM_WORKFLOW_STAGES = [
 
 const VERSIONED_FARM_TABLES = new Set(["employees", "contractors", "payroll_rates"]);
 
+const FARM_STATUS_OPTIONS = ["all", "active", "draft", "planned", "scheduled", "submitted", "pending_approval", "approved", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed", "rejected", "open", "ready", "inactive"];
+
 const F = (key, label, options = {}) => ({ key, label, ...options });
 
 const FARM_TABLE_SCHEMAS = {
@@ -567,6 +571,7 @@ const FARM_TABLE_SCHEMAS = {
     ],
     seed: [
       { id: "plot-group-rspo", group_code: "GRP-RSPO", group_name: "กลุ่มแปลง RSPO", group_type: "RSPO", status: "active" },
+      { id: "plot-group-harvest", group_code: "GRP-HARVEST", group_name: "กลุ่มแปลงเก็บเกี่ยว", group_type: "Harvest", status: "active" },
     ],
   },
   departments: {
@@ -730,6 +735,7 @@ const FARM_TABLE_SCHEMAS = {
     ],
     seed: [
       { id: "team-a", team_code: "TEAM-A", team_name: "ทีมสวน A", team_type: "worker", supervisor_employee_id: "emp-001", status: "active" },
+      { id: "team-harvest", team_code: "TEAM-H", team_name: "ทีมเก็บเกี่ยว", team_type: "worker", supervisor_employee_id: "emp-001", status: "active" },
     ],
   },
   team_members: {
@@ -1001,13 +1007,29 @@ const FARM_TABLE_SCHEMAS = {
       F("work_order_no", "เลขที่ WO", { required: true }),
       F("work_order_title", "ชื่องาน", { required: true }),
       F("plot_id", "แปลง", { references: "plots", required: true }),
+      F("plot_group_id", "กลุ่มแปลง", { references: "plot_groups" }),
       F("activity_id", "กิจกรรม", { references: "activities", required: true }),
       F("team_id", "ทีม", { references: "teams" }),
+      F("planned_start_date", "วันที่เริ่มแผน", { type: "date" }),
+      F("planned_end_date", "วันที่สิ้นสุดแผน", { type: "date" }),
+      F("original_scheduled_date", "วันที่เดิมก่อนเลื่อน", { type: "date" }),
       F("scheduled_date", "วันที่ทำงาน", { type: "date" }),
+      F("rescheduled_date", "วันที่เลื่อนใหม่", { type: "date" }),
+      F("rescheduled_by_manager_id", "ผู้จัดการที่เลื่อน", { references: "profiles" }),
+      F("reschedule_reason", "เหตุผลเลื่อนงาน"),
+      F("approval_status", "สถานะอนุมัติ", { options: ["not_required", "pending", "approved", "rejected"] }),
+      F("approved_by", "ผู้อนุมัติ", { references: "profiles" }),
+      F("approved_at", "วันที่อนุมัติ", { type: "date" }),
+      F("closed_at", "วันที่ปิดงาน", { type: "date" }),
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "wo-001", planned_work_item_id: "plan-item-001", work_order_no: "WO-2569-001", work_order_title: "ใส่ปุ๋ยแปลง PLT-001", plot_id: "plot-plt001", activity_id: "activity-fertilizer-0030", team_id: "team-a", scheduled_date: "2026-01-15", status: "sent_to_mobile" },
+      { id: "wo-001", planned_work_item_id: "plan-item-001", work_order_no: "WO-2569-001", work_order_title: "ใส่ปุ๋ยแปลง PLT-001", plot_id: "plot-plt001", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer-0030", team_id: "team-a", planned_start_date: "2026-01-15", planned_end_date: "2026-01-16", scheduled_date: "2026-01-15", approval_status: "approved", approved_by: "profile-admin", approved_at: "2026-01-14", status: "sent_to_mobile" },
+      { id: "wo-002", work_order_no: "WO-2569-002", work_order_title: "ตัดปาล์มแปลง PLT-002", plot_id: "plot-plt002", plot_group_id: "plot-group-harvest", activity_id: "activity-harvest", team_id: "team-harvest", planned_start_date: "2026-01-18", planned_end_date: "2026-01-18", scheduled_date: "2026-01-18", approval_status: "pending", status: "pending_approval" },
+      { id: "wo-003", work_order_no: "WO-2569-003", work_order_title: "ใส่ปุ๋ยโดโลไมท์ PLT-001", plot_id: "plot-plt001", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer-dolomite", team_id: "team-a", planned_start_date: "2026-01-20", planned_end_date: "2026-01-21", original_scheduled_date: "2026-01-20", scheduled_date: "2026-01-23", rescheduled_date: "2026-01-23", rescheduled_by_manager_id: "profile-admin", reschedule_reason: "ฝนตกและพื้นที่ยังไม่พร้อม", approval_status: "approved", status: "rescheduled" },
+      { id: "wo-004", work_order_no: "WO-2569-004", work_order_title: "ตัดปาล์มรอบสอง PLT-001", plot_id: "plot-plt001", plot_group_id: "plot-group-harvest", activity_id: "activity-harvest", team_id: "team-harvest", planned_start_date: "2026-01-25", planned_end_date: "2026-01-26", scheduled_date: "2026-01-25", approval_status: "approved", status: "in_progress" },
+      { id: "wo-005", work_order_no: "WO-2569-005", work_order_title: "ใส่ปุ๋ย 0-0-30 PLT-002", plot_id: "plot-plt002", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer-0030", team_id: "team-a", planned_start_date: "2026-01-28", planned_end_date: "2026-01-29", scheduled_date: "2026-01-28", approval_status: "approved", status: "completed" },
+      { id: "wo-006", work_order_no: "WO-2569-006", work_order_title: "ปิดงานเก็บเกี่ยว PLT-002", plot_id: "plot-plt002", plot_group_id: "plot-group-harvest", activity_id: "activity-harvest", team_id: "team-harvest", planned_start_date: "2026-02-02", planned_end_date: "2026-02-02", scheduled_date: "2026-02-02", approval_status: "approved", closed_at: "2026-02-02", status: "closed" },
     ],
   },
   work_order_workers: {
@@ -6717,8 +6739,8 @@ function renderFarmInput(field, value = "") {
   if (key === "status") {
     return `
       <label>${esc(labelText)}
-        <select data-farm-field="${esc(key)}">
-          ${["active", "draft", "planned", "submitted", "approved", "sent_to_mobile", "open", "ready", "inactive"].map((status) => `<option value="${esc(status)}"${String(value || "active") === status ? " selected" : ""}>${esc(status)}</option>`).join("")}
+          <select data-farm-field="${esc(key)}">
+          ${FARM_STATUS_OPTIONS.filter((status) => status !== "all").map((status) => `<option value="${esc(status)}"${String(value || "active") === status ? " selected" : ""}>${esc(status)}</option>`).join("")}
         </select>
       </label>`;
   }
@@ -6964,6 +6986,307 @@ function renderFarmVersionNotice(module, table) {
     </section>`;
 }
 
+function farmTableByKey(tableKey) {
+  const schema = FARM_TABLE_SCHEMAS[tableKey];
+  return schema ? { key: tableKey, ...schema } : null;
+}
+
+function farmLookup(tableKey, id) {
+  const table = farmTableByKey(tableKey);
+  if (!table || !id) return null;
+  return farmRows(table).find((row) => row.id === id) || null;
+}
+
+function farmLookupLabel(tableKey, id) {
+  const table = farmTableByKey(tableKey);
+  const row = table ? farmLookup(tableKey, id) : null;
+  return row ? farmRecordLabel(table, row) : (id || "-");
+}
+
+function farmWorkStatusMeta(order) {
+  const status = String(order.status || "planned");
+  const approval = String(order.approval_status || "");
+  const isRescheduled = !!order.rescheduled_date || (!!order.original_scheduled_date && order.original_scheduled_date !== order.scheduled_date);
+  if (approval === "pending" || status === "pending_approval") return { key: "pending_approval", label: "รออนุมัติ", color: "#f59e0b", tone: "warning" };
+  if (approval === "rejected" || status === "rejected") return { key: "rejected", label: "ไม่อนุมัติ", color: "#ef4444", tone: "danger" };
+  if (status === "closed") return { key: "closed", label: "ปิดงาน", color: "#0f172a", tone: "done" };
+  if (status === "completed") return { key: "completed", label: "ทำเสร็จ", color: "#16a34a", tone: "done" };
+  if (status === "in_progress") return { key: "in_progress", label: "กำลังทำ", color: "#2563eb", tone: "active" };
+  if (isRescheduled || status === "rescheduled") return { key: "rescheduled", label: "เลื่อนวัน", color: "#a855f7", tone: "shift" };
+  if (status === "sent_to_mobile") return { key: "sent_to_mobile", label: "ส่งเข้ามือถือ", color: "#06b6d4", tone: "active" };
+  if (approval === "approved" || status === "approved") return { key: "approved", label: "อนุมัติแล้ว", color: "#22c55e", tone: "done" };
+  if (status === "scheduled" || status === "planned") return { key: status, label: status === "scheduled" ? "กำหนดการ" : "แผนงาน", color: "#64748b", tone: "neutral" };
+  return { key: status, label: status || "ไม่ระบุ", color: "#64748b", tone: "neutral" };
+}
+
+function farmDateMs(value) {
+  const iso = isoDay(value);
+  return iso ? new Date(`${iso}T00:00:00`).getTime() : 0;
+}
+
+function farmAddDays(iso, days) {
+  const base = farmDateMs(iso);
+  if (!base) return "";
+  return isoDateFromUtc(new Date(base + days * 86400000));
+}
+
+function farmDaysBetween(startIso, endIso) {
+  const start = farmDateMs(startIso);
+  const end = farmDateMs(endIso);
+  if (!start || !end) return 0;
+  return Math.round((end - start) / 86400000);
+}
+
+function farmWorkOrders() {
+  const orders = farmRows(farmTableByKey("work_orders"));
+  return orders.map((order) => {
+    const plot = farmLookup("plots", order.plot_id);
+    const zone = farmLookup("zones", plot?.zone_id);
+    const activity = farmLookup("activities", order.activity_id);
+    const group = farmLookup("activity_groups", activity?.activity_group_id);
+    const team = farmLookup("teams", order.team_id);
+    const plotGroup = farmLookup("plot_groups", order.plot_group_id);
+    const startDate = isoDay(order.planned_start_date || order.scheduled_date || order.original_scheduled_date);
+    const endDate = isoDay(order.planned_end_date || order.rescheduled_date || order.scheduled_date || startDate);
+    return {
+      ...order,
+      startDate,
+      endDate,
+      plot,
+      zone,
+      activity,
+      activityGroup: group,
+      team,
+      plotGroup,
+      statusMeta: farmWorkStatusMeta(order),
+    };
+  }).sort((a, b) => farmDateMs(a.startDate) - farmDateMs(b.startDate));
+}
+
+function farmWorkFilterOptions(rows, key, labelFallback = "ไม่ระบุ") {
+  const map = new Map();
+  rows.forEach((row) => {
+    const item = row[key];
+    if (item?.id) map.set(item.id, farmRecordLabel(farmTableByKey(key === "activityGroup" ? "activity_groups" : key === "plotGroup" ? "plot_groups" : `${key}s`) || { codeField: "id", labelField: "name" }, item));
+    else if (row[`${key}_id`]) map.set(row[`${key}_id`], row[`${key}_id`]);
+  });
+  return Array.from(map, ([value, label]) => ({ value, label: label || labelFallback }));
+}
+
+function filteredFarmWorkOrders() {
+  const f = state.farmWorkFilters;
+  const query = f.query.trim().toLowerCase();
+  return farmWorkOrders().filter((row) => {
+    const statusKey = row.statusMeta.key;
+    const text = [row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
+    return (f.activityGroup === "all" || row.activityGroup?.id === f.activityGroup)
+      && (f.team === "all" || row.team?.id === f.team)
+      && (f.zone === "all" || row.zone?.id === f.zone)
+      && (f.plotGroup === "all" || row.plotGroup?.id === f.plotGroup)
+      && (f.status === "all" || statusKey === f.status || row.status === f.status)
+      && (!query || text.includes(query));
+  });
+}
+
+function renderFarmWorkSelect(id, label, options, value) {
+  return `
+    <label>${esc(label)}
+      <select id="${esc(id)}">
+        <option value="all">ทั้งหมด</option>
+        ${options.map((option) => `<option value="${esc(option.value)}"${value === option.value ? " selected" : ""}>${esc(option.label)}</option>`).join("")}
+      </select>
+    </label>`;
+}
+
+function renderFarmWorkBoard() {
+  const allRows = farmWorkOrders();
+  const rows = filteredFarmWorkOrders();
+  const selected = rows.find((row) => row.id === state.farmWorkDetailId) || rows[0] || allRows[0] || null;
+  if (selected && state.farmWorkDetailId !== selected.id) state.farmWorkDetailId = selected.id;
+  const minStart = rows.reduce((min, row) => !min || farmDateMs(row.startDate) < farmDateMs(min) ? row.startDate : min, rows[0]?.startDate || farmToday());
+  const maxEnd = rows.reduce((max, row) => farmDateMs(row.endDate) > farmDateMs(max) ? row.endDate : max, rows[0]?.endDate || minStart);
+  const timelineStart = farmAddDays(minStart, -2) || farmToday();
+  const maxDays = Math.min(60, Math.max(14, farmDaysBetween(timelineStart, farmAddDays(maxEnd, 3)) + 1));
+  const days = Array.from({ length: maxDays }, (_, index) => farmAddDays(timelineStart, index));
+  const dayWidth = 28;
+  const timelineWidth = days.length * dayWidth;
+  const statusCounts = rows.reduce((acc, row) => {
+    acc[row.statusMeta.key] = (acc[row.statusMeta.key] || 0) + 1;
+    return acc;
+  }, {});
+  const approvalCount = rows.filter((row) => row.statusMeta.key === "pending_approval").length;
+  const shiftedCount = rows.filter((row) => row.statusMeta.key === "rescheduled").length;
+  const closedCount = rows.filter((row) => row.statusMeta.key === "closed").length;
+  const activityOptions = farmWorkFilterOptions(allRows, "activityGroup");
+  const teamOptions = farmWorkFilterOptions(allRows, "team");
+  const zoneOptions = farmWorkFilterOptions(allRows, "zone");
+  const plotGroupOptions = farmWorkFilterOptions(allRows, "plotGroup");
+  const statusOptions = [
+    { value: "planned", label: "แผนงาน" },
+    { value: "pending_approval", label: "รออนุมัติ" },
+    { value: "approved", label: "อนุมัติแล้ว" },
+    { value: "sent_to_mobile", label: "ส่งเข้ามือถือ" },
+    { value: "rescheduled", label: "เลื่อนวัน" },
+    { value: "in_progress", label: "กำลังทำ" },
+    { value: "completed", label: "ทำเสร็จ" },
+    { value: "closed", label: "ปิดงาน" },
+  ];
+  return `
+    <section class="farm-work-console">
+      <div class="section-head">
+        <h3>ตารางการทำงาน / Work Order Timeline</h3>
+        <span>สีแสดงขั้นตอน เลื่อนวัน และรายการที่ต้องอนุมัติ</span>
+      </div>
+      <div class="farm-work-kpis">
+        <article><span>Work Order</span><strong>${fmt(rows.length)}</strong><small>จากทั้งหมด ${fmt(allRows.length)}</small></article>
+        <article><span>รออนุมัติ</span><strong>${fmt(approvalCount)}</strong><small>กดรายการสีส้มเพื่ออนุมัติ</small></article>
+        <article><span>เลื่อนวัน</span><strong>${fmt(shiftedCount)}</strong><small>แสดงเส้นวันเดิมและวันใหม่</small></article>
+        <article><span>ปิดงาน</span><strong>${fmt(closedCount)}</strong><small>งานจบครบกระบวนการ</small></article>
+      </div>
+      <div class="farm-work-filters">
+        ${renderFarmWorkSelect("farmWorkActivityGroup", "กลุ่มกิจกรรม", activityOptions, state.farmWorkFilters.activityGroup)}
+        ${renderFarmWorkSelect("farmWorkTeam", "ทีมหัวหน้า", teamOptions, state.farmWorkFilters.team)}
+        ${renderFarmWorkSelect("farmWorkZone", "โซน", zoneOptions, state.farmWorkFilters.zone)}
+        ${renderFarmWorkSelect("farmWorkPlotGroup", "กลุ่มแปลง", plotGroupOptions, state.farmWorkFilters.plotGroup)}
+        ${renderFarmWorkSelect("farmWorkStatus", "ขั้นตอน", statusOptions, state.farmWorkFilters.status)}
+        <label>ค้นหา<input id="farmWorkSearch" type="search" value="${esc(state.farmWorkFilters.query)}" placeholder="WO, งาน, แปลง, ทีม"></label>
+      </div>
+      <div class="farm-work-legend">
+        ${statusOptions.map((item) => {
+          const meta = farmWorkStatusMeta({ status: item.value, approval_status: item.value === "pending_approval" ? "pending" : "" });
+          return `<span><i style="background:${esc(meta.color)}"></i>${esc(item.label)} <b>${fmt(statusCounts[item.value] || 0)}</b></span>`;
+        }).join("")}
+      </div>
+      <div class="farm-work-layout">
+        <div class="farm-work-timeline">
+          <div class="farm-work-grid-head">
+            <div class="farm-work-left-head">Work Order / พื้นที่ / งาน</div>
+            <div class="farm-work-days" style="width:${timelineWidth}px;grid-template-columns:repeat(${days.length}, ${dayWidth}px)">
+              ${days.map((day) => `<span>${esc(day.slice(8, 10))}<small>${esc(day.slice(5, 7))}</small></span>`).join("")}
+            </div>
+          </div>
+          <div class="farm-work-rows">
+            ${rows.map((row) => {
+              const startIndex = Math.max(0, farmDaysBetween(timelineStart, row.startDate || timelineStart));
+              const span = Math.max(1, farmDaysBetween(row.startDate || timelineStart, row.endDate || row.startDate || timelineStart) + 1);
+              const originalIndex = row.original_scheduled_date ? Math.max(0, farmDaysBetween(timelineStart, row.original_scheduled_date)) : -1;
+              const needsApproval = row.statusMeta.key === "pending_approval";
+              return `
+                <div class="farm-work-row${selected?.id === row.id ? " active" : ""}" data-farm-work-detail="${esc(row.id)}">
+                  <button type="button" class="farm-work-left">
+                    <b>${esc(row.work_order_no || row.id)}</b>
+                    <strong>${esc(row.work_order_title || "-")}</strong>
+                    <span>${esc(row.plot?.plot_code || "-")} · ${esc(row.activity?.activity_name || "-")} · ${esc(row.team?.team_name || "-")}</span>
+                  </button>
+                  <div class="farm-work-lane" style="width:${timelineWidth}px">
+                    ${originalIndex >= 0 && originalIndex !== startIndex ? `<i class="farm-work-original" title="วันที่เดิม ${esc(row.original_scheduled_date)}" style="left:${originalIndex * dayWidth + 9}px"></i>` : ""}
+                    <button class="farm-work-bar ${needsApproval ? "needs-approval" : ""}" type="button" data-farm-work-detail="${esc(row.id)}" style="left:${startIndex * dayWidth + 2}px;width:${Math.max(18, span * dayWidth - 4)}px;background:${esc(row.statusMeta.color)}">
+                      <span>${esc(row.statusMeta.label)}</span>
+                    </button>
+                  </div>
+                </div>`;
+            }).join("") || `<div class="farm-work-empty">ไม่พบ Work Order ตามตัวกรอง</div>`}
+          </div>
+        </div>
+        ${renderFarmWorkDetail(selected)}
+      </div>
+    </section>`;
+}
+
+function renderFarmWorkDetail(order) {
+  if (!order) return `<aside class="farm-work-detail-panel"><strong>ยังไม่มี Work Order</strong><span>เพิ่มใบสั่งงานในตาราง work_orders ก่อน</span></aside>`;
+  const needsApproval = order.statusMeta.key === "pending_approval";
+  const canApprove = needsApproval && farmCan("approve");
+  const details = [
+    ["เลขที่ WO", order.work_order_no],
+    ["ชื่องาน", order.work_order_title],
+    ["ขั้นตอน", order.statusMeta.label],
+    ["สถานะอนุมัติ", order.approval_status || "-"],
+    ["แปลง", farmLookupLabel("plots", order.plot_id)],
+    ["โซน", order.zone?.zone_name || "-"],
+    ["กลุ่มแปลง", farmLookupLabel("plot_groups", order.plot_group_id)],
+    ["กิจกรรม", farmLookupLabel("activities", order.activity_id)],
+    ["กลุ่มกิจกรรม", order.activityGroup?.group_name || "-"],
+    ["ทีม/หัวหน้า", farmLookupLabel("teams", order.team_id)],
+    ["วันแผน", `${order.startDate || "-"} ถึง ${order.endDate || "-"}`],
+    ["วันที่ทำงาน", order.scheduled_date || "-"],
+    ["วันที่เดิม", order.original_scheduled_date || "-"],
+    ["ผู้จัดการที่เลื่อน", farmLookupLabel("profiles", order.rescheduled_by_manager_id)],
+    ["เหตุผลเลื่อน", order.reschedule_reason || "-"],
+    ["ผู้อนุมัติ", farmLookupLabel("profiles", order.approved_by)],
+    ["วันที่อนุมัติ", order.approved_at || "-"],
+    ["วันที่ปิดงาน", order.closed_at || "-"],
+  ];
+  return `
+    <aside class="farm-work-detail-panel">
+      <div class="farm-work-detail-head">
+        <div>
+          <strong>${esc(order.work_order_no || order.id)}</strong>
+          <span>${esc(order.work_order_title || "-")}</span>
+        </div>
+        <em style="--status:${esc(order.statusMeta.color)}">${esc(order.statusMeta.label)}</em>
+      </div>
+      ${order.rescheduled_date ? `<div class="farm-work-shift-note">เลื่อนจาก ${esc(order.original_scheduled_date || "-")} เป็น ${esc(order.rescheduled_date)} โดย ${esc(farmLookupLabel("profiles", order.rescheduled_by_manager_id))}</div>` : ""}
+      <dl class="farm-work-detail-list">
+        ${details.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value ?? "-")}</dd>`).join("")}
+      </dl>
+      <div class="farm-work-approval-actions">
+        ${needsApproval ? `<button type="button" data-farm-work-approve="${esc(order.id)}" ${canApprove ? "" : "disabled"}>อนุมัติ</button><button type="button" data-farm-work-reject="${esc(order.id)}" ${canApprove ? "" : "disabled"}>ไม่อนุมัติ</button>` : `<button type="button" data-farm-work-detail="${esc(order.id)}">ดูรายละเอียด</button>`}
+        <button type="button" data-farm-open-work-table="work_orders">เปิดตาราง WO</button>
+      </div>
+    </aside>`;
+}
+
+function updateFarmWorkOrderDecision(id, decision) {
+  const table = farmTableByKey("work_orders");
+  const current = farmRows(table).find((row) => row.id === id);
+  if (!current) return;
+  const now = new Date().toISOString();
+  const approved = decision === "approved";
+  const next = {
+    ...current,
+    id: current.readonly ? `override-${id}` : current.id,
+    moduleId: "farm-work",
+    tableId: "work_orders",
+    _overrideOf: current.readonly ? id : current._overrideOf,
+    approval_status: decision,
+    status: approved ? "approved" : "rejected",
+    approved_by: approved ? "profile-admin" : "",
+    approved_at: now.slice(0, 10),
+    updatedAt: now,
+  };
+  if (!next._overrideOf) delete next._overrideOf;
+  state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_orders" && (item.id === next.id || item._overrideOf === id || item.id === id)));
+  state.farmRecords.push(next);
+  state.farmRecords.push({
+    id: `farm-approval-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    moduleId: "farm-governance",
+    tableId: "work_order_approvals",
+    work_order_id: id,
+    approval_level: "1",
+    approver_profile_id: "profile-admin",
+    decision,
+    decided_at: now.slice(0, 10),
+    status: "active",
+    updatedAt: now,
+  });
+  state.farmRecords.push({
+    id: `farm-status-log-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    moduleId: "farm-governance",
+    tableId: "work_order_status_logs",
+    work_order_id: id,
+    from_status: current.status || "",
+    to_status: approved ? "approved" : "rejected",
+    changed_by: "profile-admin",
+    note: approved ? "อนุมัติจากหน้า Work Order Timeline" : "ไม่อนุมัติจากหน้า Work Order Timeline",
+    status: "active",
+    updatedAt: now,
+  });
+  state.farmWorkDetailId = id;
+  saveFarmRecords();
+  render();
+}
+
 function renderFarmKeyBindings(table) {
   const refs = (table.fields || []).filter((field) => farmFieldReferences(field));
   return `
@@ -7009,6 +7332,7 @@ function renderFarmPage() {
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
         <article><span>Foreign Key</span><strong>${fmt(refCount)}</strong><small>Inactive ${fmt(inactiveCount)} รายการ</small></article>
       </section>
+      ${module.id === "farm-work" ? renderFarmWorkBoard() : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
       <section class="farm-toolbar">
@@ -7020,7 +7344,7 @@ function renderFarmPage() {
         <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหารหัส ชื่อ สถานะ ตาราง"></label>
         <label>สถานะ
           <select id="farmStatusFilter">
-            ${["all", "active", "draft", "planned", "submitted", "approved", "sent_to_mobile", "open", "ready", "inactive"].map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${status === "all" ? "ทั้งหมด" : esc(status)}</option>`).join("")}
+            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${status === "all" ? "ทั้งหมด" : esc(status)}</option>`).join("")}
           </select>
         </label>
         <label>Role
@@ -7846,6 +8170,36 @@ async function init() {
     setView("dashboard");
   });
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.id === "farmWorkActivityGroup") {
+      state.farmWorkFilters.activityGroup = e.target.value;
+      state.farmWorkDetailId = "";
+      render();
+      return;
+    }
+    if (e.target.id === "farmWorkTeam") {
+      state.farmWorkFilters.team = e.target.value;
+      state.farmWorkDetailId = "";
+      render();
+      return;
+    }
+    if (e.target.id === "farmWorkZone") {
+      state.farmWorkFilters.zone = e.target.value;
+      state.farmWorkDetailId = "";
+      render();
+      return;
+    }
+    if (e.target.id === "farmWorkPlotGroup") {
+      state.farmWorkFilters.plotGroup = e.target.value;
+      state.farmWorkDetailId = "";
+      render();
+      return;
+    }
+    if (e.target.id === "farmWorkStatus") {
+      state.farmWorkFilters.status = e.target.value;
+      state.farmWorkDetailId = "";
+      render();
+      return;
+    }
     if (e.target.id === "farmTableSelect") {
       state.farmTableId = e.target.value;
       state.farmEditId = "";
@@ -7975,6 +8329,13 @@ async function init() {
     }
   });
   els.reportPage.addEventListener("input", (e) => {
+    if (e.target.id === "farmWorkSearch") {
+      state.farmWorkFilters.query = e.target.value.trim();
+      state.farmWorkDetailId = "";
+      clearTimeout(state.estSearchTimer);
+      state.estSearchTimer = setTimeout(render, 200);
+      return;
+    }
     if (e.target.id === "farmSearch") {
       state.farmFilters.query = e.target.value.trim();
       state.farmDetailId = "";
@@ -8016,6 +8377,28 @@ async function init() {
     state.estSearchTimer = setTimeout(render, 250);
   });
   els.reportPage.addEventListener("click", (e) => {
+    const workDetail = e.target.closest("[data-farm-work-detail]");
+    if (workDetail) {
+      state.farmWorkDetailId = workDetail.dataset.farmWorkDetail;
+      render();
+      return;
+    }
+    const workApprove = e.target.closest("[data-farm-work-approve]");
+    if (workApprove) {
+      updateFarmWorkOrderDecision(workApprove.dataset.farmWorkApprove, "approved");
+      return;
+    }
+    const workReject = e.target.closest("[data-farm-work-reject]");
+    if (workReject) {
+      updateFarmWorkOrderDecision(workReject.dataset.farmWorkReject, "rejected");
+      return;
+    }
+    const openWorkTable = e.target.closest("[data-farm-open-work-table]");
+    if (openWorkTable) {
+      state.farmTableId = openWorkTable.dataset.farmOpenWorkTable;
+      render();
+      return;
+    }
     const farmOpenTable = e.target.closest("[data-farm-open-table]");
     if (farmOpenTable) {
       state.farmTableId = farmOpenTable.dataset.farmOpenTable;
