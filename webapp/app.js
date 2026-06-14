@@ -7115,158 +7115,87 @@ function renderFarmPlannerOptionRows(tableKey, rows, titleField, subFields = [])
   }).join("");
 }
 
-function renderFarmPlannerTabContent(tab) {
-  if (tab === "labour") {
+function renderFarmPlannerQuickList(tableKey, rows, titleField, subFields = [], max = 5) {
+  const table = farmTableByKey(tableKey);
+  return rows.slice(0, max).map((row, index) => {
+    const title = row[titleField] || farmRecordLabel(table, row);
+    const sub = subFields.map((key) => row[key]).filter(Boolean).join(" · ");
     return `
-      <div class="farm-planner-card">
-        <h4>Labour Costing</h4>
-        <div class="farm-planner-fields">
-          <label>Costing Type<select><option>Component Based</option><option>Role Based Compound</option><option>Direct Entry</option></select></label>
-          <label>Rate Group<select><option>คนงานรายวัน</option><option>พนักงานรายเดือน</option><option>ผู้รับเหมารายเหมา</option></select></label>
-          <label>Payment Unit<select><option>ต้น</option><option>ไร่</option><option>ตัน</option><option>วัน</option></select></label>
-        </div>
-      </div>`;
-  }
-  if (tab === "survey") {
-    return `
-      <div class="farm-planner-card">
-        <h4>Surveys</h4>
-        <div class="farm-planner-checks">
-          <label><input type="checkbox" checked> เปิดแบบตรวจคุณภาพงาน</label>
-          <label><input type="checkbox"> ต้องแนบรูปก่อนปิดงาน</label>
-          <label><input type="checkbox"> ต้องบันทึก GPS check-in/check-out</label>
-        </div>
-      </div>`;
-  }
-  if (tab === "preview") {
-    return `
-      <div class="farm-planner-card">
-        <h4>Final Preview</h4>
-        <table class="mini-table farm-planner-preview">
-          <thead><tr><th>Terrain</th><th>Qty</th><th>Duration</th><th>Sequence</th><th>Labour</th><th>Material</th><th>Equipment</th></tr></thead>
-          <tbody><tr><td>2 แปลง</td><td>ตามจำนวนต้น</td><td>Parallel</td><td>1</td><td>ตามรหัสค่าแรง</td><td>ปุ๋ย/วัสดุ</td><td>ตามอุปกรณ์</td></tr></tbody>
-        </table>
-      </div>`;
-  }
-  if (tab === "notify") {
-    return `
-      <div class="farm-planner-card">
-        <h4>Create W.O. & Notify</h4>
-        <div class="farm-planner-checks">
-          <label><input type="checkbox" checked> Send Work Order</label>
-          <label><input type="checkbox"> Approve GPS Tracking</label>
-        </div>
-        <label>Note<textarea placeholder="ข้อความส่งถึงทีมงาน"></textarea></label>
-        <button type="button" data-farm-open-work-table="work_orders">สร้าง Draft Work Order</button>
-      </div>`;
-  }
-  return `
-    <div class="farm-planner-card">
-      <h4>Dates and Repetitions</h4>
-      <div class="farm-planner-radio-grid">
-        <label><input type="radio" name="startType" checked> Absolute</label>
-        <label><input type="radio" name="startType"> Relative to a Characteristic</label>
-        <label><input type="radio" name="startType"> Previous Activity</label>
-        <label><input type="radio" name="startType"> Crono</label>
-      </div>
-      <div class="farm-planner-fields">
-        <label>Start Date<input type="date" value="2026-01-15"></label>
-        <label>Repeat<select><option>No repeats</option><option>Until</option><option>After</option></select></label>
-        <label>Sequence<select><option>Parallel</option><option>Sequential</option></select></label>
-      </div>
-    </div>`;
+      <label class="farm-plan-line">
+        <input type="checkbox" ${index < 2 ? "checked" : ""}>
+        <span><strong>${esc(title)}</strong><small>${esc(sub || row.id)}</small></span>
+      </label>`;
+  }).join("");
 }
 
 function renderFarmWorkPlanner() {
   const plots = farmRows(farmTableByKey("plots"));
-  const zones = farmRows(farmTableByKey("zones"));
   const plotGroups = farmRows(farmTableByKey("plot_groups"));
   const activityGroups = farmRows(farmTableByKey("activity_groups"));
   const activities = farmRows(farmTableByKey("activities"));
   const teams = farmRows(farmTableByKey("teams"));
   const materials = farmRows(farmTableByKey("materials"));
   const vehicles = farmRows(farmTableByKey("vehicles"));
-  const tabItems = [
-    ["dates", "Dates and Repetitions"],
-    ["labour", "Labour Costing"],
-    ["survey", "Surveys"],
-    ["preview", "Final Preview"],
-    ["notify", "Create W.O. & Notify"],
-  ];
+  const previewActivity = activities[0];
+  const previewGroup = activityGroups.find((item) => item.id === previewActivity?.activity_group_id) || activityGroups[0];
   return `
     <section class="farm-planner-console">
       <div class="section-head">
-        <h3>Create Work Orders</h3>
-        <span>Task Scheduler → Terrain → Resources → Advanced Options → Preview</span>
+        <h3>วางแผนสร้าง Work Order</h3>
+        <span>แนวคิดจาก Recording ถูกย่อให้เหลือ 4 ขั้นตอน: งาน → พื้นที่/ทีม → วิธีคำนวณ → ตรวจแล้วสร้าง</span>
       </div>
-      <div class="farm-planner-steps">
-        ${["Task Scheduler", "Terrains & Controllers", "Materials & Equipment", "Advanced Options", "Final Preview"].map((step, index) => `<article class="${index === 0 ? "active" : ""}"><b>${index + 1}</b><span>${esc(step)}</span></article>`).join("")}
+      <div class="farm-plan-flow">
+        ${["เลือกงาน", "เลือกพื้นที่และทีม", "กำหนดทรัพยากร", "ตรวจแล้วสร้าง WO"].map((step, index) => `<article class="${index === 0 ? "active" : ""}"><b>${index + 1}</b><span>${esc(step)}</span></article>`).join("")}
       </div>
-      <div class="farm-planner-taskbar">
-        <label>Work Order Type<select><option>Task Scheduler</option><option>Corrective Work</option><option>Harvest Work</option></select></label>
-        <label>Activity Group<select>${activityGroups.map((row) => `<option>${esc(row.group_code || row.group_name)} - ${esc(row.group_name || "")}</option>`).join("")}</select></label>
-        <label>Activity<select>${activities.map((row) => `<option>${esc(row.activity_code || "")} - ${esc(row.activity_name || "")}</option>`).join("")}</select></label>
-        <button type="button" data-farm-open-work-table="work_orders">Create Work Orders</button>
-      </div>
-      <div class="farm-planner-selector">
-        <article>
-          <div class="farm-planner-card-head">
-            <h4>Mass Selection Terrains</h4>
-            <label><input type="checkbox"> ทั้งหมด</label>
+      <div class="farm-plan-simple">
+        <article class="farm-plan-card">
+          <h4>1. งานที่จะทำ</h4>
+          <label>กลุ่มกิจกรรม
+            <select>${activityGroups.map((row) => `<option>${esc(row.group_name || row.group_code || "")}</option>`).join("")}</select>
+          </label>
+          <label>กิจกรรม
+            <select>${activities.map((row) => `<option>${esc(row.activity_name || row.activity_code || "")}</option>`).join("")}</select>
+          </label>
+          <label>วันที่เริ่มงาน<input type="date" value="2026-01-15"></label>
+        </article>
+        <article class="farm-plan-card">
+          <h4>2. พื้นที่และทีม</h4>
+          <div class="farm-plan-split">
+            <div><strong>แปลงที่เลือก</strong>${renderFarmPlannerQuickList("plots", plots, "plot_code", ["plot_name", "area_rai"], 4)}</div>
+            <div><strong>ทีมรับงาน</strong>${renderFarmPlannerQuickList("teams", teams, "team_code", ["team_name"], 4)}</div>
           </div>
-          <div class="farm-planner-tree">
-            <strong>โซน</strong>
-            ${renderFarmPlannerOptionRows("zones", zones, "zone_name", ["zone_code"])}
-            <strong>แปลง</strong>
-            ${renderFarmPlannerOptionRows("plots", plots, "plot_code", ["plot_name", "area_rai"])}
-            <strong>กลุ่มแปลง</strong>
-            ${renderFarmPlannerOptionRows("plot_groups", plotGroups, "group_code", ["group_name"])}
+          <label>กลุ่มแปลง
+            <select>${plotGroups.map((row) => `<option>${esc(row.group_name || row.group_code || "")}</option>`).join("")}</select>
+          </label>
+        </article>
+        <article class="farm-plan-card">
+          <h4>3. วิธีคำนวณและทรัพยากร</h4>
+          <div class="farm-plan-methods">
+            <label><input type="radio" name="qtyMode" checked> ใช้จำนวนต้น/พื้นที่จากข้อมูลแปลง</label>
+            <label><input type="radio" name="qtyMode"> กรอกจำนวนเอง</label>
+            <label><input type="radio" name="costMode" checked> คำนวณต้นทุนจากอัตรางบประมาณ</label>
+            <label><input type="radio" name="costMode"> คิดตามผู้รับเหมา</label>
+          </div>
+          <div class="farm-plan-tags">
+            <span>วัสดุ ${fmt(materials.length)} รายการ</span>
+            <span>อุปกรณ์ ${fmt(vehicles.length)} รายการ</span>
+            <button type="button" data-farm-open-work-table="work_order_materials">แก้ทรัพยากร</button>
           </div>
         </article>
-        <article>
-          <div class="farm-planner-card-head">
-            <h4>Job Controllers / Teams</h4>
-            <span>${fmt(teams.length)} team</span>
+        <article class="farm-plan-card farm-plan-summary">
+          <h4>4. ตรวจแล้วสร้าง</h4>
+          <dl>
+            <dt>งาน</dt><dd>${esc(previewGroup?.group_name || "-")} / ${esc(previewActivity?.activity_name || "-")}</dd>
+            <dt>พื้นที่</dt><dd>${fmt(Math.min(2, plots.length))} แปลง · ${esc(plotGroups[0]?.group_name || "ไม่ระบุ")}</dd>
+            <dt>ทีม</dt><dd>${esc(teams[0]?.team_name || "-")}</dd>
+            <dt>สถานะเริ่มต้น</dt><dd>Draft → รออนุมัติ</dd>
+          </dl>
+          <div class="farm-plan-actions">
+            <button type="button" data-farm-open-work-table="work_orders">เปิดตาราง WO</button>
+            <button type="button" data-farm-open-work-table="work_order_approvals">ส่งอนุมัติ</button>
           </div>
-          <div class="farm-planner-tree">
-            ${renderFarmPlannerOptionRows("teams", teams, "team_code", ["team_name", "team_type"])}
-          </div>
         </article>
       </div>
-      <div class="farm-planner-resource-grid">
-        <article>
-          <div class="farm-planner-card-head"><h4>Materials</h4><button type="button" data-farm-open-work-table="work_order_materials">+ Add</button></div>
-          <table class="mini-table"><thead><tr><th>Material</th><th>Description</th><th>Apply</th><th>UOM</th><th>per</th><th>cost</th></tr></thead><tbody>
-            ${materials.slice(0, 3).map((row) => `<tr><td>${esc(row.material_code || "")}</td><td>${esc(row.material_name || "")}</td><td>Terrain Rate</td><td>${esc(farmLookupLabel("units", row.base_unit_id))}</td><td>per tree</td><td>-</td></tr>`).join("") || `<tr><td colspan="6">No Data Found</td></tr>`}
-          </tbody></table>
-        </article>
-        <article>
-          <div class="farm-planner-card-head"><h4>Equipment</h4><button type="button" data-farm-open-work-table="work_order_machines">+ Add</button></div>
-          <table class="mini-table"><thead><tr><th>Equipment Type</th><th>Equipment</th><th>Description</th></tr></thead><tbody>
-            ${vehicles.slice(0, 3).map((row) => `<tr><td>${esc(row.vehicle_type || "-")}</td><td>${esc(row.vehicle_code || "")}</td><td>${esc(row.vehicle_name || "")}</td></tr>`).join("") || `<tr><td colspan="3">No Data Found</td></tr>`}
-          </tbody></table>
-        </article>
-      </div>
-      <div class="farm-planner-advanced">
-        <article>
-          <h4>Work Order Output Quantity</h4>
-          <div class="farm-planner-radio-grid"><label><input type="radio" checked> By terrain characteristic assigned to activity</label><label><input type="radio"> Direct Entry</label></div>
-          <div class="farm-planner-fields"><label>Characteristic<select><option>S07 # of Trees</option><option>Area Rai</option></select></label><label>Quantity %<input value="100.0000 %"></label></div>
-        </article>
-        <article>
-          <h4>Work Order Duration</h4>
-          <div class="farm-planner-radio-grid"><label><input type="radio"> Activity Standard Based</label><label><input type="radio" checked> Piece Rated Based</label><label><input type="radio"> Direct Entry</label></div>
-          <label>Calculation Method<select><option>Parallel</option><option>Sequential</option></select></label>
-        </article>
-        <article>
-          <h4>Planned Cost Mode</h4>
-          <label>Planned Costing Mode<select><option>Component Based</option><option>Role Based Compound</option><option>Direct Entry</option></select></label>
-        </article>
-      </div>
-      <div class="farm-planner-tabs">
-        ${tabItems.map(([id, label]) => `<button type="button" class="${state.farmPlannerTab === id ? "active" : ""}" data-farm-planner-tab="${esc(id)}">${esc(label)}</button>`).join("")}
-      </div>
-      ${renderFarmPlannerTabContent(state.farmPlannerTab)}
     </section>`;
 }
 

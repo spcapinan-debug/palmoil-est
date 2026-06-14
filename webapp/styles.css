@@ -3729,6 +3729,207 @@ tfoot td {
   max-width: 720px;
 }
 
+.farm-plan-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.farm-plan-flow article {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #f8fafc;
+}
+
+.farm-plan-flow article.active {
+  border-color: var(--primary);
+  background: #eef6ff;
+}
+
+.farm-plan-flow b {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+}
+
+.farm-plan-flow span {
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.farm-plan-simple {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.farm-plan-card {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  padding: 11px;
+  background: #fff;
+}
+
+.farm-plan-card h4 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 13px;
+}
+
+.farm-plan-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.farm-plan-card select,
+.farm-plan-card input[type="date"] {
+  min-height: 34px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 9px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.farm-plan-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.farm-plan-split > div {
+  display: grid;
+  gap: 5px;
+}
+
+.farm-plan-split > div > strong {
+  color: var(--primary);
+  font-size: 11px;
+}
+
+.farm-plan-line {
+  display: flex !important;
+  align-items: start;
+  gap: 6px !important;
+  min-width: 0;
+  border: 1px solid #edf2f7;
+  border-radius: 7px;
+  padding: 5px;
+  background: #fbfdff;
+}
+
+.farm-plan-line span {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.farm-plan-line strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-plan-line small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-plan-methods {
+  display: grid;
+  gap: 7px;
+}
+
+.farm-plan-methods label {
+  display: flex;
+  gap: 7px;
+  align-items: start;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.farm-plan-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.farm-plan-tags span {
+  border: 1px solid #dbe5f2;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.farm-plan-tags button,
+.farm-plan-actions button {
+  min-height: 32px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--primary);
+  color: #111827;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.farm-plan-summary dl {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 7px 9px;
+  margin: 0;
+}
+
+.farm-plan-summary dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-plan-summary dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.farm-plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .farm-work-console {
   display: grid;
   gap: 12px;
@@ -4313,6 +4514,8 @@ tfoot td {
   .farm-planner-resource-grid,
   .farm-planner-advanced,
   .farm-planner-fields,
+  .farm-plan-flow,
+  .farm-plan-simple,
   .farm-work-kpis,
   .farm-work-filters,
   .farm-work-layout,
@@ -4404,6 +4607,9 @@ tfoot td {
   .farm-planner-fields,
   .farm-planner-radio-grid,
   .farm-planner-checks,
+  .farm-plan-flow,
+  .farm-plan-simple,
+  .farm-plan-split,
   .farm-work-kpis,
   .farm-work-filters,
   .farm-work-layout,
