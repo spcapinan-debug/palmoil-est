@@ -7131,18 +7131,72 @@ function renderFarmPlannerQuickList(tableKey, rows, titleField, subFields = [], 
 function renderFarmWorkPlanner() {
   const plots = farmRows(farmTableByKey("plots"));
   const plotGroups = farmRows(farmTableByKey("plot_groups"));
+  const zones = farmRows(farmTableByKey("zones"));
   const activityGroups = farmRows(farmTableByKey("activity_groups"));
   const activities = farmRows(farmTableByKey("activities"));
   const teams = farmRows(farmTableByKey("teams"));
+  const teamMembers = farmRows(farmTableByKey("team_members"));
+  const employees = farmRows(farmTableByKey("employees"));
   const materials = farmRows(farmTableByKey("materials"));
-  const vehicles = farmRows(farmTableByKey("vehicles"));
+  const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
+  const budgetRates = farmRows(farmTableByKey("budget_rates"));
+  const workOrders = farmWorkOrders().slice().sort((a, b) => farmDateMs(b.startDate) - farmDateMs(a.startDate));
   const previewActivity = activities[0];
   const previewGroup = activityGroups.find((item) => item.id === previewActivity?.activity_group_id) || activityGroups[0];
+  const previewTeam = teams[0];
+  const previewMembers = teamMembers.filter((item) => item.team_id === previewTeam?.id).slice(0, 8);
+  const selectedPlots = plots.slice(0, Math.min(2, plots.length));
+  const totalRai = selectedPlots.reduce((sum, row) => sum + n(row.area_rai), 0);
+  const totalTrees = selectedPlots.reduce((sum, row) => sum + n(row.tree_count), 0);
+  const selectedBudgetRate = budgetRates.find((row) => row.activity_id === previewActivity?.id) || budgetRates[0] || {};
+  const laborBudgetRate = budgetRates.find((row) => row.activity_id === previewActivity?.id && row.rate_type === "labor")
+    || budgetRates.find((row) => row.rate_type === "labor")
+    || selectedBudgetRate;
+  const materialBudgetRate = budgetRates.find((row) => row.activity_id === previewActivity?.id && row.rate_type === "material")
+    || budgetRates.find((row) => row.rate_type === "material")
+    || {};
+  const selectedUsageRate = usageRates.find((row) => row.activity_id === previewActivity?.id) || usageRates[0] || {};
+  const selectedMaterial = materials.find((row) => row.id === (selectedUsageRate.material_id || materialBudgetRate.material_id || selectedBudgetRate.material_id)) || materials[0] || {};
+  const calculationBase = selectedUsageRate.usage_basis === "per_tree" ? totalTrees : selectedUsageRate.usage_basis === "per_rai" ? totalRai : selectedPlots.length;
+  const materialQuantity = calculationBase * n(selectedUsageRate.usage_rate || 0);
+  const laborRate = n(laborBudgetRate.rate_amount || 0);
+  const materialRate = n(materialBudgetRate.rate_amount || 0);
+  const laborCost = totalRai * laborRate;
+  const materialCost = materialQuantity * materialRate;
+  const totalCost = laborCost + materialCost;
+  const plotCountText = `${fmt(selectedPlots.length)} จาก ${fmt(plots.length)} แปลง`;
+  const zoneOptions = zones.map((row) => `<option>${esc(row.zone_name || row.zone_code || "")}</option>`).join("");
+  const plotGroupOptions = plotGroups.map((row) => `<option>${esc(row.group_name || row.group_code || "")}</option>`).join("");
+  const areaGroups = zones.map((zone) => {
+    const zonePlots = plots.filter((plot) => plot.zone_id === zone.id).slice(0, 5);
+    return `
+      <div class="farm-plan-area-group">
+        <strong>${esc(zone.zone_name || zone.zone_code || "ไม่ระบุโซน")} <em>${fmt(zonePlots.length)}</em></strong>
+        ${zonePlots.map((plot, index) => `
+          <label class="farm-plan-area-row">
+            <input type="checkbox" ${index < 2 ? "checked" : ""}>
+            <span>${esc(plot.plot_code || "-")}</span>
+            <small>${esc(plot.plot_name || "")} · ${fmt(n(plot.area_rai))} ไร่ · ${fmt(n(plot.tree_count))} ต้น</small>
+          </label>`).join("") || `<p>ยังไม่มีแปลงในโซนนี้</p>`}
+      </div>`;
+  }).join("");
+  const workerRows = previewMembers.map((member) => {
+    const employee = employees.find((row) => row.id === member.employee_id) || {};
+    return `
+      <label class="farm-plan-worker-row">
+        <input type="checkbox" checked>
+        <span>
+          <strong>${esc(employee.full_name || farmLookupLabel("employees", member.employee_id))}</strong>
+          <small>${esc(member.member_role || employee.worker_type || "-")} · ${esc(employee.payment_type || "-")} · ${employee.daily_wage ? `${moneyNf.format(n(employee.daily_wage))}/วัน` : "-"}</small>
+        </span>
+      </label>`;
+  }).join("");
+  const latestWorkOptions = workOrders.slice(0, 6).map((row) => `<option>${esc(row.work_order_no || row.id)} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("");
   return `
     <section class="farm-planner-console">
       <div class="section-head">
         <h3>วางแผนสร้าง Work Order</h3>
-        <span>แนวคิดจาก Recording ถูกย่อให้เหลือ 4 ขั้นตอน: งาน → พื้นที่/ทีม → วิธีคำนวณ → ตรวจแล้วสร้าง</span>
+        <span>เลือกงาน กำหนดรอบซ้ำ เลือกพื้นที่จำนวนมาก แยกรายคน และเห็นต้นทุนก่อนสร้างแผน</span>
       </div>
       <div class="farm-plan-flow">
         ${["เลือกงาน", "เลือกพื้นที่และทีม", "กำหนดทรัพยากร", "ตรวจแล้วสร้าง WO"].map((step, index) => `<article class="${index === 0 ? "active" : ""}"><b>${index + 1}</b><span>${esc(step)}</span></article>`).join("")}
@@ -7150,48 +7204,99 @@ function renderFarmWorkPlanner() {
       <div class="farm-plan-simple">
         <article class="farm-plan-card">
           <h4>1. งานที่จะทำ</h4>
+          <label>รูปแบบกำหนดการ
+            <select>
+              <option>ทำครั้งเดียว</option>
+              <option>ทำซ้ำตามรอบ</option>
+              <option>อ้างอิงจากงานล่าสุด</option>
+            </select>
+          </label>
           <label>กลุ่มกิจกรรม
             <select>${activityGroups.map((row) => `<option>${esc(row.group_name || row.group_code || "")}</option>`).join("")}</select>
           </label>
           <label>กิจกรรม
             <select>${activities.map((row) => `<option>${esc(row.activity_name || row.activity_code || "")}</option>`).join("")}</select>
           </label>
-          <label>วันที่เริ่มงาน<input type="date" value="2026-01-15"></label>
-        </article>
-        <article class="farm-plan-card">
-          <h4>2. พื้นที่และทีม</h4>
-          <div class="farm-plan-split">
-            <div><strong>แปลงที่เลือก</strong>${renderFarmPlannerQuickList("plots", plots, "plot_code", ["plot_name", "area_rai"], 4)}</div>
-            <div><strong>ทีมรับงาน</strong>${renderFarmPlannerQuickList("teams", teams, "team_code", ["team_name"], 4)}</div>
+          <div class="farm-plan-inline">
+            <label>วันที่เริ่มงาน<input type="date" value="2026-01-15"></label>
+            <label>รอบซ้ำ
+              <select>
+                <option>ไม่ทำซ้ำ</option>
+                <option>ทุก 7 วัน</option>
+                <option>ทุก 15 วัน</option>
+                <option>ทุก 30 วัน</option>
+              </select>
+            </label>
           </div>
-          <label>กลุ่มแปลง
-            <select>${plotGroups.map((row) => `<option>${esc(row.group_name || row.group_code || "")}</option>`).join("")}</select>
+          <label>อ้างอิงงานล่าสุด
+            <select>
+              <option>ไม่อ้างอิง</option>
+              ${latestWorkOptions}
+            </select>
           </label>
         </article>
         <article class="farm-plan-card">
-          <h4>3. วิธีคำนวณและทรัพยากร</h4>
-          <div class="farm-plan-methods">
-            <label><input type="radio" name="qtyMode" checked> ใช้จำนวนต้น/พื้นที่จากข้อมูลแปลง</label>
-            <label><input type="radio" name="qtyMode"> กรอกจำนวนเอง</label>
-            <label><input type="radio" name="costMode" checked> คำนวณต้นทุนจากอัตรางบประมาณ</label>
-            <label><input type="radio" name="costMode"> คิดตามผู้รับเหมา</label>
+          <h4>2. พื้นที่และทีม</h4>
+          <div class="farm-plan-area-tools">
+            <label>โซน
+              <select><option>ทุกโซน</option>${zoneOptions}</select>
+            </label>
+            <label>กลุ่มแปลง
+              <select><option>ทุกกลุ่มแปลง</option>${plotGroupOptions}</select>
+            </label>
           </div>
-          <div class="farm-plan-tags">
-            <span>วัสดุ ${fmt(materials.length)} รายการ</span>
-            <span>อุปกรณ์ ${fmt(vehicles.length)} รายการ</span>
-            <button type="button" data-farm-open-work-table="work_order_materials">แก้ทรัพยากร</button>
+          <div class="farm-plan-area-list">
+            ${areaGroups || `<div class="farm-plan-area-group"><p>ยังไม่มีข้อมูลแปลง</p></div>`}
+          </div>
+          <label>ทีมรับงาน
+            <select>${teams.map((row) => `<option>${esc(row.team_name || row.team_code || "")}</option>`).join("")}</select>
+          </label>
+          <div class="farm-plan-worker-list">
+            <strong>เลือกรายคนในทีม</strong>
+            ${workerRows || `<p>ยังไม่มีสมาชิกทีม</p>`}
+          </div>
+        </article>
+        <article class="farm-plan-card">
+          <h4>3. วิธีคำนวณและทรัพยากร</h4>
+          <div class="farm-plan-methods farm-plan-method-grid">
+            <label><input type="radio" name="planCalcMode" checked> ตามจำนวนต้นจากข้อมูลแปลง</label>
+            <label><input type="radio" name="planCalcMode"> ตามพื้นที่ไร่จากข้อมูลแปลง</label>
+            <label><input type="radio" name="planCalcMode"> ตามผลงานจริงหลังบันทึกงาน</label>
+            <label><input type="radio" name="planCalcMode"> ตามอัตราผู้รับเหมา</label>
+          </div>
+          <label>วัสดุหลัก
+            <select>${materials.map((row) => `<option>${esc(row.material_name || row.material_code || "")}</option>`).join("")}</select>
+          </label>
+          <label>อัตรางบประมาณ
+            <select>${budgetRates.map((row) => `<option>${esc(row.budget_rate_code || row.id)} · ${esc(farmLookupLabel("activities", row.activity_id))} · ${moneyNf.format(n(row.rate_amount))}</option>`).join("")}</select>
+          </label>
+          <div class="farm-plan-resource-note">
+            <span>เลือกวิธีคำนวณได้ครั้งละ 1 แบบ</span>
+            <span>ใช้เฉพาะวัสดุและอัตรางบประมาณที่ผูกกับกิจกรรม</span>
           </div>
         </article>
         <article class="farm-plan-card farm-plan-summary">
           <h4>4. ตรวจแล้วสร้าง</h4>
           <dl>
             <dt>งาน</dt><dd>${esc(previewGroup?.group_name || "-")} / ${esc(previewActivity?.activity_name || "-")}</dd>
-            <dt>พื้นที่</dt><dd>${fmt(Math.min(2, plots.length))} แปลง · ${esc(plotGroups[0]?.group_name || "ไม่ระบุ")}</dd>
-            <dt>ทีม</dt><dd>${esc(teams[0]?.team_name || "-")}</dd>
+            <dt>พื้นที่</dt><dd>${esc(plotCountText)} · ${moneyNf.format(totalRai)} ไร่ · ${fmt(totalTrees)} ต้น</dd>
+            <dt>ทีม</dt><dd>${esc(previewTeam?.team_name || "-")} · ${fmt(previewMembers.length)} คน</dd>
             <dt>สถานะเริ่มต้น</dt><dd>Draft → รออนุมัติ</dd>
           </dl>
+          <div class="farm-plan-cost-preview">
+            <strong>ต้นทุนประมาณการก่อนสร้างแผน</strong>
+            <table>
+              <tbody>
+                <tr><th>ฐานคำนวณ</th><td>${moneyNf.format(totalRai)} ไร่ / ${fmt(totalTrees)} ต้น</td></tr>
+                <tr><th>ค่าแรง</th><td>${moneyNf.format(totalRai)} ไร่ × ${moneyNf.format(laborRate)} = ${moneyNf.format(laborCost)}</td></tr>
+                <tr><th>วัสดุ</th><td>${esc(selectedMaterial.material_name || "-")} · ${moneyNf.format(materialQuantity)} ${esc(selectedUsageRate.usage_unit || "")}</td></tr>
+                <tr><th>ต้นทุนวัสดุ</th><td>${moneyNf.format(materialQuantity)} × ${moneyNf.format(materialRate)} = ${moneyNf.format(materialCost)}</td></tr>
+                <tr class="total"><th>รวมประมาณการ</th><td>${moneyNf.format(totalCost)}</td></tr>
+              </tbody>
+            </table>
+          </div>
           <div class="farm-plan-actions">
-            <button type="button" data-farm-open-work-table="work_orders">เปิดตาราง WO</button>
+            <button type="button" data-farm-open-work-table="work_orders">สร้างแผน Draft</button>
             <button type="button" data-farm-open-work-table="work_order_approvals">ส่งอนุมัติ</button>
           </div>
         </article>
