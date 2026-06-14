@@ -274,14 +274,16 @@ const FARM_MODULES = [
     id: "farm-area",
     title: "ข้อมูลพื้นที่",
     group: "Master Data",
-    accent: "Estate → Zone → Plot",
-    description: "จัดการ Estate, Zone, Plot / Block และ Plot Group พร้อมคำนวณอายุปาล์ม จำนวนต้นต่อไร่ และสถานะผลผลิต",
-    tables: ["estates", "zones", "plots", "plot_groups"],
+    accent: "Estate → Zone → Plot → Block",
+    description: "จัดการ Estate, Zone, Plot และ Block โดยเก็บพื้นที่จริง จำนวนต้น ปีปลูก RSPO และ AP Code ที่ระดับ Block",
+    tables: ["estates", "zones", "plots", "blocks", "plot_groups"],
     fields: [
-      ["code", "รหัสพื้นที่", "PLT-001"],
-      ["name", "ชื่อพื้นที่ / แปลง", "แปลงตัวอย่าง 01"],
+      ["code", "รหัสพื้นที่", "BLK-001"],
+      ["name", "ชื่อพื้นที่ / Block", "Block ตัวอย่าง 01"],
       ["estate", "Estate", "SPC Estate"],
       ["zone", "Zone", "Zone A"],
+      ["plot", "Plot", "Plot 01"],
+      ["apCode", "AP Code", "AP-001"],
       ["areaRai", "พื้นที่ไร่", "120"],
       ["plantingYear", "ปีปลูก", "2562"],
       ["treeCount", "จำนวนต้น", "2640"],
@@ -289,8 +291,8 @@ const FARM_MODULES = [
       ["status", "สถานะ", "active"],
     ],
     seed: [
-      { code: "PLT-001", name: "แปลงตัวอย่าง 01", estate: "SPC Estate", zone: "Zone A", areaRai: "120", plantingYear: "2562", treeCount: "2640", rspoStatus: "RSPO", status: "active" },
-      { code: "GRP-RSPO", name: "กลุ่มแปลง RSPO", estate: "SPC Estate", zone: "ทุกโซน", areaRai: "420", plantingYear: "-", treeCount: "9240", rspoStatus: "RSPO", status: "active" },
+      { code: "BLK-001", name: "Block ตัวอย่าง 01", estate: "SPC Estate", zone: "Zone A", plot: "Plot 01", apCode: "AP-001", areaRai: "120", plantingYear: "2562", treeCount: "2640", rspoStatus: "RSPO", status: "active" },
+      { code: "BLK-002", name: "Block ตัวอย่าง 02", estate: "SPC Estate", zone: "Zone B", plot: "Plot 02", apCode: "AP-002", areaRai: "95", plantingYear: "2564", treeCount: "2090", rspoStatus: "Non-RSPO", status: "active" },
     ],
   },
   {
@@ -537,7 +539,7 @@ const FARM_TABLE_SCHEMAS = {
   },
   plots: {
     moduleId: "farm-area",
-    title: "แปลง / บล็อก",
+    title: "Plot / แปลง",
     primaryKey: "id",
     codeField: "plot_code",
     labelField: "plot_name",
@@ -546,6 +548,27 @@ const FARM_TABLE_SCHEMAS = {
       F("zone_id", "โซน", { references: "zones", required: true }),
       F("plot_code", "รหัสแปลง", { required: true }),
       F("plot_name", "ชื่อแปลง"),
+      F("plot_group_id", "กลุ่มแปลง", { references: "plot_groups" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "plot-plt001", estate_id: "estate-spc", zone_id: "zone-north", plot_code: "PLT-001", plot_name: "แปลงตัวอย่าง 01", plot_group_id: "plot-group-rspo", status: "active" },
+      { id: "plot-plt002", estate_id: "estate-spc", zone_id: "zone-south", plot_code: "PLT-002", plot_name: "แปลงตัวอย่าง 02", plot_group_id: "plot-group-harvest", status: "active" },
+    ],
+  },
+  blocks: {
+    moduleId: "farm-area",
+    title: "Block / บล็อกพื้นที่",
+    primaryKey: "id",
+    codeField: "block_code",
+    labelField: "block_name",
+    fields: [
+      F("estate_id", "Estate", { references: "estates", required: true }),
+      F("zone_id", "โซน", { references: "zones", required: true }),
+      F("plot_id", "Plot / แปลง", { references: "plots", required: true }),
+      F("block_code", "รหัส Block", { required: true }),
+      F("block_name", "ชื่อ Block"),
+      F("ap_code", "AP Code", { required: true }),
       F("area_rai", "พื้นที่ไร่", { type: "number" }),
       F("planting_year", "ปีปลูก", { type: "number" }),
       F("tree_count", "จำนวนต้น", { type: "number" }),
@@ -553,8 +576,8 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "plot-plt001", estate_id: "estate-spc", zone_id: "zone-north", plot_code: "PLT-001", plot_name: "แปลงตัวอย่าง 01", area_rai: "120", planting_year: "2562", tree_count: "2640", rspo_status: "RSPO", status: "active" },
-      { id: "plot-plt002", estate_id: "estate-spc", zone_id: "zone-south", plot_code: "PLT-002", plot_name: "แปลงตัวอย่าง 02", area_rai: "95", planting_year: "2564", tree_count: "2090", rspo_status: "Non-RSPO", status: "active" },
+      { id: "block-plt001-a", estate_id: "estate-spc", zone_id: "zone-north", plot_id: "plot-plt001", block_code: "BLK-001", block_name: "Block ตัวอย่าง 01", ap_code: "AP-001", area_rai: "120", planting_year: "2562", tree_count: "2640", rspo_status: "RSPO", status: "active" },
+      { id: "block-plt002-a", estate_id: "estate-spc", zone_id: "zone-south", plot_id: "plot-plt002", block_code: "BLK-002", block_name: "Block ตัวอย่าง 02", ap_code: "AP-002", area_rai: "95", planting_year: "2564", tree_count: "2090", rspo_status: "Non-RSPO", status: "active" },
     ],
   },
   plot_groups: {
@@ -971,7 +994,8 @@ const FARM_TABLE_SCHEMAS = {
     labelField: "activity_id",
     fields: [
       F("annual_plan_id", "แผนรายปี", { references: "annual_work_plans", required: true }),
-      F("plot_id", "แปลง", { references: "plots", required: true }),
+      F("plot_id", "Plot / แปลง", { references: "plots" }),
+      F("block_id", "Block", { references: "blocks", required: true }),
       F("activity_id", "กิจกรรม", { references: "activities", required: true }),
       F("planned_month", "เดือนแผน", { type: "number" }),
       F("planned_quantity", "ปริมาณแผน", { type: "number" }),
@@ -979,7 +1003,7 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "plan-item-001", annual_plan_id: "plan-2569", plot_id: "plot-plt001", activity_id: "activity-fertilizer-0030", planned_month: "1", planned_quantity: "2640", unit: "ต้น", status: "planned" },
+      { id: "plan-item-001", annual_plan_id: "plan-2569", plot_id: "plot-plt001", block_id: "block-plt001-a", activity_id: "activity-fertilizer-0030", planned_month: "1", planned_quantity: "2640", unit: "ต้น", status: "planned" },
     ],
   },
   planned_work_materials: {
@@ -1007,7 +1031,8 @@ const FARM_TABLE_SCHEMAS = {
       F("planned_work_item_id", "รายการแผนงาน", { references: "planned_work_items" }),
       F("work_order_no", "เลขที่ WO", { required: true }),
       F("work_order_title", "ชื่องาน", { required: true }),
-      F("plot_id", "แปลง", { references: "plots", required: true }),
+      F("plot_id", "Plot / แปลง", { references: "plots" }),
+      F("block_id", "Block", { references: "blocks", required: true }),
       F("plot_group_id", "กลุ่มแปลง", { references: "plot_groups" }),
       F("activity_id", "กิจกรรม", { references: "activities", required: true }),
       F("team_id", "ทีม", { references: "teams" }),
@@ -1025,12 +1050,12 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "wo-001", planned_work_item_id: "plan-item-001", work_order_no: "WO-2569-001", work_order_title: "ใส่ปุ๋ยแปลง PLT-001", plot_id: "plot-plt001", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer-0030", team_id: "team-a", planned_start_date: "2026-01-15", planned_end_date: "2026-01-16", scheduled_date: "2026-01-15", approval_status: "approved", approved_by: "profile-admin", approved_at: "2026-01-14", status: "sent_to_mobile" },
-      { id: "wo-002", work_order_no: "WO-2569-002", work_order_title: "ตัดปาล์มแปลง PLT-002", plot_id: "plot-plt002", plot_group_id: "plot-group-harvest", activity_id: "activity-harvest", team_id: "team-harvest", planned_start_date: "2026-01-18", planned_end_date: "2026-01-18", scheduled_date: "2026-01-18", approval_status: "pending", status: "pending_approval" },
-      { id: "wo-003", work_order_no: "WO-2569-003", work_order_title: "ใส่ปุ๋ยโดโลไมท์ PLT-001", plot_id: "plot-plt001", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer-dolomite", team_id: "team-a", planned_start_date: "2026-01-20", planned_end_date: "2026-01-21", original_scheduled_date: "2026-01-20", scheduled_date: "2026-01-23", rescheduled_date: "2026-01-23", rescheduled_by_manager_id: "profile-admin", reschedule_reason: "ฝนตกและพื้นที่ยังไม่พร้อม", approval_status: "approved", status: "rescheduled" },
-      { id: "wo-004", work_order_no: "WO-2569-004", work_order_title: "ตัดปาล์มรอบสอง PLT-001", plot_id: "plot-plt001", plot_group_id: "plot-group-harvest", activity_id: "activity-harvest", team_id: "team-harvest", planned_start_date: "2026-01-25", planned_end_date: "2026-01-26", scheduled_date: "2026-01-25", approval_status: "approved", status: "in_progress" },
-      { id: "wo-005", work_order_no: "WO-2569-005", work_order_title: "ใส่ปุ๋ย 0-0-30 PLT-002", plot_id: "plot-plt002", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer-0030", team_id: "team-a", planned_start_date: "2026-01-28", planned_end_date: "2026-01-29", scheduled_date: "2026-01-28", approval_status: "approved", status: "completed" },
-      { id: "wo-006", work_order_no: "WO-2569-006", work_order_title: "ปิดงานเก็บเกี่ยว PLT-002", plot_id: "plot-plt002", plot_group_id: "plot-group-harvest", activity_id: "activity-harvest", team_id: "team-harvest", planned_start_date: "2026-02-02", planned_end_date: "2026-02-02", scheduled_date: "2026-02-02", approval_status: "approved", closed_at: "2026-02-02", status: "closed" },
+      { id: "wo-001", planned_work_item_id: "plan-item-001", work_order_no: "WO-2569-001", work_order_title: "ใส่ปุ๋ย Block BLK-001", plot_id: "plot-plt001", block_id: "block-plt001-a", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer-0030", team_id: "team-a", planned_start_date: "2026-01-15", planned_end_date: "2026-01-16", scheduled_date: "2026-01-15", approval_status: "approved", approved_by: "profile-admin", approved_at: "2026-01-14", status: "sent_to_mobile" },
+      { id: "wo-002", work_order_no: "WO-2569-002", work_order_title: "ตัดปาล์ม Block BLK-002", plot_id: "plot-plt002", block_id: "block-plt002-a", plot_group_id: "plot-group-harvest", activity_id: "activity-harvest", team_id: "team-harvest", planned_start_date: "2026-01-18", planned_end_date: "2026-01-18", scheduled_date: "2026-01-18", approval_status: "pending", status: "pending_approval" },
+      { id: "wo-003", work_order_no: "WO-2569-003", work_order_title: "ใส่ปุ๋ยโดโลไมท์ Block BLK-001", plot_id: "plot-plt001", block_id: "block-plt001-a", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer-dolomite", team_id: "team-a", planned_start_date: "2026-01-20", planned_end_date: "2026-01-21", original_scheduled_date: "2026-01-20", scheduled_date: "2026-01-23", rescheduled_date: "2026-01-23", rescheduled_by_manager_id: "profile-admin", reschedule_reason: "ฝนตกและพื้นที่ยังไม่พร้อม", approval_status: "approved", status: "rescheduled" },
+      { id: "wo-004", work_order_no: "WO-2569-004", work_order_title: "ตัดปาล์มรอบสอง Block BLK-001", plot_id: "plot-plt001", block_id: "block-plt001-a", plot_group_id: "plot-group-harvest", activity_id: "activity-harvest", team_id: "team-harvest", planned_start_date: "2026-01-25", planned_end_date: "2026-01-26", scheduled_date: "2026-01-25", approval_status: "approved", status: "in_progress" },
+      { id: "wo-005", work_order_no: "WO-2569-005", work_order_title: "ใส่ปุ๋ย 0-0-30 Block BLK-002", plot_id: "plot-plt002", block_id: "block-plt002-a", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer-0030", team_id: "team-a", planned_start_date: "2026-01-28", planned_end_date: "2026-01-29", scheduled_date: "2026-01-28", approval_status: "approved", status: "completed" },
+      { id: "wo-006", work_order_no: "WO-2569-006", work_order_title: "ปิดงานเก็บเกี่ยว Block BLK-002", plot_id: "plot-plt002", block_id: "block-plt002-a", plot_group_id: "plot-group-harvest", activity_id: "activity-harvest", team_id: "team-harvest", planned_start_date: "2026-02-02", planned_end_date: "2026-02-02", scheduled_date: "2026-02-02", approval_status: "approved", closed_at: "2026-02-02", status: "closed" },
     ],
   },
   work_order_workers: {
@@ -1652,6 +1677,9 @@ const FARM_TABLE_SCHEMAS = {
       F("fiscal_year", "ปีงบประมาณ", { type: "number", required: true }),
       F("estate_id", "Estate", { references: "estates", required: true }),
       F("plot_group_id", "กลุ่มแปลง", { references: "plot_groups" }),
+      F("plot_id", "Plot / แปลง", { references: "plots" }),
+      F("block_id", "Block", { references: "blocks" }),
+      F("ap_code", "AP Code"),
       F("activity_id", "กิจกรรม", { references: "activities", required: true }),
       F("material_id", "วัสดุ", { references: "materials" }),
       F("team_id", "กลุ่มคนงาน", { references: "teams" }),
@@ -1661,7 +1689,7 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "budget-rate-001", budget_rate_code: "BUD-2569-001", fiscal_year: "2569", estate_id: "estate-spc", plot_group_id: "plot-group-rspo", activity_id: "activity-fertilizer-0030", material_id: "material-fert-25", team_id: "team-a", rate_type: "labor", unit_id: "unit-kg", rate_amount: "250", status: "active" },
+      { id: "budget-rate-001", budget_rate_code: "BUD-2569-001", fiscal_year: "2569", estate_id: "estate-spc", plot_group_id: "plot-group-rspo", plot_id: "plot-plt001", block_id: "block-plt001-a", ap_code: "AP-001", activity_id: "activity-fertilizer-0030", material_id: "material-fert-25", team_id: "team-a", rate_type: "labor", unit_id: "unit-kg", rate_amount: "250", status: "active" },
     ],
   },
   contractor_period_estimates: {
@@ -1691,7 +1719,9 @@ const FARM_TABLE_SCHEMAS = {
     fields: [
       F("cost_date", "วันที่ต้นทุน", { type: "date" }),
       F("estate_id", "Estate", { references: "estates" }),
-      F("plot_id", "แปลง", { references: "plots" }),
+      F("plot_id", "Plot / แปลง", { references: "plots" }),
+      F("block_id", "Block", { references: "blocks" }),
+      F("ap_code", "AP Code"),
       F("activity_id", "กิจกรรม", { references: "activities" }),
       F("work_order_id", "ใบสั่งงาน", { references: "work_orders" }),
       F("cost_type", "ประเภทต้นทุน", { options: ["labor", "material", "fuel", "machine", "other"] }),
@@ -1759,7 +1789,8 @@ const FARM_TABLE_SCHEMAS = {
       F("profile_id", "ผู้ใช้", { references: "profiles", required: true }),
       F("estate_id", "Estate", { references: "estates" }),
       F("zone_id", "โซน", { references: "zones" }),
-      F("plot_id", "แปลง", { references: "plots" }),
+      F("plot_id", "Plot / แปลง", { references: "plots" }),
+      F("block_id", "Block", { references: "blocks" }),
       F("scope_type", "ชนิดสิทธิ์", { options: ["read", "write", "approve"] }),
       F("status", "สถานะ", { type: "status" }),
     ],
@@ -6656,7 +6687,31 @@ function farmRows(table = selectedFarmTable()) {
   const deleted = new Set(state.farmRecords.filter((row) => row.tableId === tableId && row._deleted).map((row) => row._overrideOf || row.id));
   const seedRows = farmSeedRows(table).map((row) => overrides.has(row.id) ? { ...row, ...overrides.get(row.id), id: row.id, readonly: false } : row).filter((row) => !deleted.has(row.id));
   const customRows = state.farmRecords.filter((row) => row.tableId === tableId && !row._overrideOf && !row._deleted);
-  return [...seedRows, ...customRows];
+  const rows = [...seedRows, ...customRows];
+  if (tableId !== "blocks") return rows;
+  const existingPlotIds = new Set(rows.map((row) => row.plot_id).filter(Boolean));
+  const legacyPlots = farmRows(farmTableByKey("plots"))
+    .filter((plot) => !existingPlotIds.has(plot.id) && [plot.area_rai, plot.planting_year, plot.tree_count, plot.rspo_status, plot.ap_code, plot.AP_code].some((value) => value !== undefined && value !== ""))
+    .map((plot) => ({
+      id: `legacy-block-${plot.id}`,
+      tableId: "blocks",
+      moduleId: "farm-area",
+      readonly: true,
+      createdAt: "legacy",
+      updatedAt: "legacy",
+      estate_id: plot.estate_id,
+      zone_id: plot.zone_id,
+      plot_id: plot.id,
+      block_code: plot.block_code || plot.plot_code || plot.id,
+      block_name: plot.block_name || plot.plot_name || "",
+      ap_code: plot.ap_code || plot.AP_code || "",
+      area_rai: plot.area_rai || "",
+      planting_year: plot.planting_year || "",
+      tree_count: plot.tree_count || "",
+      rspo_status: plot.rspo_status || "",
+      status: plot.status || "active",
+    }));
+  return [...rows, ...legacyPlots];
 }
 
 function filteredFarmRows(table = selectedFarmTable()) {
@@ -7040,13 +7095,15 @@ function farmDaysBetween(startIso, endIso) {
 
 function farmWorkOrders() {
   const orders = farmRows(farmTableByKey("work_orders"));
+  const blocks = farmRows(farmTableByKey("blocks"));
   return orders.map((order) => {
-    const plot = farmLookup("plots", order.plot_id);
-    const zone = farmLookup("zones", plot?.zone_id);
+    const block = farmLookup("blocks", order.block_id) || blocks.find((item) => item.plot_id === order.plot_id) || null;
+    const plot = farmLookup("plots", order.plot_id || block?.plot_id);
+    const zone = farmLookup("zones", block?.zone_id || plot?.zone_id);
     const activity = farmLookup("activities", order.activity_id);
     const group = farmLookup("activity_groups", activity?.activity_group_id);
     const team = farmLookup("teams", order.team_id);
-    const plotGroup = farmLookup("plot_groups", order.plot_group_id);
+    const plotGroup = farmLookup("plot_groups", order.plot_group_id || plot?.plot_group_id);
     const startDate = isoDay(order.planned_start_date || order.scheduled_date || order.original_scheduled_date);
     const endDate = isoDay(order.planned_end_date || order.rescheduled_date || order.scheduled_date || startDate);
     return {
@@ -7054,6 +7111,7 @@ function farmWorkOrders() {
       startDate,
       endDate,
       plot,
+      block,
       zone,
       activity,
       activityGroup: group,
@@ -7079,7 +7137,7 @@ function filteredFarmWorkOrders() {
   const query = f.query.trim().toLowerCase();
   return farmWorkOrders().filter((row) => {
     const statusKey = row.statusMeta.key;
-    const text = [row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
+    const text = [row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.block?.block_code, row.block?.block_name, row.block?.ap_code || row.block?.AP_code, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
     return (f.activityGroup === "all" || row.activityGroup?.id === f.activityGroup)
       && (f.team === "all" || row.team?.id === f.team)
       && (f.zone === "all" || row.zone?.id === f.zone)
@@ -7130,6 +7188,7 @@ function renderFarmPlannerQuickList(tableKey, rows, titleField, subFields = [], 
 
 function renderFarmWorkPlanner() {
   const plots = farmRows(farmTableByKey("plots"));
+  const blocks = farmRows(farmTableByKey("blocks"));
   const plotGroups = farmRows(farmTableByKey("plot_groups"));
   const zones = farmRows(farmTableByKey("zones"));
   const activityGroups = farmRows(farmTableByKey("activity_groups"));
@@ -7145,9 +7204,9 @@ function renderFarmWorkPlanner() {
   const previewGroup = activityGroups.find((item) => item.id === previewActivity?.activity_group_id) || activityGroups[0];
   const previewTeam = teams[0];
   const previewMembers = teamMembers.filter((item) => item.team_id === previewTeam?.id).slice(0, 8);
-  const selectedPlots = plots.slice(0, Math.min(2, plots.length));
-  const totalRai = selectedPlots.reduce((sum, row) => sum + n(row.area_rai), 0);
-  const totalTrees = selectedPlots.reduce((sum, row) => sum + n(row.tree_count), 0);
+  const selectedBlocks = blocks.slice(0, Math.min(2, blocks.length));
+  const totalRai = selectedBlocks.reduce((sum, row) => sum + n(row.area_rai), 0);
+  const totalTrees = selectedBlocks.reduce((sum, row) => sum + n(row.tree_count), 0);
   const selectedBudgetRate = budgetRates.find((row) => row.activity_id === previewActivity?.id) || budgetRates[0] || {};
   const laborBudgetRate = budgetRates.find((row) => row.activity_id === previewActivity?.id && row.rate_type === "labor")
     || budgetRates.find((row) => row.rate_type === "labor")
@@ -7164,20 +7223,23 @@ function renderFarmWorkPlanner() {
   const laborCost = totalRai * laborRate;
   const materialCost = materialQuantity * materialRate;
   const totalCost = laborCost + materialCost;
-  const plotCountText = `${fmt(selectedPlots.length)} จาก ${fmt(plots.length)} แปลง`;
+  const plotCountText = `${fmt(selectedBlocks.length)} จาก ${fmt(blocks.length)} Block`;
   const zoneOptions = zones.map((row) => `<option>${esc(row.zone_name || row.zone_code || "")}</option>`).join("");
   const plotGroupOptions = plotGroups.map((row) => `<option>${esc(row.group_name || row.group_code || "")}</option>`).join("");
   const areaGroups = zones.map((zone) => {
-    const zonePlots = plots.filter((plot) => plot.zone_id === zone.id).slice(0, 5);
+    const zoneBlocks = blocks.filter((block) => block.zone_id === zone.id).slice(0, 8);
     return `
       <div class="farm-plan-area-group">
-        <strong>${esc(zone.zone_name || zone.zone_code || "ไม่ระบุโซน")} <em>${fmt(zonePlots.length)}</em></strong>
-        ${zonePlots.map((plot, index) => `
+        <strong>${esc(zone.zone_name || zone.zone_code || "ไม่ระบุโซน")} <em>${fmt(zoneBlocks.length)}</em></strong>
+        ${zoneBlocks.map((block, index) => {
+          const plot = plots.find((row) => row.id === block.plot_id) || {};
+          return `
           <label class="farm-plan-area-row">
             <input type="checkbox" ${index < 2 ? "checked" : ""}>
-            <span>${esc(plot.plot_code || "-")}</span>
-            <small>${esc(plot.plot_name || "")} · ${fmt(n(plot.area_rai))} ไร่ · ${fmt(n(plot.tree_count))} ต้น</small>
-          </label>`).join("") || `<p>ยังไม่มีแปลงในโซนนี้</p>`}
+            <span>${esc(block.block_code || "-")}</span>
+            <small>${esc(plot.plot_code || "-")} · ${esc(block.ap_code || block.AP_code || "ไม่มี AP")} · ${fmt(n(block.area_rai))} ไร่ · ${fmt(n(block.tree_count))} ต้น</small>
+          </label>`;
+        }).join("") || `<p>ยังไม่มี Block ในโซนนี้</p>`}
       </div>`;
   }).join("");
   const workerRows = previewMembers.map((member) => {
@@ -7382,7 +7444,7 @@ function renderFarmWorkBoard() {
                   <button type="button" class="farm-work-left">
                     <b>${esc(row.work_order_no || row.id)}</b>
                     <strong>${esc(row.work_order_title || "-")}</strong>
-                    <span>${esc(row.plot?.plot_code || "-")} · ${esc(row.activity?.activity_name || "-")} · ${esc(row.team?.team_name || "-")}</span>
+                    <span>${esc(row.plot?.plot_code || "-")} / ${esc(row.block?.block_code || "-")} · ${esc(row.block?.ap_code || row.block?.AP_code || "ไม่มี AP")} · ${esc(row.activity?.activity_name || "-")} · ${esc(row.team?.team_name || "-")}</span>
                   </button>
                   <div class="farm-work-lane" style="width:${timelineWidth}px">
                     ${originalIndex >= 0 && originalIndex !== startIndex ? `<i class="farm-work-original" title="วันที่เดิม ${esc(row.original_scheduled_date)}" style="left:${originalIndex * dayWidth + 9}px"></i>` : ""}
@@ -7408,7 +7470,9 @@ function renderFarmWorkDetail(order) {
     ["ชื่องาน", order.work_order_title],
     ["ขั้นตอน", order.statusMeta.label],
     ["สถานะอนุมัติ", order.approval_status || "-"],
-    ["แปลง", farmLookupLabel("plots", order.plot_id)],
+    ["Plot / แปลง", farmLookupLabel("plots", order.plot_id || order.block?.plot_id)],
+    ["Block", farmLookupLabel("blocks", order.block_id || order.block?.id)],
+    ["AP Code", order.block?.ap_code || order.block?.AP_code || order.ap_code || order.AP_code || "-"],
     ["โซน", order.zone?.zone_name || "-"],
     ["กลุ่มแปลง", farmLookupLabel("plot_groups", order.plot_group_id)],
     ["กิจกรรม", farmLookupLabel("activities", order.activity_id)],
