@@ -419,23 +419,41 @@ const FARM_MODULES = [
     ],
   },
   {
-    id: "farm-general",
-    title: "ข้อมูลทั่วไป",
-    group: "System",
-    accent: "Users / Permissions / Settings / Audit",
-    description: "จัดการผู้ใช้ Supabase Auth, สิทธิ์, access scope, system settings, attachments และ audit log",
-    tables: ["profiles", "permissions", "role_permissions", "user_access_scopes", "system_settings", "attachments", "audit_logs"],
+    id: "farm-governance",
+    title: "สิทธิ์ / อนุมัติ",
+    group: "Control",
+    accent: "Role → Scope → Approval → Audit",
+    description: "จัดการผู้ใช้ บทบาท สิทธิ์ ขอบเขตพื้นที่ ลำดับอนุมัติใบสั่งงาน และ audit trail ให้ชัดเจนตามขั้นตอนงาน",
+    tables: ["profiles", "permissions", "role_permissions", "user_access_scopes", "work_order_approvals", "work_order_status_logs", "audit_logs"],
     fields: [
-      ["code", "รหัส", "PERM-001"],
-      ["name", "ชื่อรายการ", "work_orders.approve"],
+      ["code", "รหัส", "GOV-001"],
+      ["name", "ชื่อรายการ", "อนุมัติใบสั่งงาน"],
+      ["role", "Role", "director"],
       ["module", "Module", "work_orders"],
       ["action", "Action", "approve"],
-      ["role", "Role", "director"],
       ["status", "สถานะ", "active"],
     ],
     seed: [
-      { code: "PERM-001", name: "อนุมัติใบสั่งงาน", module: "work_orders", action: "approve", role: "director", status: "active" },
-      { code: "SET-001", name: "ค่าเริ่มต้น GPS radius", module: "system", action: "settings", role: "super_admin", status: "active" },
+      { code: "GOV-001", name: "อนุมัติใบสั่งงาน", role: "director", module: "work_orders", action: "approve", status: "active" },
+      { code: "GOV-002", name: "ขอบเขตพื้นที่หัวหน้าโซน", role: "supervisor", module: "plots", action: "write", status: "active" },
+    ],
+  },
+  {
+    id: "farm-general",
+    title: "ตั้งค่าระบบ",
+    group: "System",
+    accent: "Settings / Attachments",
+    description: "ตั้งค่าระบบกลาง ค่าเริ่มต้นมือถือ ไฟล์แนบ และข้อมูลประกอบที่ไม่ใช่ขั้นตอนอนุมัติ",
+    tables: ["system_settings", "attachments"],
+    fields: [
+      ["code", "รหัส", "SET-001"],
+      ["name", "ชื่อรายการ", "ค่าเริ่มต้น GPS radius"],
+      ["module", "กลุ่มตั้งค่า", "mobile"],
+      ["action", "ค่า", "100"],
+      ["status", "สถานะ", "active"],
+    ],
+    seed: [
+      { code: "SET-001", name: "ค่าเริ่มต้น GPS radius", module: "mobile", action: "100", status: "active" },
     ],
   },
   {
@@ -458,6 +476,16 @@ const FARM_MODULES = [
       { code: "RPT-002", name: "รายงานค่าแรงรายงวด", module: "payroll", filter: "งวด / ทีม / พนักงาน", format: "Excel/PDF", status: "ready" },
     ],
   },
+];
+
+const FARM_WORKFLOW_STAGES = [
+  { no: "01", title: "ข้อมูลหลัก", views: ["farm-area", "farm-people", "farm-activities", "farm-inventory", "farm-budget"], note: "เตรียมพื้นที่ คน กิจกรรม พัสดุ และอัตรางบประมาณ", role: "Admin / Manager" },
+  { no: "02", title: "วางแผน", views: ["farm-work"], table: "annual_work_plans", note: "กำหนดแผนรายปี แผนรายกิจกรรม และพื้นที่ทำงาน", role: "Estate Manager" },
+  { no: "03", title: "สั่งงาน", views: ["farm-work"], table: "work_orders", note: "สร้างใบสั่งงาน ทีม วัสดุ QR และกำหนดวันทำงาน", role: "Supervisor" },
+  { no: "04", title: "อนุมัติ", views: ["farm-governance"], table: "work_order_approvals", note: "ตรวจสิทธิ์ ขอบเขตพื้นที่ และลำดับอนุมัติ", role: "Director / Manager" },
+  { no: "05", title: "บันทึกงาน", views: ["farm-work"], table: "work_results", note: "เช็คชื่อ GPS ผลงาน วัสดุใช้จริง และสถานะงาน", role: "Supervisor / Mobile" },
+  { no: "06", title: "ค่าแรง / ต้นทุน", views: ["farm-payroll", "farm-budget"], note: "คำนวณค่าแรง รายชั่วโมง OT เงินเพิ่ม เงินหัก และต้นทุน", role: "Accounting" },
+  { no: "07", title: "รายงาน", views: ["farm-reports"], note: "สรุปรายงาน ตรวจย้อนหลัง และส่งออก Excel/PDF", role: "Viewer / Auditor" },
 ];
 
 const F = (key, label, options = {}) => ({ key, label, ...options });
@@ -1006,7 +1034,7 @@ const FARM_TABLE_SCHEMAS = {
     seed: [],
   },
   work_order_approvals: {
-    moduleId: "farm-work",
+    moduleId: "farm-governance",
     title: "อนุมัติใบสั่งงาน",
     primaryKey: "id",
     codeField: "approval_level",
@@ -1050,7 +1078,7 @@ const FARM_TABLE_SCHEMAS = {
     seed: [],
   },
   work_order_status_logs: {
-    moduleId: "farm-work",
+    moduleId: "farm-governance",
     title: "ประวัติสถานะใบสั่งงาน",
     primaryKey: "id",
     codeField: "to_status",
@@ -1616,7 +1644,7 @@ const FARM_TABLE_SCHEMAS = {
     seed: [],
   },
   profiles: {
-    moduleId: "farm-general",
+    moduleId: "farm-governance",
     title: "ผู้ใช้ระบบ",
     primaryKey: "id",
     codeField: "role",
@@ -1632,7 +1660,7 @@ const FARM_TABLE_SCHEMAS = {
     ],
   },
   permissions: {
-    moduleId: "farm-general",
+    moduleId: "farm-governance",
     title: "สิทธิ์ระบบ",
     primaryKey: "id",
     codeField: "permission_key",
@@ -1649,7 +1677,7 @@ const FARM_TABLE_SCHEMAS = {
     ],
   },
   role_permissions: {
-    moduleId: "farm-general",
+    moduleId: "farm-governance",
     title: "สิทธิ์ตาม Role",
     primaryKey: "id",
     codeField: "role",
@@ -1665,7 +1693,7 @@ const FARM_TABLE_SCHEMAS = {
     ],
   },
   user_access_scopes: {
-    moduleId: "farm-general",
+    moduleId: "farm-governance",
     title: "ขอบเขตการเข้าถึง",
     primaryKey: "id",
     codeField: "scope_type",
@@ -1714,7 +1742,7 @@ const FARM_TABLE_SCHEMAS = {
     seed: [],
   },
   audit_logs: {
-    moduleId: "farm-general",
+    moduleId: "farm-governance",
     title: "Audit Log",
     primaryKey: "id",
     codeField: "action",
@@ -6714,6 +6742,50 @@ function exportFarmCsv() {
   URL.revokeObjectURL(url);
 }
 
+function renderFarmWorkflowNav(module) {
+  return `
+    <section class="farm-flow-nav">
+      ${FARM_WORKFLOW_STAGES.map((stage) => {
+        const active = stage.views.includes(module.id);
+        const targetView = stage.views[0] || module.id;
+        return `
+          <button class="farm-flow-step${active ? " active" : ""}" type="button" data-view="${esc(targetView)}">
+            <b>${esc(stage.no)}</b>
+            <strong>${esc(stage.title)}</strong>
+            <span>${esc(stage.note)}</span>
+            <small>${esc(stage.role)}</small>
+          </button>`;
+      }).join("")}
+    </section>`;
+}
+
+function renderFarmGovernanceBoard(table) {
+  const cards = [
+    { table: "profiles", no: "1", title: "ผู้ใช้และบทบาท", detail: "ผูกผู้ใช้กับพนักงานและ Role ก่อนเปิดสิทธิ์" },
+    { table: "permissions", no: "2", title: "สิทธิ์ตามงาน", detail: "กำหนด module/action เช่น read, create, update, approve" },
+    { table: "role_permissions", no: "3", title: "Role Permission", detail: "ระบุว่าแต่ละ Role ทำอะไรได้บ้าง" },
+    { table: "user_access_scopes", no: "4", title: "ขอบเขตพื้นที่", detail: "จำกัด Estate, Zone, Plot ตามหน้าที่รับผิดชอบ" },
+    { table: "work_order_approvals", no: "5", title: "ลำดับอนุมัติ", detail: "กำหนดระดับ ผู้อนุมัติ และผลอนุมัติของใบสั่งงาน" },
+    { table: "work_order_status_logs", no: "6", title: "ประวัติและ Audit", detail: "ตรวจสถานะย้อนหลังและการแก้ไขข้อมูลสำคัญ" },
+  ];
+  return `
+    <section class="farm-approval-board">
+      <div class="section-head">
+        <h3>เส้นทางควบคุมสิทธิ์และอนุมัติ</h3>
+        <span>เลือกขั้นตอนเพื่อเปิดตารางที่ต้องดูหรือแก้ไข</span>
+      </div>
+      <div class="farm-approval-grid">
+        ${cards.map((card) => `
+          <button class="farm-approval-card${table.key === card.table ? " active" : ""}" type="button" data-farm-open-table="${esc(card.table)}">
+            <b>${esc(card.no)}</b>
+            <strong>${esc(card.title)}</strong>
+            <span>${esc(card.detail)}</span>
+            <small>${esc(card.table)}</small>
+          </button>`).join("")}
+      </div>
+    </section>`;
+}
+
 function renderFarmKeyBindings(table) {
   const refs = (table.fields || []).filter((field) => farmFieldReferences(field));
   return `
@@ -6752,12 +6824,14 @@ function renderFarmPage() {
           <p>${esc(module.description)}</p>
         </div>
       </div>
+      ${renderFarmWorkflowNav(module)}
       <section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
         <article><span>Foreign Key</span><strong>${fmt(refCount)}</strong><small>Inactive ${fmt(inactiveCount)} รายการ</small></article>
       </section>
+      ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       <section class="farm-toolbar">
         <label>ตารางข้อมูล
           <select id="farmTableSelect">
@@ -7763,6 +7837,14 @@ async function init() {
     state.estSearchTimer = setTimeout(render, 250);
   });
   els.reportPage.addEventListener("click", (e) => {
+    const farmOpenTable = e.target.closest("[data-farm-open-table]");
+    if (farmOpenTable) {
+      state.farmTableId = farmOpenTable.dataset.farmOpenTable;
+      state.farmEditId = "";
+      state.farmDetailId = "";
+      render();
+      return;
+    }
     if (e.target.closest("[data-farm-new]")) {
       state.farmEditId = "";
       state.farmDetailId = "";
