@@ -3449,6 +3449,37 @@ tfoot td {
   color: #fff;
 }
 
+.farm-version-notice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.farm-version-notice.active {
+  border-color: #bfdbfe;
+  background: #eef6ff;
+}
+
+.farm-version-notice div {
+  display: grid;
+  gap: 4px;
+}
+
+.farm-version-notice strong {
+  color: var(--navy);
+  font-size: 13px;
+}
+
+.farm-version-notice span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .farm-toolbar label,
 .farm-form label {
   display: grid;
@@ -3682,6 +3713,7 @@ tfoot td {
   .farm-flow-nav,
   .farm-hero,
   .farm-approval-grid,
+  .farm-version-notice,
   .farm-toolbar,
   .farm-layout,
   .farm-form,
@@ -3761,6 +3793,7 @@ tfoot td {
   .farm-flow-nav,
   .farm-hero,
   .farm-approval-grid,
+  .farm-version-notice,
   .farm-toolbar,
   .farm-layout,
   .farm-form,

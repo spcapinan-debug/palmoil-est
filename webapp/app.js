@@ -301,15 +301,17 @@ const FARM_MODULES = [
       ["code", "รหัส", "EMP-001"],
       ["name", "ชื่อ", "หัวหน้าทีมตัวอย่าง"],
       ["type", "ประเภท", "supervisor"],
+      ["nationality", "สัญชาติ", "ไทย"],
       ["team", "ทีม", "ทีมตัดปาล์ม A"],
       ["role", "บทบาท", "supervisor"],
+      ["paymentType", "ประเภทการจ่าย", "รายวัน"],
       ["dailyWage", "ค่าแรง", "450"],
       ["phone", "เบอร์โทร", ""],
       ["status", "สถานะ", "active"],
     ],
     seed: [
-      { code: "EMP-001", name: "หัวหน้าทีมตัวอย่าง", type: "supervisor", team: "ทีมตัดปาล์ม A", role: "supervisor", dailyWage: "650", phone: "", status: "active" },
-      { code: "CON-001", name: "ผู้รับเหมางานเก็บเกี่ยว", type: "harvest_contractor", team: "ผู้รับเหมา", role: "contractor", dailyWage: "0", phone: "", status: "active" },
+      { code: "EMP-001", name: "หัวหน้าทีมตัวอย่าง", type: "supervisor", nationality: "ไทย", team: "ทีมตัดปาล์ม A", role: "supervisor", paymentType: "รายวัน", dailyWage: "650", phone: "", status: "active" },
+      { code: "CON-001", name: "ผู้รับเหมางานเก็บเกี่ยว", type: "harvest_contractor", nationality: "ไทย", team: "ผู้รับเหมา", role: "contractor", paymentType: "รายเหมา", dailyWage: "0", phone: "", status: "active" },
     ],
   },
   {
@@ -424,7 +426,7 @@ const FARM_MODULES = [
     group: "Control",
     accent: "Role → Scope → Approval → Audit",
     description: "จัดการผู้ใช้ บทบาท สิทธิ์ ขอบเขตพื้นที่ ลำดับอนุมัติใบสั่งงาน และ audit trail ให้ชัดเจนตามขั้นตอนงาน",
-    tables: ["profiles", "permissions", "role_permissions", "user_access_scopes", "work_order_approvals", "work_order_status_logs", "audit_logs"],
+    tables: ["profiles", "permissions", "role_permissions", "user_access_scopes", "work_order_approvals", "work_order_status_logs", "master_record_versions", "audit_logs"],
     fields: [
       ["code", "รหัส", "GOV-001"],
       ["name", "ชื่อรายการ", "อนุมัติใบสั่งงาน"],
@@ -487,6 +489,8 @@ const FARM_WORKFLOW_STAGES = [
   { no: "06", title: "ค่าแรง / ต้นทุน", views: ["farm-payroll", "farm-budget"], note: "คำนวณค่าแรง รายชั่วโมง OT เงินเพิ่ม เงินหัก และต้นทุน", role: "Accounting" },
   { no: "07", title: "รายงาน", views: ["farm-reports"], note: "สรุปรายงาน ตรวจย้อนหลัง และส่งออก Excel/PDF", role: "Viewer / Auditor" },
 ];
+
+const VERSIONED_FARM_TABLES = new Set(["employees", "contractors", "payroll_rates"]);
 
 const F = (key, label, options = {}) => ({ key, label, ...options });
 
@@ -607,27 +611,37 @@ const FARM_TABLE_SCHEMAS = {
   },
   employees: {
     moduleId: "farm-people",
-    title: "พนักงาน",
+    title: "พนักงาน / คนงาน",
     primaryKey: "id",
     codeField: "employee_code",
     labelField: "full_name",
     fields: [
       F("employee_code", "รหัสพนักงาน", { required: true }),
       F("full_name", "ชื่อ-สกุล", { required: true }),
+      F("nationality", "สัญชาติ", { options: ["ไทย", "เมียนมา", "กัมพูชา", "ลาว", "มาเลเซีย", "อื่นๆ"] }),
+      F("worker_type", "ประเภทบุคลากร", { options: ["คนงาน", "พนักงาน", "หัวหน้างาน", "คนขับ", "ธุรการ"] }),
+      F("payment_type", "ประเภทการจ่าย", { options: ["รายวัน", "รายเดือน", "รายเหมา"] }),
       F("department_id", "แผนกงาน", { references: "departments", required: true }),
       F("default_housing_unit_id", "บ้านพักปัจจุบัน", { references: "housing_units" }),
       F("position", "ตำแหน่ง"),
       F("default_role", "Role", { options: FARM_ROLES }),
       F("daily_wage", "ค่าแรงรายวัน", { type: "number" }),
+      F("monthly_salary", "เงินเดือน", { type: "number" }),
+      F("contract_rate", "อัตราเหมา", { type: "number" }),
       F("normal_hours_per_day", "ชั่วโมงทำงาน/วัน", { type: "number" }),
       F("hourly_wage_rate", "ค่าแรงรายชั่วโมง", { type: "number", calculated: "daily_wage / normal_hours_per_day" }),
       F("phone", "เบอร์โทร"),
       F("start_date", "เริ่มงาน", { type: "date" }),
+      F("effective_from", "เริ่มใช้ Version", { type: "date" }),
+      F("effective_to", "สิ้นสุด Version", { type: "date" }),
+      F("version_no", "Version", { type: "number" }),
+      F("is_current", "Version ปัจจุบัน", { type: "boolean" }),
+      F("previous_version_id", "Version ก่อนหน้า", { references: "employees" }),
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "emp-001", employee_code: "EMP-001", full_name: "หัวหน้าทีมตัวอย่าง", department_id: "dept-field", default_housing_unit_id: "house-a01", position: "Supervisor", default_role: "supervisor", daily_wage: "650", normal_hours_per_day: "8", hourly_wage_rate: "81.25", status: "active" },
-      { id: "emp-002", employee_code: "EMP-002", full_name: "คนงานตัวอย่าง", department_id: "dept-harvest", default_housing_unit_id: "house-a01", position: "Worker", default_role: "viewer", daily_wage: "450", normal_hours_per_day: "8", hourly_wage_rate: "56.25", status: "active" },
+      { id: "emp-001", employee_code: "EMP-001", full_name: "หัวหน้าทีมตัวอย่าง", nationality: "ไทย", worker_type: "หัวหน้างาน", payment_type: "รายวัน", department_id: "dept-field", default_housing_unit_id: "house-a01", position: "Supervisor", default_role: "supervisor", daily_wage: "650", normal_hours_per_day: "8", hourly_wage_rate: "81.25", effective_from: "2026-01-01", version_no: "1", is_current: "true", status: "active" },
+      { id: "emp-002", employee_code: "EMP-002", full_name: "คนงานตัวอย่าง", nationality: "ไทย", worker_type: "คนงาน", payment_type: "รายวัน", department_id: "dept-harvest", default_housing_unit_id: "house-a01", position: "Worker", default_role: "viewer", daily_wage: "450", normal_hours_per_day: "8", hourly_wage_rate: "56.25", effective_from: "2026-01-01", version_no: "1", is_current: "true", status: "active" },
     ],
   },
   employee_housing_assignments: {
@@ -681,14 +695,22 @@ const FARM_TABLE_SCHEMAS = {
     fields: [
       F("contractor_code", "รหัสผู้รับเหมา", { required: true }),
       F("contractor_name", "ชื่อผู้รับเหมา", { required: true }),
+      F("nationality", "สัญชาติ", { options: ["ไทย", "เมียนมา", "กัมพูชา", "ลาว", "มาเลเซีย", "อื่นๆ"] }),
       F("contractor_type", "ประเภท"),
+      F("payment_type", "ประเภทการจ่าย", { options: ["รายวัน", "รายเดือน", "รายเหมา"] }),
+      F("default_contract_rate", "อัตราเหมาหลัก", { type: "number" }),
       F("default_activity_group_id", "กลุ่มกิจกรรมหลัก", { references: "activity_groups" }),
       F("contact_person", "ผู้ติดต่อ"),
       F("phone", "เบอร์โทร"),
+      F("effective_from", "เริ่มใช้ Version", { type: "date" }),
+      F("effective_to", "สิ้นสุด Version", { type: "date" }),
+      F("version_no", "Version", { type: "number" }),
+      F("is_current", "Version ปัจจุบัน", { type: "boolean" }),
+      F("previous_version_id", "Version ก่อนหน้า", { references: "contractors" }),
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "con-001", contractor_code: "CON-001", contractor_name: "ผู้รับเหมางานเก็บเกี่ยว", contractor_type: "harvest", status: "active" },
+      { id: "con-001", contractor_code: "CON-001", contractor_name: "ผู้รับเหมางานเก็บเกี่ยว", nationality: "ไทย", contractor_type: "harvest", payment_type: "รายเหมา", default_contract_rate: "0", effective_from: "2026-01-01", version_no: "1", is_current: "true", status: "active" },
     ],
   },
   teams: {
@@ -1467,6 +1489,14 @@ const FARM_TABLE_SCHEMAS = {
       F("employee_id", "พนักงาน", { references: "employees" }),
       F("contractor_id", "ผู้รับเหมา", { references: "contractors" }),
       F("work_result_id", "ผลงานจริง", { references: "work_results" }),
+      F("master_version_id", "Master Version ที่ใช้"),
+      F("payee_snapshot_name", "ชื่อ ณ วันคำนวณ"),
+      F("nationality_snapshot", "สัญชาติ ณ วันคำนวณ"),
+      F("payment_type_snapshot", "ประเภทการจ่าย ณ วันคำนวณ", { options: ["รายวัน", "รายเดือน", "รายเหมา"] }),
+      F("rate_snapshot", "อัตราที่ล็อกไว้", { type: "number" }),
+      F("normal_hours_snapshot", "ชั่วโมง/วัน ที่ล็อกไว้", { type: "number" }),
+      F("calculated_at", "วันที่คำนวณ", { type: "date" }),
+      F("is_locked", "ล็อกผลคำนวณ", { type: "boolean" }),
       F("gross_amount", "ยอดก่อนหัก", { type: "number" }),
       F("net_amount", "ยอดสุทธิ", { type: "number" }),
       F("status", "สถานะ", { type: "status" }),
@@ -1486,6 +1516,10 @@ const FARM_TABLE_SCHEMAS = {
       F("rate_type", "ประเภทเรท", { options: ["daily", "piece", "hourly", "driver", "pool"] }),
       F("unit_id", "หน่วย", { references: "units" }),
       F("rate_amount", "อัตรา", { type: "number" }),
+      F("effective_from", "เริ่มใช้เรท", { type: "date" }),
+      F("effective_to", "สิ้นสุดเรท", { type: "date" }),
+      F("version_no", "Version", { type: "number" }),
+      F("is_current", "Version ปัจจุบัน", { type: "boolean" }),
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [],
@@ -1740,6 +1774,29 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [],
+  },
+  master_record_versions: {
+    moduleId: "farm-governance",
+    title: "ประวัติ Version ข้อมูลหลัก",
+    primaryKey: "id",
+    codeField: "version_no",
+    labelField: "entity_table",
+    fields: [
+      F("entity_table", "ตารางข้อมูล", { required: true }),
+      F("entity_id", "รหัส Version ใหม่", { required: true }),
+      F("business_key", "รหัสธุรกิจ"),
+      F("previous_entity_id", "Version ก่อนหน้า"),
+      F("version_no", "Version", { type: "number" }),
+      F("effective_from", "เริ่มใช้", { type: "date" }),
+      F("effective_to", "สิ้นสุด", { type: "date" }),
+      F("locked_target", "ข้อมูลที่ต้องไม่เปลี่ยนย้อนหลัง"),
+      F("change_note", "หมายเหตุการเปลี่ยนแปลง"),
+      F("changed_at", "วันที่เปลี่ยน", { type: "date" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "version-rule-payroll", entity_table: "employees / contractors / payroll_rates", entity_id: "system-rule", business_key: "payroll-lock", version_no: "1", effective_from: "2026-01-01", locked_target: "payroll_period_lines snapshot", change_note: "รายการค่าแรงที่คำนวณแล้วต้องอ้าง snapshot/version เดิม", changed_at: "2026-01-01", status: "active" },
+    ],
   },
   audit_logs: {
     moduleId: "farm-governance",
@@ -6680,26 +6737,130 @@ function renderFarmInput(field, value = "") {
     </label>`;
 }
 
+function farmToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isFarmVersionedTable(tableKey) {
+  return VERSIONED_FARM_TABLES.has(tableKey);
+}
+
+function farmBusinessKey(table, row) {
+  return row?.[table.codeField] || row?.employee_code || row?.contractor_code || row?.rate_code || row?.id || "";
+}
+
+function applyFarmCalculatedFields(table, row) {
+  if (table.key === "employees") {
+    const daily = n(row.daily_wage);
+    const hours = n(row.normal_hours_per_day);
+    if (daily && hours) row.hourly_wage_rate = String(Math.round((daily / hours) * 100) / 100);
+    if (!row.payment_type) row.payment_type = row.worker_type === "พนักงาน" ? "รายเดือน" : "รายวัน";
+    if (!row.nationality) row.nationality = "ไทย";
+  }
+  if (table.key === "contractors") {
+    if (!row.payment_type) row.payment_type = "รายเหมา";
+    if (!row.nationality) row.nationality = "ไทย";
+  }
+  if (isFarmVersionedTable(table.key)) {
+    if (!row.effective_from) row.effective_from = farmToday();
+    if (!row.version_no) row.version_no = "1";
+    if (!row.is_current) row.is_current = "true";
+  }
+  if (table.key === "payroll_period_lines") {
+    if (!row.calculated_at) row.calculated_at = farmToday();
+    if (!row.is_locked) row.is_locked = "true";
+    if (row.employee_id && (!row.payee_snapshot_name || !row.master_version_id)) {
+      const employee = farmRows({ key: "employees", ...FARM_TABLE_SCHEMAS.employees }).find((item) => item.id === row.employee_id);
+      if (employee) {
+        row.master_version_id = employee.id;
+        row.payee_snapshot_name = employee.full_name || "";
+        row.nationality_snapshot = employee.nationality || "";
+        row.payment_type_snapshot = employee.payment_type || "";
+        row.rate_snapshot = employee.payment_type === "รายเดือน" ? (employee.monthly_salary || "") : (employee.daily_wage || "");
+        row.normal_hours_snapshot = employee.normal_hours_per_day || "";
+      }
+    }
+    if (row.contractor_id && (!row.payee_snapshot_name || !row.master_version_id)) {
+      const contractor = farmRows({ key: "contractors", ...FARM_TABLE_SCHEMAS.contractors }).find((item) => item.id === row.contractor_id);
+      if (contractor) {
+        row.master_version_id = contractor.id;
+        row.payee_snapshot_name = contractor.contractor_name || "";
+        row.nationality_snapshot = contractor.nationality || "";
+        row.payment_type_snapshot = contractor.payment_type || "รายเหมา";
+        row.rate_snapshot = contractor.default_contract_rate || "";
+      }
+    }
+  }
+}
+
+function appendFarmVersionLog(table, original, nextRow) {
+  if (!original || !isFarmVersionedTable(table.key)) return;
+  const now = new Date().toISOString();
+  state.farmRecords.push({
+    id: `farm-master-version-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    moduleId: "farm-governance",
+    tableId: "master_record_versions",
+    entity_table: table.key,
+    entity_id: nextRow.id,
+    business_key: farmBusinessKey(table, nextRow),
+    previous_entity_id: original.id,
+    version_no: nextRow.version_no,
+    effective_from: nextRow.effective_from,
+    effective_to: nextRow.effective_to || "",
+    locked_target: table.key === "payroll_rates" ? "payroll_period_lines.rate_snapshot" : "payroll_period_lines.master_version_id",
+    change_note: "สร้าง version ใหม่เพื่อไม่ให้ค่าแรงที่คำนวณแล้วเปลี่ยนย้อนหลัง",
+    changed_at: now.slice(0, 10),
+    status: "active",
+    updatedAt: now,
+  });
+}
+
 function saveFarmRow() {
   const module = selectedFarmModule();
   const table = selectedFarmTable(module);
   const editId = state.farmEditId;
   const original = editId ? farmRows(table).find((row) => row.id === editId) : null;
+  const shouldVersion = original && isFarmVersionedTable(table.key);
   const row = {
-    id: original?.readonly ? `override-${editId}` : (editId || `farm-${table.key}-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    id: shouldVersion
+      ? `farm-${table.key}-v${Date.now()}-${Math.random().toString(16).slice(2)}`
+      : (original?.readonly ? `override-${editId}` : (editId || `farm-${table.key}-${Date.now()}-${Math.random().toString(16).slice(2)}`)),
     moduleId: module.id,
     tableId: table.key,
     updatedAt: new Date().toISOString(),
   };
-  if (original?.readonly) row._overrideOf = original.id;
+  if (original?.readonly && !shouldVersion) row._overrideOf = original.id;
   for (const input of els.reportPage.querySelectorAll("[data-farm-field]")) {
     row[input.dataset.farmField] = input.value.trim();
   }
+  if (shouldVersion) {
+    row.previous_version_id = original.id;
+    row.version_no = String(n(original.version_no || 1) + 1);
+    row.is_current = "true";
+    row.effective_to = "";
+  }
+  applyFarmCalculatedFields(table, row);
   if (!row.status) row.status = "active";
-  state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === row.id || item._overrideOf === row._overrideOf || item.id === editId)));
+  state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === row.id || item._overrideOf === row._overrideOf || item.id === editId || (shouldVersion && item._overrideOf === editId))));
+  if (shouldVersion) {
+    const priorRow = {
+      ...original,
+      id: original.readonly ? `override-${original.id}` : original.id,
+      moduleId: module.id,
+      tableId: table.key,
+      _overrideOf: original.readonly ? original.id : original._overrideOf,
+      effective_to: row.effective_from || farmToday(),
+      is_current: "false",
+      status: "inactive",
+      updatedAt: new Date().toISOString(),
+    };
+    if (!priorRow._overrideOf) delete priorRow._overrideOf;
+    state.farmRecords.push(priorRow);
+  }
   state.farmRecords.push(row);
+  appendFarmVersionLog(table, original, row);
   state.farmEditId = "";
-  state.farmDetailId = original?.id || row.id;
+  state.farmDetailId = row.id;
   saveFarmRecords();
   render();
 }
@@ -6766,7 +6927,8 @@ function renderFarmGovernanceBoard(table) {
     { table: "role_permissions", no: "3", title: "Role Permission", detail: "ระบุว่าแต่ละ Role ทำอะไรได้บ้าง" },
     { table: "user_access_scopes", no: "4", title: "ขอบเขตพื้นที่", detail: "จำกัด Estate, Zone, Plot ตามหน้าที่รับผิดชอบ" },
     { table: "work_order_approvals", no: "5", title: "ลำดับอนุมัติ", detail: "กำหนดระดับ ผู้อนุมัติ และผลอนุมัติของใบสั่งงาน" },
-    { table: "work_order_status_logs", no: "6", title: "ประวัติและ Audit", detail: "ตรวจสถานะย้อนหลังและการแก้ไขข้อมูลสำคัญ" },
+    { table: "work_order_status_logs", no: "6", title: "ประวัติสถานะ", detail: "ตรวจลำดับสถานะของแผนและใบสั่งงานย้อนหลัง" },
+    { table: "master_record_versions", no: "7", title: "Version Lock", detail: "ตรวจ version ของข้อมูลหลักที่ใช้ล็อกผลค่าแรง" },
   ];
   return `
     <section class="farm-approval-board">
@@ -6782,6 +6944,22 @@ function renderFarmGovernanceBoard(table) {
             <span>${esc(card.detail)}</span>
             <small>${esc(card.table)}</small>
           </button>`).join("")}
+      </div>
+    </section>`;
+}
+
+function renderFarmVersionNotice(module, table) {
+  if (!["farm-people", "farm-payroll", "farm-governance"].includes(module.id)) return "";
+  const active = isFarmVersionedTable(table.key) || table.key === "payroll_period_lines" || table.key === "master_record_versions";
+  return `
+    <section class="farm-version-notice${active ? " active" : ""}">
+      <div>
+        <strong>Version Control สำหรับข้อมูลที่มีผลต่อค่าแรง</strong>
+        <span>เมื่อแก้พนักงาน ผู้รับเหมา หรือเรทค่าแรง ระบบจะสร้าง version ใหม่และปิด version เก่า ไม่เขียนทับข้อมูลเดิม</span>
+      </div>
+      <div>
+        <strong>Payroll Snapshot Lock</strong>
+        <span>รายการค่าแรงเก็บชื่อ สัญชาติ ประเภทการจ่าย อัตรา ชั่วโมง และ master_version_id ณ วันคำนวณ เพื่อไม่เปลี่ยนย้อนหลัง</span>
       </div>
     </section>`;
 }
@@ -6832,6 +7010,7 @@ function renderFarmPage() {
         <article><span>Foreign Key</span><strong>${fmt(refCount)}</strong><small>Inactive ${fmt(inactiveCount)} รายการ</small></article>
       </section>
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
+      ${renderFarmVersionNotice(module, table)}
       <section class="farm-toolbar">
         <label>ตารางข้อมูล
           <select id="farmTableSelect">
