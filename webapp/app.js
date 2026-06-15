@@ -8492,10 +8492,11 @@ async function init() {
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
-  await Promise.all([loadPayload(), loadEstData(), loadMasterFolderData(), loadFarmTablesFromDatabase()]);
+  await Promise.all([loadPayload(), loadEstData(), loadMasterFolderData()]);
   setDateValue(els.startDate, state.payload.source.dateMin);
   setDateValue(els.endDate, state.payload.source.dateMax);
   els.clearDate.value = state.payload.source.dateMax;
+  loadFarmTablesFromDatabase({ silent: true });
 
   els.startDate.addEventListener("input", () => {
     syncDatePickerFromText(els.startDate);
