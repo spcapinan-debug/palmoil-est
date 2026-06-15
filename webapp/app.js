@@ -28,6 +28,9 @@
   masterFolderGroupFilters: [],
   masterFolderSort: { tableId: "", key: "", dir: "asc" },
   masterFolderRecords: [],
+  farmDbRows: {},
+  farmDbSource: null,
+  farmDbErrors: {},
   farmRecords: [],
   farmFilters: { query: "", status: "all", role: "super_admin" },
   farmWorkFilters: { activityGroup: "all", team: "all", zone: "all", plotGroup: "all", status: "all", query: "" },
@@ -84,6 +87,7 @@ const CULTIVATE_API_BASE = window.__CULTIVATE_API_BASE__ || "http://127.0.0.1:80
 const TRANSPORT_REFRESH_API = window.__TRANSPORT_REFRESH_API__ || CULTIVATE_API_BASE.replace(/cultivate\.php.*$/, "transport_refresh.php");
 const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
+const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
 const MASTER_FOLDER_DATA_URL = window.__MASTER_FOLDER_DATA_URL__ || "./data/master_data_full.json";
 const DAILY_HEADERS = [
   "วันที่",
@@ -1981,6 +1985,55 @@ async function loadMasterData({ silent = false } = {}) {
   }
   if (silent) render();
   return true;
+}
+
+function normalizeFarmDbRows(tableKey, rows = []) {
+  const schema = FARM_TABLE_SCHEMAS[tableKey] || {};
+  const codeField = schema.codeField || "code";
+  return rows.map((raw, index) => {
+    const row = Object.fromEntries(Object.entries(raw || {}).map(([key, value]) => [key, value ?? ""]));
+    if (!row.id) row.id = row[codeField] || `${tableKey}-${index + 1}`;
+    if (tableKey === "blocks") {
+      row.block_name = row.block_name || row.block_code || row.id;
+      row.ap_code = row.ap_code || row.AP_code || "";
+    }
+    if (tableKey === "plots") {
+      row.plot_name = row.plot_name || row.plot_code || row.id;
+    }
+    if (tableKey === "work_orders") {
+      row.work_order_title = row.work_order_title || row.note || row.work_order_no || row.id;
+      row.planned_start_date = row.planned_start_date || row.scheduled_date || "";
+      row.planned_end_date = row.planned_end_date || row.scheduled_date || row.planned_start_date || "";
+    }
+    return {
+      ...row,
+      tableId: tableKey,
+      moduleId: schema.moduleId || "",
+      _source: "database",
+      updatedAt: row.updated_at || row.created_at || "database",
+    };
+  });
+}
+
+async function loadFarmTablesFromDatabase({ silent = false } = {}) {
+  const tableKeys = Object.keys(FARM_TABLE_SCHEMAS);
+  try {
+    const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(tableKeys.join(","))}&t=${Date.now()}`;
+    const payload = await fetch(url, { cache: "no-store" }).then((res) => res.json());
+    if (!payload || !payload.tables) throw new Error(payload?.error || "No farm table payload");
+    state.farmDbRows = Object.fromEntries(
+      Object.entries(payload.tables).map(([tableKey, rows]) => [tableKey, normalizeFarmDbRows(tableKey, Array.isArray(rows) ? rows : [])])
+    );
+    state.farmDbSource = payload.source || null;
+    state.farmDbErrors = payload.errors || {};
+    if (silent) render();
+    return true;
+  } catch (error) {
+    state.farmDbRows = {};
+    state.farmDbSource = { mode: "fallback-seed", error: error.message };
+    state.farmDbErrors = { api: error.message };
+    return false;
+  }
 }
 
 async function loadCultivateCredentials() {
@@ -6685,9 +6738,14 @@ function farmRows(table = selectedFarmTable()) {
   const tableId = table.key;
   const overrides = new Map(state.farmRecords.filter((row) => row.tableId === tableId && row._overrideOf && !row._deleted).map((row) => [row._overrideOf, row]));
   const deleted = new Set(state.farmRecords.filter((row) => row.tableId === tableId && row._deleted).map((row) => row._overrideOf || row.id));
-  const seedRows = farmSeedRows(table).map((row) => overrides.has(row.id) ? { ...row, ...overrides.get(row.id), id: row.id, readonly: false } : row).filter((row) => !deleted.has(row.id));
-  const customRows = state.farmRecords.filter((row) => row.tableId === tableId && !row._overrideOf && !row._deleted);
-  const rows = [...seedRows, ...customRows];
+  const databaseRows = Array.isArray(state.farmDbRows?.[tableId]) ? state.farmDbRows[tableId] : [];
+  const baseRows = (databaseRows.length ? databaseRows : farmSeedRows(table))
+    .map((row) => overrides.has(row.id) ? { ...row, ...overrides.get(row.id), id: row.id, readonly: false } : row)
+    .filter((row) => !deleted.has(row.id));
+  const baseIds = new Set(baseRows.map((row) => row.id));
+  const customRows = state.farmRecords
+    .filter((row) => row.tableId === tableId && !row._overrideOf && !row._deleted && !baseIds.has(row.id));
+  const rows = [...baseRows, ...customRows];
   if (tableId !== "blocks") return rows;
   const existingPlotIds = new Set(rows.map((row) => row.plot_id).filter(Boolean));
   const legacyPlots = farmRows(farmTableByKey("plots"))
@@ -7057,6 +7115,15 @@ function farmLookupLabel(tableKey, id) {
   const table = farmTableByKey(tableKey);
   const row = table ? farmLookup(tableKey, id) : null;
   return row ? farmRecordLabel(table, row) : (id || "-");
+}
+
+function farmDisplayValue(field, row) {
+  const key = farmFieldKey(field);
+  const value = row?.[key];
+  const references = farmFieldReferences(field);
+  if (references) return farmLookupLabel(references, value);
+  if (value === undefined || value === null || value === "") return "";
+  return value;
 }
 
 function farmWorkStatusMeta(order) {
@@ -7626,6 +7693,8 @@ function renderFarmPage() {
   const editing = state.farmEditId ? selected : {};
   const inactiveCount = allRows.filter((row) => String(row.status).toLowerCase() === "inactive").length;
   const refCount = (table.fields || []).filter((field) => farmFieldReferences(field)).length;
+  const dbRowCount = Object.values(state.farmDbRows || {}).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0);
+  const dbErrorCount = Object.keys(state.farmDbErrors || {}).length;
   return `
     <div class="farm-page">
       <div class="report-title">
@@ -7633,12 +7702,14 @@ function renderFarmPage() {
           <h2>${esc(module.title)}</h2>
           <p>${esc(module.description)}</p>
         </div>
+        <button type="button" data-farm-db-refresh>Refresh DB</button>
       </div>
       ${renderFarmWorkflowNav(module)}
       <section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
+        <article><span>ข้อมูลจริง DB</span><strong>${fmt(dbRowCount)}</strong><small>${esc(state.farmDbSource?.mode || "fallback-seed")} · error ${fmt(dbErrorCount)}</small></article>
         <article><span>Foreign Key</span><strong>${fmt(refCount)}</strong><small>Inactive ${fmt(inactiveCount)} รายการ</small></article>
       </section>
       ${module.id === "farm-work" ? `${renderFarmWorkPlanner()}${renderFarmWorkBoard()}` : ""}
@@ -7681,7 +7752,7 @@ function renderFarmPage() {
           <dl class="farm-detail">
             ${selected.id ? table.fields.map((field) => {
               const key = farmFieldKey(field);
-              return `<dt>${esc(farmFieldLabel(field))}</dt><dd>${esc(selected[key] ?? "-")}</dd>`;
+              return `<dt>${esc(farmFieldLabel(field))}</dt><dd>${esc(farmDisplayValue(field, selected) || "-")}</dd>`;
             }).join("") : `<dt>ยังไม่ได้เลือก</dt><dd>กดแถวหรือปุ่มดูในตาราง</dd>`}
           </dl>
           <div class="farm-table-list">${tables.map((item) => `<span>${esc(item.key)}</span>`).join("")}</div>
@@ -7697,7 +7768,7 @@ function renderFarmPage() {
             <tbody>
               ${rows.map((row) => `
                 <tr data-farm-row="${esc(row.id)}">
-                  ${table.fields.map((field) => `<td>${esc(row[farmFieldKey(field)] ?? "")}</td>`).join("")}
+                  ${table.fields.map((field) => `<td>${esc(farmDisplayValue(field, row))}</td>`).join("")}
                   <td class="farm-actions">
                     <button type="button" data-farm-view="${esc(row.id)}">ดู</button>
                     <button type="button" data-farm-edit="${esc(row.id)}" ${farmCan("update") ? "" : "disabled"}>แก้ไข</button>
@@ -8416,7 +8487,7 @@ async function init() {
   applySidebarState();
   loadClearOverrides();
   loadEstDailyEntries();
-  await Promise.all([loadPayload(), loadEstData(), loadMasterFolderData()]);
+  await Promise.all([loadPayload(), loadEstData(), loadMasterFolderData(), loadFarmTablesFromDatabase()]);
   state.view = initialViewFromUrl();
   setDateValue(els.startDate, state.payload.source.dateMin);
   setDateValue(els.endDate, state.payload.source.dateMax);
@@ -8686,6 +8757,10 @@ async function init() {
     state.estSearchTimer = setTimeout(render, 250);
   });
   els.reportPage.addEventListener("click", (e) => {
+    if (e.target.closest("[data-farm-db-refresh]")) {
+      loadFarmTablesFromDatabase({ silent: true });
+      return;
+    }
     const plannerTab = e.target.closest("[data-farm-planner-tab]");
     if (plannerTab) {
       state.farmPlannerTab = plannerTab.dataset.farmPlannerTab;
