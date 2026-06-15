@@ -7197,6 +7197,7 @@ function renderFarmWorkPlanner() {
   const teamMembers = farmRows(farmTableByKey("team_members"));
   const employees = farmRows(farmTableByKey("employees"));
   const materials = farmRows(farmTableByKey("materials"));
+  const vehicles = farmRows(farmTableByKey("vehicles"));
   const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
   const budgetRates = farmRows(farmTableByKey("budget_rates"));
   const workOrders = farmWorkOrders().slice().sort((a, b) => farmDateMs(b.startDate) - farmDateMs(a.startDate));
@@ -7214,15 +7215,37 @@ function renderFarmWorkPlanner() {
   const materialBudgetRate = budgetRates.find((row) => row.activity_id === previewActivity?.id && row.rate_type === "material")
     || budgetRates.find((row) => row.rate_type === "material")
     || {};
+  const selectedMaterials = materials.slice(0, Math.min(3, materials.length));
+  const selectedVehicles = vehicles.slice(0, Math.min(3, vehicles.length));
   const selectedUsageRate = usageRates.find((row) => row.activity_id === previewActivity?.id) || usageRates[0] || {};
   const selectedMaterial = materials.find((row) => row.id === (selectedUsageRate.material_id || materialBudgetRate.material_id || selectedBudgetRate.material_id)) || materials[0] || {};
-  const calculationBase = selectedUsageRate.usage_basis === "per_tree" ? totalTrees : selectedUsageRate.usage_basis === "per_rai" ? totalRai : selectedPlots.length;
+  const calculationBase = selectedUsageRate.usage_basis === "per_tree" ? totalTrees : selectedUsageRate.usage_basis === "per_rai" ? totalRai : selectedBlocks.length;
   const materialQuantity = calculationBase * n(selectedUsageRate.usage_rate || 0);
   const laborRate = n(laborBudgetRate.rate_amount || 0);
   const materialRate = n(materialBudgetRate.rate_amount || 0);
   const laborCost = totalRai * laborRate;
   const materialCost = materialQuantity * materialRate;
   const totalCost = laborCost + materialCost;
+  const materialOptions = (selectedId = "") => materials.map((row) => `<option value="${esc(row.id || "")}"${row.id === selectedId ? " selected" : ""}>${esc(row.material_name || row.material_code || "")}</option>`).join("");
+  const vehicleOptions = (selectedId = "") => vehicles.map((row) => `<option value="${esc(row.id || "")}"${row.id === selectedId ? " selected" : ""}>${esc(row.vehicle_name || row.vehicle_code || "")}</option>`).join("");
+  const materialResourceRows = (selectedMaterials.length ? selectedMaterials : [{}]).map((row, index) => `
+    <div class="farm-plan-resource-row">
+      <label>วัสดุ ${fmt(index + 1)}
+        <select>${materialOptions(row.id) || `<option>ยังไม่มีวัสดุ</option>`}</select>
+      </label>
+      <label>ปริมาณแผน
+        <input type="number" min="0" value="${index === 0 ? moneyNf.format(materialQuantity).replace(/,/g, "") : ""}" placeholder="0">
+      </label>
+    </div>`).join("");
+  const vehicleResourceRows = (selectedVehicles.length ? selectedVehicles : [{}]).map((row, index) => `
+    <div class="farm-plan-resource-row">
+      <label>รถ/เครื่องจักร ${fmt(index + 1)}
+        <select>${vehicleOptions(row.id) || `<option>ยังไม่มีรถ/เครื่องจักร</option>`}</select>
+      </label>
+      <label>ชั่วโมงแผน
+        <input type="number" min="0" value="${index === 0 ? "8" : ""}" placeholder="0">
+      </label>
+    </div>`).join("");
   const plotCountText = `${fmt(selectedBlocks.length)} จาก ${fmt(blocks.length)} Block`;
   const zoneOptions = zones.map((row) => `<option>${esc(row.zone_name || row.zone_code || "")}</option>`).join("");
   const plotGroupOptions = plotGroups.map((row) => `<option>${esc(row.group_name || row.group_code || "")}</option>`).join("");
@@ -7281,6 +7304,9 @@ function renderFarmWorkPlanner() {
           </label>
           <div class="farm-plan-inline">
             <label>วันที่เริ่มงาน<input type="date" value="2026-01-15"></label>
+            <label>วันที่สิ้นสุด<input type="date" value="2026-01-16"></label>
+          </div>
+          <div class="farm-plan-inline">
             <label>รอบซ้ำ
               <select>
                 <option>ไม่ทำซ้ำ</option>
@@ -7326,15 +7352,26 @@ function renderFarmWorkPlanner() {
             <label><input type="radio" name="planCalcMode"> ตามผลงานจริงหลังบันทึกงาน</label>
             <label><input type="radio" name="planCalcMode"> ตามอัตราผู้รับเหมา</label>
           </div>
-          <label>วัสดุหลัก
-            <select>${materials.map((row) => `<option>${esc(row.material_name || row.material_code || "")}</option>`).join("")}</select>
-          </label>
+          <div class="farm-plan-resource-block">
+            <div class="farm-plan-resource-head">
+              <strong>วัสดุหลัก</strong>
+              <button type="button" data-farm-open-work-table="work_order_materials">เพิ่ม/แก้วัสดุ</button>
+            </div>
+            ${materialResourceRows}
+          </div>
+          <div class="farm-plan-resource-block">
+            <div class="farm-plan-resource-head">
+              <strong>รถ/เครื่องจักร</strong>
+              <button type="button" data-farm-open-work-table="work_order_machines">เพิ่ม/แก้รถ/เครื่องจักร</button>
+            </div>
+            ${vehicleResourceRows}
+          </div>
           <label>อัตรางบประมาณ
             <select>${budgetRates.map((row) => `<option>${esc(row.budget_rate_code || row.id)} · ${esc(farmLookupLabel("activities", row.activity_id))} · ${moneyNf.format(n(row.rate_amount))}</option>`).join("")}</select>
           </label>
           <div class="farm-plan-resource-note">
             <span>เลือกวิธีคำนวณได้ครั้งละ 1 แบบ</span>
-            <span>ใช้เฉพาะวัสดุและอัตรางบประมาณที่ผูกกับกิจกรรม</span>
+            <span>วัสดุและรถ/เครื่องจักรเพิ่มได้หลายรายการต่อ Work Order</span>
           </div>
         </article>
         <article class="farm-plan-card farm-plan-summary">
@@ -7343,6 +7380,8 @@ function renderFarmWorkPlanner() {
             <dt>งาน</dt><dd>${esc(previewGroup?.group_name || "-")} / ${esc(previewActivity?.activity_name || "-")}</dd>
             <dt>พื้นที่</dt><dd>${esc(plotCountText)} · ${moneyNf.format(totalRai)} ไร่ · ${fmt(totalTrees)} ต้น</dd>
             <dt>ทีม</dt><dd>${esc(previewTeam?.team_name || "-")} · ${fmt(previewMembers.length)} คน</dd>
+            <dt>ช่วงวัน</dt><dd>2026-01-15 ถึง 2026-01-16</dd>
+            <dt>ทรัพยากร</dt><dd>วัสดุ ${fmt(selectedMaterials.length || 1)} รายการ · รถ/เครื่องจักร ${fmt(selectedVehicles.length || 1)} รายการ</dd>
             <dt>สถานะเริ่มต้น</dt><dd>Draft → รออนุมัติ</dd>
           </dl>
           <div class="farm-plan-cost-preview">
