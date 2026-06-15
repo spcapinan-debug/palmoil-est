@@ -54,6 +54,20 @@ const FARM_TABLES = new Set([
   "audit_logs",
 ]);
 
+const REQUIRED_TABLES = new Set([
+  "estates",
+  "zones",
+  "plot_groups",
+  "plots",
+  "blocks",
+  "activity_groups",
+  "activities",
+  "materials",
+  "vehicles",
+  "budget_rates",
+  "work_orders",
+]);
+
 function json(res, status, payload) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -117,13 +131,15 @@ module.exports = async function handler(req, res) {
     const limit = Math.min(Math.max(Number(requestUrl.searchParams.get("limit") || 50000), 1), 50000);
     const result = {};
     const errors = {};
+    const warnings = {};
 
     for (const table of tables) {
       try {
         result[table] = await supabaseFetch(`${table}?select=*&limit=${limit}`);
       } catch (err) {
         result[table] = [];
-        errors[table] = err.message;
+        if (REQUIRED_TABLES.has(table)) errors[table] = err.message;
+        else warnings[table] = err.message;
       }
     }
 
@@ -131,6 +147,7 @@ module.exports = async function handler(req, res) {
       ok: Object.keys(errors).length === 0,
       tables: result,
       errors,
+      warnings,
       source: {
         mode: "supabase-real-tables",
         tableCount: tables.length,
