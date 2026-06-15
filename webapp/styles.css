@@ -2763,6 +2763,23 @@ tfoot td {
   background: #fff;
 }
 
+.auto-id-field {
+  color: #64748b !important;
+}
+
+.auto-id-field input,
+.est-entry-form input:disabled,
+.farm-form input:disabled {
+  border-color: #d8dee8 !important;
+  background: #eef2f6 !important;
+  color: #64748b !important;
+  cursor: not-allowed;
+}
+
+.auto-id-field input::selection {
+  background: transparent;
+}
+
 .est-form-wide {
   grid-column: span 3;
 }
