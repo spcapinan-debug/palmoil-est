@@ -8429,17 +8429,20 @@ function render() {
 
 function setView(view) {
   state.view = view;
-  if (isFarmView(view)) {
-    const module = farmModuleMap()[view] || FARM_MODULES[0];
-    const tables = farmTablesForModule(module);
-    if (!tables.some((table) => table.key === state.farmTableId)) {
-      state.farmTableId = tables[0]?.key || "";
-    }
-    state.farmEditId = "";
-    state.farmDetailId = "";
-  }
+  ensureFarmViewState(view);
   for (const btn of els.tabs.querySelectorAll("button")) btn.classList.toggle("active", btn.dataset.view === view);
   render();
+}
+
+function ensureFarmViewState(view = state.view) {
+  if (!isFarmView(view)) return;
+  const module = farmModuleMap()[view] || FARM_MODULES[0];
+  const tables = farmTablesForModule(module);
+  if (!tables.some((table) => table.key === state.farmTableId)) {
+    state.farmTableId = tables[0]?.key || "";
+  }
+  state.farmEditId = "";
+  state.farmDetailId = "";
 }
 
 function addClear() {
@@ -8485,10 +8488,11 @@ function downloadCsv() {
 async function init() {
   ensurePrintPreviewElements();
   applySidebarState();
+  state.view = initialViewFromUrl();
+  ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
   await Promise.all([loadPayload(), loadEstData(), loadMasterFolderData(), loadFarmTablesFromDatabase()]);
-  state.view = initialViewFromUrl();
   setDateValue(els.startDate, state.payload.source.dateMin);
   setDateValue(els.endDate, state.payload.source.dateMax);
   els.clearDate.value = state.payload.source.dateMax;
