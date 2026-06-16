@@ -1175,7 +1175,7 @@ tfoot td {
 
 .mill-status-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-top: 12px;
 }
@@ -1205,6 +1205,10 @@ tfoot td {
 
 .mill-status.matched strong {
   color: var(--green);
+}
+
+.mill-status.query_factory strong {
+  color: #2563eb;
 }
 
 .mill-status.missing_mill strong,
@@ -1274,9 +1278,57 @@ tfoot td {
   font-size: 11px;
 }
 
+.mill-analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(360px, .85fr);
+  gap: 12px;
+}
+
+.table-wrap.compact {
+  max-height: 290px;
+  overflow: auto;
+}
+
+.mill-segment-table,
+.mill-grade-table {
+  width: 100%;
+}
+
+.mill-segment-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: #64748b;
+}
+
+.mill-segment-dot.กรูด-RSPO {
+  background: #0f766e;
+}
+
+.mill-segment-dot.คีรีรัฐ-RSPO {
+  background: #2563eb;
+}
+
+.mill-segment-dot.NON-RSPO {
+  background: #f59e0b;
+}
+
+.mill-grade-chip {
+  display: inline-flex;
+  min-width: 38px;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #1f2937;
+  background: rgba(148, 163, 184, .16);
+  font-weight: 700;
+}
+
 .mill-table {
   width: 100%;
-  min-width: 980px;
+  min-width: 1120px;
 }
 
 .mill-table th,
@@ -1305,6 +1357,11 @@ tfoot td {
 .mill-chip.matched {
   color: #047857;
   background: rgba(16, 185, 129, .12);
+}
+
+.mill-chip.query_factory {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, .12);
 }
 
 .mill-chip.missing_mill,

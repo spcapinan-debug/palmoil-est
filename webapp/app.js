@@ -3757,6 +3757,25 @@ function millRecordDate(record) {
   return isoDay(record.date || record.weightDate || record.wpDocDate || record.wpFacDocDate);
 }
 
+function millCategoryFromMill(row) {
+  const rspo = String(row?.wpRspo || "").trim().toUpperCase();
+  const text = `${row?.customerName || ""} ${row?.ctlname || ""} ${row?.wpctCode || ""}`;
+  if (rspo === "Y" && (text.includes("กรูด") || String(row?.wpctCode || "") === "10103")) return "กรูด-RSPO";
+  if (rspo === "Y" && (text.includes("คีรีรัฐ") || String(row?.wpctCode || "") === "10102")) return "คีรีรัฐ-RSPO";
+  return "NON-RSPO";
+}
+
+function millCategoryFromSource(source) {
+  const text = (source?.sourceRows || []).map((record) => `${record.name || ""} ${record.estate || ""} ${record.areaGroup || ""}`).join(" ");
+  if (text.includes("กรูด")) return "กรูด-RSPO";
+  if (text.includes("คีรีรัฐ") && !text.includes("NON-RSPO")) return "คีรีรัฐ-RSPO";
+  return "NON-RSPO";
+}
+
+function millCategoryOrder(category) {
+  return { "กรูด-RSPO": 1, "คีรีรัฐ-RSPO": 2, "NON-RSPO": 3 }[category] || 9;
+}
+
 function millSourceGroups() {
   const movementMap = movementBySourceRow();
   const scope = yardScope();
@@ -3784,6 +3803,7 @@ function millSourceGroups() {
       sourceRows: [],
       standards: new Set(),
       yards: new Set(),
+      grades: new Set(),
     };
 
     group.sourceDocs.push(record.wpDocNo || "");
@@ -3792,6 +3812,8 @@ function millSourceGroups() {
     if (rowScope) group.yards.add(rowScope === "takuk" ? "ตะกุก" : "ปลายราง");
     const standard = recordStandardBucket(record, movement) || record.standard || "";
     if (standard) group.standards.add(standard);
+    if (record.wpFacGrade) group.grades.add(record.wpFacGrade);
+    else if (record.wpGrade) group.grades.add(record.wpGrade);
     group.sourceNetWeight += n(record.wpNetWeight);
     group.sourceFactoryNetWeight += n(record.wpFacNetWeight);
     group.sourceRows.push(record);
@@ -3808,7 +3830,7 @@ function millRowsByKey() {
     if (!key) continue;
     const existing = map.get(key);
     if (!existing) {
-      map.set(key, { ...row, wpNetWeight: n(row.wpNetWeight), rows: [row] });
+      map.set(key, { ...row, wpNetWeight: n(row.wpNetWeight), rows: [row], category: millCategoryFromMill(row) });
       continue;
     }
     existing.wpNetWeight += n(row.wpNetWeight);
@@ -3833,8 +3855,17 @@ function millCompareRows() {
     const sourceWeight = n(source?.sourceNetWeight);
     const sourceFactoryWeight = n(source?.sourceFactoryNetWeight);
     const millWeight = n(mill?.wpNetWeight);
-    const diffSource = millWeight - sourceWeight;
-    const diffFactory = millWeight - sourceFactoryWeight;
+    const hasQueryFactoryWeight = !!source && sourceFactoryWeight > 0;
+    const destinationWeight = mill ? millWeight : hasQueryFactoryWeight ? sourceFactoryWeight : 0;
+    const diffSource = destinationWeight - sourceWeight;
+    const diffFactory = destinationWeight - sourceFactoryWeight;
+    const status = source && mill
+      ? "matched"
+      : source && hasQueryFactoryWeight
+        ? "query_factory"
+        : source
+          ? "missing_mill"
+          : "missing_source";
 
     rows.push({
       docKey: key,
@@ -3846,40 +3877,58 @@ function millCompareRows() {
       sourceWeight,
       sourceFactoryWeight,
       millWeight,
+      destinationWeight,
+      destinationSource: mill ? "SPC Data" : hasQueryFactoryWeight ? "Query ขาออก" : "-",
       diffSource,
       diffFactory,
       lossRate: sourceWeight ? (diffSource / sourceWeight) * 100 : 0,
       sourceRows: source?.sourceRows?.length || 0,
-      status: source && mill ? "matched" : source ? "missing_mill" : "missing_source",
-      grade: mill?.wpGradeNew || "",
-      rspo: mill?.wpRspo || [...(source?.standards || [])].join(", "),
+      status,
+      grade: mill?.wpGradeNew || [...(source?.grades || [])].filter(Boolean).join(", "),
+      rspo: mill ? millCategoryFromMill(mill) : millCategoryFromSource(source),
+      category: mill ? millCategoryFromMill(mill) : millCategoryFromSource(source),
       yard: [...(source?.yards || [])].join(", "),
     });
   }
 
-  return rows.sort((a, b) => (a.date || "").localeCompare(b.date || "") || a.docKey.localeCompare(b.docKey));
+  return rows.sort((a, b) => (
+    millCategoryOrder(a.category) - millCategoryOrder(b.category)
+    || (a.date || "").localeCompare(b.date || "")
+    || a.docKey.localeCompare(b.docKey)
+  ));
 }
 
 function millTotals(rows) {
   const totals = rows.reduce((acc, row) => {
+    const comparable = row.status === "matched" || row.status === "query_factory";
     acc.docs += 1;
     acc.matched += row.status === "matched" ? 1 : 0;
+    acc.queryFactory += row.status === "query_factory" ? 1 : 0;
     acc.missingMill += row.status === "missing_mill" ? 1 : 0;
     acc.missingSource += row.status === "missing_source" ? 1 : 0;
-    acc.sourceWeight += n(row.sourceWeight);
-    acc.sourceFactoryWeight += n(row.sourceFactoryWeight);
-    acc.millWeight += n(row.millWeight);
-    acc.diffSource += n(row.diffSource);
-    acc.diffFactory += n(row.diffFactory);
+    if (comparable) {
+      acc.compareDocs += 1;
+      acc.sourceWeight += n(row.sourceWeight);
+      acc.sourceFactoryWeight += n(row.sourceFactoryWeight);
+      acc.millWeight += n(row.millWeight);
+      acc.destinationWeight += n(row.destinationWeight);
+      acc.queryFactoryWeight += row.status === "query_factory" ? n(row.destinationWeight) : 0;
+      acc.diffSource += n(row.diffSource);
+      acc.diffFactory += n(row.diffFactory);
+    }
     return acc;
   }, {
     docs: 0,
+    compareDocs: 0,
     matched: 0,
+    queryFactory: 0,
     missingMill: 0,
     missingSource: 0,
     sourceWeight: 0,
     sourceFactoryWeight: 0,
     millWeight: 0,
+    destinationWeight: 0,
+    queryFactoryWeight: 0,
     diffSource: 0,
     diffFactory: 0,
   });
@@ -3889,6 +3938,7 @@ function millTotals(rows) {
 
 function millStatusLabel(status) {
   if (status === "matched") return "เทียบได้";
+  if (status === "query_factory") return "เทียบจาก Query";
   if (status === "missing_mill") return "ไม่พบปลายทาง";
   return "ไม่พบต้นทาง";
 }
@@ -3899,17 +3949,57 @@ function millDiffClass(value) {
   return "delta flat";
 }
 
+function millSegmentSummaries(rows) {
+  const categories = ["กรูด-RSPO", "คีรีรัฐ-RSPO", "NON-RSPO"];
+  return categories.map((category) => {
+    const segmentRows = rows.filter((row) => row.category === category);
+    const totals = millTotals(segmentRows);
+    return { category, rows: segmentRows, ...totals };
+  });
+}
+
+function millGradeSummaries(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    if (row.status !== "matched" && row.status !== "query_factory") continue;
+    const grade = row.grade || "-";
+    const key = `${row.category}|${grade}`;
+    const item = map.get(key) || {
+      category: row.category,
+      grade,
+      docs: 0,
+      sourceWeight: 0,
+      destinationWeight: 0,
+      diffSource: 0,
+    };
+    item.docs += 1;
+    item.sourceWeight += n(row.sourceWeight);
+    item.destinationWeight += n(row.destinationWeight);
+    item.diffSource += n(row.diffSource);
+    map.set(key, item);
+  }
+  return [...map.values()]
+    .map((row) => ({
+      ...row,
+      lossRate: row.sourceWeight ? (row.diffSource / row.sourceWeight) * 100 : 0,
+    }))
+    .sort((a, b) => millCategoryOrder(a.category) - millCategoryOrder(b.category) || String(a.grade).localeCompare(String(b.grade)));
+}
+
 function renderMillWeight() {
   const rows = millCompareRows();
   const totals = millTotals(rows);
+  const segmentRows = millSegmentSummaries(rows);
+  const gradeRows = millGradeSummaries(rows);
   const source = state.millPayload?.source || {};
   const biggestDiffs = rows
-    .filter((row) => row.status === "matched")
+    .filter((row) => row.status === "matched" || row.status === "query_factory")
     .sort((a, b) => Math.abs(b.diffSource) - Math.abs(a.diffSource))
     .slice(0, 8);
   const maxAbsDiff = Math.max(...biggestDiffs.map((row) => Math.abs(row.diffSource)), 1);
   const statusCards = [
-    ["matched", "เทียบได้", totals.matched],
+    ["matched", "เทียบ SPC", totals.matched],
+    ["query_factory", "เทียบจาก Query", totals.queryFactory],
     ["missing_mill", "ขาดปลายทาง SPC", totals.missingMill],
     ["missing_source", "ขาดต้นทาง", totals.missingSource],
   ];
@@ -3933,7 +4023,7 @@ function renderMillWeight() {
       <div class="mill-kpis">
         <article>
           <span>เอกสารที่เทียบได้</span>
-          <strong>${fmt(totals.matched)} / ${fmt(totals.docs)}</strong>
+          <strong>${fmt(totals.matched + totals.queryFactory)} / ${fmt(totals.docs)}</strong>
           <small>${fmt(totals.missingMill + totals.missingSource)} รายการต้องตรวจ</small>
         </article>
         <article>
@@ -3942,12 +4032,12 @@ function renderMillWeight() {
           <small>kg จากใบชั่งส่งออก</small>
         </article>
         <article>
-          <span>น้ำหนักโรงงาน SPC</span>
-          <strong>${fmt(totals.millWeight)}</strong>
-          <small>kg จากชีต Data</small>
+          <span>น้ำหนักปลายทาง</span>
+          <strong>${fmt(totals.destinationWeight)}</strong>
+          <small>SPC ${fmt(totals.millWeight)} · Query ${fmt(totals.queryFactoryWeight)}</small>
         </article>
         <article>
-          <span>ส่วนต่าง SPC - ต้นทาง</span>
+          <span>ส่วนต่างปลายทาง - ต้นทาง</span>
           <strong class="${millDiffClass(totals.diffSource)}">${fmt(totals.diffSource)}</strong>
           <small>${moneyNf.format(totals.lossRate)}%</small>
         </article>
@@ -3964,8 +4054,8 @@ function renderMillWeight() {
               </div>`).join("")}
           </div>
           <div class="mill-compare-bars">
-            <div><span>ต้นทาง</span><i style="--w:${totals.millWeight ? Math.min(100, totals.sourceWeight / Math.max(totals.sourceWeight, totals.millWeight) * 100) : 0}%"></i><b>${fmt(totals.sourceWeight)}</b></div>
-            <div><span>SPC</span><i style="--w:${totals.sourceWeight ? Math.min(100, totals.millWeight / Math.max(totals.sourceWeight, totals.millWeight) * 100) : 0}%"></i><b>${fmt(totals.millWeight)}</b></div>
+            <div><span>ต้นทาง</span><i style="--w:${totals.destinationWeight ? Math.min(100, totals.sourceWeight / Math.max(totals.sourceWeight, totals.destinationWeight) * 100) : 0}%"></i><b>${fmt(totals.sourceWeight)}</b></div>
+            <div><span>ปลายทาง</span><i style="--w:${totals.sourceWeight ? Math.min(100, totals.destinationWeight / Math.max(totals.sourceWeight, totals.destinationWeight) * 100) : 0}%"></i><b>${fmt(totals.destinationWeight)}</b></div>
           </div>
         </section>
         <section class="mill-card">
@@ -3977,6 +4067,77 @@ function renderMillWeight() {
                 <i style="--w:${Math.max(6, Math.abs(row.diffSource) / maxAbsDiff * 100)}%"></i>
                 <strong class="${millDiffClass(row.diffSource)}">${fmt(row.diffSource)}</strong>
               </div>`).join("") : `<p class="muted">ไม่มีรายการที่เทียบได้ในช่วงวันที่นี้</p>`}
+          </div>
+        </section>
+      </div>
+
+      <div class="mill-analysis-grid">
+        <section class="mill-card">
+          <div class="table-headline">
+            <h3>เปรียบเทียบตามกลุ่ม</h3>
+            <span>กรูด-RSPO / คีรีรัฐ-RSPO / NON-RSPO</span>
+          </div>
+          <div class="table-wrap compact">
+            <table class="mini-table mill-segment-table">
+              <thead>
+                <tr>
+                  <th class="left">กลุ่ม</th>
+                  <th>เอกสารเทียบ</th>
+                  <th>ต้นทาง kg</th>
+                  <th>ปลายทาง kg</th>
+                  <th>Diff kg</th>
+                  <th>Diff %</th>
+                  <th>SPC</th>
+                  <th>Query</th>
+                  <th>ต้องตรวจ</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${segmentRows.map((row) => `
+                  <tr>
+                    <td class="left"><span class="mill-segment-dot ${row.category.replace(/[^A-Za-z0-9ก-ฮ]/g, "-")}"></span>${row.category}</td>
+                    <td class="num">${fmt(row.compareDocs)}</td>
+                    <td class="num">${fmt(row.sourceWeight)}</td>
+                    <td class="num">${fmt(row.destinationWeight)}</td>
+                    <td class="num ${millDiffClass(row.diffSource)}">${fmt(row.diffSource)}</td>
+                    <td class="num ${millDiffClass(row.diffSource)}">${moneyNf.format(row.lossRate)}%</td>
+                    <td class="num">${fmt(row.matched)}</td>
+                    <td class="num">${fmt(row.queryFactory)}</td>
+                    <td class="num">${fmt(row.missingMill + row.missingSource)}</td>
+                  </tr>`).join("")}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="mill-card">
+          <div class="table-headline">
+            <h3>วิเคราะห์เกรดประเมิน</h3>
+            <span>Grade จาก SPC หรือเกรดโรงงานใน Query</span>
+          </div>
+          <div class="table-wrap compact">
+            <table class="mini-table mill-grade-table">
+              <thead>
+                <tr>
+                  <th class="left">กลุ่ม</th>
+                  <th>Grade</th>
+                  <th>เอกสาร</th>
+                  <th>ปลายทาง kg</th>
+                  <th>Diff kg</th>
+                  <th>Diff %</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${gradeRows.map((row) => `
+                  <tr>
+                    <td class="left">${row.category}</td>
+                    <td><span class="mill-grade-chip">${row.grade}</span></td>
+                    <td class="num">${fmt(row.docs)}</td>
+                    <td class="num">${fmt(row.destinationWeight)}</td>
+                    <td class="num ${millDiffClass(row.diffSource)}">${fmt(row.diffSource)}</td>
+                    <td class="num ${millDiffClass(row.diffSource)}">${moneyNf.format(row.lossRate)}%</td>
+                  </tr>`).join("")}
+              </tbody>
+            </table>
           </div>
         </section>
       </div>
@@ -3994,15 +4155,16 @@ function renderMillWeight() {
                 <th>เอกสารโรงงาน</th>
                 <th class="left">ใบชั่งต้นทาง</th>
                 <th>ลาน</th>
+                <th>กลุ่ม</th>
                 <th>ทะเบียน</th>
                 <th class="left">ผู้ขาย / โรงงาน</th>
                 <th>ต้นทาง kg</th>
-                <th>SPC kg</th>
+                <th>ปลายทาง kg</th>
                 <th>Diff kg</th>
                 <th>Diff %</th>
                 <th>สถานะ</th>
+                <th>แหล่ง</th>
                 <th>Grade</th>
-                <th>RSPO</th>
               </tr>
             </thead>
             <tbody>
@@ -4012,26 +4174,27 @@ function renderMillWeight() {
                   <td>${row.factoryDocNo}</td>
                   <td class="left">${row.sourceDocNo || "-"}</td>
                   <td>${row.yard || "-"}</td>
+                  <td>${row.category || "-"}</td>
                   <td>${row.carLicense || "-"}</td>
                   <td class="left">${row.customerName || "-"}</td>
                   <td class="num">${fmt(row.sourceWeight)}</td>
-                  <td class="num">${fmt(row.millWeight)}</td>
+                  <td class="num">${fmt(row.destinationWeight)}</td>
                   <td class="num ${millDiffClass(row.diffSource)}">${fmt(row.diffSource)}</td>
                   <td class="num ${millDiffClass(row.diffSource)}">${moneyNf.format(row.lossRate)}%</td>
                   <td><span class="mill-chip ${row.status}">${millStatusLabel(row.status)}</span></td>
+                  <td>${row.destinationSource}</td>
                   <td>${row.grade || "-"}</td>
-                  <td>${row.rspo || "-"}</td>
                 </tr>`).join("")}
             </tbody>
             <tfoot>
               <tr>
                 <td class="left">รวม</td>
-                <td></td><td></td><td></td><td></td><td></td>
+                <td></td><td></td><td></td><td></td><td></td><td></td>
                 <td class="num">${fmt(totals.sourceWeight)}</td>
-                <td class="num">${fmt(totals.millWeight)}</td>
+                <td class="num">${fmt(totals.destinationWeight)}</td>
                 <td class="num ${millDiffClass(totals.diffSource)}">${fmt(totals.diffSource)}</td>
                 <td class="num ${millDiffClass(totals.diffSource)}">${moneyNf.format(totals.lossRate)}%</td>
-                <td>${fmt(totals.matched)} เทียบได้</td>
+                <td>${fmt(totals.matched + totals.queryFactory)} เทียบได้</td>
                 <td></td><td></td>
               </tr>
             </tfoot>
