@@ -5027,15 +5027,38 @@ function tableText(value) {
 }
 
 function tableTitle(table) {
-  const container = table.closest("section, article, .report-page, #clearPage") || table.parentElement;
-  const localTitle = container?.querySelector(".table-headline h3, .section-head h3, .report-title h2, h3, h2");
+  const section = table.closest("section, article");
+  const sectionTitle = section?.querySelector(":scope > .table-headline h3, :scope > .section-head h3, :scope > .report-title h2, :scope > h3, :scope > h2");
+  if (sectionTitle) return tableText(sectionTitle.textContent);
+  const wrap = table.closest(".table-wrap") || table.parentElement;
+  const previousToolbar = wrap?.previousElementSibling?.matches?.(".table-export-bar") ? wrap.previousElementSibling.previousElementSibling : wrap?.previousElementSibling;
+  const nearTitle = previousToolbar?.querySelector?.(".table-headline h3, .section-head h3, h3, h2")
+    || (previousToolbar?.matches?.(".table-headline, .section-head") ? previousToolbar.querySelector("h3, h2") : null);
+  if (nearTitle) return tableText(nearTitle.textContent);
+  const container = table.closest("section, article") || table.closest(".report-page, #clearPage") || table.parentElement;
+  const localTitle = container?.querySelector(":scope > .table-headline h3, :scope > .section-head h3, :scope > .report-title h2, :scope > h3, :scope > h2");
   return tableText(localTitle?.textContent) || "ตารางข้อมูล";
 }
 
 function tablePeriodText() {
   const start = dateValue(els.startDate);
   const end = dateValue(els.endDate);
-  return start || end ? `ช่วงวันที่ ${displayDate(start)} - ${displayDate(end)}` : "";
+  const viewLabel = tableText(els.tabs?.querySelector(`button[data-view="${CSS.escape(state.view)}"] span`)?.textContent) || tableText(state.view);
+  const yardLabel = els.yardFilter?.selectedOptions?.[0]?.textContent?.trim() || "ทั้งหมด";
+  const dates = start || end ? `ช่วงวันที่ ${displayDate(start)} - ${displayDate(end)}` : "ไม่กำหนดช่วงวันที่";
+  const filters = [`ลานเท ${yardLabel}`];
+  if (state.dailyFilters?.standard && state.dailyFilters.standard !== "all") filters.push(`มาตรฐาน ${state.dailyFilters.standard}`);
+  if (state.dailyFilters?.flow && state.dailyFilters.flow !== "all") filters.push(`รายการ ${state.dailyFilters.flow}`);
+  if (state.view === "mill") filters.push(`กลุ่ม ${state.millCategories.join(", ")}`);
+  if (state.view === "dashboard") filters.push(`เปรียบเทียบ ${compareModeLabel(state.dashboardCompareMode)}`);
+  return `${viewLabel} · ${dates} · ${filters.join(" · ")}`;
+}
+
+function tableColumnSummary(table) {
+  const headerRow = table.tHead?.rows?.[table.tHead.rows.length - 1];
+  if (!headerRow) return "";
+  const headers = [...headerRow.cells].map((cell) => tableText(cell.textContent)).filter(Boolean);
+  return headers.length ? `หัวตาราง: ${headers.join(" | ")}` : "";
 }
 
 function tableSummary(table) {
@@ -5063,13 +5086,15 @@ function tableExportHtml(table) {
   const title = tableTitle(table);
   const period = tablePeriodText();
   const summary = tableSummary(table);
+  const columns = tableColumnSummary(table);
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>
   body{font-family:Tahoma,Arial,sans-serif;color:#111827;margin:24px}
   h1{font-size:18px;margin:0 0 6px}
   .meta{font-size:12px;color:#4b5563;margin-bottom:10px}
-  .summary{font-size:12px;font-weight:700;margin:0 0 12px}
+  .summary{font-size:12px;font-weight:700;margin:0 0 6px}
+  .columns{font-size:10px;color:#4b5563;margin:0 0 12px;line-height:1.4}
   table{width:100%;border-collapse:collapse;font-size:11px}
   th,td{border:1px solid #cbd5e1;padding:6px 7px;text-align:center;white-space:nowrap}
   th{background:#e8edf4;font-weight:800}
@@ -5081,6 +5106,7 @@ function tableExportHtml(table) {
 <h1>${esc(title)}</h1>
 <div class="meta">${esc(period)}</div>
 <div class="summary">${esc(summary)}</div>
+<div class="columns">${esc(columns)}</div>
 ${clone.outerHTML}
 </body></html>`;
 }
@@ -5142,18 +5168,25 @@ function sortTable(table, index, th) {
 }
 
 function enhanceTables(root = document) {
-  const tables = [...root.querySelectorAll(".table-wrap table, #clearTable")]
+  const tables = [...root.querySelectorAll("table")]
     .filter((table) => !table.closest(".stock-print, .print-preview-modal") && !table.dataset.noEnhance);
   tables.forEach((table, index) => {
     if (!table.dataset.enhancedTableId) {
       table.dataset.enhancedTableId = `tbl-${Date.now()}-${index}-${Math.round(Math.random() * 10000)}`;
     }
     const id = table.dataset.enhancedTableId;
-    const wrap = table.closest(".table-wrap") || table.parentElement;
-    if (wrap && !wrap.previousElementSibling?.matches?.(`[data-table-toolbar="${id}"]`)) {
-      const toolbar = document.createElement("div");
+    const wrap = table.closest(".table-wrap");
+    const parent = wrap || table.parentElement;
+    const anchor = wrap ? table : table;
+    let toolbar = parent?.querySelector?.(`:scope > [data-table-toolbar="${CSS.escape(id)}"]`);
+    if (!toolbar && parent) {
+      toolbar = document.createElement("div");
       toolbar.className = "table-export-bar";
       toolbar.dataset.tableToolbar = id;
+      parent.insertBefore(toolbar, anchor);
+    }
+    if (toolbar) {
+      toolbar.className = "table-export-bar";
       toolbar.innerHTML = `
         <div>
           <strong>${esc(tableTitle(table))}</strong>
@@ -5163,7 +5196,6 @@ function enhanceTables(root = document) {
           <button type="button" data-table-export="excel" data-table-id="${id}">Excel</button>
           <button type="button" data-table-export="pdf" data-table-id="${id}">PDF</button>
         </div>`;
-      wrap.parentElement?.insertBefore(toolbar, wrap);
     }
     const headerRow = table.tHead?.rows?.[table.tHead.rows.length - 1];
     if (!headerRow) return;

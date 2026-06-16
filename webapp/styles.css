@@ -991,13 +991,13 @@ tfoot td {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-  padding: 16px;
+  padding: 12px;
 }
 
 .analytics-hero,
 .analytics-card {
   min-width: 0;
-  padding: 16px;
+  padding: 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
@@ -1007,8 +1007,8 @@ tfoot td {
 .analytics-hero {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(240px, .8fr) minmax(0, 1.6fr);
-  gap: 16px;
+  grid-template-columns: minmax(220px, .7fr) minmax(0, 1.7fr);
+  gap: 12px;
   align-items: center;
   background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
 }
@@ -1029,13 +1029,13 @@ tfoot td {
 
 .analytics-hero-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
 .analytics-tile {
-  min-height: 92px;
-  padding: 14px;
+  min-height: 82px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
@@ -1053,7 +1053,7 @@ tfoot td {
   display: block;
   margin: 9px 0 5px;
   color: var(--navy);
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1.05;
 }
 
@@ -1100,9 +1100,40 @@ tfoot td {
 
 .yield-compare-grid {
   display: grid;
-  grid-template-columns: minmax(260px, .55fr) minmax(520px, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(220px, .45fr) minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
+}
+
+.analytics-card .table-wrap {
+  max-width: 100%;
+}
+
+.analytics-card table {
+  min-width: 0;
+  width: 100%;
+  table-layout: auto;
+}
+
+.analytics-card th,
+.analytics-card td {
+  padding: 7px 8px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.analytics-card td.num,
+.analytics-card th.num {
+  white-space: nowrap;
+}
+
+.yield-compare-grid .table-wrap table {
+  font-size: 11px;
+}
+
+.yield-compare-grid .table-wrap th,
+.yield-compare-grid .table-wrap td {
+  padding: 6px 7px;
 }
 
 .mini-table {
