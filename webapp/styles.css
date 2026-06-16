@@ -1077,6 +1077,242 @@ tfoot td {
   font-size: 12px;
 }
 
+.mill-page {
+  display: grid;
+  gap: 14px;
+}
+
+.mill-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.mill-hero-badge {
+  min-width: 190px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, .7);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .46);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .75);
+}
+
+.mill-hero-badge span,
+.mill-hero-badge strong {
+  display: block;
+}
+
+.mill-hero-badge span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.mill-hero-badge strong {
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.mill-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.mill-kpis article,
+.mill-card {
+  border: 1px solid rgba(255, 255, 255, .7);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .58);
+  box-shadow: 0 14px 35px rgba(31, 41, 55, .08), inset 0 1px 0 rgba(255, 255, 255, .78);
+  backdrop-filter: blur(18px);
+}
+
+.mill-kpis article {
+  padding: 14px 16px;
+}
+
+.mill-kpis span,
+.mill-kpis small {
+  display: block;
+  color: var(--muted);
+}
+
+.mill-kpis span {
+  font-size: 12px;
+}
+
+.mill-kpis strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.mill-kpis small {
+  margin-top: 7px;
+  font-size: 11px;
+}
+
+.mill-insight-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, .85fr) minmax(360px, 1fr);
+  gap: 12px;
+}
+
+.mill-card {
+  padding: 14px;
+}
+
+.mill-card h3,
+.table-headline h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.mill-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mill-status {
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .5);
+  border: 1px solid rgba(255, 255, 255, .72);
+}
+
+.mill-status span,
+.mill-status strong {
+  display: block;
+}
+
+.mill-status span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.mill-status strong {
+  margin-top: 5px;
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.mill-status.matched strong {
+  color: var(--green);
+}
+
+.mill-status.missing_mill strong,
+.mill-status.missing_source strong {
+  color: var(--red);
+}
+
+.mill-compare-bars,
+.mill-diff-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.mill-compare-bars div,
+.mill-diff-row {
+  display: grid;
+  grid-template-columns: 92px minmax(120px, 1fr) 92px;
+  gap: 10px;
+  align-items: center;
+}
+
+.mill-compare-bars span,
+.mill-diff-row span {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.mill-compare-bars i,
+.mill-diff-row i {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(37, 99, 235, .82) var(--w), rgba(148, 163, 184, .18) var(--w));
+}
+
+.mill-compare-bars b,
+.mill-diff-row strong {
+  text-align: right;
+  font-size: 12px;
+}
+
+.mill-diff-row span b,
+.mill-diff-row span small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mill-diff-row span small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.table-headline {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.table-headline span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.mill-table {
+  width: 100%;
+  min-width: 980px;
+}
+
+.mill-table th,
+.mill-table td {
+  vertical-align: middle;
+}
+
+.mill-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  background: rgba(245, 247, 250, .94);
+  font-weight: 700;
+}
+
+.mill-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 86px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mill-chip.matched {
+  color: #047857;
+  background: rgba(16, 185, 129, .12);
+}
+
+.mill-chip.missing_mill,
+.mill-chip.missing_source {
+  color: #b91c1c;
+  background: rgba(220, 38, 38, .1);
+}
+
 .bar-label span {
   color: var(--muted);
   font-size: 11px;

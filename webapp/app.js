@@ -1,6 +1,8 @@
 ﻿const state = {
   payload: null,
   records: [],
+  millPayload: null,
+  millRows: [],
   view: "dashboard",
   clearOverrides: [],
   currentRows: [],
@@ -86,6 +88,7 @@ const moneyNf = new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maxim
 const CULTIVATE_API_BASE = window.__CULTIVATE_API_BASE__ || "http://127.0.0.1:8080/api/cultivate.php";
 const TRANSPORT_REFRESH_API = window.__TRANSPORT_REFRESH_API__ || CULTIVATE_API_BASE.replace(/cultivate\.php.*$/, "transport_refresh.php");
 const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
+const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_weight.json";
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
 const MASTER_FOLDER_DATA_URL = window.__MASTER_FOLDER_DATA_URL__ || "./data/master_data_full.json";
@@ -1900,7 +1903,7 @@ function farmModuleMap() {
 function initialViewFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const requested = params.get("view") || params.get("page") || params.get("v") || "";
-  const transportViews = new Set(["dashboard", "stock", "rspo", "daily", "summary", "clear", "master-data"]);
+  const transportViews = new Set(["dashboard", "stock", "mill", "rspo", "daily", "summary", "clear", "master-data"]);
   if (requested.startsWith("farm-")) return requested;
   if (transportViews.has(requested) && requested !== "master-data") return requested;
   return state.view;
@@ -2218,6 +2221,14 @@ function isoDay(value) {
   return text.slice(0, 10);
 }
 
+function millDocKey(value) {
+  const text = String(value || "")
+    .trim()
+    .replace(/^N/i, "")
+    .replace(/[^0-9A-Za-z]/g, "");
+  return text ? text.padStart(5, "0") : "";
+}
+
 function displayDate(value) {
   const d = isoDay(value);
   if (!d) return "";
@@ -2330,6 +2341,19 @@ async function loadPayload({ silent = false } = {}) {
   if (!silent) return true;
   render();
   return true;
+}
+
+async function loadMillWeightData() {
+  const payload = window.__MILL_WEIGHT_DATA__ || await fetch(`${MILL_WEIGHT_DATA_URL}?t=${Date.now()}`, { cache: "no-store" })
+    .then((res) => res.json())
+    .catch(() => ({ source: { rowCount: 0 }, records: [] }));
+  state.millPayload = payload;
+  state.millRows = (payload.records || []).map((row, index) => ({
+    ...row,
+    sourceRow: row.sourceRow || index + 2,
+    date: isoDay(row.date || row.wpDocDateText),
+    docKey: millDocKey(row.docKey || row.wpDocNo),
+  }));
 }
 
 async function loadEstData() {
@@ -3727,6 +3751,294 @@ function renderSummary() {
         </tr>`).join("")}</tbody>
       </table>
     </div>`;
+}
+
+function millRecordDate(record) {
+  return isoDay(record.date || record.weightDate || record.wpDocDate || record.wpFacDocDate);
+}
+
+function millSourceGroups() {
+  const movementMap = movementBySourceRow();
+  const scope = yardScope();
+  const groups = new Map();
+
+  for (const record of state.records || []) {
+    if (record.wpInOutType !== "O" || !record.wpFacDocNo) continue;
+    const rowDate = millRecordDate(record);
+    if (rowDate && !inRange(rowDate)) continue;
+    const movement = movementMap.get(Number(record._srcRow));
+    const rowScope = movement ? movementScope(movement) : dataRecordScope(record);
+    if (scope !== "combined" && rowScope !== scope) continue;
+    if (!recordMatchesGlobalFilters(record, movement)) continue;
+
+    const key = millDocKey(record.wpFacDocNo);
+    if (!key) continue;
+    const group = groups.get(key) || {
+      docKey: key,
+      factoryDocNo: record.wpFacDocNo,
+      sourceDocs: [],
+      dates: [],
+      carLicenses: new Set(),
+      sourceNetWeight: 0,
+      sourceFactoryNetWeight: 0,
+      sourceRows: [],
+      standards: new Set(),
+      yards: new Set(),
+    };
+
+    group.sourceDocs.push(record.wpDocNo || "");
+    if (rowDate) group.dates.push(rowDate);
+    if (record.wpCarLicense) group.carLicenses.add(record.wpCarLicense);
+    if (rowScope) group.yards.add(rowScope === "takuk" ? "ตะกุก" : "ปลายราง");
+    const standard = recordStandardBucket(record, movement) || record.standard || "";
+    if (standard) group.standards.add(standard);
+    group.sourceNetWeight += n(record.wpNetWeight);
+    group.sourceFactoryNetWeight += n(record.wpFacNetWeight);
+    group.sourceRows.push(record);
+    groups.set(key, group);
+  }
+
+  return groups;
+}
+
+function millRowsByKey() {
+  const map = new Map();
+  for (const row of state.millRows || []) {
+    const key = millDocKey(row.docKey || row.wpDocNo);
+    if (!key) continue;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, { ...row, wpNetWeight: n(row.wpNetWeight), rows: [row] });
+      continue;
+    }
+    existing.wpNetWeight += n(row.wpNetWeight);
+    existing.rows.push(row);
+  }
+  return map;
+}
+
+function millCompareRows() {
+  const sourceGroups = millSourceGroups();
+  const millMap = millRowsByKey();
+  const includeMillOnlyRows = yardScope() === "combined" && globalFiltersAreAll();
+  const keys = new Set(includeMillOnlyRows ? [...sourceGroups.keys(), ...millMap.keys()] : [...sourceGroups.keys()]);
+  const rows = [];
+
+  for (const key of keys) {
+    const source = sourceGroups.get(key);
+    const mill = millMap.get(key);
+    const dates = [...(source?.dates || []), mill?.date].filter(Boolean).sort();
+    const date = dates[0] || "";
+    if (date && !inRange(date)) continue;
+    const sourceWeight = n(source?.sourceNetWeight);
+    const sourceFactoryWeight = n(source?.sourceFactoryNetWeight);
+    const millWeight = n(mill?.wpNetWeight);
+    const diffSource = millWeight - sourceWeight;
+    const diffFactory = millWeight - sourceFactoryWeight;
+
+    rows.push({
+      docKey: key,
+      date,
+      sourceDocNo: source?.sourceDocs.filter(Boolean).join(", ") || "",
+      factoryDocNo: mill?.wpDocNo || source?.factoryDocNo || key,
+      customerName: mill?.customerName || [mill?.ctinit, mill?.ctfname, mill?.ctlname].filter(Boolean).join(" "),
+      carLicense: mill?.wpCarLicense || [...(source?.carLicenses || [])].join(", "),
+      sourceWeight,
+      sourceFactoryWeight,
+      millWeight,
+      diffSource,
+      diffFactory,
+      lossRate: sourceWeight ? (diffSource / sourceWeight) * 100 : 0,
+      sourceRows: source?.sourceRows?.length || 0,
+      status: source && mill ? "matched" : source ? "missing_mill" : "missing_source",
+      grade: mill?.wpGradeNew || "",
+      rspo: mill?.wpRspo || [...(source?.standards || [])].join(", "),
+      yard: [...(source?.yards || [])].join(", "),
+    });
+  }
+
+  return rows.sort((a, b) => (a.date || "").localeCompare(b.date || "") || a.docKey.localeCompare(b.docKey));
+}
+
+function millTotals(rows) {
+  const totals = rows.reduce((acc, row) => {
+    acc.docs += 1;
+    acc.matched += row.status === "matched" ? 1 : 0;
+    acc.missingMill += row.status === "missing_mill" ? 1 : 0;
+    acc.missingSource += row.status === "missing_source" ? 1 : 0;
+    acc.sourceWeight += n(row.sourceWeight);
+    acc.sourceFactoryWeight += n(row.sourceFactoryWeight);
+    acc.millWeight += n(row.millWeight);
+    acc.diffSource += n(row.diffSource);
+    acc.diffFactory += n(row.diffFactory);
+    return acc;
+  }, {
+    docs: 0,
+    matched: 0,
+    missingMill: 0,
+    missingSource: 0,
+    sourceWeight: 0,
+    sourceFactoryWeight: 0,
+    millWeight: 0,
+    diffSource: 0,
+    diffFactory: 0,
+  });
+  totals.lossRate = totals.sourceWeight ? (totals.diffSource / totals.sourceWeight) * 100 : 0;
+  return totals;
+}
+
+function millStatusLabel(status) {
+  if (status === "matched") return "เทียบได้";
+  if (status === "missing_mill") return "ไม่พบปลายทาง";
+  return "ไม่พบต้นทาง";
+}
+
+function millDiffClass(value) {
+  if (n(value) < 0) return "loss";
+  if (n(value) > 0) return "delta up";
+  return "delta flat";
+}
+
+function renderMillWeight() {
+  const rows = millCompareRows();
+  const totals = millTotals(rows);
+  const source = state.millPayload?.source || {};
+  const biggestDiffs = rows
+    .filter((row) => row.status === "matched")
+    .sort((a, b) => Math.abs(b.diffSource) - Math.abs(a.diffSource))
+    .slice(0, 8);
+  const maxAbsDiff = Math.max(...biggestDiffs.map((row) => Math.abs(row.diffSource)), 1);
+  const statusCards = [
+    ["matched", "เทียบได้", totals.matched],
+    ["missing_mill", "ขาดปลายทาง SPC", totals.missingMill],
+    ["missing_source", "ขาดต้นทาง", totals.missingSource],
+  ];
+  const shownRows = rows.slice(0, 500);
+
+  state.currentRows = rows;
+  els.reportPage.innerHTML = `
+    <section class="mill-page">
+      <div class="report-title mill-hero">
+        <div>
+          <h2>Mill-Weight</h2>
+          <p>เปรียบเทียบน้ำหนักส่งออกต้นทางกับน้ำหนักปลายทางโรงงาน SPC ตามเลขเอกสารโรงงาน</p>
+          <p>แหล่งข้อมูลปลายทาง: ${source.workbook || "ดึงข้อมูลปาล์ม SPC.xls"} · ชีต ${source.sheet || "Data"} · ${fmt(source.rowCount || state.millRows.length)} rows · ล่าสุด ${displayDate(source.dateMax || "")}</p>
+        </div>
+        <div class="mill-hero-badge">
+          <span>ช่วงวันที่</span>
+          <strong>${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}</strong>
+        </div>
+      </div>
+
+      <div class="mill-kpis">
+        <article>
+          <span>เอกสารที่เทียบได้</span>
+          <strong>${fmt(totals.matched)} / ${fmt(totals.docs)}</strong>
+          <small>${fmt(totals.missingMill + totals.missingSource)} รายการต้องตรวจ</small>
+        </article>
+        <article>
+          <span>น้ำหนักต้นทาง</span>
+          <strong>${fmt(totals.sourceWeight)}</strong>
+          <small>kg จากใบชั่งส่งออก</small>
+        </article>
+        <article>
+          <span>น้ำหนักโรงงาน SPC</span>
+          <strong>${fmt(totals.millWeight)}</strong>
+          <small>kg จากชีต Data</small>
+        </article>
+        <article>
+          <span>ส่วนต่าง SPC - ต้นทาง</span>
+          <strong class="${millDiffClass(totals.diffSource)}">${fmt(totals.diffSource)}</strong>
+          <small>${moneyNf.format(totals.lossRate)}%</small>
+        </article>
+      </div>
+
+      <div class="mill-insight-grid">
+        <section class="mill-card">
+          <h3>ภาพรวมการเทียบข้อมูล</h3>
+          <div class="mill-status-grid">
+            ${statusCards.map(([status, label, value]) => `
+              <div class="mill-status ${status}">
+                <span>${label}</span>
+                <strong>${fmt(value)}</strong>
+              </div>`).join("")}
+          </div>
+          <div class="mill-compare-bars">
+            <div><span>ต้นทาง</span><i style="--w:${totals.millWeight ? Math.min(100, totals.sourceWeight / Math.max(totals.sourceWeight, totals.millWeight) * 100) : 0}%"></i><b>${fmt(totals.sourceWeight)}</b></div>
+            <div><span>SPC</span><i style="--w:${totals.sourceWeight ? Math.min(100, totals.millWeight / Math.max(totals.sourceWeight, totals.millWeight) * 100) : 0}%"></i><b>${fmt(totals.millWeight)}</b></div>
+          </div>
+        </section>
+        <section class="mill-card">
+          <h3>รายการต่างมากสุด</h3>
+          <div class="mill-diff-list">
+            ${biggestDiffs.length ? biggestDiffs.map((row) => `
+              <div class="mill-diff-row">
+                <span><b>${row.factoryDocNo}</b><small>${displayDate(row.date)} · ${row.carLicense || "-"}</small></span>
+                <i style="--w:${Math.max(6, Math.abs(row.diffSource) / maxAbsDiff * 100)}%"></i>
+                <strong class="${millDiffClass(row.diffSource)}">${fmt(row.diffSource)}</strong>
+              </div>`).join("") : `<p class="muted">ไม่มีรายการที่เทียบได้ในช่วงวันที่นี้</p>`}
+          </div>
+        </section>
+      </div>
+
+      <section class="mill-card">
+        <div class="table-headline">
+          <h3>รายละเอียดเทียบน้ำหนัก</h3>
+          <span>แสดง ${fmt(shownRows.length)} จาก ${fmt(rows.length)} รายการ</span>
+        </div>
+        <div class="table-wrap">
+          <table class="mini-table mill-table">
+            <thead>
+              <tr>
+                <th>วันที่</th>
+                <th>เอกสารโรงงาน</th>
+                <th class="left">ใบชั่งต้นทาง</th>
+                <th>ลาน</th>
+                <th>ทะเบียน</th>
+                <th class="left">ผู้ขาย / โรงงาน</th>
+                <th>ต้นทาง kg</th>
+                <th>SPC kg</th>
+                <th>Diff kg</th>
+                <th>Diff %</th>
+                <th>สถานะ</th>
+                <th>Grade</th>
+                <th>RSPO</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${shownRows.map((row) => `
+                <tr>
+                  <td>${displayDate(row.date)}</td>
+                  <td>${row.factoryDocNo}</td>
+                  <td class="left">${row.sourceDocNo || "-"}</td>
+                  <td>${row.yard || "-"}</td>
+                  <td>${row.carLicense || "-"}</td>
+                  <td class="left">${row.customerName || "-"}</td>
+                  <td class="num">${fmt(row.sourceWeight)}</td>
+                  <td class="num">${fmt(row.millWeight)}</td>
+                  <td class="num ${millDiffClass(row.diffSource)}">${fmt(row.diffSource)}</td>
+                  <td class="num ${millDiffClass(row.diffSource)}">${moneyNf.format(row.lossRate)}%</td>
+                  <td><span class="mill-chip ${row.status}">${millStatusLabel(row.status)}</span></td>
+                  <td>${row.grade || "-"}</td>
+                  <td>${row.rspo || "-"}</td>
+                </tr>`).join("")}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td class="left">รวม</td>
+                <td></td><td></td><td></td><td></td><td></td>
+                <td class="num">${fmt(totals.sourceWeight)}</td>
+                <td class="num">${fmt(totals.millWeight)}</td>
+                <td class="num ${millDiffClass(totals.diffSource)}">${fmt(totals.diffSource)}</td>
+                <td class="num ${millDiffClass(totals.diffSource)}">${moneyNf.format(totals.lossRate)}%</td>
+                <td>${fmt(totals.matched)} เทียบได้</td>
+                <td></td><td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+    </section>`;
 }
 
 function renderRspo() {
@@ -8436,10 +8748,11 @@ function render() {
   const isClear = state.view === "clear";
   const isEst = isEstView(state.view);
   const isFarm = isFarmView(state.view);
+  const isMill = state.view === "mill";
   els.reportPage.className = "report-page";
   els.reportPage.classList.toggle("hidden", isClear);
   els.clearPage.classList.toggle("hidden", !isClear);
-  els.dashboard.classList.toggle("hidden", isEst || isFarm);
+  els.dashboard.classList.toggle("hidden", isEst || isFarm || isMill);
   els.datePanel?.classList.toggle("hidden", isEst || isFarm);
   els.globalFilterPanel?.classList.toggle("hidden", isEst || isFarm);
 
@@ -8447,6 +8760,7 @@ function render() {
   if (isFarm) els.reportPage.innerHTML = renderFarmPage();
   if (state.view === "dashboard") renderAdvancedDashboard();
   if (state.view === "stock") renderStock(yardScope());
+  if (state.view === "mill") renderMillWeight();
   if (state.view === "rspo") renderRspo();
   if (state.view === "daily") renderDailyReport();
   if (state.view === "summary") renderSummary();
@@ -8521,7 +8835,7 @@ async function init() {
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
-  await Promise.all([loadPayload(), loadEstData(), loadMasterFolderData()]);
+  await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData()]);
   setDateValue(els.startDate, state.payload.source.dateMin);
   setDateValue(els.endDate, state.payload.source.dateMax);
   els.clearDate.value = state.payload.source.dateMax;
