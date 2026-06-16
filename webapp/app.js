@@ -5085,14 +5085,12 @@ function tableExportHtml(table) {
   });
   const title = tableTitle(table);
   const period = tablePeriodText();
-  const columns = tableColumnSummary(table);
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>
   body{font-family:Tahoma,Arial,sans-serif;color:#111827;margin:24px}
   h1{font-size:18px;margin:0 0 6px}
   .meta{font-size:12px;color:#4b5563;margin-bottom:10px}
-  .columns{font-size:10px;color:#4b5563;margin:0 0 12px;line-height:1.4}
   table{width:100%;border-collapse:collapse;font-size:11px}
   th,td{border:1px solid #cbd5e1;padding:6px 7px;text-align:center;white-space:nowrap}
   th{background:#e8edf4;font-weight:800}
@@ -5103,7 +5101,6 @@ function tableExportHtml(table) {
 </style></head><body>
 <h1>${esc(title)}</h1>
 <div class="meta">${esc(period)}</div>
-<div class="columns">${esc(columns)}</div>
 ${clone.outerHTML}
 </body></html>`;
 }
