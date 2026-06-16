@@ -1,19 +1,26 @@
 :root {
-  --bg: #f7f8fa;
-  --surface: #ffffff;
-  --surface-soft: #fbfcfd;
-  --ink: #111827;
-  --muted: #6b7280;
-  --line: #e5e7eb;
-  --line-strong: #d1d5db;
-  --head: #f3f4f6;
-  --navy: #173a5e;
-  --navy-2: #20466d;
+  --bg: #c8bfbc;
+  --surface: rgba(255, 255, 255, .72);
+  --surface-solid: #ffffff;
+  --surface-soft: rgba(248, 247, 245, .78);
+  --glass: rgba(255, 255, 255, .58);
+  --glass-strong: rgba(255, 255, 255, .84);
+  --ink: #17202a;
+  --muted: #6f747a;
+  --line: rgba(255, 255, 255, .55);
+  --line-strong: rgba(119, 128, 136, .28);
+  --head: rgba(237, 239, 240, .86);
+  --navy: #385f7c;
+  --navy-2: #284a64;
+  --primary: #385f7c;
   --orange: #f59e0b;
   --green: #10b981;
   --red: #dc2626;
   --purple: #7c3aed;
-  --shadow: 0 1px 2px rgba(15, 23, 42, .04);
+  --shadow: 0 18px 44px rgba(50, 43, 42, .12);
+  --shadow-sm: 0 10px 28px rgba(50, 43, 42, .09);
+  --soft-radius: 14px;
+  --hard-radius: 8px;
 }
 
 * {
@@ -23,10 +30,25 @@
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 88% 8%, rgba(255, 255, 255, .44), transparent 30%),
+    linear-gradient(115deg, rgba(255, 255, 255, .26) 0 18%, transparent 18% 100%),
+    var(--bg);
   color: var(--ink);
   font-family: "Segoe UI", Tahoma, Arial, sans-serif;
   font-size: 14px;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(108deg, transparent 0 12%, rgba(255, 255, 255, .28) 12.2% 14.5%, transparent 14.8% 100%),
+    linear-gradient(118deg, transparent 0 54%, rgba(255, 255, 255, .22) 54.2% 59%, transparent 59.3% 100%);
+  opacity: .8;
 }
 
 @media screen {
@@ -4696,6 +4718,338 @@ tfoot td {
 .farm-report-grid b {
   color: var(--primary);
   font-size: 12px;
+}
+
+/* Soft glass theme based on theme.jpg reference */
+.sidebar,
+.content-head,
+.date-panel,
+.global-filter-panel,
+.dashboard article,
+.daily-summary article,
+.report-page,
+.input-panel,
+.analytics-card,
+.palm-card,
+.farm-panel,
+.farm-hero article,
+.farm-toolbar,
+.farm-approval-board,
+.farm-planner-console,
+.farm-planner-selector > article,
+.farm-planner-resource-grid > article,
+.farm-planner-advanced > article,
+.farm-planner-card,
+.farm-report-grid article,
+.est-panel,
+.est-toolbar,
+.master-toolbar,
+.master-meta-grid article,
+.master-editor,
+.master-table-panel,
+.master-detail-card,
+.master-nav,
+.master-nav-group,
+.cultivate-credential-panel,
+.cultivate-import-panel,
+.cultivate-menu-card {
+  border-color: var(--line);
+  background: var(--glass);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(18px) saturate(1.12);
+  -webkit-backdrop-filter: blur(18px) saturate(1.12);
+}
+
+.content {
+  gap: 14px;
+  padding-top: 12px;
+}
+
+.content-head {
+  min-height: 62px;
+  margin: 0;
+  border-radius: var(--soft-radius);
+  border: 1px solid var(--line);
+}
+
+.sidebar {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .52);
+}
+
+.brand,
+.source-info,
+.menu-section + .menu-section,
+.report-title,
+.master-section-head,
+.section-head,
+.master-editor .folder-master-form {
+  border-color: rgba(119, 128, 136, .18);
+}
+
+.brand-logo {
+  background: linear-gradient(145deg, rgba(56, 95, 124, .95), rgba(69, 86, 95, .82));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .32);
+}
+
+.side-nav button {
+  border: 1px solid transparent;
+  color: #40464c;
+}
+
+.side-nav button::before,
+.team-logo,
+.dashboard article::before {
+  background: rgba(255, 255, 255, .64);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .56);
+}
+
+.side-nav button:hover {
+  border-color: rgba(255, 255, 255, .65);
+  background: rgba(255, 255, 255, .5);
+}
+
+.side-nav button.active {
+  border-color: rgba(56, 95, 124, .28);
+  background: rgba(255, 255, 255, .76);
+  color: var(--navy-2);
+  box-shadow: inset 3px 0 0 var(--navy);
+}
+
+.side-nav button.active::before {
+  background: var(--navy);
+}
+
+button,
+input,
+select,
+textarea {
+  border-color: rgba(117, 126, 135, .24);
+  background: rgba(255, 255, 255, .76);
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .52);
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid rgba(56, 95, 124, .28);
+  outline-offset: 2px;
+  border-color: rgba(56, 95, 124, .5);
+}
+
+button:hover {
+  background: rgba(255, 255, 255, .9);
+}
+
+.actions button:first-child,
+.input-panel button,
+#applyBtn,
+.master-section-head button,
+.farm-toolbar button,
+.farm-form-actions button,
+.farm-actions button,
+.farm-planner-taskbar button,
+.farm-planner-card button,
+.farm-planner-card-head button {
+  border-color: rgba(40, 74, 100, .88);
+  background: linear-gradient(180deg, #456f8c, #2f5470);
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(47, 84, 112, .22);
+}
+
+#csvBtn,
+.actions button:not(:first-child) {
+  background: rgba(255, 255, 255, .72);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.date-panel,
+.global-filter-panel,
+.input-panel,
+.farm-toolbar,
+.est-toolbar,
+.master-toolbar {
+  border-radius: 14px;
+}
+
+.dashboard article,
+.daily-summary article {
+  position: relative;
+  overflow: hidden;
+  min-height: 96px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .78), rgba(255, 255, 255, .48));
+}
+
+.dashboard article::after,
+.daily-summary article::after,
+.farm-hero article::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(118deg, rgba(255, 255, 255, .24), transparent 34%);
+}
+
+.dashboard strong,
+.daily-summary strong,
+.farm-hero strong {
+  color: #122033;
+  letter-spacing: 0;
+}
+
+.report-page,
+.table-wrap,
+.farm-table-wrap,
+.master-data-table-wrap,
+.est-table-wrap {
+  border-radius: var(--soft-radius);
+}
+
+.report-page {
+  background: rgba(255, 255, 255, .6);
+}
+
+.table-wrap,
+.farm-table-wrap,
+.master-data-table-wrap,
+.est-table-wrap {
+  border: 1px solid rgba(255, 255, 255, .42);
+  background: rgba(255, 255, 255, .54);
+}
+
+table,
+.mini-table,
+.farm-table,
+.master-table,
+.est-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  background: rgba(255, 255, 255, .62);
+  color: #1c2733;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+th,
+td,
+.mini-table th,
+.mini-table td,
+.master-table th,
+.master-table td,
+.farm-table th,
+.farm-table td,
+.est-table th,
+.est-table td {
+  border-width: 0 0 1px;
+  border-color: rgba(114, 122, 130, .16);
+  padding: 9px 11px;
+  vertical-align: middle;
+}
+
+th,
+.mini-table th,
+.master-table th,
+.farm-table th,
+.est-table th,
+.farm-table thead th,
+.master-data-table-wrap thead th {
+  background: rgba(238, 240, 241, .92);
+  color: #43505d;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, .36);
+}
+
+tbody tr:hover td,
+.master-table tbody tr[data-folder-detail-row]:hover td {
+  background: rgba(244, 248, 251, .9);
+}
+
+tfoot td,
+.est-table tr.is-total td,
+.section-label td {
+  background: rgba(232, 238, 242, .9);
+  color: #23384c;
+  font-weight: 900;
+}
+
+td.num,
+.bar-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.master-table tr.is-selected td {
+  background: rgba(219, 234, 247, .88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .42);
+}
+
+.master-row-actions button,
+.farm-actions button {
+  min-height: 28px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.master-row-actions button:first-child,
+.farm-actions button:first-child {
+  background: rgba(255, 255, 255, .78);
+  color: var(--navy-2);
+}
+
+.master-row-actions button:last-child,
+.farm-actions button:last-child {
+  border-color: rgba(220, 38, 38, .25);
+  background: rgba(255, 241, 242, .78);
+  color: #9f1239;
+}
+
+.filter-row button,
+.master-relations span,
+.farm-table-list span,
+.farm-report-grid em {
+  border-color: rgba(117, 126, 135, .22);
+  background: rgba(255, 255, 255, .58);
+}
+
+.filter-row button.active {
+  background: var(--navy);
+  color: #fff;
+}
+
+.auto-id-field input,
+.est-entry-form input:disabled,
+.farm-form input:disabled {
+  background: rgba(229, 233, 237, .8) !important;
+  color: #747b83 !important;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, .34);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(88, 103, 115, .38);
+  border: 2px solid rgba(255, 255, 255, .34);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 95, 124, .56);
 }
 
 @media (max-width: 1100px) {
