@@ -5022,6 +5022,174 @@ function esc(value) {
     .replaceAll("'", "&#039;");
 }
 
+function tableText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function tableTitle(table) {
+  const container = table.closest("section, article, .report-page, #clearPage") || table.parentElement;
+  const localTitle = container?.querySelector(".table-headline h3, .section-head h3, .report-title h2, h3, h2");
+  return tableText(localTitle?.textContent) || "ตารางข้อมูล";
+}
+
+function tablePeriodText() {
+  const start = dateValue(els.startDate);
+  const end = dateValue(els.endDate);
+  return start || end ? `ช่วงวันที่ ${displayDate(start)} - ${displayDate(end)}` : "";
+}
+
+function tableSummary(table) {
+  const foot = table.tFoot ? tableText(table.tFoot.textContent) : "";
+  if (foot) return foot;
+  const bodyRows = table.tBodies?.[0]?.rows?.length || 0;
+  return `จำนวน ${fmt(bodyRows)} รายการ`;
+}
+
+function slugFileName(value) {
+  return String(value || "table")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .slice(0, 90) || "table";
+}
+
+function tableExportHtml(table) {
+  const clone = table.cloneNode(true);
+  clone.querySelectorAll("[data-sort-index]").forEach((th) => {
+    th.removeAttribute("data-sort-index");
+    th.removeAttribute("aria-sort");
+    th.classList.remove("sortable-th", "sorted-asc", "sorted-desc");
+  });
+  const title = tableTitle(table);
+  const period = tablePeriodText();
+  const summary = tableSummary(table);
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>${esc(title)}</title>
+<style>
+  body{font-family:Tahoma,Arial,sans-serif;color:#111827;margin:24px}
+  h1{font-size:18px;margin:0 0 6px}
+  .meta{font-size:12px;color:#4b5563;margin-bottom:10px}
+  .summary{font-size:12px;font-weight:700;margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th,td{border:1px solid #cbd5e1;padding:6px 7px;text-align:center;white-space:nowrap}
+  th{background:#e8edf4;font-weight:800}
+  td.left,th.left{text-align:left}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  tfoot td{background:#f8fafc;font-weight:800}
+  @media print{body{margin:10mm} table{font-size:9px} th,td{padding:4px}}
+</style></head><body>
+<h1>${esc(title)}</h1>
+<div class="meta">${esc(period)}</div>
+<div class="summary">${esc(summary)}</div>
+${clone.outerHTML}
+</body></html>`;
+}
+
+function downloadTableExcel(table) {
+  const title = tableTitle(table);
+  const html = tableExportHtml(table);
+  const blob = new Blob(["\ufeff", html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${slugFileName(title)}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function printTablePdf(table) {
+  const title = tableTitle(table);
+  const win = window.open("", "_blank", "width=1200,height=800");
+  if (!win) return;
+  win.document.open();
+  win.document.write(tableExportHtml(table));
+  win.document.close();
+  win.document.title = title;
+  win.focus();
+  window.setTimeout(() => win.print(), 250);
+}
+
+function sortableValue(text) {
+  const value = tableText(text);
+  const date = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (date) return Number(`${date[3]}${date[2].padStart(2, "0")}${date[1].padStart(2, "0")}`);
+  const numeric = value.replace(/,/g, "").replace(/%/g, "");
+  if (/^-?\d+(\.\d+)?$/.test(numeric)) return Number(numeric);
+  return value.toLocaleLowerCase("th-TH");
+}
+
+function sortTable(table, index, th) {
+  const tbody = table.tBodies?.[0];
+  if (!tbody) return;
+  const current = th.getAttribute("aria-sort") === "ascending" ? "descending" : "ascending";
+  for (const header of table.querySelectorAll("th[aria-sort]")) {
+    header.removeAttribute("aria-sort");
+    header.classList.remove("sorted-asc", "sorted-desc");
+  }
+  th.setAttribute("aria-sort", current);
+  th.classList.add(current === "ascending" ? "sorted-asc" : "sorted-desc");
+  const factor = current === "ascending" ? 1 : -1;
+  const rows = [...tbody.rows].map((row, position) => ({ row, position }));
+  rows.sort((a, b) => {
+    const av = sortableValue(a.row.cells[index]?.textContent || "");
+    const bv = sortableValue(b.row.cells[index]?.textContent || "");
+    if (typeof av === "number" && typeof bv === "number") return (av - bv || a.position - b.position) * factor;
+    return (String(av).localeCompare(String(bv), "th-TH", { numeric: true }) || a.position - b.position) * factor;
+  });
+  for (const item of rows) tbody.appendChild(item.row);
+}
+
+function enhanceTables(root = document) {
+  const tables = [...root.querySelectorAll(".table-wrap table, #clearTable")]
+    .filter((table) => !table.closest(".stock-print, .print-preview-modal") && !table.dataset.noEnhance);
+  tables.forEach((table, index) => {
+    if (!table.dataset.enhancedTableId) {
+      table.dataset.enhancedTableId = `tbl-${Date.now()}-${index}-${Math.round(Math.random() * 10000)}`;
+    }
+    const id = table.dataset.enhancedTableId;
+    const wrap = table.closest(".table-wrap") || table.parentElement;
+    if (wrap && !wrap.previousElementSibling?.matches?.(`[data-table-toolbar="${id}"]`)) {
+      const toolbar = document.createElement("div");
+      toolbar.className = "table-export-bar";
+      toolbar.dataset.tableToolbar = id;
+      toolbar.innerHTML = `
+        <div>
+          <strong>${esc(tableTitle(table))}</strong>
+          <span>${esc(tableSummary(table))}</span>
+        </div>
+        <div class="table-export-actions">
+          <button type="button" data-table-export="excel" data-table-id="${id}">Excel</button>
+          <button type="button" data-table-export="pdf" data-table-id="${id}">PDF</button>
+        </div>`;
+      wrap.parentElement?.insertBefore(toolbar, wrap);
+    }
+    const headerRow = table.tHead?.rows?.[table.tHead.rows.length - 1];
+    if (!headerRow) return;
+    [...headerRow.cells].forEach((th) => {
+      if (th.colSpan > 1 || th.dataset.sortIndex) return;
+      th.dataset.sortIndex = String(th.cellIndex);
+      th.classList.add("sortable-th");
+      th.title = "คลิกเพื่อเรียงข้อมูล";
+    });
+  });
+}
+
+function handleEnhancedTableClick(event) {
+  const exportBtn = event.target.closest("[data-table-export]");
+  if (exportBtn) {
+    const table = document.querySelector(`[data-enhanced-table-id="${CSS.escape(exportBtn.dataset.tableId)}"]`);
+    if (!table) return;
+    if (exportBtn.dataset.tableExport === "excel") downloadTableExcel(table);
+    if (exportBtn.dataset.tableExport === "pdf") printTablePdf(table);
+    return;
+  }
+  const header = event.target.closest("th[data-sort-index]");
+  if (!header || !header.closest("table")) return;
+  sortTable(header.closest("table"), Number(header.dataset.sortIndex), header);
+}
+
 function isEstView(view) {
   return String(view || "").startsWith("est-");
 }
@@ -9018,6 +9186,8 @@ function render() {
     renderDashboard(buildStockFromData(yardScope()));
     renderClear();
   }
+  enhanceTables(els.reportPage);
+  enhanceTables(els.clearPage);
 }
 
 function setView(view) {
@@ -9138,6 +9308,7 @@ async function init() {
     const btn = e.target.closest("button[data-view]");
     if (btn) setView(btn.dataset.view);
   });
+  document.addEventListener("click", handleEnhancedTableClick);
   els.sidebarToggle?.addEventListener("click", () => {
     state.sidebarCollapsed = !state.sidebarCollapsed;
     localStorage.setItem("sidebarCollapsed", state.sidebarCollapsed ? "1" : "0");
