@@ -7,6 +7,7 @@
   clearOverrides: [],
   currentRows: [],
   dailyFilters: { standard: "all", flow: "all" },
+  millCategories: ["กรูด-RSPO", "คีรีรัฐ-RSPO", "NON-RSPO"],
   palmFilters: { job: "all", from: "", to: "", area: "all", group: "all", query: "" },
   dashboardCompareMode: "area",
   payloadSignature: "",
@@ -3776,6 +3777,10 @@ function millCategoryOrder(category) {
   return { "กรูด-RSPO": 1, "คีรีรัฐ-RSPO": 2, "NON-RSPO": 3 }[category] || 9;
 }
 
+function millCategorySelected(category) {
+  return state.millCategories.includes(category);
+}
+
 function millSourceGroups() {
   const movementMap = movementBySourceRow();
   const scope = yardScope();
@@ -3906,6 +3911,8 @@ function millTotals(rows) {
     acc.queryFactory += row.status === "query_factory" ? 1 : 0;
     acc.missingMill += row.status === "missing_mill" ? 1 : 0;
     acc.missingSource += row.status === "missing_source" ? 1 : 0;
+    acc.missingMillSourceWeight += row.status === "missing_mill" ? n(row.sourceWeight) : 0;
+    acc.missingSourceDestinationWeight += row.status === "missing_source" ? n(row.destinationWeight) : 0;
     if (comparable) {
       acc.compareDocs += 1;
       acc.sourceWeight += n(row.sourceWeight);
@@ -3924,6 +3931,8 @@ function millTotals(rows) {
     queryFactory: 0,
     missingMill: 0,
     missingSource: 0,
+    missingMillSourceWeight: 0,
+    missingSourceDestinationWeight: 0,
     sourceWeight: 0,
     sourceFactoryWeight: 0,
     millWeight: 0,
@@ -3986,24 +3995,54 @@ function millGradeSummaries(rows) {
     .sort((a, b) => millCategoryOrder(a.category) - millCategoryOrder(b.category) || String(a.grade).localeCompare(String(b.grade)));
 }
 
+function millPieSegments(rows) {
+  const total = rows.reduce((sum, row) => sum + n(row.destinationWeight), 0);
+  if (!total) return { total: 0, gradient: "#e5e7eb 0 100%", rows: [] };
+  const colors = ["#28466f", "#0f766e", "#d99a2b", "#7c3aed", "#dc2626", "#64748b"];
+  let cursor = 0;
+  const parts = rows.map((row, index) => {
+    const percent = (n(row.destinationWeight) / total) * 100;
+    const start = cursor;
+    const end = cursor + percent;
+    cursor = end;
+    return { ...row, color: colors[index % colors.length], percent, start, end };
+  });
+  const gradient = parts.map((row) => `${row.color} ${row.start}% ${row.end}%`).join(", ");
+  return { total, gradient, rows: parts };
+}
+
+function filteredMillRows() {
+  return (state.millRows || [])
+    .map((row) => ({
+      ...row,
+      category: millCategoryFromMill(row),
+      date: isoDay(row.date || row.wpDocDateText),
+    }))
+    .filter((row) => (!row.date || inRange(row.date)) && millCategorySelected(row.category))
+    .sort((a, b) => (a.date || "").localeCompare(b.date || "") || millDocKey(a.wpDocNo).localeCompare(millDocKey(b.wpDocNo)));
+}
+
+function millSpcTotals(rows) {
+  return rows.reduce((acc, row) => {
+    acc.wpNetWeight += n(row.wpNetWeight);
+    acc.wptotalpay += n(row.wptotalpay);
+    acc.count += 1;
+    return acc;
+  }, { count: 0, wpNetWeight: 0, wptotalpay: 0 });
+}
+
 function renderMillWeight() {
-  const rows = millCompareRows();
+  const rows = millCompareRows().filter((row) => millCategorySelected(row.category));
   const totals = millTotals(rows);
   const segmentRows = millSegmentSummaries(rows);
   const gradeRows = millGradeSummaries(rows);
+  const gradePie = millPieSegments(gradeRows);
+  const spcRows = filteredMillRows();
+  const spcTotals = millSpcTotals(spcRows);
   const source = state.millPayload?.source || {};
-  const biggestDiffs = rows
-    .filter((row) => row.status === "matched" || row.status === "query_factory")
-    .sort((a, b) => Math.abs(b.diffSource) - Math.abs(a.diffSource))
-    .slice(0, 8);
-  const maxAbsDiff = Math.max(...biggestDiffs.map((row) => Math.abs(row.diffSource)), 1);
-  const statusCards = [
-    ["matched", "เทียบ SPC", totals.matched],
-    ["query_factory", "เทียบจาก Query", totals.queryFactory],
-    ["missing_mill", "ขาดปลายทาง SPC", totals.missingMill],
-    ["missing_source", "ขาดต้นทาง", totals.missingSource],
-  ];
   const shownRows = rows.slice(0, 500);
+  const shownSpcRows = spcRows.slice(0, 500);
+  const categoryOptions = ["กรูด-RSPO", "คีรีรัฐ-RSPO", "NON-RSPO"];
 
   state.currentRows = rows;
   els.reportPage.innerHTML = `
@@ -4043,39 +4082,11 @@ function renderMillWeight() {
         </article>
       </div>
 
-      <div class="mill-insight-grid">
-        <section class="mill-card">
-          <h3>ภาพรวมการเทียบข้อมูล</h3>
-          <div class="mill-status-grid">
-            ${statusCards.map(([status, label, value]) => `
-              <div class="mill-status ${status}">
-                <span>${label}</span>
-                <strong>${fmt(value)}</strong>
-              </div>`).join("")}
-          </div>
-          <div class="mill-compare-bars">
-            <div><span>ต้นทาง</span><i style="--w:${totals.destinationWeight ? Math.min(100, totals.sourceWeight / Math.max(totals.sourceWeight, totals.destinationWeight) * 100) : 0}%"></i><b>${fmt(totals.sourceWeight)}</b></div>
-            <div><span>ปลายทาง</span><i style="--w:${totals.sourceWeight ? Math.min(100, totals.destinationWeight / Math.max(totals.sourceWeight, totals.destinationWeight) * 100) : 0}%"></i><b>${fmt(totals.destinationWeight)}</b></div>
-          </div>
-        </section>
-        <section class="mill-card">
-          <h3>รายการต่างมากสุด</h3>
-          <div class="mill-diff-list">
-            ${biggestDiffs.length ? biggestDiffs.map((row) => `
-              <div class="mill-diff-row">
-                <span><b>${row.factoryDocNo}</b><small>${displayDate(row.date)} · ${row.carLicense || "-"}</small></span>
-                <i style="--w:${Math.max(6, Math.abs(row.diffSource) / maxAbsDiff * 100)}%"></i>
-                <strong class="${millDiffClass(row.diffSource)}">${fmt(row.diffSource)}</strong>
-              </div>`).join("") : `<p class="muted">ไม่มีรายการที่เทียบได้ในช่วงวันที่นี้</p>`}
-          </div>
-        </section>
-      </div>
-
       <div class="mill-analysis-grid">
         <section class="mill-card">
           <div class="table-headline">
             <h3>เปรียบเทียบตามกลุ่ม</h3>
-            <span>กรูด-RSPO / คีรีรัฐ-RSPO / NON-RSPO</span>
+            <span>น้ำหนักต้นทางเทียบเฉพาะรายการที่จับคู่ได้ ส่วน SPC ที่ยังไม่มีต้นทางแยกไว้ให้ตรวจ</span>
           </div>
           <div class="table-wrap compact">
             <table class="mini-table mill-segment-table">
@@ -4090,6 +4101,7 @@ function renderMillWeight() {
                   <th>SPC</th>
                   <th>Query</th>
                   <th>ต้องตรวจ</th>
+                  <th>SPC รอต้นทาง kg</th>
                 </tr>
               </thead>
               <tbody>
@@ -4104,6 +4116,7 @@ function renderMillWeight() {
                     <td class="num">${fmt(row.matched)}</td>
                     <td class="num">${fmt(row.queryFactory)}</td>
                     <td class="num">${fmt(row.missingMill + row.missingSource)}</td>
+                    <td class="num">${fmt(row.missingSourceDestinationWeight)}</td>
                   </tr>`).join("")}
               </tbody>
             </table>
@@ -4112,9 +4125,20 @@ function renderMillWeight() {
         <section class="mill-card">
           <div class="table-headline">
             <h3>วิเคราะห์เกรดประเมิน</h3>
-            <span>Grade จาก SPC หรือเกรดโรงงานใน Query</span>
+            <span>สัดส่วนน้ำหนักปลายทางตาม Grade</span>
           </div>
-          <div class="table-wrap compact">
+          <div class="mill-grade-chart">
+            <div class="mill-pie" style="--pie:${gradePie.gradient}"><span>${fmt(gradePie.total)}</span><small>kg</small></div>
+            <div class="mill-pie-legend">
+              ${gradePie.rows.map((row) => `
+                <div>
+                  <i style="background:${row.color}"></i>
+                  <span>${row.category} / Grade ${row.grade}</span>
+                  <strong>${moneyNf.format(row.percent)}%</strong>
+                </div>`).join("") || `<p class="muted">ไม่มีข้อมูลเกรดในช่วงที่เลือก</p>`}
+            </div>
+          </div>
+          <div class="table-wrap compact mill-grade-detail">
             <table class="mini-table mill-grade-table">
               <thead>
                 <tr>
@@ -4146,6 +4170,13 @@ function renderMillWeight() {
         <div class="table-headline">
           <h3>รายละเอียดเทียบน้ำหนัก</h3>
           <span>แสดง ${fmt(shownRows.length)} จาก ${fmt(rows.length)} รายการ</span>
+        </div>
+        <div class="mill-category-filter" aria-label="กรองกลุ่ม Mill-Weight">
+          ${categoryOptions.map((category) => `
+            <label>
+              <input type="checkbox" data-mill-category="${category}" ${millCategorySelected(category) ? "checked" : ""}>
+              <span>${category}</span>
+            </label>`).join("")}
         </div>
         <div class="table-wrap">
           <table class="mini-table mill-table">
@@ -4196,6 +4227,62 @@ function renderMillWeight() {
                 <td class="num ${millDiffClass(totals.diffSource)}">${moneyNf.format(totals.lossRate)}%</td>
                 <td>${fmt(totals.matched + totals.queryFactory)} เทียบได้</td>
                 <td></td><td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section class="mill-card">
+        <div class="table-headline">
+          <h3>ข้อมูลจากไฟล์ ดึงข้อมูลปาล์ม SPC</h3>
+          <span>คอลัมน์ตามชีต Data · แสดง ${fmt(shownSpcRows.length)} จาก ${fmt(spcRows.length)} รายการ</span>
+        </div>
+        <div class="table-wrap">
+          <table class="mini-table mill-spc-table">
+            <thead>
+              <tr>
+                <th>wpDocNo</th>
+                <th>wpDocDate</th>
+                <th>wpctCode</th>
+                <th>ctinit</th>
+                <th class="left">ctfname</th>
+                <th class="left">ctlname</th>
+                <th>wpCarLicense</th>
+                <th>wpNetWeight</th>
+                <th>wpGradeNew</th>
+                <th>wpproduct</th>
+                <th>wppriceperunit</th>
+                <th>wptotalpay</th>
+                <th>wpRspo</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${shownSpcRows.map((row) => `
+                <tr>
+                  <td>${row.wpDocNo || "-"}</td>
+                  <td>${displayDate(row.date || row.wpDocDateText)}</td>
+                  <td>${row.wpctCode || "-"}</td>
+                  <td>${row.ctinit || "-"}</td>
+                  <td class="left">${row.ctfname || "-"}</td>
+                  <td class="left">${row.ctlname || "-"}</td>
+                  <td>${row.wpCarLicense || "-"}</td>
+                  <td class="num">${fmt(row.wpNetWeight)}</td>
+                  <td>${row.wpGradeNew || "-"}</td>
+                  <td>${row.wpproduct || "-"}</td>
+                  <td class="num">${moneyNf.format(n(row.wppriceperunit))}</td>
+                  <td class="num">${moneyNf.format(n(row.wptotalpay))}</td>
+                  <td>${row.wpRspo || "-"}</td>
+                </tr>`).join("")}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td class="left">รวม</td>
+                <td></td><td></td><td></td><td></td><td></td><td></td>
+                <td class="num">${fmt(spcTotals.wpNetWeight)}</td>
+                <td></td><td></td><td></td>
+                <td class="num">${moneyNf.format(spcTotals.wptotalpay)}</td>
+                <td>${fmt(spcTotals.count)} รายการ</td>
               </tr>
             </tfoot>
           </table>
@@ -9061,6 +9148,15 @@ async function init() {
     setView("dashboard");
   });
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.matches("[data-mill-category]")) {
+      const category = e.target.dataset.millCategory;
+      const next = new Set(state.millCategories);
+      if (e.target.checked) next.add(category);
+      else next.delete(category);
+      state.millCategories = next.size ? [...next] : ["กรูด-RSPO", "คีรีรัฐ-RSPO", "NON-RSPO"];
+      render();
+      return;
+    }
     if (e.target.id === "farmWorkActivityGroup") {
       state.farmWorkFilters.activityGroup = e.target.value;
       state.farmWorkDetailId = "";

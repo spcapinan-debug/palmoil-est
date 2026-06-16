@@ -1326,17 +1326,132 @@ tfoot td {
   font-weight: 700;
 }
 
+.mill-grade-chart {
+  display: grid;
+  grid-template-columns: 150px minmax(180px, 1fr);
+  gap: 16px;
+  align-items: center;
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+
+.mill-pie {
+  width: 148px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  position: relative;
+  background: conic-gradient(var(--pie));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .65), 0 10px 24px rgba(31, 41, 55, .1);
+}
+
+.mill-pie::after {
+  content: "";
+  position: absolute;
+  inset: 32px;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, .88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+
+.mill-pie span,
+.mill-pie small {
+  z-index: 1;
+  display: block;
+  color: var(--ink);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.mill-pie small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mill-pie-legend {
+  display: grid;
+  gap: 8px;
+}
+
+.mill-pie-legend div {
+  display: grid;
+  grid-template-columns: 10px minmax(120px, 1fr) 56px;
+  gap: 8px;
+  align-items: center;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.mill-pie-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.mill-pie-legend span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mill-pie-legend strong {
+  text-align: right;
+  font-size: 11px;
+}
+
+.mill-grade-detail {
+  max-height: 190px;
+}
+
+.mill-category-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.mill-category-filter label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid rgba(148, 163, 184, .28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .62);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mill-category-filter input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--navy);
+}
+
 .mill-table {
   width: 100%;
   min-width: 1120px;
 }
 
+.mill-spc-table {
+  width: 100%;
+  min-width: 1180px;
+}
+
 .mill-table th,
-.mill-table td {
+.mill-table td,
+.mill-spc-table th,
+.mill-spc-table td {
   vertical-align: middle;
 }
 
-.mill-table tfoot td {
+.mill-table tfoot td,
+.mill-spc-table tfoot td {
   position: sticky;
   bottom: 0;
   background: rgba(245, 247, 250, .94);
