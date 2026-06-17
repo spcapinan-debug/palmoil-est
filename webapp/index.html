@@ -127,7 +127,13 @@
 
         <section id="clearPage" class="hidden">
           <div class="input-panel">
-            <label>วันที่<input type="text" inputmode="numeric" placeholder="dd/mm/yyyy" id="clearDate"></label>
+            <label>วันที่
+              <span class="date-input-control">
+                <input type="text" inputmode="numeric" placeholder="dd/mm/yyyy" id="clearDate">
+                <button class="calendar-btn" type="button" data-picker="clearDatePicker" aria-label="เลือกวันที่"></button>
+                <input id="clearDatePicker" class="native-date-picker" type="date" tabindex="-1" aria-hidden="true">
+              </span>
+            </label>
             <label>เคลียร์ปลายราง<input type="number" id="clearPr" step="1"></label>
             <label>เคลียร์ตะกุก<input type="number" id="clearTk" step="1"></label>
             <label>หมายเหตุ<input type="text" id="clearNote"></label>
@@ -160,6 +166,6 @@
       </div>
     </div>
 
-    <script src="./app.js?v=date-format-ddmmyyyy-1"></script>
+    <script src="./app.js?v=clear-date-picker-1"></script>
   </body>
 </html>

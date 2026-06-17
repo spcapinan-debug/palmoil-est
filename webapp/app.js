@@ -55,6 +55,7 @@ const els = {
   endDate: document.querySelector("#endDate"),
   startDatePicker: document.querySelector("#startDatePicker"),
   endDatePicker: document.querySelector("#endDatePicker"),
+  clearDatePicker: document.querySelector("#clearDatePicker"),
   yardFilter: document.querySelector("#yardFilter"),
   datePanel: document.querySelector(".date-panel"),
   globalFilterPanel: document.querySelector("#globalFilterPanel"),
@@ -2263,6 +2264,7 @@ function setDateValue(el, value) {
   el.value = displayDate(iso);
   if (el === els.startDate && els.startDatePicker) els.startDatePicker.value = iso;
   if (el === els.endDate && els.endDatePicker) els.endDatePicker.value = iso;
+  if (el === els.clearDate && els.clearDatePicker) els.clearDatePicker.value = iso;
 }
 
 function normalizeDateInput(el) {
@@ -2274,6 +2276,7 @@ function syncDatePickerFromText(el) {
   const iso = dateValue(el);
   if (el === els.startDate && els.startDatePicker) els.startDatePicker.value = iso;
   if (el === els.endDate && els.endDatePicker) els.endDatePicker.value = iso;
+  if (el === els.clearDate && els.clearDatePicker) els.clearDatePicker.value = iso;
 }
 
 function dayNumber(value) {
@@ -9558,12 +9561,14 @@ async function init() {
     render();
   });
   els.clearDate?.addEventListener("blur", () => normalizeDateInput(els.clearDate));
+  els.clearDate?.addEventListener("input", () => syncDatePickerFromText(els.clearDate));
   for (const btn of document.querySelectorAll(".calendar-btn")) {
     btn.addEventListener("click", () => {
       const picker = document.querySelector(`#${btn.dataset.picker}`);
       if (!picker) return;
       if (picker.id === "startDatePicker") picker.value = dateValue(els.startDate);
       if (picker.id === "endDatePicker") picker.value = dateValue(els.endDate);
+      if (picker.id === "clearDatePicker") picker.value = dateValue(els.clearDate);
       if (picker.showPicker) picker.showPicker();
       else picker.focus();
     });
@@ -9575,6 +9580,9 @@ async function init() {
   els.endDatePicker.addEventListener("change", () => {
     setDateValue(els.endDate, els.endDatePicker.value);
     render();
+  });
+  els.clearDatePicker?.addEventListener("change", () => {
+    setDateValue(els.clearDate, els.clearDatePicker.value);
   });
   els.yardFilter.addEventListener("change", () => {
     render();
