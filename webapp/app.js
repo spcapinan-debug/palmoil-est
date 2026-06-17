@@ -88,6 +88,8 @@ const tonNf = new Intl.NumberFormat("th-TH", { minimumFractionDigits: 3, maximum
 const moneyNf = new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const CULTIVATE_API_BASE = window.__CULTIVATE_API_BASE__ || "http://127.0.0.1:8080/api/cultivate.php";
 const TRANSPORT_REFRESH_API = window.__TRANSPORT_REFRESH_API__ || CULTIVATE_API_BASE.replace(/cultivate\.php.*$/, "transport_refresh.php");
+const CLEAR_RAMP_API = window.__CLEAR_RAMP_API__ || CULTIVATE_API_BASE.replace(/cultivate\.php.*$/, "clear_ramp_log.php");
+const CLEAR_RAMP_STORAGE_KEY = "palm-clear-ramp-log";
 const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
 const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_weight.json";
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
@@ -2144,10 +2146,14 @@ async function refreshTransportFromQuery() {
   els.refreshTransportBtn.textContent = "Refreshing...";
   els.refreshTransportBtn.disabled = true;
   try {
+    writeClearOverridesLocal();
+    await persistClearOverridesToServer();
     const res = await fetch(`${TRANSPORT_REFRESH_API}?t=${Date.now()}`, { method: "POST", cache: "no-store" });
     const payload = await res.json();
     if (!res.ok || payload.ok === false) throw new Error(payload.error || "Refresh failed");
     await loadPayload({ silent: true });
+    await Promise.all([loadMillWeightData(), loadClearOverridesFromServer()]);
+    render();
     els.refreshTransportBtn.textContent = `Query ${fmt(payload.source?.rowCount || 0)} rows`;
     window.setTimeout(() => {
       els.refreshTransportBtn.textContent = original;
@@ -2298,16 +2304,82 @@ function yardScope() {
   return "combined";
 }
 
+function normalizeClearOverride(row) {
+  if (!row || !row.date) return null;
+  const normalized = {
+    date: isoDay(row.date),
+    clearPrSet: Boolean(row.clearPrSet),
+    clearTkSet: Boolean(row.clearTkSet),
+    clearPr: n(row.clearPr),
+    clearTk: n(row.clearTk),
+    note: String(row.note || ""),
+    source: row.source || "manual",
+    updatedAt: row.updatedAt || "",
+  };
+  if (!normalized.date) return null;
+  if (!normalized.clearPrSet && row.clearPr !== undefined && row.clearPr !== "") normalized.clearPrSet = true;
+  if (!normalized.clearTkSet && row.clearTk !== undefined && row.clearTk !== "") normalized.clearTkSet = true;
+  return normalized;
+}
+
+function mergeClearOverrides(...groups) {
+  const map = new Map();
+  for (const group of groups) {
+    for (const sourceRow of group || []) {
+      const row = normalizeClearOverride(sourceRow);
+      if (!row) continue;
+      const existing = map.get(row.date);
+      const existingTime = Date.parse(existing?.updatedAt || "") || 0;
+      const rowTime = Date.parse(row.updatedAt || "") || 0;
+      if (!existing || rowTime >= existingTime) map.set(row.date, row);
+    }
+  }
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function writeClearOverridesLocal() {
+  localStorage.setItem(CLEAR_RAMP_STORAGE_KEY, JSON.stringify(state.clearOverrides));
+}
+
 function loadClearOverrides() {
   try {
-    state.clearOverrides = JSON.parse(localStorage.getItem("palm-clear-ramp-log") || "[]");
+    state.clearOverrides = mergeClearOverrides(JSON.parse(localStorage.getItem(CLEAR_RAMP_STORAGE_KEY) || "[]"));
   } catch {
     state.clearOverrides = [];
   }
 }
 
+async function loadClearOverridesFromServer() {
+  try {
+    const payload = await fetch(`${CLEAR_RAMP_API}?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
+    if (payload?.ok === false) return false;
+    state.clearOverrides = mergeClearOverrides(state.clearOverrides, payload.rows || []);
+    writeClearOverridesLocal();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function persistClearOverridesToServer() {
+  try {
+    const res = await fetch(`${CLEAR_RAMP_API}?t=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows: state.clearOverrides }),
+      cache: "no-store",
+    });
+    const payload = await res.json();
+    return res.ok && payload?.ok !== false;
+  } catch {
+    return false;
+  }
+}
+
 function saveClearOverrides() {
-  localStorage.setItem("palm-clear-ramp-log", JSON.stringify(state.clearOverrides));
+  state.clearOverrides = mergeClearOverrides(state.clearOverrides);
+  writeClearOverridesLocal();
+  persistClearOverridesToServer();
 }
 
 function payloadSignature(payload) {
@@ -2393,7 +2465,7 @@ function startLiveRefresh() {
 }
 
 function workbookClearRows() {
-  const sheet = state.payload.sheets.Clear_Ramp_Log;
+  const sheet = state.payload?.sheets?.Clear_Ramp_Log;
   return (sheet?.rows || []).map((row) => ({
     date: row._date,
     clearPrSet: row["เคลียร์แรมป์ ปลายราง"] !== null && row["เคลียร์แรมป์ ปลายราง"] !== undefined,
@@ -9170,10 +9242,14 @@ function renderPalmManagement() {
 
 function renderClear() {
   const rows = clearRows().filter((r) => inRange(r.date));
+  const gardenBalance = new Map(buildStockFromData("garden").map((row) => [row.date, row.balance]));
+  const takukBalance = new Map(buildStockFromData("takuk").map((row) => [row.date, row.balance]));
   els.clearTable.innerHTML = `
-    <thead><tr><th>วันที่</th><th>เคลียร์ปลายราง</th><th>เคลียร์ตะกุก</th><th>Loss แรมป์</th><th>Loss ขนส่ง</th><th>รวมปรับยอด</th><th class="left">หมายเหตุ</th><th></th></tr></thead>
+    <thead><tr><th>วันที่</th><th>คงเหลือปลายราง</th><th>คงเหลือตะกุก</th><th>เคลียร์ปลายราง</th><th>เคลียร์ตะกุก</th><th>Loss แรมป์</th><th>Loss ขนส่ง</th><th>รวมปรับยอด</th><th class="left">หมายเหตุ</th><th></th></tr></thead>
     <tbody>${rows.map((r) => `<tr>
       <td>${displayDate(r.date)}</td>
+      <td class="num">${fmt(gardenBalance.get(r.date) || 0)}</td>
+      <td class="num">${fmt(takukBalance.get(r.date) || 0)}</td>
       <td class="num">${fmt(r.clearPr)}</td>
       <td class="num">${fmt(r.clearTk)}</td>
       <td class="num loss">${fmt(r.lossRamp)}</td>
@@ -9239,6 +9315,7 @@ function addClear() {
   const row = {
     date: els.clearDate.value,
     note: els.clearNote.value.trim(),
+    source: "manual",
     updatedAt: new Date().toISOString(),
   };
   if (els.clearPr.value !== "") {
@@ -9281,7 +9358,7 @@ async function init() {
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
-  await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData()]);
+  await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadClearOverridesFromServer()]);
   setDateValue(els.startDate, state.payload.source.dateMin);
   setDateValue(els.endDate, state.payload.source.dateMax);
   els.clearDate.value = state.payload.source.dateMax;
