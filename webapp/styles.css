@@ -4053,6 +4053,35 @@ tfoot td {
   line-height: 1.45;
 }
 
+.farm-sync-status {
+  margin: 0 16px 12px;
+  padding: 10px 12px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .78);
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.farm-sync-status.success {
+  border-color: rgba(22, 101, 52, .22);
+  background: rgba(240, 253, 244, .78);
+  color: #166534;
+}
+
+.farm-sync-status.warning {
+  border-color: rgba(180, 83, 9, .24);
+  background: rgba(255, 251, 235, .78);
+  color: #92400e;
+}
+
+.farm-sync-status.error {
+  border-color: rgba(220, 38, 38, .22);
+  background: rgba(254, 242, 242, .78);
+  color: #b91c1c;
+}
+
 .farm-planner-console {
   display: grid;
   gap: 12px;

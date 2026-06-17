@@ -34,6 +34,9 @@
   farmDbRows: {},
   farmDbSource: null,
   farmDbErrors: {},
+  farmSyncMessage: "",
+  farmSyncStatus: "",
+  farmSyncBusy: false,
   farmRecords: [],
   farmFilters: { query: "", status: "all", role: "super_admin" },
   farmWorkFilters: { activityGroup: "all", team: "all", zone: "all", plotGroup: "all", status: "all", query: "" },
@@ -2043,6 +2046,30 @@ async function loadFarmTablesFromDatabase({ silent = false } = {}) {
     state.farmDbErrors = { api: error.message };
     return false;
   }
+}
+
+function mergeFarmDbRow(tableKey, row) {
+  const normalized = normalizeFarmDbRows(tableKey, [row])[0];
+  if (!normalized?.id) return null;
+  const rows = Array.isArray(state.farmDbRows?.[tableKey]) ? [...state.farmDbRows[tableKey]] : [];
+  const index = rows.findIndex((item) => item.id === normalized.id || item.databaseId === normalized.databaseId);
+  if (index >= 0) rows[index] = { ...rows[index], ...normalized };
+  else rows.push(normalized);
+  state.farmDbRows = { ...state.farmDbRows, [tableKey]: rows };
+  return normalized;
+}
+
+async function persistFarmRowToDatabase(table, row) {
+  const res = await fetch(FARM_TABLES_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ table: table.key, row }),
+    cache: "no-store",
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok || payload?.ok === false) throw new Error(payload?.error || `Farm API ${res.status}`);
+  const saved = payload.row ? mergeFarmDbRow(table.key, payload.row) : null;
+  return { ...payload, row: saved || payload.row || row };
 }
 
 async function loadCultivateCredentials() {
@@ -8011,7 +8038,7 @@ function appendFarmVersionLog(table, original, nextRow) {
   });
 }
 
-function saveFarmRow() {
+async function saveFarmRow() {
   const module = selectedFarmModule();
   const table = selectedFarmTable(module);
   const editId = state.farmEditId;
@@ -8061,7 +8088,28 @@ function saveFarmRow() {
   state.farmEditId = "";
   state.farmDetailId = row.id;
   saveFarmRecords();
+  state.farmSyncBusy = true;
+  state.farmSyncStatus = "";
+  state.farmSyncMessage = "กำลังบันทึกฐานข้อมูล...";
   render();
+  try {
+    const saved = await persistFarmRowToDatabase(table, row);
+    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === row.id || item._overrideOf === row._overrideOf || item.id === editId)));
+    const savedId = saved.row?.id || row.id;
+    state.farmDetailId = savedId;
+    saveFarmRecords();
+    state.farmSyncStatus = saved.mode === "farm-master-fallback" ? "warning" : "success";
+    state.farmSyncMessage = saved.warning
+      ? `บันทึกแล้วใน fallback: ${saved.warning}`
+      : "บันทึกฐานข้อมูลแล้ว";
+    await loadFarmTablesFromDatabase({ silent: false });
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `บันทึกไม่สำเร็จ: ${error.message}`;
+  } finally {
+    state.farmSyncBusy = false;
+    render();
+  }
 }
 
 function editFarmRow(id) {
@@ -8070,21 +8118,39 @@ function editFarmRow(id) {
   render();
 }
 
-function setFarmInactive(id) {
+async function setFarmInactive(id) {
   const module = selectedFarmModule();
   const table = selectedFarmTable(module);
   const row = farmRows(table).find((item) => item.id === id);
   if (!row) return;
+  const nextRow = { ...row, status: "inactive", updatedAt: new Date().toISOString() };
   if (row.readonly) {
-    state.farmRecords.push({ id: `delete-${id}`, moduleId: module.id, tableId: table.key, _overrideOf: id, _deleted: true, updatedAt: new Date().toISOString() });
+    state.farmRecords.push({ ...nextRow, id: `override-${id}`, moduleId: module.id, tableId: table.key, _overrideOf: id });
   } else {
     const current = state.farmRecords.find((item) => item.id === id);
-    if (current) current._deleted = true;
+    if (current) current.status = "inactive";
   }
   state.farmDetailId = "";
   state.farmEditId = "";
   saveFarmRecords();
+  state.farmSyncBusy = true;
+  state.farmSyncStatus = "";
+  state.farmSyncMessage = "กำลังบันทึกสถานะ inactive...";
   render();
+  try {
+    const saved = await persistFarmRowToDatabase(table, nextRow);
+    state.farmSyncStatus = saved.mode === "farm-master-fallback" ? "warning" : "success";
+    state.farmSyncMessage = saved.warning
+      ? `บันทึกแล้วใน fallback: ${saved.warning}`
+      : "บันทึกสถานะแล้ว";
+    await loadFarmTablesFromDatabase({ silent: false });
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `บันทึกไม่สำเร็จ: ${error.message}`;
+  } finally {
+    state.farmSyncBusy = false;
+    render();
+  }
 }
 
 function exportFarmCsv() {
@@ -8775,6 +8841,7 @@ function renderFarmPage() {
         <article><span>ข้อมูลจริง DB</span><strong>${fmt(dbRowCount)}</strong><small>${esc(state.farmDbSource?.mode || "fallback-seed")} · error ${fmt(dbErrorCount)}</small></article>
         <article><span>Foreign Key</span><strong>${fmt(refCount)}</strong><small>Inactive ${fmt(inactiveCount)} รายการ</small></article>
       </section>
+      ${state.farmSyncMessage ? `<div class="farm-sync-status ${esc(state.farmSyncStatus)}">${esc(state.farmSyncMessage)}</div>` : ""}
       ${module.id === "farm-work" ? `${renderFarmWorkPlanner()}${renderFarmWorkBoard()}` : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
@@ -8808,7 +8875,7 @@ function renderFarmPage() {
             </label>
             ${table.fields.map((field) => renderFarmInput(field, editing[farmFieldKey(field)] ?? "")).join("")}
             <div class="farm-form-actions">
-              <button type="button" data-farm-save ${farmCan(state.farmEditId ? "update" : "create") ? "" : "disabled"}>${state.farmEditId ? "บันทึกแก้ไข" : "บันทึกเพิ่ม"}</button>
+              <button type="button" data-farm-save ${farmCan(state.farmEditId ? "update" : "create") && !state.farmSyncBusy ? "" : "disabled"}>${state.farmSyncBusy ? "กำลังบันทึก..." : (state.farmEditId ? "บันทึกแก้ไข" : "บันทึกเพิ่ม")}</button>
               <button type="button" data-farm-clear>ล้างฟอร์ม</button>
             </div>
           </form>
