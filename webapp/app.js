@@ -89,6 +89,7 @@ const moneyNf = new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maxim
 const CULTIVATE_API_BASE = window.__CULTIVATE_API_BASE__ || "http://127.0.0.1:8080/api/cultivate.php";
 const TRANSPORT_REFRESH_API = window.__TRANSPORT_REFRESH_API__ || CULTIVATE_API_BASE.replace(/cultivate\.php.*$/, "transport_refresh.php");
 const CLEAR_RAMP_API = window.__CLEAR_RAMP_API__ || CULTIVATE_API_BASE.replace(/cultivate\.php.*$/, "clear_ramp_log.php");
+const TRANSPORT_SYNC_API = window.__TRANSPORT_SYNC_API__ || "https://palmoil-est.vercel.app/api/transport-sync";
 const CLEAR_RAMP_STORAGE_KEY = "palm-clear-ramp-log";
 const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
 const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_weight.json";
@@ -2154,6 +2155,7 @@ async function refreshTransportFromQuery() {
     await loadPayload({ silent: true });
     await Promise.all([loadMillWeightData(), loadClearOverridesFromServer()]);
     render();
+    await syncTransportDatabase("refresh_query");
     els.refreshTransportBtn.textContent = `Query ${fmt(payload.source?.rowCount || 0)} rows`;
     window.setTimeout(() => {
       els.refreshTransportBtn.textContent = original;
@@ -2357,6 +2359,34 @@ async function loadClearOverridesFromServer() {
     writeClearOverridesLocal();
     return true;
   } catch {
+    return loadClearOverridesFromTransportDb();
+  }
+}
+
+async function loadClearOverridesFromTransportDb() {
+  try {
+    const payload = await fetch(`${TRANSPORT_SYNC_API}?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
+    if (payload?.ok === false) return false;
+    const rows = (payload.clearRows || []).map((row) => ({
+      date: row.clear_date,
+      clearPr: row.clear_pr,
+      clearTk: row.clear_tk,
+      clearPrSet: row.clear_pr_set,
+      clearTkSet: row.clear_tk_set,
+      lossRamp: row.loss_ramp,
+      lossTransport: row.loss_transport,
+      lossPrRamp: row.loss_pr_ramp,
+      lossPrTransport: row.loss_pr_transport,
+      lossTkRamp: row.loss_tk_ramp,
+      lossTkTransport: row.loss_tk_transport,
+      note: row.note || "",
+      source: "database",
+      updatedAt: row.updated_at || "",
+    }));
+    state.clearOverrides = mergeClearOverrides(state.clearOverrides, rows);
+    writeClearOverridesLocal();
+    return true;
+  } catch {
     return false;
   }
 }
@@ -2380,6 +2410,123 @@ function saveClearOverrides() {
   state.clearOverrides = mergeClearOverrides(state.clearOverrides);
   writeClearOverridesLocal();
   persistClearOverridesToServer();
+}
+
+function withFullTransportScope(callback) {
+  const previous = {
+    start: dateValue(els.startDate),
+    end: dateValue(els.endDate),
+    yard: els.yardFilter?.value || "combined",
+    standard: state.dailyFilters.standard,
+    flow: state.dailyFilters.flow,
+    millCategories: [...state.millCategories],
+  };
+  try {
+    if (state.payload?.source?.dateMin) setDateValue(els.startDate, state.payload.source.dateMin);
+    if (state.payload?.source?.dateMax) setDateValue(els.endDate, state.payload.source.dateMax);
+    if (els.yardFilter) els.yardFilter.value = "combined";
+    state.dailyFilters.standard = "all";
+    state.dailyFilters.flow = "all";
+    state.millCategories = ["กรูด-RSPO", "คีรีรัฐ-RSPO", "NON-RSPO"];
+    return callback();
+  } finally {
+    if (previous.start) setDateValue(els.startDate, previous.start);
+    if (previous.end) setDateValue(els.endDate, previous.end);
+    if (els.yardFilter) els.yardFilter.value = previous.yard;
+    state.dailyFilters.standard = previous.standard;
+    state.dailyFilters.flow = previous.flow;
+    state.millCategories = previous.millCategories;
+  }
+}
+
+function clearRowsForDatabase() {
+  return withFullTransportScope(() => {
+    const gardenBalance = new Map(buildStockFromData("garden").map((row) => [row.date, row.balance]));
+    const takukBalance = new Map(buildStockFromData("takuk").map((row) => [row.date, row.balance]));
+    return clearRows().map((row) => ({
+      ...row,
+      gardenBalance: gardenBalance.get(row.date) || 0,
+      takukBalance: takukBalance.get(row.date) || 0,
+    }));
+  });
+}
+
+function sourceRecordsForDatabase() {
+  const movementMap = movementBySourceRow();
+  return (state.records || []).map((record) => {
+    const movement = movementMap.get(Number(record._srcRow));
+    const rowScope = movement ? movementScope(movement) : dataRecordScope(record);
+    return {
+      _srcRow: record._srcRow,
+      wpDocNo: record.wpDocNo,
+      wpInOutType: record.wpInOutType,
+      weightDate: record.weightDate,
+      date: record.date,
+      wpFacDocNo: record.wpFacDocNo,
+      wpCarLicense: record.wpCarLicense,
+      areaGroup: record.areaGroup,
+      name: record.name,
+      wpctCode: record.wpctCode,
+      wpNetWeight: record.wpNetWeight,
+      wpFacNetWeight: record.wpFacNetWeight,
+      wpFacGrade: record.wpFacGrade,
+      wpGrade: record.wpGrade,
+      yard: rowScope === "takuk" ? "ตะกุก" : "ปลายราง",
+      standard: recordStandardBucket(record, movement) || record.standard || "",
+    };
+  });
+}
+
+function millRowsForDatabase() {
+  return (state.millRows || []).map((row) => ({
+    sourceRow: row.sourceRow,
+    wpDocNo: row.wpDocNo,
+    docKey: row.docKey,
+    wpDocDateText: row.wpDocDateText,
+    date: row.date,
+    wpctCode: row.wpctCode,
+    ctinit: row.ctinit,
+    ctfname: row.ctfname,
+    ctlname: row.ctlname,
+    customerName: row.customerName,
+    wpCarLicense: row.wpCarLicense,
+    wpNetWeight: row.wpNetWeight,
+    wpGradeNew: row.wpGradeNew,
+    wpproduct: row.wpproduct,
+    wppriceperunit: row.wppriceperunit,
+    wptotalpay: row.wptotalpay,
+    wpRspo: row.wpRspo,
+    category: millCategoryFromMill(row),
+    date: isoDay(row.date || row.wpDocDateText),
+  }));
+}
+
+async function syncTransportDatabase(reason = "manual") {
+  if (!state.payload) return false;
+  try {
+    const payload = withFullTransportScope(() => ({
+      syncKey: `transport-${state.payload?.source?.generatedAt || Date.now()}`,
+      reason,
+      source: state.payload?.source || {},
+      sourceRecords: sourceRecordsForDatabase(),
+      clearRows: clearRowsForDatabase(),
+      millRows: millRowsForDatabase(),
+      reconciliations: millCompareRows(),
+    }));
+    const res = await fetch(`${TRANSPORT_SYNC_API}?t=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+    const result = await res.json();
+    if (!res.ok || result?.ok === false) throw new Error(result?.error || "transport sync failed");
+    state.transportSyncResult = result;
+    return true;
+  } catch (error) {
+    state.transportSyncResult = { ok: false, error: error.message };
+    return false;
+  }
 }
 
 function payloadSignature(payload) {
@@ -9330,6 +9477,7 @@ function addClear() {
   state.clearOverrides.push(row);
   state.clearOverrides.sort((a, b) => a.date.localeCompare(b.date));
   saveClearOverrides();
+  syncTransportDatabase("clear_ramp_save");
   for (const el of [els.clearPr, els.clearTk, els.clearNote]) el.value = "";
   render();
 }
@@ -9908,6 +10056,7 @@ async function init() {
     if (!btn) return;
     state.clearOverrides = state.clearOverrides.filter((x) => x.date !== btn.dataset.del);
     saveClearOverrides();
+    syncTransportDatabase("clear_ramp_delete");
     render();
   });
 
