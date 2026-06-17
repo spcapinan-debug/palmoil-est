@@ -2245,6 +2245,14 @@ function displayDate(value) {
   return `${day}/${m}/${y}`;
 }
 
+function dateInputValue(value) {
+  return displayDate(value);
+}
+
+function dateInputAttrs(value = "", extra = "") {
+  return `type="text" inputmode="numeric" placeholder="dd/mm/yyyy" value="${esc(dateInputValue(value))}" ${extra}`.trim();
+}
+
 function dateValue(el) {
   return isoDay(el?.value);
 }
@@ -2557,7 +2565,7 @@ async function loadPayload({ silent = false } = {}) {
   updateSourceInfo();
   if (!previousStart && state.payload.source?.dateMin) setDateValue(els.startDate, state.payload.source.dateMin);
   if (!previousEnd && state.payload.source?.dateMax) setDateValue(els.endDate, state.payload.source.dateMax);
-  if (els.clearDate && state.payload.source?.dateMax) els.clearDate.value = state.payload.source.dateMax;
+  if (els.clearDate && state.payload.source?.dateMax) setDateValue(els.clearDate, state.payload.source.dateMax);
   if (!silent) return true;
   render();
   return true;
@@ -5939,8 +5947,8 @@ function renderEstPlanPage() {
       <section class="est-entry-grid">
         <form class="est-entry-form">
           <label>เลขที่แผน<input id="estPlanNo" type="text" placeholder="PLAN-2569-001"></label>
-          <label>วันที่เริ่ม<input id="estPlanStart" type="date"></label>
-          <label>วันที่สิ้นสุด<input id="estPlanEnd" type="date"></label>
+          <label>วันที่เริ่ม<input id="estPlanStart" ${dateInputAttrs()}></label>
+          <label>วันที่สิ้นสุด<input id="estPlanEnd" ${dateInputAttrs()}></label>
           <label>กิจกรรม
             <select id="estPlanActivity">${activities.map((activity) => `<option value="${esc(activity)}">${esc(activity)}</option>`).join("")}</select>
           </label>
@@ -5972,7 +5980,7 @@ function renderEstPlanPage() {
             <tbody>${plans.map((plan) => `<tr>
               <td><button type="button" data-est-plan-to-order="${esc(plan.id)}">ออกใบสั่งงาน</button></td>
               <td>${esc(plan.planNo)}</td>
-              <td>${esc(plan.startDate)} - ${esc(plan.endDate)}</td>
+              <td>${displayDate(plan.startDate)} - ${displayDate(plan.endDate)}</td>
               <td>${esc(plan.activity)}</td>
               <td>${esc(plan.block)}</td>
               <td>${fmt(plan.workers)}</td>
@@ -6003,7 +6011,7 @@ function renderEstWorkOrderPage() {
             </select>
           </label>
           <label>เลขที่ใบสั่งงาน<input id="estOrderNo" type="text" placeholder="WO-2569-001"></label>
-          <label>วันที่สั่งงาน<input id="estOrderDate" type="date"></label>
+          <label>วันที่สั่งงาน<input id="estOrderDate" ${dateInputAttrs()}></label>
           <label>หัวหน้า/ทีม<input id="estOrderSupervisor" type="text"></label>
           <label>สถานะ
             <select id="estOrderStatus">
@@ -6032,7 +6040,7 @@ function renderEstWorkOrderPage() {
             <tbody>${orders.map((order) => `<tr>
               <td><button type="button" data-est-del-order="${esc(order.id)}">ลบ</button></td>
               <td>${esc(order.orderNo)}</td>
-              <td>${esc(order.orderDate)}</td>
+              <td>${displayDate(order.orderDate)}</td>
               <td>${esc(order.planNo)}</td>
               <td>${esc(order.activity)}</td>
               <td>${esc(order.block)}</td>
@@ -6069,7 +6077,7 @@ function renderEstDailyEntryPage() {
       ${renderEstFlowHeader()}
       <section class="est-entry-grid">
         <form id="estDailyForm" class="est-entry-form">
-          <label>วันที่ทำงาน<input id="estWorkDate" type="date" required></label>
+          <label>วันที่ทำงาน<input id="estWorkDate" ${dateInputAttrs("", "required")}></label>
           <label class="est-form-wide">ใบสั่งงานจากแผน
             <select id="estWorkOrderSelect">
               <option value="">เลือกใบสั่งงาน หรือบันทึกเอง</option>
@@ -6157,7 +6165,7 @@ function saveEstDailyWorkEntry() {
   const selectedOrder = orderSelect?.selectedOptions?.[0];
   const row = {
     id: `work-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    date: document.querySelector("#estWorkDate")?.value || isoDateFromUtc(new Date()),
+    date: dateValue(document.querySelector("#estWorkDate")) || isoDateFromUtc(new Date()),
     workOrderId: orderSelect?.value || "",
     activity: selectedOrder?.dataset.activity || document.querySelector("#estWorkActivity")?.value || selected?.dataset.activity || "",
     block: selectedOrder?.dataset.block || blockSelect?.value || "",
@@ -6185,8 +6193,8 @@ function saveEstWorkPlan() {
   const plan = {
     id: `plan-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     planNo,
-    startDate: document.querySelector("#estPlanStart")?.value || "",
-    endDate: document.querySelector("#estPlanEnd")?.value || "",
+    startDate: dateValue(document.querySelector("#estPlanStart")) || "",
+    endDate: dateValue(document.querySelector("#estPlanEnd")) || "",
     activity: document.querySelector("#estPlanActivity")?.value || meta.activity,
     block: meta.block,
     workers: n(document.querySelector("#estPlanWorkers")?.value),
@@ -6217,7 +6225,9 @@ function saveEstMasterRecord() {
     createdAt: new Date().toISOString(),
   };
   for (const input of els.reportPage.querySelectorAll("[data-est-master-field]")) {
-    row[input.dataset.estMasterField] = input.value.trim();
+    const key = input.dataset.estMasterField;
+    const field = (config.fields || []).find((item) => estMasterFieldKey(item) === key);
+    row[key] = !Array.isArray(field) && field?.type === "date" ? dateValue(input) : input.value.trim();
   }
   row.category = category;
   row.targetTable = config.table;
@@ -6517,7 +6527,7 @@ function saveEstWorkOrder() {
   const plan = state.estWorkPlans.find((item) => item.id === planId);
   createEstWorkOrderFromPlan(plan, {
     orderNo: document.querySelector("#estOrderNo")?.value.trim() || "",
-    orderDate: document.querySelector("#estOrderDate")?.value || "",
+    orderDate: dateValue(document.querySelector("#estOrderDate")) || "",
     supervisor: document.querySelector("#estOrderSupervisor")?.value.trim() || "",
     status: document.querySelector("#estOrderStatus")?.value || "Scheduled",
     note: document.querySelector("#estOrderNote")?.value.trim() || "",
@@ -6720,6 +6730,12 @@ function renderEstMasterField(field, edit, category) {
           ${options.map((item) => `<option value="${esc(item.value)}" ${String(value) === String(item.value) ? "selected" : ""}>${esc(masterFolderOptionDisplayLabel(item))}</option>`).join("")}
         </select>
       </label>`;
+  }
+  if (!Array.isArray(field) && field.type === "date") {
+    return `
+    <label>${esc(label)}
+      <input data-est-master-field="${esc(key)}" ${dateInputAttrs(value)}>
+    </label>`;
   }
   return `
     <label>${esc(label)}
@@ -7866,7 +7882,13 @@ function renderFarmInput(field, value = "") {
         </select>
       </label>`;
   }
-  const type = !Array.isArray(field) && ["date", "number"].includes(field.type) ? field.type : "text";
+  if (!Array.isArray(field) && field.type === "date") {
+    return `
+    <label>${esc(labelText)}
+      <input data-farm-field="${esc(key)}" ${dateInputAttrs(value, required ? "required" : "")}>
+    </label>`;
+  }
+  const type = !Array.isArray(field) && field.type === "number" ? "number" : "text";
   return `
     <label>${esc(labelText)}
       <input data-farm-field="${esc(key)}" type="${esc(type)}" value="${esc(value)}" placeholder="${esc(placeholder)}" ${required ? "required" : ""}>
@@ -7875,6 +7897,10 @@ function renderFarmInput(field, value = "") {
 
 function farmToday() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function farmTableFieldByKey(table, key) {
+  return (table?.fields || []).find((field) => farmFieldKey(field) === key);
 }
 
 function isFarmVersionedTable(tableKey) {
@@ -7967,8 +7993,10 @@ function saveFarmRow() {
   };
   if (original?.readonly && !shouldVersion) row._overrideOf = original.id;
   for (const input of els.reportPage.querySelectorAll("[data-farm-field]")) {
-    if (isAutoGeneratedIdField(input.dataset.farmField)) continue;
-    row[input.dataset.farmField] = input.value.trim();
+    const key = input.dataset.farmField;
+    if (isAutoGeneratedIdField(key)) continue;
+    const field = farmTableFieldByKey(table, key);
+    row[key] = !Array.isArray(field) && field?.type === "date" ? dateValue(input) : input.value.trim();
   }
   if (shouldVersion) {
     row.previous_version_id = original.id;
@@ -8371,8 +8399,8 @@ function renderFarmWorkPlanner() {
             <select>${activities.map((row) => `<option>${esc(row.activity_name || row.activity_code || "")}</option>`).join("")}</select>
           </label>
           <div class="farm-plan-inline">
-            <label>วันที่เริ่มงาน<input type="date" value="2026-01-15"></label>
-            <label>วันที่สิ้นสุด<input type="date" value="2026-01-16"></label>
+            <label>วันที่เริ่มงาน<input ${dateInputAttrs("2026-01-15")}></label>
+            <label>วันที่สิ้นสุด<input ${dateInputAttrs("2026-01-16")}></label>
           </div>
           <div class="farm-plan-inline">
             <label>รอบซ้ำ
@@ -9064,10 +9092,10 @@ function renderPalmFilters(rows) {
         </select>
       </label>
       <label>ตั้งแต่วันที่
-        <input id="palmFromDate" type="date" value="${esc(filters.from)}">
+        <input id="palmFromDate" ${dateInputAttrs(filters.from)}>
       </label>
       <label>ถึงวันที่
-        <input id="palmToDate" type="date" value="${esc(filters.to)}">
+        <input id="palmToDate" ${dateInputAttrs(filters.to)}>
       </label>
       <label>พื้นที่
         <select id="palmAreaFilter">
@@ -9458,9 +9486,10 @@ function ensureFarmViewState(view = state.view) {
 }
 
 function addClear() {
-  if (!els.clearDate.value) return;
+  const clearDate = dateValue(els.clearDate);
+  if (!clearDate) return;
   const row = {
-    date: els.clearDate.value,
+    date: clearDate,
     note: els.clearNote.value.trim(),
     source: "manual",
     updatedAt: new Date().toISOString(),
@@ -9509,7 +9538,7 @@ async function init() {
   await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadClearOverridesFromServer()]);
   setDateValue(els.startDate, state.payload.source.dateMin);
   setDateValue(els.endDate, state.payload.source.dateMax);
-  els.clearDate.value = state.payload.source.dateMax;
+  setDateValue(els.clearDate, state.payload.source.dateMax);
   loadFarmTablesFromDatabase({ silent: true });
 
   els.startDate.addEventListener("input", () => {
@@ -9528,6 +9557,7 @@ async function init() {
     normalizeDateInput(els.endDate);
     render();
   });
+  els.clearDate?.addEventListener("blur", () => normalizeDateInput(els.clearDate));
   for (const btn of document.querySelectorAll(".calendar-btn")) {
     btn.addEventListener("click", () => {
       const picker = document.querySelector(`#${btn.dataset.picker}`);
@@ -9570,6 +9600,20 @@ async function init() {
     setView("dashboard");
   });
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.id === "palmFromDate") {
+      const iso = dateValue(e.target);
+      if (iso) state.palmFilters.from = iso;
+      normalizeDateInput(e.target);
+      render();
+      return;
+    }
+    if (e.target.id === "palmToDate") {
+      const iso = dateValue(e.target);
+      if (iso) state.palmFilters.to = iso;
+      normalizeDateInput(e.target);
+      render();
+      return;
+    }
     if (e.target.matches("[data-mill-category]")) {
       const category = e.target.dataset.millCategory;
       const next = new Set(state.millCategories);
@@ -9738,6 +9782,12 @@ async function init() {
     }
   });
   els.reportPage.addEventListener("input", (e) => {
+    if (["palmFromDate", "palmToDate"].includes(e.target.id)) {
+      const key = e.target.id === "palmFromDate" ? "from" : "to";
+      const iso = dateValue(e.target);
+      if (iso) state.palmFilters[key] = iso;
+      return;
+    }
     if (e.target.id === "farmWorkSearch") {
       state.farmWorkFilters.query = e.target.value.trim();
       state.farmWorkDetailId = "";
