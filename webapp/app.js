@@ -81,6 +81,7 @@ const els = {
   clearTk: document.querySelector("#clearTk"),
   clearNote: document.querySelector("#clearNote"),
   addClearRow: document.querySelector("#addClearRow"),
+  clearSyncStatus: document.querySelector("#clearSyncStatus"),
   clearTable: document.querySelector("#clearTable"),
 };
 
@@ -2354,6 +2355,23 @@ function writeClearOverridesLocal() {
   localStorage.setItem(CLEAR_RAMP_STORAGE_KEY, JSON.stringify(state.clearOverrides));
 }
 
+function endpointIsLocalOnly(url) {
+  try {
+    const endpoint = new URL(url, window.location.href);
+    return ["127.0.0.1", "localhost", "::1"].includes(endpoint.hostname)
+      && !["127.0.0.1", "localhost", "::1"].includes(window.location.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function setClearSyncStatus(message, type = "") {
+  if (!els.clearSyncStatus) return;
+  els.clearSyncStatus.textContent = message || "";
+  els.clearSyncStatus.classList.toggle("success", type === "success");
+  els.clearSyncStatus.classList.toggle("error", type === "error");
+}
+
 function loadClearOverrides() {
   try {
     state.clearOverrides = mergeClearOverrides(JSON.parse(localStorage.getItem(CLEAR_RAMP_STORAGE_KEY) || "[]"));
@@ -2363,6 +2381,7 @@ function loadClearOverrides() {
 }
 
 async function loadClearOverridesFromServer() {
+  if (endpointIsLocalOnly(CLEAR_RAMP_API)) return loadClearOverridesFromTransportDb();
   try {
     const payload = await fetch(`${CLEAR_RAMP_API}?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
     if (payload?.ok === false) return false;
@@ -2403,6 +2422,7 @@ async function loadClearOverridesFromTransportDb() {
 }
 
 async function persistClearOverridesToServer() {
+  if (endpointIsLocalOnly(CLEAR_RAMP_API)) return false;
   try {
     const res = await fetch(`${CLEAR_RAMP_API}?t=${Date.now()}`, {
       method: "POST",
@@ -2417,10 +2437,21 @@ async function persistClearOverridesToServer() {
   }
 }
 
-function saveClearOverrides() {
+async function saveClearOverrides(reason = "manual") {
   state.clearOverrides = mergeClearOverrides(state.clearOverrides);
   writeClearOverridesLocal();
-  persistClearOverridesToServer();
+  setClearSyncStatus("กำลังบันทึกฐานข้อมูลออนไลน์...");
+  await persistClearOverridesToServer();
+  const ok = await syncTransportDatabase(reason);
+  if (!ok) {
+    const error = state.transportSyncResult?.error || "ไม่สามารถบันทึกฐานข้อมูลออนไลน์ได้";
+    setClearSyncStatus(`บันทึกไม่สำเร็จ: ${error}`, "error");
+    return false;
+  }
+  await loadClearOverridesFromTransportDb();
+  writeClearOverridesLocal();
+  setClearSyncStatus("บันทึกฐานข้อมูลออนไลน์แล้ว", "success");
+  return true;
 }
 
 function withFullTransportScope(callback) {
@@ -9488,30 +9519,36 @@ function ensureFarmViewState(view = state.view) {
   state.farmDetailId = "";
 }
 
-function addClear() {
+async function addClear() {
   const clearDate = dateValue(els.clearDate);
   if (!clearDate) return;
-  const row = {
-    date: clearDate,
-    note: els.clearNote.value.trim(),
-    source: "manual",
-    updatedAt: new Date().toISOString(),
-  };
-  if (els.clearPr.value !== "") {
-    row.clearPrSet = true;
-    row.clearPr = n(els.clearPr.value);
+  els.addClearRow.disabled = true;
+  try {
+    const row = {
+      date: clearDate,
+      note: els.clearNote.value.trim(),
+      source: "manual",
+      updatedAt: new Date().toISOString(),
+    };
+    if (els.clearPr.value !== "") {
+      row.clearPrSet = true;
+      row.clearPr = n(els.clearPr.value);
+    }
+    if (els.clearTk.value !== "") {
+      row.clearTkSet = true;
+      row.clearTk = n(els.clearTk.value);
+    }
+    state.clearOverrides = state.clearOverrides.filter((x) => x.date !== row.date);
+    state.clearOverrides.push(row);
+    state.clearOverrides.sort((a, b) => a.date.localeCompare(b.date));
+    writeClearOverridesLocal();
+    render();
+    const ok = await saveClearOverrides("clear_ramp_save");
+    if (ok) for (const el of [els.clearPr, els.clearTk, els.clearNote]) el.value = "";
+  } finally {
+    els.addClearRow.disabled = false;
+    render();
   }
-  if (els.clearTk.value !== "") {
-    row.clearTkSet = true;
-    row.clearTk = n(els.clearTk.value);
-  }
-  state.clearOverrides = state.clearOverrides.filter((x) => x.date !== row.date);
-  state.clearOverrides.push(row);
-  state.clearOverrides.sort((a, b) => a.date.localeCompare(b.date));
-  saveClearOverrides();
-  syncTransportDatabase("clear_ramp_save");
-  for (const el of [els.clearPr, els.clearTk, els.clearNote]) el.value = "";
-  render();
 }
 
 function downloadCsv() {
@@ -10109,12 +10146,14 @@ async function init() {
   });
   els.csvBtn.addEventListener("click", downloadCsv);
   els.addClearRow.addEventListener("click", addClear);
-  els.clearTable.addEventListener("click", (e) => {
+  els.clearTable.addEventListener("click", async (e) => {
     const btn = e.target.closest("button[data-del]");
     if (!btn) return;
+    btn.disabled = true;
     state.clearOverrides = state.clearOverrides.filter((x) => x.date !== btn.dataset.del);
-    saveClearOverrides();
-    syncTransportDatabase("clear_ramp_delete");
+    writeClearOverridesLocal();
+    render();
+    await saveClearOverrides("clear_ramp_delete");
     render();
   });
 

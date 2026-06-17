@@ -775,6 +775,22 @@ tfoot td {
   border-radius: 14px;
 }
 
+.clear-sync-status {
+  grid-column: 1 / -1;
+  min-height: 18px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.clear-sync-status.success {
+  color: #166534;
+}
+
+.clear-sync-status.error {
+  color: var(--red);
+}
+
 .rspo-layout {
   display: grid;
   grid-template-columns: minmax(260px, .65fr) minmax(420px, 1fr);

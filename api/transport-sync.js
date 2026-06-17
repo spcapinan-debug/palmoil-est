@@ -27,7 +27,19 @@ function supabaseConfig() {
   const url = process.env.SUPABASE_URL || "https://xhtwmzlorceebsemqkww.supabase.co";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
   if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  if (String(key).startsWith("sb_publishable_")) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is a publishable key. Use the Supabase service_role/secret key for server writes.");
+  }
   return { url: url.replace(/\/$/, ""), key };
+}
+
+function keyKind() {
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "");
+  if (!key) return "missing";
+  if (key.startsWith("sb_publishable_")) return "publishable";
+  if (key.startsWith("sb_secret_")) return "secret";
+  if (key.split(".").length === 3) return "jwt";
+  return "unknown";
 }
 
 async function supabaseFetch(path, options = {}) {
@@ -207,6 +219,7 @@ module.exports = async function handler(req, res) {
           checks,
           hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
           hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+          keyKind: keyKind(),
         });
       }
 
