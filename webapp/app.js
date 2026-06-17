@@ -2286,6 +2286,25 @@ function dateValue(el) {
   return isoDay(el?.value);
 }
 
+function todayIso() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function currentMonthStartIso(reference = todayIso()) {
+  const day = isoDay(reference);
+  return day ? `${day.slice(0, 7)}-01` : "";
+}
+
+function setDefaultTransportDateRange() {
+  const end = todayIso();
+  setDateValue(els.startDate, currentMonthStartIso(end));
+  setDateValue(els.endDate, end);
+}
+
 function setDateValue(el, value) {
   if (!el) return;
   const iso = isoDay(value);
@@ -2624,8 +2643,11 @@ async function loadPayload({ silent = false } = {}) {
     record._srcRow = record._srcRow || index + 2;
   });
   updateSourceInfo();
-  if (!previousStart && state.payload.source?.dateMin) setDateValue(els.startDate, state.payload.source.dateMin);
-  if (!previousEnd && state.payload.source?.dateMax) setDateValue(els.endDate, state.payload.source.dateMax);
+  if (!previousStart && !previousEnd) setDefaultTransportDateRange();
+  else {
+    if (!previousStart) setDateValue(els.startDate, currentMonthStartIso());
+    if (!previousEnd) setDateValue(els.endDate, todayIso());
+  }
   if (els.clearDate && state.payload.source?.dateMax) setDateValue(els.clearDate, state.payload.source.dateMax);
   if (!silent) return true;
   render();
@@ -9643,8 +9665,7 @@ async function init() {
   loadClearOverrides();
   loadEstDailyEntries();
   await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadClearOverridesFromServer()]);
-  setDateValue(els.startDate, state.payload.source.dateMin);
-  setDateValue(els.endDate, state.payload.source.dateMax);
+  setDefaultTransportDateRange();
   setDateValue(els.clearDate, state.payload.source.dateMax);
   loadFarmTablesFromDatabase({ silent: true });
 
