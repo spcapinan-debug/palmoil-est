@@ -21,19 +21,28 @@ try {
     $config = app_config();
     $python = (string) ($config['cultivate']['python'] ?? 'python');
     $script = $root . DIRECTORY_SEPARATOR . 'webapp' . DIRECTORY_SEPARATOR . 'scripts' . DIRECTORY_SEPARATOR . 'extract_data.py';
+    $millScript = $root . DIRECTORY_SEPARATOR . 'webapp' . DIRECTORY_SEPARATOR . 'scripts' . DIRECTORY_SEPARATOR . 'extract_mill_weight.py';
     $output = $root . DIRECTORY_SEPARATOR . 'webapp' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'data.json';
     $cmd = implode(' ', [
         escapeshellarg($python),
         escapeshellarg($script),
         '--source',
-        'query',
+        'sheet',
     ]);
     $lines = [];
     $code = 0;
     exec($cmd . ' 2>&1', $lines, $code);
     $raw = implode("\n", $lines);
     if ($code !== 0) {
-        json_response(['ok' => false, 'error' => $raw ?: 'Transport query refresh failed'], 500);
+        json_response(['ok' => false, 'error' => $raw ?: 'Transport sheet refresh failed'], 500);
+        exit;
+    }
+    $millLines = [];
+    $millCode = 0;
+    exec(escapeshellarg($python) . ' ' . escapeshellarg($millScript) . ' 2>&1', $millLines, $millCode);
+    $millRaw = implode("\n", $millLines);
+    if ($millCode !== 0) {
+        json_response(['ok' => false, 'error' => $millRaw ?: 'Mill weight refresh failed'], 500);
         exit;
     }
 
@@ -41,7 +50,7 @@ try {
     $source = is_array($payload) ? ($payload['source'] ?? []) : [];
     json_response([
         'ok' => true,
-        'output' => $raw,
+        'output' => trim($raw . "\n" . $millRaw),
         'source' => [
             'recordSource' => $source['recordSource'] ?? null,
             'rowCount' => $source['rowCount'] ?? null,

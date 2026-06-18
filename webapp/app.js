@@ -2184,8 +2184,8 @@ async function refreshTransportFromQuery() {
     await loadPayload({ silent: true });
     await Promise.all([loadMillWeightData(), loadClearOverridesFromServer()]);
     render();
-    await syncTransportDatabase("refresh_query");
-    els.refreshTransportBtn.textContent = `Query ${fmt(payload.source?.rowCount || 0)} rows`;
+    await syncTransportDatabase("refresh_data");
+    els.refreshTransportBtn.textContent = `Data ${fmt(payload.source?.rowCount || 0)} rows`;
     window.setTimeout(() => {
       els.refreshTransportBtn.textContent = original;
     }, 2500);
@@ -4361,7 +4361,7 @@ function renderMillWeight() {
         <div>
           <h2>Mill-Weight</h2>
           <p>เปรียบเทียบน้ำหนักส่งออกต้นทางกับน้ำหนักปลายทางโรงงาน SPC ตามเลขเอกสารโรงงาน</p>
-          <p>แหล่งข้อมูลปลายทาง: ${source.workbook || "ดึงข้อมูลปาล์ม SPC.xls"} · ชีต ${source.sheet || "Data"} · ${fmt(source.rowCount || state.millRows.length)} rows · ล่าสุด ${displayDate(source.dateMax || "")}</p>
+          <p>แหล่งข้อมูลปลายทาง: ${source.workbook || "Data.xlsx"} · ชีต ${source.sheet || "SPC"} · ${fmt(source.rowCount || state.millRows.length)} rows · ล่าสุด ${displayDate(source.dateMax || "")}</p>
         </div>
         <div class="mill-hero-badge">
           <span>ช่วงวันที่</span>
@@ -4545,8 +4545,8 @@ function renderMillWeight() {
 
       <section class="mill-card">
         <div class="table-headline">
-          <h3>ข้อมูลจากไฟล์ ดึงข้อมูลปาล์ม SPC</h3>
-          <span>คอลัมน์ตามชีต Data · แสดง ${fmt(shownSpcRows.length)} จาก ${fmt(spcRows.length)} รายการ</span>
+          <h3>ข้อมูลจากไฟล์ Data.xlsx</h3>
+          <span>คอลัมน์ตามชีต SPC · แสดง ${fmt(shownSpcRows.length)} จาก ${fmt(spcRows.length)} รายการ</span>
         </div>
         <div class="table-wrap">
           <table class="mini-table mill-spc-table">

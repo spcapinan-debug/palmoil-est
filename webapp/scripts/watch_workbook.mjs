@@ -3,8 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(process.cwd());
-const workbook = path.join(root, "Summary_Palm_RSPO-Ramp.xlsx");
-const script = path.join(root, "webapp", "scripts", "extract_data.py");
+const workbookCandidates = ["Data.xlsx", "data.xlsx", "Data.xlsm", "data.xlsm"].map((name) => path.join(root, name));
+const workbook = workbookCandidates.find((candidate) => fs.existsSync(candidate));
+const transportScript = path.join(root, "webapp", "scripts", "extract_data.py");
+const millScript = path.join(root, "webapp", "scripts", "extract_mill_weight.py");
 const python = process.env.PYTHON || "python";
 
 let running = false;
@@ -18,16 +20,25 @@ function runExtract(reason = "manual") {
   running = true;
   pending = false;
   console.log(`[${new Date().toLocaleString()}] extracting data (${reason})`);
-  const child = spawn(python, [script, "--source", "query"], { cwd: root, stdio: "inherit" });
+  const child = spawn(python, [transportScript, "--source", "sheet"], { cwd: root, stdio: "inherit" });
   child.on("exit", (code) => {
-    running = false;
-    if (code !== 0) console.error(`extract failed with code ${code}`);
-    if (pending) runExtract("queued change");
+    if (code !== 0) {
+      running = false;
+      console.error(`transport extract failed with code ${code}`);
+      if (pending) runExtract("queued change");
+      return;
+    }
+    const mill = spawn(python, [millScript], { cwd: root, stdio: "inherit" });
+    mill.on("exit", (millCode) => {
+      running = false;
+      if (millCode !== 0) console.error(`mill-weight extract failed with code ${millCode}`);
+      if (pending) runExtract("queued change");
+    });
   });
 }
 
-if (!fs.existsSync(workbook)) {
-  console.error(`Workbook not found: ${workbook}`);
+if (!workbook) {
+  console.error(`Workbook not found. Tried: ${workbookCandidates.join(", ")}`);
   process.exit(1);
 }
 
@@ -37,4 +48,4 @@ fs.watchFile(workbook, { interval: 3000 }, (current, previous) => {
 });
 
 console.log(`Watching ${workbook}`);
-console.log("Keep this window open for realtime data.json updates.");
+console.log("Keep this window open for realtime data.json and mill_weight.json updates.");

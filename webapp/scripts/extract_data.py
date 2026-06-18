@@ -13,7 +13,16 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKBOOK = ROOT / "Summary_Palm_RSPO-Ramp.xlsx"
+DATA_WORKBOOK_CANDIDATES = [
+    ROOT / "Data.xlsx",
+    ROOT / "data.xlsx",
+    ROOT / "Data.xlsm",
+    ROOT / "data.xlsm",
+]
+REPORT_WORKBOOK_CANDIDATES = [
+    ROOT / "Summary_Palm_RSPO-Ramp.xlsx",
+    ROOT / "Summary_Palm_Ramp.xlsx",
+]
 OUTPUT = Path(__file__).resolve().parents[1] / "data" / "data.json"
 QUERY_SCRIPT = Path(__file__).resolve().parent / "query_weight_data.ps1"
 
@@ -85,6 +94,33 @@ DATA_FIELDS = [
 ]
 
 
+def first_existing(paths: list[Path], label: str) -> Path:
+    for path in paths:
+        if path.is_file():
+            return path
+    choices = ", ".join(str(path) for path in paths)
+    raise FileNotFoundError(f"Missing {label}. Tried: {choices}")
+
+
+DATA_WORKBOOK = first_existing(DATA_WORKBOOK_CANDIDATES, "data workbook")
+REPORT_WORKBOOK = first_existing(REPORT_WORKBOOK_CANDIDATES, "report workbook")
+
+
+def sheet_source(
+    primary: openpyxl.Workbook,
+    fallback: openpyxl.Workbook | None,
+    candidates: list[str],
+) -> tuple[openpyxl.Workbook, str, str]:
+    for name in candidates:
+        if name in primary.sheetnames:
+            return primary, name, DATA_WORKBOOK.name
+    if fallback is not None:
+        for name in candidates:
+            if name in fallback.sheetnames:
+                return fallback, name, REPORT_WORKBOOK.name
+    raise KeyError(f"Missing sheet: {', '.join(candidates)}")
+
+
 def excel_serial_to_iso(value: int | float) -> str:
     base = datetime(1899, 12, 30)
     return (base + timedelta(days=float(value))).isoformat(timespec="seconds")
@@ -129,9 +165,14 @@ def read_lookup_sheet(ws: openpyxl.worksheet.worksheet.Worksheet) -> list[dict[s
     return rows
 
 
-def build_lookups(wb: openpyxl.Workbook) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    terrain_rows = read_lookup_sheet(wb["Terrain"])
-    wpct_rows = read_lookup_sheet(wb["Wpct"])
+def build_lookups(
+    data_wb: openpyxl.Workbook,
+    report_wb: openpyxl.Workbook | None = None,
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, str]]]:
+    terrain_wb, terrain_sheet, terrain_workbook = sheet_source(data_wb, report_wb, ["Terrain"])
+    wpct_wb, wpct_sheet, wpct_workbook = sheet_source(data_wb, report_wb, ["Wpct"])
+    terrain_rows = read_lookup_sheet(terrain_wb[terrain_sheet])
+    wpct_rows = read_lookup_sheet(wpct_wb[wpct_sheet])
 
     terrain_by_code = {}
     for row in terrain_rows:
@@ -145,7 +186,10 @@ def build_lookups(wb: openpyxl.Workbook) -> tuple[dict[str, dict[str, Any]], dic
         if code is not None:
             wpct_by_code[str(code)] = row
 
-    return terrain_by_code, wpct_by_code, terrain_rows, wpct_rows
+    return terrain_by_code, wpct_by_code, terrain_rows, wpct_rows, [
+        {"workbook": terrain_workbook, "sheet": terrain_sheet},
+        {"workbook": wpct_workbook, "sheet": wpct_sheet},
+    ]
 
 
 def classify(row: dict[str, Any], terrain: dict[str, Any] | None) -> str:
@@ -159,8 +203,13 @@ def classify(row: dict[str, Any], terrain: dict[str, Any] | None) -> str:
     return "NON-RSPO"
 
 
-def read_records(wb: openpyxl.Workbook, terrain_by_code: dict[str, dict[str, Any]], wpct_by_code: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    ws = wb["Data"]
+def read_records(
+    wb: openpyxl.Workbook,
+    terrain_by_code: dict[str, dict[str, Any]],
+    wpct_by_code: dict[str, dict[str, Any]],
+    sheet_name: str = "EST",
+) -> list[dict[str, Any]]:
+    ws = wb[sheet_name]
     headers = [clean_value(c) for c in next(ws.iter_rows(min_row=1, max_row=1, values_only=True))]
     index = {header: pos for pos, header in enumerate(headers)}
     rows = []
@@ -228,7 +277,7 @@ def read_records_from_query(terrain_by_code: dict[str, dict[str, Any]], wpct_by_
             "-File",
             str(QUERY_SCRIPT),
             "-Workbook",
-            str(WORKBOOK),
+            str(REPORT_WORKBOOK),
             "-Output",
             str(raw_output),
         ]
@@ -402,7 +451,7 @@ def read_workbook_stock_report(wb: openpyxl.Workbook) -> dict[str, Any]:
         # Match the monthly "รวม" report shape: hide helper columns after note.
         rows.append({
             "date": report_date,
-            "monthFile": WORKBOOK.name,
+            "monthFile": REPORT_WORKBOOK.name,
             "sheet": "Stock Report",
             "cells": cells,
         })
@@ -416,30 +465,42 @@ def read_workbook_stock_report(wb: openpyxl.Workbook) -> dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", choices=["sheet", "query"], default="query")
+    parser.add_argument("--source", choices=["sheet", "query"], default="sheet")
     args = parser.parse_args()
 
-    wb_values = openpyxl.load_workbook(WORKBOOK, read_only=True, data_only=True)
-    terrain_by_code, wpct_by_code, terrain_rows, wpct_rows = build_lookups(wb_values)
+    data_wb = openpyxl.load_workbook(DATA_WORKBOOK, read_only=True, data_only=True)
+    report_wb = openpyxl.load_workbook(REPORT_WORKBOOK, read_only=True, data_only=True)
+    terrain_by_code, wpct_by_code, terrain_rows, wpct_rows, lookup_sources = build_lookups(data_wb, report_wb)
+    record_wb, record_sheet, record_workbook = sheet_source(data_wb, report_wb, ["EST", "Data"])
     query_source = {}
     if args.source == "query":
         records, query_source = read_records_from_query(terrain_by_code, wpct_by_code)
     else:
-        records = read_records(wb_values, terrain_by_code, wpct_by_code)
+        records = read_records(record_wb, terrain_by_code, wpct_by_code, record_sheet)
 
     date_values = [r["date"] for r in records if r.get("date")]
-    sheet_tables = {name: read_report_sheet(wb_values, name, spec) for name, spec in REPORT_SHEETS.items()}
+    sheet_tables = {}
+    report_sources = []
+    for name, spec in REPORT_SHEETS.items():
+        source_wb, sheet_name, workbook_name = sheet_source(data_wb, report_wb, [name])
+        sheet_tables[name] = read_report_sheet(source_wb, sheet_name, spec)
+        report_sources.append({"workbook": workbook_name, "sheet": sheet_name})
 
     payload = {
         "source": {
-            "workbook": WORKBOOK.name,
+            "workbook": record_workbook,
+            "dataWorkbook": DATA_WORKBOOK.name,
+            "reportWorkbook": REPORT_WORKBOOK.name,
+            "recordSheet": record_sheet,
             "recordSource": args.source,
             "query": query_source,
             "generatedAt": datetime.now().isoformat(timespec="seconds"),
             "rowCount": len(records),
             "dateMin": min(date_values) if date_values else None,
             "dateMax": max(date_values) if date_values else None,
-            "linkedFrom": ["Data", "Terrain", "Wpct"],
+            "linkedFrom": [record_sheet, "Terrain", "Wpct"],
+            "lookupSources": lookup_sources,
+            "reportSources": report_sources,
             "views": list(REPORT_SHEETS),
         },
         "records": records,
@@ -450,7 +511,7 @@ def main() -> None:
             "wpct": wpct_rows,
         },
         "monthlyReports": read_monthly_stock_reports(),
-        "workbookReports": read_workbook_stock_report(wb_values),
+        "workbookReports": read_workbook_stock_report(report_wb),
     }
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
