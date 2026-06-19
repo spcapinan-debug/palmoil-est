@@ -11,6 +11,7 @@
   palmFilters: { job: "all", from: "", to: "", area: "all", group: "all", query: "" },
   dashboardCompareMode: "area",
   payloadSignature: "",
+  millStandardByDocKey: null,
   liveMode: !window.__PALM_DATA__,
   estData: null,
   estFilters: { fiscalYear: "2569", area: "all", activityGroup: "all", activity: "all", material: "all", workerGroup: "all", rateGroup: "all", datasetId: "", query: "" },
@@ -2364,6 +2365,30 @@ function yardScope() {
   return "combined";
 }
 
+function yardFilterLabel() {
+  const value = els.yardFilter?.value || "all";
+  if (value === "garden") return "ปลายราง";
+  if (value === "takuk") return "ตะกุก";
+  return "ทั้งหมด";
+}
+
+function globalFilterLabel(type, value) {
+  if (type === "standard") return value === "all" ? "รวมทั้งหมด" : value;
+  if (type === "flow") return value === "all" ? "รวมทั้งหมด" : value;
+  return value || "";
+}
+
+function filterContextLine(extra = []) {
+  const parts = [
+    `วันที่ ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}`,
+    `ลานเท ${yardFilterLabel()}`,
+    `มาตรฐาน ${globalFilterLabel("standard", state.dailyFilters.standard)}`,
+    `รายการ ${globalFilterLabel("flow", state.dailyFilters.flow)}`,
+    ...extra.filter(Boolean),
+  ];
+  return `ตัวกรองที่ใช้: ${parts.join(" | ")}`;
+}
+
 function normalizeClearOverride(row) {
   if (!row || !row.date) return null;
   const normalized = {
@@ -2665,6 +2690,7 @@ async function loadMillWeightData() {
     date: isoDay(row.date || row.wpDocDateText),
     docKey: millDocKey(row.docKey || row.wpDocNo),
   }));
+  state.millStandardByDocKey = null;
 }
 
 async function loadEstData() {
@@ -2805,9 +2831,32 @@ function standardBucketFromText(text) {
   return "";
 }
 
+function millStandardLookup() {
+  if (state.millStandardByDocKey) return state.millStandardByDocKey;
+  const map = new Map();
+  for (const row of state.millRows || []) {
+    const key = millDocKey(row.docKey || row.wpDocNo);
+    if (!key) continue;
+    const category = millCategoryFromMill(row);
+    const standard = category === "NON-RSPO" ? "NON-RSPO" : category ? "RSPO" : "";
+    if (standard) map.set(key, standard);
+  }
+  state.millStandardByDocKey = map;
+  return map;
+}
+
+function millStandardForFactoryDoc(docNo) {
+  const key = millDocKey(docNo);
+  return key ? millStandardLookup().get(key) || "" : "";
+}
+
 function recordStandardBucket(record, movement) {
   const fromMovement = standardBucketFromText(movement?.["กอง"]);
   if (fromMovement) return fromMovement;
+  if (record?.wpInOutType === "O") {
+    const fromMill = millStandardForFactoryDoc(record.wpFacDocNo);
+    if (fromMill) return fromMill;
+  }
   if (record.standard === "RSPO") return "RSPO";
   if (record.standard === "Contract Farmer") return "Contract Farmer";
   return "NON-RSPO";
@@ -3047,6 +3096,7 @@ function renderExactStock(scope, rows) {
       <h2>บริษัท ทักษิณปาล์ม (2521) จำกัด${scope === "combined" ? " - ฝ่ายสวนปาล์มคีรีรัฐนิคม" : ""}</h2>
       <p>รายงานสต๊อคผลปาล์มสด ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}</p>
       <p>${reportMeta(scope)}</p>
+      <p>${filterContextLine()}</p>
     </div>`;
   const headerRows = report.headers.map((header) => `<tr>${header.map((cell) => `<th>${cell ?? ""}</th>`).join("")}</tr>`).join("");
   const bodyRows = rows.map((row) => `<tr>${row.cells.map((cell, index) => {
@@ -3574,6 +3624,7 @@ function renderStock(scope) {
       <h2>บริษัท ทักษิณปาล์ม (2521) จำกัด${scope === "combined" ? " - ฝ่ายสวนปาล์มคีรีรัฐนิคม" : ""}</h2>
       <p>รายงานสต๊อคผลปาล์มสด ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}</p>
       <p>${reportMeta(scope)}</p>
+      <p>${filterContextLine()}</p>
     </div>`;
 
   const body = rows.map((r) => `
@@ -3724,6 +3775,7 @@ function renderDailyReport() {
       <h2>Daily Report - รายงานรับเข้า / ส่งออก แยกกลุ่มรายวัน</h2>
       <p>ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}</p>
       <p>คำนวณจากชีต data โดยตรง เพื่อให้รับเข้า/ส่งออกครบทุกเดือน</p>
+      <p>${filterContextLine()}</p>
     </div>
     <div class="daily-summary">
       <article><span>ปลายราง (RSPO)</span><strong>${fmt(totals["ปลายราง (RSPO)"])}</strong></article>
@@ -4045,6 +4097,7 @@ function renderSummary() {
       <h2>สรุปการรับปาล์มน้ำมัน</h2>
       <p>ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))}</p>
       <p>แยกลานเทและมาตรฐาน RSPO / NON-RSPO / Contract Farmer</p>
+      <p>${filterContextLine()}</p>
     </div>
     <div class="table-wrap">
       <table>
@@ -4321,14 +4374,24 @@ function millPieSegments(rows) {
   return { total, gradient, rows: parts };
 }
 
-function filteredMillRows() {
+function filteredMillRows(compareRows = null) {
+  const allowedKeys = compareRows
+    ? new Set(compareRows
+      .filter((row) => row.status === "matched" || row.status === "missing_source" || row.destinationSource === "SPC Data")
+      .map((row) => millDocKey(row.factoryDocNo || row.docKey))
+      .filter(Boolean))
+    : null;
   return (state.millRows || [])
     .map((row) => ({
       ...row,
       category: millCategoryFromMill(row),
       date: isoDay(row.date || row.wpDocDateText),
     }))
-    .filter((row) => (!row.date || inRange(row.date)) && millCategorySelected(row.category))
+    .filter((row) => (
+      (!row.date || inRange(row.date)) &&
+      millCategorySelected(row.category) &&
+      (!allowedKeys || allowedKeys.has(millDocKey(row.wpDocNo)))
+    ))
     .sort((a, b) => (a.date || "").localeCompare(b.date || "") || millDocKey(a.wpDocNo).localeCompare(millDocKey(b.wpDocNo)));
 }
 
@@ -4347,7 +4410,7 @@ function renderMillWeight() {
   const segmentRows = millSegmentSummaries(rows);
   const gradeRows = millGradeSummaries(rows);
   const gradePie = millPieSegments(gradeRows);
-  const spcRows = filteredMillRows();
+  const spcRows = filteredMillRows(rows);
   const spcTotals = millSpcTotals(spcRows);
   const source = state.millPayload?.source || {};
   const shownRows = rows.slice(0, 500);
@@ -4362,6 +4425,7 @@ function renderMillWeight() {
           <h2>Mill-Weight</h2>
           <p>เปรียบเทียบน้ำหนักส่งออกต้นทางกับน้ำหนักปลายทางโรงงาน SPC ตามเลขเอกสารโรงงาน</p>
           <p>แหล่งข้อมูลปลายทาง: ${source.workbook || "Data.xlsx"} · ชีต ${source.sheet || "SPC"} · ${fmt(source.rowCount || state.millRows.length)} rows · ล่าสุด ${displayDate(source.dateMax || "")}</p>
+          <p>${filterContextLine([`กลุ่ม Mill ${state.millCategories.join(", ")}`])}</p>
         </div>
         <div class="mill-hero-badge">
           <span>ช่วงวันที่</span>
@@ -4648,6 +4712,7 @@ function renderRspo() {
     <div class="report-title">
       <h2>RSPO Report</h2>
       <p>คำนวณจากชีต data ตามช่วงวันที่ ลานเท มาตรฐาน และรายการที่เลือก</p>
+      <p>${filterContextLine()}</p>
     </div>
     <div class="rspo-layout">
       <section class="rspo-card">
@@ -5225,6 +5290,7 @@ function renderAdvancedDashboard() {
     <div class="report-title">
       <h2>Dashboard วิเคราะห์เชิงลึก</h2>
       <p>ช่วง ${monthTitle(dateValue(els.startDate), dateValue(els.endDate))} | วิเคราะห์จากชีต data และการปรับยอด Clear Ramp ตามตัวกรองด้านบน</p>
+      <p>${filterContextLine([`เปรียบเทียบ ${compareModeLabel(state.dashboardCompareMode)}`])}</p>
     </div>
     <div class="analytics-layout">
       <section class="analytics-hero">

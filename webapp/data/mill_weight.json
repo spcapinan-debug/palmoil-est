@@ -3,7 +3,7 @@
     "workbook": "Data.xlsx",
     "sheet": "SPC",
     "rowCount": 720,
-    "generatedAt": "2026-06-18T20:59:46",
+    "generatedAt": "2026-06-19T08:38:57",
     "dateMin": "2026-01-04",
     "dateMax": "2026-06-16",
     "description": "ข้อมูลน้ำหนักปลายทางโรงงาน SPC จากชีต SPC ใน Data.xlsx",
