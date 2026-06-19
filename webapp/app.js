@@ -9695,10 +9695,18 @@ function renderClear() {
   const gardenStock = new Map(buildStockFromData("garden").map((row) => [row.date, row]));
   const takukStock = new Map(buildStockFromData("takuk").map((row) => [row.date, row]));
   els.clearTable.innerHTML = `
-    <thead><tr><th>วันที่</th><th>คงเหลือปลายราง</th><th>คงเหลือตะกุก</th><th>เคลียร์ปลายราง</th><th>เคลียร์ตะกุก</th><th>Loss แรมป์</th><th>Loss ขนส่ง</th><th>รวมปรับยอด</th><th class="left">หมายเหตุ</th><th></th></tr></thead>
+    <thead><tr><th>วันที่</th><th>คงเหลือปลายราง</th><th>คงเหลือตะกุก</th><th>เคลียร์ปลายราง</th><th>เคลียร์ตะกุก</th><th>Loss แรมป์</th><th>Loss ขนส่ง</th><th>รวมปรับยอด</th><th>น้ำหนัก<br>ยกมา</th><th>เทียบส่งออก<br>วันถัดไป</th><th class="left">หมายเหตุ</th><th></th></tr></thead>
     <tbody>${rows.map((r) => {
       const garden = gardenStock.get(r.date);
       const takuk = takukStock.get(r.date);
+      const nextDate = addIsoDays(r.date, 1);
+      const nextGarden = gardenStock.get(nextDate);
+      const nextTakuk = takukStock.get(nextDate);
+      const hasNextDay = Boolean(nextGarden || nextTakuk);
+      const nextOpening = n(nextGarden?.opening) + n(nextTakuk?.opening);
+      const nextOutbound = n(nextGarden?.outboundTotal) + n(nextTakuk?.outboundTotal);
+      const nextOutboundDiff = nextOutbound - nextOpening;
+      const nextOutboundText = hasNextDay ? `ส่งออก ${fmt(nextOutbound)} / ต่าง ${fmt(nextOutboundDiff)}` : "-";
       const lossRamp = n(garden?.lossRamp) + n(takuk?.lossRamp);
       const lossTransport = n(garden?.lossTransport) + n(takuk?.lossTransport);
       return `<tr>
@@ -9710,6 +9718,8 @@ function renderClear() {
         <td class="num loss">${fmt(lossRamp)}</td>
         <td class="num loss">${fmt(lossTransport)}</td>
         <td class="num">${fmt(n(r.clearPr) + n(r.clearTk) + lossRamp + lossTransport)}</td>
+        <td class="num">${hasNextDay ? fmt(nextOpening) : "-"}</td>
+        <td class="left ${hasNextDay && nextOutboundDiff ? "loss" : ""}">${nextOutboundText}</td>
         <td class="left">${r.note || ""}</td>
         <td>${r.source === "manual" ? `<button data-del="${r.date}" type="button">ลบ</button>` : ""}</td>
       </tr>`;
