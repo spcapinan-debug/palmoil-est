@@ -3112,13 +3112,11 @@ function periodBalance(rows) {
 }
 
 function exactRows(scope) {
-  const workbookReport = state.payload.workbookReports?.[scope];
-  if (workbookReport?.rows?.length) {
-    return workbookReport.rows.filter((row) => inRange(row.date));
-  }
   const report = state.payload.monthlyReports?.[scope];
-  if (!report) return [];
-  return report.rows.filter((row) => inRange(row.date));
+  if (report?.rows?.length) return report.rows.filter((row) => inRange(row.date));
+  const workbookReport = state.payload.workbookReports?.[scope];
+  if (workbookReport?.rows?.length) return workbookReport.rows.filter((row) => inRange(row.date));
+  return [];
 }
 
 function exactMetric(scope, cells, metric) {
@@ -3156,7 +3154,7 @@ function exactFooter(scope, rows) {
 
 function renderExactStock(scope, rows) {
   state.currentRows = rows.map((row) => ({ date: row.date, ...Object.fromEntries(row.cells.map((value, index) => [`c${index + 1}`, value])) }));
-  const report = state.payload.workbookReports?.[scope] || state.payload.monthlyReports[scope];
+  const report = state.payload.monthlyReports?.[scope] || state.payload.workbookReports?.[scope];
   const inbound = rows.reduce((sum, row) => sum + exactMetric(scope, row.cells, "inbound"), 0);
   const outbound = rows.reduce((sum, row) => sum + exactMetric(scope, row.cells, "outbound"), 0);
   const loss = rows.reduce((sum, row) => sum + Math.abs(exactMetric(scope, row.cells, "loss")), 0);
@@ -3696,6 +3694,11 @@ function combineScopeDays(date, garden, takuk, clear) {
 }
 
 function renderStock(scope) {
+  const exact = globalFiltersAreAll() ? exactRows(scope) : [];
+  if (exact.length) {
+    renderExactStock(scope, exact);
+    return;
+  }
   const rows = buildStockFromData(scope);
   state.currentRows = rows;
   renderDashboard(rows);
