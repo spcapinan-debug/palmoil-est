@@ -3567,8 +3567,8 @@ function buildStockFromData(scope) {
 
     applyScopeOpening(garden, "garden", clear, carryGarden);
     applyScopeOpening(takuk, "takuk", clear, carryTakuk);
-    carryGarden = garden.balance;
-    carryTakuk = takuk.balance;
+    carryGarden = nextCarryBalance(garden, "garden", clear);
+    carryTakuk = nextCarryBalance(takuk, "takuk", clear);
 
     const combined = combineScopeDays(date, garden, takuk, clear);
     if (date >= start && date <= end) {
@@ -3582,8 +3582,7 @@ function buildStockFromData(scope) {
 }
 
 function applyScopeOpening(item, scope, clear, previousBalance) {
-  const useClear = scope === "garden" ? clear?.clearPrSet : clear?.clearTkSet;
-  item.opening = useClear ? (scope === "garden" ? n(clear?.clearPr) : n(clear?.clearTk)) : previousBalance;
+  item.opening = previousBalance;
   item.clearPr = scope === "garden" ? n(clear?.clearPr) : 0;
   item.clearTk = scope === "takuk" ? n(clear?.clearTk) : 0;
   item.clear = item.clearPr + item.clearTk;
@@ -3592,6 +3591,12 @@ function applyScopeOpening(item, scope, clear, previousBalance) {
   item.loss = item.lossRamp + item.lossTransport;
   item.totalAll = item.opening + item.totalRamp;
   item.balance = item.opening + item.totalRamp - item.outboundTotal - item.loss;
+}
+
+function nextCarryBalance(item, scope, clear) {
+  if (scope === "garden" && clear?.clearPrSet) return n(clear.clearPr);
+  if (scope === "takuk" && clear?.clearTkSet) return n(clear.clearTk);
+  return item.balance;
 }
 
 function combineScopeDays(date, garden, takuk, clear) {
