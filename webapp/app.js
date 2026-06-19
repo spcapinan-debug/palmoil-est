@@ -2554,12 +2554,18 @@ function withFullTransportScope(callback) {
 
 function clearRowsForDatabase() {
   return withFullTransportScope(() => {
-    const gardenBalance = new Map(buildStockFromData("garden").map((row) => [row.date, row.balance]));
-    const takukBalance = new Map(buildStockFromData("takuk").map((row) => [row.date, row.balance]));
+    const gardenStock = new Map(buildStockFromData("garden").map((row) => [row.date, row]));
+    const takukStock = new Map(buildStockFromData("takuk").map((row) => [row.date, row]));
     return clearRows().map((row) => ({
       ...row,
-      gardenBalance: gardenBalance.get(row.date) || 0,
-      takukBalance: takukBalance.get(row.date) || 0,
+      gardenBalance: n(gardenStock.get(row.date)?.balance),
+      takukBalance: n(takukStock.get(row.date)?.balance),
+      lossPrRamp: n(gardenStock.get(row.date)?.lossRamp),
+      lossTkRamp: n(takukStock.get(row.date)?.lossRamp),
+      lossRamp: n(gardenStock.get(row.date)?.lossRamp) + n(takukStock.get(row.date)?.lossRamp),
+      lossPrTransport: n(gardenStock.get(row.date)?.lossTransport),
+      lossTkTransport: n(takukStock.get(row.date)?.lossTransport),
+      lossTransport: n(gardenStock.get(row.date)?.lossTransport) + n(takukStock.get(row.date)?.lossTransport),
     }));
   });
 }
@@ -2774,7 +2780,7 @@ function autoClearLoss(date) {
     if (rowDate !== date || record.wpInOutType !== "O") continue;
     const scope = dataRecordScope(record);
     const diff = n(record.wpFacNetWeight) - n(record.wpNetWeight);
-    if (diff < 0) loss[scope] += Math.abs(diff);
+    loss[scope] += diff;
   }
   return {
     date,
@@ -2973,7 +2979,7 @@ function buildDaily(scope) {
       item.outboundTotal += outbound;
       item.facNet += fac;
       const diff = n(row["น้ำหนักเทียบปลายทาง"]);
-      if (diff < 0) item.lossTransport += Math.abs(diff);
+      item.lossTransport += diff;
     }
     map.set(day, item);
   }
@@ -2996,28 +3002,27 @@ function buildDaily(scope) {
         : scope === "takuk"
           ? clear?.clearTkSet
           : clear?.clearPrSet || clear?.clearTkSet;
-      if (hasClearOpening) {
-        carry = scope === "garden"
-          ? n(clear?.clearPr)
-          : scope === "takuk"
-            ? n(clear?.clearTk)
-            : (clear?.clearPrSet ? n(clear?.clearPr) : 0) + (clear?.clearTkSet ? n(clear?.clearTk) : 0);
-      }
-      item.lossRamp = n(clear?.lossRamp);
+      const clearValue = scope === "garden"
+        ? n(clear?.clearPr)
+        : scope === "takuk"
+          ? n(clear?.clearTk)
+          : (clear?.clearPrSet ? n(clear?.clearPr) : 0) + (clear?.clearTkSet ? n(clear?.clearTk) : 0);
       const explicitTransportLoss = item.lossTransport;
-      if (scope === "garden") {
-        item.lossRamp = n(clear?.lossPrRamp);
-        item.lossTransport = n(clear?.lossPrTransport) || explicitTransportLoss;
-      }
-      if (scope === "takuk") {
-        item.lossRamp = n(clear?.lossTkRamp);
-        item.lossTransport = n(clear?.lossTkTransport) || explicitTransportLoss;
-      }
-      item.loss = item.lossRamp + item.lossTransport;
       item.totalAll = carry + item.totalRamp;
       item.opening = carry;
-      item.balance = carry + item.totalRamp - item.outboundTotal - item.loss;
-      carry = item.balance;
+      item.balance = item.totalAll - item.outboundTotal;
+      item.lossRamp = hasClearOpening ? clearValue - item.balance : 0;
+      if (scope === "garden") {
+        item.lossTransport = clear?.lossPrTransport === undefined || clear?.lossPrTransport === null ? explicitTransportLoss : n(clear.lossPrTransport);
+      }
+      if (scope === "takuk") {
+        item.lossTransport = clear?.lossTkTransport === undefined || clear?.lossTkTransport === null ? explicitTransportLoss : n(clear.lossTkTransport);
+      }
+      if (scope === "combined") {
+        item.lossTransport = clear?.lossTransport === undefined || clear?.lossTransport === null ? explicitTransportLoss : n(clear.lossTransport);
+      }
+      item.loss = item.lossRamp + item.lossTransport;
+      carry = hasClearOpening ? clearValue : item.balance;
       return item;
     });
 }
@@ -3032,8 +3037,7 @@ function totals(rows) {
 }
 
 function periodBalance(rows) {
-  const t = totals(rows);
-  return n(rows[0]?.opening) + n(t.totalRamp) - n(t.outboundTotal) - n(t.loss);
+  return n(rows.at(-1)?.balance);
 }
 
 function exactRows(scope) {
@@ -3158,9 +3162,9 @@ function stockPrintGroups(scope) {
       { key: "clearPr", label: "เคลียร์<br>แรมป์", value: (r) => r.clearPr },
       { key: "facNet", label: "น้ำหนัก<br>โรงงาน", value: (r) => r.facNet },
       { label: "น้ำหนักสูญหาย", cols: [
-        { key: "lossRamp", label: "แรมป์", value: (r) => -n(r.lossRamp), loss: true },
-        { key: "lossTransport", label: "ขนส่ง", value: (r) => -n(r.lossTransport), loss: true },
-        { key: "loss", label: "รวม", value: (r) => -n(r.loss), loss: true },
+        { key: "lossRamp", label: "แรมป์", value: (r) => n(r.lossRamp), loss: true },
+        { key: "lossTransport", label: "ขนส่ง", value: (r) => n(r.lossTransport), loss: true },
+        { key: "loss", label: "รวม", value: (r) => n(r.loss), loss: true },
       ] },
     ];
   }
@@ -3183,9 +3187,9 @@ function stockPrintGroups(scope) {
       { key: "clearTk", label: "เคลียร์<br>แรมป์", value: (r) => r.clearTk },
       { key: "facNet", label: "น้ำหนัก<br>โรงงาน", value: (r) => r.facNet },
       { label: "น้ำหนักสูญหาย", cols: [
-        { key: "lossRamp", label: "แรมป์", value: (r) => -n(r.lossRamp), loss: true },
-        { key: "lossTransport", label: "ขนส่ง", value: (r) => -n(r.lossTransport), loss: true },
-        { key: "loss", label: "รวม", value: (r) => -n(r.loss), loss: true },
+        { key: "lossRamp", label: "แรมป์", value: (r) => n(r.lossRamp), loss: true },
+        { key: "lossTransport", label: "ขนส่ง", value: (r) => n(r.lossTransport), loss: true },
+        { key: "loss", label: "รวม", value: (r) => n(r.loss), loss: true },
       ] },
     ];
   }
@@ -3215,9 +3219,9 @@ function stockPrintGroups(scope) {
     ] },
     { key: "facNet", label: "น้ำหนัก<br>โรงงาน", value: (r) => r.facNet },
     { label: "น้ำหนักสูญหาย", cols: [
-      { key: "lossRamp", label: "แรมป์", value: (r) => -n(r.lossRamp), loss: true },
-      { key: "lossTransport", label: "ขนส่ง", value: (r) => -n(r.lossTransport), loss: true },
-      { key: "loss", label: "รวม", value: (r) => -n(r.loss), loss: true },
+      { key: "lossRamp", label: "แรมป์", value: (r) => n(r.lossRamp), loss: true },
+      { key: "lossTransport", label: "ขนส่ง", value: (r) => n(r.lossTransport), loss: true },
+      { key: "loss", label: "รวม", value: (r) => n(r.loss), loss: true },
     ] },
   ];
 }
@@ -3538,7 +3542,7 @@ function buildStockFromData(scope) {
       else item.outboundNonRspo += weight;
       item.facNet += n(record.wpFacNetWeight);
       const diff = n(record.wpFacNetWeight) - weight;
-      if (diff < 0) item.lossTransport += Math.abs(diff);
+      item.lossTransport += diff;
     }
   }
 
@@ -3582,15 +3586,18 @@ function buildStockFromData(scope) {
 }
 
 function applyScopeOpening(item, scope, clear, previousBalance) {
+  const clearSet = scope === "garden" ? clear?.clearPrSet : clear?.clearTkSet;
+  const clearValue = scope === "garden" ? n(clear?.clearPr) : n(clear?.clearTk);
+  const clearTransportLoss = scope === "garden" ? clear?.lossPrTransport : clear?.lossTkTransport;
   item.opening = previousBalance;
-  item.clearPr = scope === "garden" ? n(clear?.clearPr) : 0;
-  item.clearTk = scope === "takuk" ? n(clear?.clearTk) : 0;
+  item.clearPr = scope === "garden" ? clearValue : 0;
+  item.clearTk = scope === "takuk" ? clearValue : 0;
   item.clear = item.clearPr + item.clearTk;
-  item.lossRamp = scope === "garden" ? n(clear?.lossPrRamp) : n(clear?.lossTkRamp);
-  item.lossTransport = (scope === "garden" ? n(clear?.lossPrTransport) : n(clear?.lossTkTransport)) || item.lossTransport;
-  item.loss = item.lossRamp + item.lossTransport;
   item.totalAll = item.opening + item.totalRamp;
-  item.balance = item.opening + item.totalRamp - item.outboundTotal - item.loss;
+  item.balance = item.totalAll - item.outboundTotal;
+  item.lossRamp = clearSet ? clearValue - item.balance : 0;
+  item.lossTransport = clearTransportLoss === undefined || clearTransportLoss === null ? item.lossTransport : n(clearTransportLoss);
+  item.loss = item.lossRamp + item.lossTransport;
 }
 
 function nextCarryBalance(item, scope, clear) {
@@ -9611,22 +9618,28 @@ function renderPalmManagement() {
 
 function renderClear() {
   const rows = clearRows().filter((r) => inRange(r.date));
-  const gardenBalance = new Map(buildStockFromData("garden").map((row) => [row.date, row.balance]));
-  const takukBalance = new Map(buildStockFromData("takuk").map((row) => [row.date, row.balance]));
+  const gardenStock = new Map(buildStockFromData("garden").map((row) => [row.date, row]));
+  const takukStock = new Map(buildStockFromData("takuk").map((row) => [row.date, row]));
   els.clearTable.innerHTML = `
     <thead><tr><th>วันที่</th><th>คงเหลือปลายราง</th><th>คงเหลือตะกุก</th><th>เคลียร์ปลายราง</th><th>เคลียร์ตะกุก</th><th>Loss แรมป์</th><th>Loss ขนส่ง</th><th>รวมปรับยอด</th><th class="left">หมายเหตุ</th><th></th></tr></thead>
-    <tbody>${rows.map((r) => `<tr>
-      <td>${displayDate(r.date)}</td>
-      <td class="num">${fmt(gardenBalance.get(r.date) || 0)}</td>
-      <td class="num">${fmt(takukBalance.get(r.date) || 0)}</td>
-      <td class="num">${fmt(r.clearPr)}</td>
-      <td class="num">${fmt(r.clearTk)}</td>
-      <td class="num loss">${fmt(r.lossRamp)}</td>
-      <td class="num loss">${fmt(r.lossTransport)}</td>
-      <td class="num">${fmt(n(r.clearPr) + n(r.clearTk) + n(r.lossRamp) + n(r.lossTransport))}</td>
-      <td class="left">${r.note || ""}</td>
-      <td>${r.source === "manual" ? `<button data-del="${r.date}" type="button">ลบ</button>` : ""}</td>
-    </tr>`).join("")}</tbody>`;
+    <tbody>${rows.map((r) => {
+      const garden = gardenStock.get(r.date);
+      const takuk = takukStock.get(r.date);
+      const lossRamp = n(garden?.lossRamp) + n(takuk?.lossRamp);
+      const lossTransport = n(garden?.lossTransport) + n(takuk?.lossTransport);
+      return `<tr>
+        <td>${displayDate(r.date)}</td>
+        <td class="num">${fmt(n(garden?.balance))}</td>
+        <td class="num">${fmt(n(takuk?.balance))}</td>
+        <td class="num">${fmt(r.clearPr)}</td>
+        <td class="num">${fmt(r.clearTk)}</td>
+        <td class="num loss">${fmt(lossRamp)}</td>
+        <td class="num loss">${fmt(lossTransport)}</td>
+        <td class="num">${fmt(n(r.clearPr) + n(r.clearTk) + lossRamp + lossTransport)}</td>
+        <td class="left">${r.note || ""}</td>
+        <td>${r.source === "manual" ? `<button data-del="${r.date}" type="button">ลบ</button>` : ""}</td>
+      </tr>`;
+    }).join("")}</tbody>`;
 }
 
 function render() {
