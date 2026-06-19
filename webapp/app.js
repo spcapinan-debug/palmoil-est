@@ -2757,39 +2757,54 @@ function workbookClearRows() {
   })).filter((row) => row.date);
 }
 
-function februaryReportClearRows() {
-  return [
-    ["2026-02-01", 2420, true, 0, true],
-    ["2026-02-02", 630, true, 0, true],
-    ["2026-02-03", 2900, true, 0, false],
-    ["2026-02-04", 2690, true, 8970, true],
-    ["2026-02-05", 4640, true, 0, false],
-    ["2026-02-06", 3300, true, 0, false],
-    ["2026-02-07", 0, false, 0, true],
-    ["2026-02-08", 2080, true, 0, true],
-    ["2026-02-09", 28030, true, 0, true],
-    ["2026-02-10", 2470, true, 0, true],
-  ].map(([date, clearPr, clearPrSet, clearTk, clearTkSet]) => ({
-    date,
-    clearPrSet,
-    clearTkSet,
-    clearPr,
-    clearTk,
-    lossRamp: 0,
-    lossTransport: 0,
-    lossPrRamp: 0,
-    lossPrTransport: 0,
-    lossTkRamp: 0,
-    lossTkTransport: 0,
-    note: "Source: IMG_7327 February stock report trial clear ramp",
-    source: "report",
-  }));
+function monthlyReportClearRows() {
+  const gardenRows = state.payload?.monthlyReports?.garden?.rows || [];
+  const takukRows = state.payload?.monthlyReports?.takuk?.rows || [];
+  const byDate = new Map();
+  for (const row of gardenRows) {
+    const clearValue = row.cells?.[21];
+    byDate.set(row.date, {
+      date: row.date,
+      clearPrSet: isEnteredValue(clearValue),
+      clearTkSet: false,
+      clearPr: n(clearValue),
+      clearTk: 0,
+      lossRamp: 0,
+      lossTransport: 0,
+      lossPrRamp: 0,
+      lossPrTransport: 0,
+      lossTkRamp: 0,
+      lossTkTransport: 0,
+      note: `Source: ${row.monthFile || "monthly stock report"}`,
+      source: "report",
+    });
+  }
+  for (const row of takukRows) {
+    const clearValue = row.cells?.[19];
+    const current = byDate.get(row.date) || {
+      date: row.date,
+      clearPrSet: false,
+      clearPr: 0,
+      lossRamp: 0,
+      lossTransport: 0,
+      lossPrRamp: 0,
+      lossPrTransport: 0,
+      lossTkRamp: 0,
+      lossTkTransport: 0,
+      note: `Source: ${row.monthFile || "monthly stock report"}`,
+      source: "report",
+    };
+    current.clearTkSet = isEnteredValue(clearValue);
+    current.clearTk = n(clearValue);
+    byDate.set(row.date, current);
+  }
+  return [...byDate.values()];
 }
 
 function clearRows() {
   const map = new Map();
   for (const row of workbookClearRows()) map.set(row.date, row);
-  for (const row of februaryReportClearRows()) {
+  for (const row of monthlyReportClearRows()) {
     const base = map.get(row.date);
     map.set(row.date, {
       ...row,
@@ -2868,9 +2883,14 @@ function dataRecordScope(record) {
   return "garden";
 }
 
+function isEstateAreaName(record) {
+  return /บางกัน|กะเปา|ปลายราง|พันไร่|หมอนไม้|ตะกุก/.test(String(record.name || ""));
+}
+
 function dataInboundBucket(record) {
   if (record.standard === "Contract Farmer") return "customer";
-  if (record.wpInOutType === "I" && !record.estate && !record.areaGroup) return "customer";
+  const isKnownEstateCode = String(record.wpctCode || "").trim().startsWith("9");
+  if (record.wpInOutType === "I" && !record.estate && !record.areaGroup && !isEstateAreaName(record) && !isKnownEstateCode) return "customer";
   const location = String(record.location || "").trim().toUpperCase();
   if (location.startsWith("T")) return "takuk";
   if (location.startsWith("E")) return "estate";
