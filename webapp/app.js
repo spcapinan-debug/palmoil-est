@@ -2574,7 +2574,7 @@ function sourceRecordsForDatabase() {
   const movementMap = movementBySourceRow();
   return (state.records || []).map((record) => {
     const movement = movementMap.get(Number(record._srcRow));
-    const rowScope = movement ? movementScope(movement) : dataRecordScope(record);
+    const rowScope = dataRecordScope(record);
     return {
       _srcRow: record._srcRow,
       wpDocNo: record.wpDocNo,
@@ -2813,16 +2813,20 @@ function fillAutoClearLoss(row) {
 }
 
 function dataRecordScope(record) {
+  const location = String(record.location || "").trim().toUpperCase();
+  if (location.startsWith("T")) return "takuk";
+  if (location.startsWith("E")) return "garden";
   const movement = movementBySourceRow().get(Number(record._srcRow));
   if (movement) return movementScope(movement);
-  if (String(record.location || "").startsWith("T")) return "takuk";
-  if (String(record.location || "").startsWith("E")) return "garden";
   if (record.areaGroup === "Takuk" || String(record.name || "").includes("ตะกุก")) return "takuk";
   return "garden";
 }
 
 function dataInboundBucket(record) {
   if (record.standard === "Contract Farmer") return "customer";
+  const location = String(record.location || "").trim().toUpperCase();
+  if (location.startsWith("T")) return "takuk";
+  if (location.startsWith("E")) return "estate";
   if (record.areaGroup === "Banggun") return "banggun";
   if (record.areaGroup === "Kapao") return "kapao";
   if (record.areaGroup === "Takuk" && String(record.name || "").includes("เหนือ")) return "takukNorth";
@@ -3288,7 +3292,7 @@ function stockMoneyValue(scope) {
     const date = record.weightDate || record.date;
     if (!date || !inRange(date) || record.wpInOutType !== "I") return sum;
     const movement = movementMap.get(Number(record._srcRow));
-    const rowScope = movement ? movementScope(movement) : dataRecordScope(record);
+    const rowScope = dataRecordScope(record);
     if (scope !== "combined" && rowScope !== scope) return sum;
     if (!recordMatchesGlobalFilters(record, movement)) return sum;
     if (record.standard !== "Contract Farmer") return sum;
@@ -3517,7 +3521,7 @@ function buildStockFromData(scope) {
     if (!date || date > end) continue;
     const movement = movementMap.get(Number(record._srcRow));
     if (!recordMatchesGlobalFilters(record, movement)) continue;
-    const rowScope = movement ? movementScope(movement) : dataRecordScope(record);
+    const rowScope = dataRecordScope(record);
     const item = scopedDay(date, rowScope);
     const weight = n(record.wpNetWeight);
     const hour = Number(String(record.wpCarWeightDate || "T12").slice(11, 13));
@@ -3824,7 +3828,7 @@ function dailyRowsFromData() {
       const flow = recordFlow(record);
       const movement = movementMap.get(Number(record._srcRow));
       if (!recordMatchesGlobalFilters(record, movement)) return null;
-      const scope = movement ? movementScope(movement) : dataRecordScope(record);
+      const scope = dataRecordScope(record);
       const standard = flow === "รับเข้า" ? (record.standard || "") : recordStandardBucket(record, movement) || "NON-RSPO";
       const groupStandard = standard === "RSPO" ? "RSPO" : "NON-RSPO";
       const yardName = scope === "takuk" ? "ตะกุก" : "ปลายราง";
@@ -4096,7 +4100,7 @@ function renderSummary() {
   const movementMap = movementBySourceRow();
   const rows = state.records.filter((r) => {
     const movement = movementMap.get(Number(r._srcRow));
-    const scope = movement ? movementScope(movement) : dataRecordScope(r);
+    const scope = dataRecordScope(r);
     return inRange(r.date) &&
       r.wpInOutType === "I" &&
       (yardScope() === "combined" || yardScope() === scope) &&
@@ -4166,7 +4170,7 @@ function millSourceGroups() {
     const rowDate = millRecordDate(record);
     if (rowDate && !inRange(rowDate)) continue;
     const movement = movementMap.get(Number(record._srcRow));
-    const rowScope = movement ? movementScope(movement) : dataRecordScope(record);
+    const rowScope = dataRecordScope(record);
     if (scope !== "combined" && rowScope !== scope) continue;
     if (!recordMatchesGlobalFilters(record, movement)) continue;
 
@@ -4747,7 +4751,7 @@ function filteredReportRecords() {
   return (state.records || []).filter((record) => {
     const date = record.weightDate || record.date;
     const movement = movementMap.get(Number(record._srcRow));
-    const scope = movement ? movementScope(movement) : dataRecordScope(record);
+    const scope = dataRecordScope(record);
     return date &&
       inRange(date) &&
       (yardScope() === "combined" || yardScope() === scope) &&
@@ -4755,7 +4759,7 @@ function filteredReportRecords() {
   }).map((record) => ({
     record,
     movement: movementMap.get(Number(record._srcRow)),
-    scope: movementMap.has(Number(record._srcRow)) ? movementScope(movementMap.get(Number(record._srcRow))) : dataRecordScope(record),
+    scope: dataRecordScope(record),
   }));
 }
 
@@ -4851,7 +4855,7 @@ function buildRspoMonthlyByEstate() {
   const movementMap = movementBySourceRow();
   for (const row of state.records) {
     const movement = movementMap.get(Number(row._srcRow));
-    const scope = movement ? movementScope(movement) : dataRecordScope(row);
+    const scope = dataRecordScope(row);
     if (row.wpInOutType !== "I" || row.standard !== "RSPO" || !inRange(row.date)) continue;
     if (yardScope() !== "combined" && yardScope() !== scope) continue;
     if (!recordMatchesGlobalFilters(row, movement)) continue;
