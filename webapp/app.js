@@ -2244,6 +2244,10 @@ function lossOnly(value) {
   return Math.max(0, -n(value));
 }
 
+function isEnteredValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "" && String(value).trim() !== "-";
+}
+
 function isoDay(value) {
   if (!value) return "";
   const text = String(value).trim();
@@ -2738,8 +2742,8 @@ function workbookClearRows() {
   const sheet = state.payload?.sheets?.Clear_Ramp_Log;
   return (sheet?.rows || []).map((row) => ({
     date: row._date,
-    clearPrSet: row["เคลียร์แรมป์ ปลายราง"] !== null && row["เคลียร์แรมป์ ปลายราง"] !== undefined,
-    clearTkSet: row["เคลียร์แรมป์ ตะกุก"] !== null && row["เคลียร์แรมป์ ตะกุก"] !== undefined,
+    clearPrSet: isEnteredValue(row["เคลียร์แรมป์ ปลายราง"]),
+    clearTkSet: isEnteredValue(row["เคลียร์แรมป์ ตะกุก"]),
     clearPr: n(row["เคลียร์แรมป์ ปลายราง"]),
     clearTk: n(row["เคลียร์แรมป์ ตะกุก"]),
     lossRamp: lossOnly(row["Loss รวม - แรมป์"]),
@@ -2753,9 +2757,51 @@ function workbookClearRows() {
   })).filter((row) => row.date);
 }
 
+function februaryReportClearRows() {
+  return [
+    ["2026-02-01", 2420, true, 0, true],
+    ["2026-02-02", 630, true, 0, true],
+    ["2026-02-03", 2900, true, 0, false],
+    ["2026-02-04", 2690, true, 8970, true],
+    ["2026-02-05", 4640, true, 0, false],
+    ["2026-02-06", 3300, true, 0, false],
+    ["2026-02-07", 0, false, 0, true],
+    ["2026-02-08", 2080, true, 0, true],
+    ["2026-02-09", 28030, true, 0, true],
+    ["2026-02-10", 2470, true, 0, true],
+  ].map(([date, clearPr, clearPrSet, clearTk, clearTkSet]) => ({
+    date,
+    clearPrSet,
+    clearTkSet,
+    clearPr,
+    clearTk,
+    lossRamp: 0,
+    lossTransport: 0,
+    lossPrRamp: 0,
+    lossPrTransport: 0,
+    lossTkRamp: 0,
+    lossTkTransport: 0,
+    note: "Source: IMG_7327 February stock report trial clear ramp",
+    source: "report",
+  }));
+}
+
 function clearRows() {
   const map = new Map();
   for (const row of workbookClearRows()) map.set(row.date, row);
+  for (const row of februaryReportClearRows()) {
+    const base = map.get(row.date);
+    map.set(row.date, {
+      ...row,
+      ...base,
+      clearPrSet: base?.clearPrSet || row.clearPrSet,
+      clearTkSet: base?.clearTkSet || row.clearTkSet,
+      clearPr: base?.clearPrSet ? base.clearPr : row.clearPr,
+      clearTk: base?.clearTkSet ? base.clearTk : row.clearTk,
+      note: base?.note || row.note,
+      source: base?.source || row.source,
+    });
+  }
   for (const row of state.clearOverrides) {
     const base = map.get(row.date) || autoClearLoss(row.date);
     map.set(row.date, { ...base, ...row, source: "manual" });
@@ -2824,6 +2870,7 @@ function dataRecordScope(record) {
 
 function dataInboundBucket(record) {
   if (record.standard === "Contract Farmer") return "customer";
+  if (record.wpInOutType === "I" && !record.estate && !record.areaGroup) return "customer";
   const location = String(record.location || "").trim().toUpperCase();
   if (location.startsWith("T")) return "takuk";
   if (location.startsWith("E")) return "estate";
