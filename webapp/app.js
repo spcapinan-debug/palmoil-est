@@ -3176,6 +3176,33 @@ function stockReportClearMetrics(date) {
   };
 }
 
+function outboundDocsForClear(date, scope, targetWeight, isClearSet) {
+  if (!isClearSet || n(targetWeight) <= 0) return "-";
+  const nextDate = addIsoDays(date, 1);
+  const target = n(targetWeight);
+  const rows = (state.records || [])
+    .filter((record) => {
+      const recordDate = isoDay(record.weightDate || record.date);
+      return recordDate === nextDate && record.wpInOutType === "O" && dataRecordScope(record) === scope;
+    })
+    .sort((a, b) => String(a.wpCarWeightDate || a.wpTotalWeightDate || "").localeCompare(String(b.wpCarWeightDate || b.wpTotalWeightDate || ""))
+      || n(a._srcRow) - n(b._srcRow));
+  const exact = rows.find((record) => n(record.wpNetWeight) === target);
+  const selected = exact ? [exact] : [];
+  let total = n(exact?.wpNetWeight);
+  if (!exact) {
+    for (const record of rows) {
+      selected.push(record);
+      total += n(record.wpNetWeight);
+      if (total >= target) break;
+    }
+  }
+  if (!selected.length) return "-";
+  const docs = selected.map((record) => `${record.wpDocNo || "-"} (${fmt(record.wpNetWeight)})`).join(", ");
+  const diff = total - target;
+  return diff ? `${docs} / ต่าง ${fmt(diff)}` : docs;
+}
+
 function exactMetric(scope, cells, metric) {
   const map = {
     combined: { opening: 1, inbound: 10, outbound: 18, loss: 25, balance: 19 },
@@ -9767,7 +9794,7 @@ function renderClear() {
   const gardenStock = new Map(buildStockFromData("garden").map((row) => [row.date, row]));
   const takukStock = new Map(buildStockFromData("takuk").map((row) => [row.date, row]));
   els.clearTable.innerHTML = `
-    <thead><tr><th>วันที่</th><th>คงเหลือปลายราง</th><th>คงเหลือตะกุก</th><th>เคลียร์ปลายราง</th><th>เคลียร์ตะกุก</th><th>Loss แรมป์</th><th>Loss ขนส่ง</th><th>รวมปรับยอด</th><th>น้ำหนัก<br>ยกมา</th><th>เทียบส่งออก<br>วันถัดไป</th><th class="left">หมายเหตุ</th><th></th></tr></thead>
+    <thead><tr><th>วันที่</th><th>คงเหลือปลายราง</th><th>คงเหลือตะกุก</th><th>เคลียร์ปลายราง</th><th>เคลียร์ตะกุก</th><th>Loss แรมป์</th><th>Loss ขนส่ง</th><th>รวมปรับยอด</th><th>น้ำหนัก<br>ยกมา</th><th>เลขที่ใบชั่ง<br>ส่งออกวันถัดไป</th><th class="left">หมายเหตุ</th><th></th></tr></thead>
     <tbody>${rows.map((r) => {
       const garden = gardenStock.get(r.date);
       const takuk = takukStock.get(r.date);
@@ -9778,13 +9805,15 @@ function renderClear() {
       const nextReport = stockReportClearMetrics(nextDate);
       const hasNextDay = Boolean(nextReport || nextGarden || nextTakuk);
       const nextOpening = nextReport?.opening ?? n(nextGarden?.opening) + n(nextTakuk?.opening);
-      const nextOutbound = nextReport?.outbound ?? n(nextGarden?.outboundTotal) + n(nextTakuk?.outboundTotal);
-      const nextOutboundDiff = nextOutbound - nextOpening;
-      const nextOutboundText = hasNextDay ? `ส่งออก ${fmt(nextOutbound)} / ต่าง ${fmt(nextOutboundDiff)}` : "-";
       const gardenBalance = report?.gardenBalance ?? n(garden?.balance);
       const takukBalance = report?.takukBalance ?? n(takuk?.balance);
       const clearPr = report?.clearPr ?? n(r.clearPr);
       const clearTk = report?.clearTk ?? n(r.clearTk);
+      const clearPrSet = report?.clearPrSet ?? r.clearPrSet;
+      const clearTkSet = report?.clearTkSet ?? r.clearTkSet;
+      const gardenDocs = outboundDocsForClear(r.date, "garden", clearPr, clearPrSet);
+      const takukDocs = outboundDocsForClear(r.date, "takuk", clearTk, clearTkSet);
+      const nextDocsText = gardenDocs === "-" && takukDocs === "-" ? "-" : `ปลายราง: ${gardenDocs}<br>ตะกุก: ${takukDocs}`;
       const lossRamp = report?.lossRamp ?? n(garden?.lossRamp) + n(takuk?.lossRamp);
       const lossTransport = report?.lossTransport ?? n(garden?.lossTransport) + n(takuk?.lossTransport);
       return `<tr>
@@ -9797,7 +9826,7 @@ function renderClear() {
         <td class="num loss">${fmt(lossTransport)}</td>
         <td class="num">${fmt(clearPr + clearTk + lossRamp + lossTransport)}</td>
         <td class="num">${hasNextDay ? fmt(nextOpening) : "-"}</td>
-        <td class="left ${hasNextDay && nextOutboundDiff ? "loss" : ""}">${nextOutboundText}</td>
+        <td class="left">${nextDocsText}</td>
         <td class="left">${r.note || ""}</td>
         <td>${r.source === "manual" ? `<button data-del="${r.date}" type="button">ลบ</button>` : ""}</td>
       </tr>`;
