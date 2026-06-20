@@ -2570,17 +2570,24 @@ function clearRowsForDatabase() {
   return withFullTransportScope(() => {
     const gardenStock = new Map(buildStockFromData("garden").map((row) => [row.date, row]));
     const takukStock = new Map(buildStockFromData("takuk").map((row) => [row.date, row]));
-    return clearRows().map((row) => ({
-      ...row,
-      gardenBalance: n(gardenStock.get(row.date)?.balance),
-      takukBalance: n(takukStock.get(row.date)?.balance),
-      lossPrRamp: n(gardenStock.get(row.date)?.lossRamp),
-      lossTkRamp: n(takukStock.get(row.date)?.lossRamp),
-      lossRamp: n(gardenStock.get(row.date)?.lossRamp) + n(takukStock.get(row.date)?.lossRamp),
-      lossPrTransport: n(gardenStock.get(row.date)?.lossTransport),
-      lossTkTransport: n(takukStock.get(row.date)?.lossTransport),
-      lossTransport: n(gardenStock.get(row.date)?.lossTransport) + n(takukStock.get(row.date)?.lossTransport),
-    }));
+    return clearRows().map((row) => {
+      const report = stockReportClearMetrics(row.date);
+      return {
+        ...row,
+        clearPr: report?.clearPr ?? row.clearPr,
+        clearTk: report?.clearTk ?? row.clearTk,
+        clearPrSet: report?.clearPrSet ?? row.clearPrSet,
+        clearTkSet: report?.clearTkSet ?? row.clearTkSet,
+        gardenBalance: report?.gardenBalance ?? n(gardenStock.get(row.date)?.balance),
+        takukBalance: report?.takukBalance ?? n(takukStock.get(row.date)?.balance),
+        lossPrRamp: report?.lossPrRamp ?? n(gardenStock.get(row.date)?.lossRamp),
+        lossTkRamp: report?.lossTkRamp ?? n(takukStock.get(row.date)?.lossRamp),
+        lossRamp: report?.lossRamp ?? n(gardenStock.get(row.date)?.lossRamp) + n(takukStock.get(row.date)?.lossRamp),
+        lossPrTransport: report?.lossPrTransport ?? n(gardenStock.get(row.date)?.lossTransport),
+        lossTkTransport: report?.lossTkTransport ?? n(takukStock.get(row.date)?.lossTransport),
+        lossTransport: report?.lossTransport ?? n(gardenStock.get(row.date)?.lossTransport) + n(takukStock.get(row.date)?.lossTransport),
+      };
+    });
   });
 }
 
@@ -3129,6 +3136,46 @@ function exactRows(scope) {
   return [];
 }
 
+function stockReportRows(scope) {
+  const report = state.payload?.monthlyReports?.[scope];
+  if (report?.rows?.length) return report.rows;
+  const workbookReport = state.payload?.workbookReports?.[scope];
+  if (workbookReport?.rows?.length) return workbookReport.rows;
+  return [];
+}
+
+function stockReportRow(scope, date) {
+  return stockReportRows(scope).find((row) => row.date === date);
+}
+
+function stockReportClearMetrics(date) {
+  if (!globalFiltersAreAll()) return null;
+  const garden = stockReportRow("garden", date);
+  const takuk = stockReportRow("takuk", date);
+  const combined = stockReportRow("combined", date);
+  if (!garden && !takuk && !combined) return null;
+  const g = garden?.cells || [];
+  const t = takuk?.cells || [];
+  const c = combined?.cells || [];
+  return {
+    gardenBalance: n(g[20]),
+    takukBalance: n(t[18]),
+    balance: combined ? n(c[19]) : n(g[20]) + n(t[18]),
+    clearPr: combined ? n(c[20]) : n(g[21]),
+    clearTk: combined ? n(c[21]) : n(t[19]),
+    clearPrSet: combined ? isEnteredValue(c[20]) : isEnteredValue(g[21]),
+    clearTkSet: combined ? isEnteredValue(c[21]) : isEnteredValue(t[19]),
+    lossPrRamp: n(g[23]),
+    lossTkRamp: n(t[21]),
+    lossRamp: combined ? n(c[23]) : n(g[23]) + n(t[21]),
+    lossPrTransport: n(g[24]),
+    lossTkTransport: n(t[22]),
+    lossTransport: combined ? n(c[24]) : n(g[24]) + n(t[22]),
+    outbound: combined ? n(c[18]) : n(g[19]) + n(t[17]),
+    opening: combined ? n(c[1]) : n(g[1]) + n(t[1]),
+  };
+}
+
 function exactMetric(scope, cells, metric) {
   const map = {
     combined: { opening: 1, inbound: 10, outbound: 18, loss: 25, balance: 19 },
@@ -3187,6 +3234,21 @@ function renderExactStock(scope, rows) {
     return typeof value === "number" ? `<td class="num">${fmt(value)}</td>` : `<td>${value ?? ""}</td>`;
   }).join("")}</tr>`).join("");
   els.reportPage.innerHTML = `${title}<div class="table-wrap"><table><thead>${headerRows}</thead><tbody>${bodyRows}</tbody>${exactFooter(scope, rows)}</table></div>`;
+}
+
+function renderExactDashboard(scope) {
+  if (!globalFiltersAreAll()) return false;
+  const rows = exactRows(scope);
+  if (!rows.length) return false;
+  const inbound = rows.reduce((sum, row) => sum + exactMetric(scope, row.cells, "inbound"), 0);
+  const outbound = rows.reduce((sum, row) => sum + exactMetric(scope, row.cells, "outbound"), 0);
+  const loss = rows.reduce((sum, row) => sum + Math.abs(exactMetric(scope, row.cells, "loss")), 0);
+  els.kpiOpening.textContent = fmt(exactMetric(scope, rows[0].cells, "opening"));
+  els.kpiInbound.textContent = fmt(inbound);
+  els.kpiOutbound.textContent = fmt(outbound);
+  els.kpiLoss.textContent = fmt(loss);
+  els.kpiBalance.textContent = fmt(exactMetric(scope, rows.at(-1).cells, "balance"));
+  return true;
 }
 
 function renderDashboard(rows) {
@@ -9709,25 +9771,31 @@ function renderClear() {
     <tbody>${rows.map((r) => {
       const garden = gardenStock.get(r.date);
       const takuk = takukStock.get(r.date);
+      const report = stockReportClearMetrics(r.date);
       const nextDate = addIsoDays(r.date, 1);
       const nextGarden = gardenStock.get(nextDate);
       const nextTakuk = takukStock.get(nextDate);
-      const hasNextDay = Boolean(nextGarden || nextTakuk);
-      const nextOpening = n(nextGarden?.opening) + n(nextTakuk?.opening);
-      const nextOutbound = n(nextGarden?.outboundTotal) + n(nextTakuk?.outboundTotal);
+      const nextReport = stockReportClearMetrics(nextDate);
+      const hasNextDay = Boolean(nextReport || nextGarden || nextTakuk);
+      const nextOpening = nextReport?.opening ?? n(nextGarden?.opening) + n(nextTakuk?.opening);
+      const nextOutbound = nextReport?.outbound ?? n(nextGarden?.outboundTotal) + n(nextTakuk?.outboundTotal);
       const nextOutboundDiff = nextOutbound - nextOpening;
       const nextOutboundText = hasNextDay ? `ส่งออก ${fmt(nextOutbound)} / ต่าง ${fmt(nextOutboundDiff)}` : "-";
-      const lossRamp = n(garden?.lossRamp) + n(takuk?.lossRamp);
-      const lossTransport = n(garden?.lossTransport) + n(takuk?.lossTransport);
+      const gardenBalance = report?.gardenBalance ?? n(garden?.balance);
+      const takukBalance = report?.takukBalance ?? n(takuk?.balance);
+      const clearPr = report?.clearPr ?? n(r.clearPr);
+      const clearTk = report?.clearTk ?? n(r.clearTk);
+      const lossRamp = report?.lossRamp ?? n(garden?.lossRamp) + n(takuk?.lossRamp);
+      const lossTransport = report?.lossTransport ?? n(garden?.lossTransport) + n(takuk?.lossTransport);
       return `<tr>
         <td>${displayDate(r.date)}</td>
-        <td class="num">${fmt(n(garden?.balance))}</td>
-        <td class="num">${fmt(n(takuk?.balance))}</td>
-        <td class="num">${fmt(r.clearPr)}</td>
-        <td class="num">${fmt(r.clearTk)}</td>
+        <td class="num">${fmt(gardenBalance)}</td>
+        <td class="num">${fmt(takukBalance)}</td>
+        <td class="num">${fmt(clearPr)}</td>
+        <td class="num">${fmt(clearTk)}</td>
         <td class="num loss">${fmt(lossRamp)}</td>
         <td class="num loss">${fmt(lossTransport)}</td>
-        <td class="num">${fmt(n(r.clearPr) + n(r.clearTk) + lossRamp + lossTransport)}</td>
+        <td class="num">${fmt(clearPr + clearTk + lossRamp + lossTransport)}</td>
         <td class="num">${hasNextDay ? fmt(nextOpening) : "-"}</td>
         <td class="left ${hasNextDay && nextOutboundDiff ? "loss" : ""}">${nextOutboundText}</td>
         <td class="left">${r.note || ""}</td>
@@ -9761,7 +9829,7 @@ function render() {
   if (state.view === "daily") renderDailyReport();
   if (state.view === "summary") renderSummary();
   if (state.view === "clear") {
-    renderDashboard(buildStockFromData(yardScope()));
+    if (!renderExactDashboard(yardScope())) renderDashboard(buildStockFromData(yardScope()));
     renderClear();
   }
   enhanceTables(els.reportPage);
