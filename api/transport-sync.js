@@ -42,6 +42,14 @@ function keyKind() {
   return "unknown";
 }
 
+function boolFlag(value) {
+  if (typeof value === "boolean") return value;
+  const text = String(value ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "y"].includes(text)) return true;
+  if (["false", "0", "no", "n", ""].includes(text)) return false;
+  return Boolean(value);
+}
+
 async function supabaseFetch(path, options = {}) {
   const { url, key } = supabaseConfig();
   const res = await fetch(`${url}/rest/v1/${path}`, {
@@ -125,8 +133,8 @@ function clearRampRow(row) {
     clear_date: isoDate(row.date),
     clear_pr: n(row.clearPr),
     clear_tk: n(row.clearTk),
-    clear_pr_set: Boolean(row.clearPrSet),
-    clear_tk_set: Boolean(row.clearTkSet),
+    clear_pr_set: boolFlag(row.clearPrSet),
+    clear_tk_set: boolFlag(row.clearTkSet),
     garden_balance: n(row.gardenBalance),
     takuk_balance: n(row.takukBalance),
     loss_ramp: n(row.lossRamp),

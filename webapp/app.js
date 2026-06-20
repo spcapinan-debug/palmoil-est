@@ -2393,12 +2393,22 @@ function filterContextLine(extra = []) {
   return `ตัวกรองที่ใช้: ${parts.join(" | ")}`;
 }
 
+function booleanFlag(value) {
+  if (typeof value === "boolean") return value;
+  const text = String(value ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "y"].includes(text)) return true;
+  if (["false", "0", "no", "n", ""].includes(text)) return false;
+  return Boolean(value);
+}
+
 function normalizeClearOverride(row) {
   if (!row || !row.date) return null;
+  const hasPrFlag = Object.prototype.hasOwnProperty.call(row, "clearPrSet");
+  const hasTkFlag = Object.prototype.hasOwnProperty.call(row, "clearTkSet");
   const normalized = {
     date: isoDay(row.date),
-    clearPrSet: Boolean(row.clearPrSet),
-    clearTkSet: Boolean(row.clearTkSet),
+    clearPrSet: hasPrFlag ? booleanFlag(row.clearPrSet) : isEnteredValue(row.clearPr),
+    clearTkSet: hasTkFlag ? booleanFlag(row.clearTkSet) : isEnteredValue(row.clearTk),
     clearPr: n(row.clearPr),
     clearTk: n(row.clearTk),
     note: String(row.note || ""),
@@ -2406,8 +2416,6 @@ function normalizeClearOverride(row) {
     updatedAt: row.updatedAt || "",
   };
   if (!normalized.date) return null;
-  if (!normalized.clearPrSet && row.clearPr !== undefined && row.clearPr !== "") normalized.clearPrSet = true;
-  if (!normalized.clearTkSet && row.clearTk !== undefined && row.clearTk !== "") normalized.clearTkSet = true;
   return normalized;
 }
 
@@ -2472,7 +2480,9 @@ async function loadClearOverridesFromTransportDb() {
   try {
     const payload = await fetch(`${TRANSPORT_SYNC_API}?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
     if (payload?.ok === false) return false;
-    const rows = (payload.clearRows || []).map((row) => ({
+    const rows = (payload.clearRows || [])
+      .filter((row) => row?.raw_payload?.source === "manual")
+      .map((row) => ({
       date: row.clear_date,
       clearPr: row.clear_pr,
       clearTk: row.clear_tk,
