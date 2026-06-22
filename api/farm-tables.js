@@ -131,6 +131,15 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 }
 
+function newUuid() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
 function cleanText(value, max = 200) {
   return String(value || "").trim().slice(0, max);
 }
@@ -255,6 +264,7 @@ function sanitizeDbRow(row) {
 
 async function upsertRealTableRow(table, row) {
   const dbRow = sanitizeDbRow(row);
+  if (!dbRow.id) dbRow.id = newUuid();
   if (!Object.keys(dbRow).length) throw new Error("No writable columns");
   const conflictKey = dbRow.id ? "id" : (UNIQUE_KEYS[table] && dbRow[UNIQUE_KEYS[table]] ? UNIQUE_KEYS[table] : "");
   const path = conflictKey
