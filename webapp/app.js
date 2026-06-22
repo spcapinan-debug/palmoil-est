@@ -2698,7 +2698,9 @@ function updateSourceInfo() {
 
 function setSourceRefreshError(error) {
   const message = String(error?.message || error || "refresh failed").slice(0, 140);
-  const base = String(els.sourceInfo.textContent || "").split("\nrefresh failed")[0];
+  const base = String(els.sourceInfo.textContent || "")
+    .replace(/(?:\s+refresh failed(?::\s*[^]*)?)+$/i, "")
+    .trimEnd();
   els.sourceInfo.textContent = `${base}\nrefresh failed: ${message}`;
 }
 
