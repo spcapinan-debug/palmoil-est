@@ -2586,20 +2586,32 @@ function clearRowsForDatabase() {
     const takukStock = new Map(buildStockFromData("takuk").map((row) => [row.date, row]));
     return clearRows().map((row) => {
       const report = stockReportClearMetrics(row.date);
+      const garden = gardenStock.get(row.date);
+      const takuk = takukStock.get(row.date);
+      const clearPr = n(row.clearPr);
+      const clearTk = n(row.clearTk);
+      const clearPrSet = Boolean(row.clearPrSet);
+      const clearTkSet = Boolean(row.clearTkSet);
+      const gardenBalance = report?.gardenBalance ?? n(garden?.balance);
+      const takukBalance = report?.takukBalance ?? n(takuk?.balance);
+      const lossPrRamp = clearPrSet ? clearPr - gardenBalance : (report?.lossPrRamp ?? n(garden?.lossRamp));
+      const lossTkRamp = clearTkSet ? clearTk - takukBalance : (report?.lossTkRamp ?? n(takuk?.lossRamp));
+      const lossPrTransport = report?.lossPrTransport ?? n(garden?.lossTransport);
+      const lossTkTransport = report?.lossTkTransport ?? n(takuk?.lossTransport);
       return {
         ...row,
-        clearPr: report?.clearPr ?? row.clearPr,
-        clearTk: report?.clearTk ?? row.clearTk,
-        clearPrSet: report?.clearPrSet ?? row.clearPrSet,
-        clearTkSet: report?.clearTkSet ?? row.clearTkSet,
-        gardenBalance: report?.gardenBalance ?? n(gardenStock.get(row.date)?.balance),
-        takukBalance: report?.takukBalance ?? n(takukStock.get(row.date)?.balance),
-        lossPrRamp: report?.lossPrRamp ?? n(gardenStock.get(row.date)?.lossRamp),
-        lossTkRamp: report?.lossTkRamp ?? n(takukStock.get(row.date)?.lossRamp),
-        lossRamp: report?.lossRamp ?? n(gardenStock.get(row.date)?.lossRamp) + n(takukStock.get(row.date)?.lossRamp),
-        lossPrTransport: report?.lossPrTransport ?? n(gardenStock.get(row.date)?.lossTransport),
-        lossTkTransport: report?.lossTkTransport ?? n(takukStock.get(row.date)?.lossTransport),
-        lossTransport: report?.lossTransport ?? n(gardenStock.get(row.date)?.lossTransport) + n(takukStock.get(row.date)?.lossTransport),
+        clearPr,
+        clearTk,
+        clearPrSet,
+        clearTkSet,
+        gardenBalance,
+        takukBalance,
+        lossPrRamp,
+        lossTkRamp,
+        lossRamp: lossPrRamp + lossTkRamp,
+        lossPrTransport,
+        lossTkTransport,
+        lossTransport: report?.lossTransport ?? (lossPrTransport + lossTkTransport),
       };
     });
   });
@@ -9826,18 +9838,20 @@ function renderClear() {
       const nextTakuk = takukStock.get(nextDate);
       const nextReport = stockReportClearMetrics(nextDate);
       const hasNextDay = Boolean(nextReport || nextGarden || nextTakuk);
-      const nextOpening = nextReport?.opening ?? n(nextGarden?.opening) + n(nextTakuk?.opening);
+      const nextOpening = nextReport?.opening ?? (n(nextGarden?.opening) + n(nextTakuk?.opening));
       const gardenBalance = report?.gardenBalance ?? n(garden?.balance);
       const takukBalance = report?.takukBalance ?? n(takuk?.balance);
-      const clearPr = report?.clearPr ?? n(r.clearPr);
-      const clearTk = report?.clearTk ?? n(r.clearTk);
-      const clearPrSet = report?.clearPrSet ?? r.clearPrSet;
-      const clearTkSet = report?.clearTkSet ?? r.clearTkSet;
+      const clearPr = n(r.clearPr);
+      const clearTk = n(r.clearTk);
+      const clearPrSet = Boolean(r.clearPrSet);
+      const clearTkSet = Boolean(r.clearTkSet);
       const gardenDocs = outboundDocsForClear(r.date, "garden", clearPr, clearPrSet);
       const takukDocs = outboundDocsForClear(r.date, "takuk", clearTk, clearTkSet);
       const nextDocsText = gardenDocs === "-" && takukDocs === "-" ? "-" : `ปลายราง: ${gardenDocs}<br>ตะกุก: ${takukDocs}`;
-      const lossRamp = report?.lossRamp ?? n(garden?.lossRamp) + n(takuk?.lossRamp);
-      const lossTransport = report?.lossTransport ?? n(garden?.lossTransport) + n(takuk?.lossTransport);
+      const lossPrRamp = clearPrSet ? clearPr - gardenBalance : (report?.lossPrRamp ?? n(garden?.lossRamp));
+      const lossTkRamp = clearTkSet ? clearTk - takukBalance : (report?.lossTkRamp ?? n(takuk?.lossRamp));
+      const lossRamp = lossPrRamp + lossTkRamp;
+      const lossTransport = report?.lossTransport ?? (n(garden?.lossTransport) + n(takuk?.lossTransport));
       return `<tr>
         <td>${displayDate(r.date)}</td>
         <td class="num">${fmt(gardenBalance)}</td>
