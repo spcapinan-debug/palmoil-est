@@ -2245,11 +2245,48 @@ function fmt(value) {
 }
 
 function lossOnly(value) {
-  return Math.max(0, -n(value));
+  return isEnteredValue(value) ? n(value) : null;
 }
 
 function isEnteredValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== "" && String(value).trim() !== "-";
+}
+
+function normalizedHeaderName(value) {
+  return String(value || "")
+    .normalize("NFC")
+    .replace(/[‐‑‒–—]/g, "-")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
+function rowCell(row, ...names) {
+  if (!row) return undefined;
+  for (const name of names) {
+    if (Object.prototype.hasOwnProperty.call(row, name)) return row[name];
+    const target = normalizedHeaderName(name);
+    const key = Object.keys(row).find((candidate) => normalizedHeaderName(candidate) === target);
+    if (key) return row[key];
+  }
+  return undefined;
+}
+
+function clearLogCell(row, key) {
+  const keys = Object.keys(row || {});
+  const lossKeys = keys.filter((candidate) => String(candidate).trim().toLowerCase().startsWith("loss"));
+  const fallback = {
+    clearPr: keys[1],
+    clearTk: keys[2],
+    note: keys[3],
+    sourceNote: keys[9],
+    lossRamp: lossKeys[0],
+    lossTransport: lossKeys[1],
+    lossPrRamp: lossKeys[3],
+    lossPrTransport: lossKeys[4],
+    lossTkRamp: lossKeys[6],
+    lossTkTransport: lossKeys[7],
+  }[key];
+  return fallback ? row[fallback] : undefined;
 }
 
 function isoDay(value) {
@@ -2420,6 +2457,9 @@ function normalizeClearOverride(row) {
     updatedAt: row.updatedAt || "",
   };
   if (!normalized.date) return null;
+  for (const key of ["lossRamp", "lossTransport", "lossPrRamp", "lossPrTransport", "lossTkRamp", "lossTkTransport"]) {
+    if (Object.prototype.hasOwnProperty.call(row, key) && isEnteredValue(row[key])) normalized[key] = n(row[key]);
+  }
   return normalized;
 }
 
@@ -2594,10 +2634,16 @@ function clearRowsForDatabase() {
       const clearTkSet = Boolean(row.clearTkSet);
       const gardenBalance = report?.gardenBalance ?? n(garden?.balance);
       const takukBalance = report?.takukBalance ?? n(takuk?.balance);
-      const lossPrRamp = clearPrSet ? clearPr - gardenBalance : (report?.lossPrRamp ?? n(garden?.lossRamp));
-      const lossTkRamp = clearTkSet ? clearTk - takukBalance : (report?.lossTkRamp ?? n(takuk?.lossRamp));
+      const fallbackLossPrRamp = clearPrSet ? clearPr - gardenBalance : (report?.lossPrRamp ?? n(garden?.lossRamp));
+      const fallbackLossTkRamp = clearTkSet ? clearTk - takukBalance : (report?.lossTkRamp ?? n(takuk?.lossRamp));
+      const lossPrRamp = isEnteredValue(row.lossPrRamp) ? n(row.lossPrRamp) : fallbackLossPrRamp;
+      const lossTkRamp = isEnteredValue(row.lossTkRamp) ? n(row.lossTkRamp) : fallbackLossTkRamp;
       const lossPrTransport = report?.lossPrTransport ?? n(garden?.lossTransport);
       const lossTkTransport = report?.lossTkTransport ?? n(takuk?.lossTransport);
+      const lossRamp = isEnteredValue(row.lossRamp) ? n(row.lossRamp) : lossPrRamp + lossTkRamp;
+      const lossTransport = isEnteredValue(row.lossTransport)
+        ? n(row.lossTransport)
+        : (report?.lossTransport ?? (lossPrTransport + lossTkTransport));
       return {
         ...row,
         clearPr,
@@ -2608,10 +2654,10 @@ function clearRowsForDatabase() {
         takukBalance,
         lossPrRamp,
         lossTkRamp,
-        lossRamp: lossPrRamp + lossTkRamp,
+        lossRamp,
         lossPrTransport,
         lossTkTransport,
-        lossTransport: report?.lossTransport ?? (lossPrTransport + lossTkTransport),
+        lossTransport,
       };
     });
   });
@@ -2793,17 +2839,17 @@ function workbookClearRows() {
   const sheet = state.payload?.sheets?.Clear_Ramp_Log;
   return (sheet?.rows || []).map((row) => ({
     date: row._date,
-    clearPrSet: isEnteredValue(row["เคลียร์แรมป์ ปลายราง"]),
-    clearTkSet: isEnteredValue(row["เคลียร์แรมป์ ตะกุก"]),
-    clearPr: n(row["เคลียร์แรมป์ ปลายราง"]),
-    clearTk: n(row["เคลียร์แรมป์ ตะกุก"]),
-    lossRamp: lossOnly(row["Loss รวม - แรมป์"]),
-    lossTransport: lossOnly(row["Loss รวม - ขนส่ง"]),
-    lossPrRamp: lossOnly(row["Loss ปลายราง - แรมป์"]),
-    lossPrTransport: lossOnly(row["Loss ปลายราง - ขนส่ง"]),
-    lossTkRamp: lossOnly(row["Loss ตะกุก - แรมป์"]),
-    lossTkTransport: lossOnly(row["Loss ตะกุก - ขนส่ง"]),
-    note: row["หมายเหตุ"] || row["Source / Note"] || "",
+    clearPrSet: isEnteredValue(rowCell(row, "เคลียร์แรมป์ ปลายราง") ?? clearLogCell(row, "clearPr")),
+    clearTkSet: isEnteredValue(rowCell(row, "เคลียร์แรมป์ ตะกุก") ?? clearLogCell(row, "clearTk")),
+    clearPr: n(rowCell(row, "เคลียร์แรมป์ ปลายราง") ?? clearLogCell(row, "clearPr")),
+    clearTk: n(rowCell(row, "เคลียร์แรมป์ ตะกุก") ?? clearLogCell(row, "clearTk")),
+    lossRamp: lossOnly(rowCell(row, "Loss รวม - แรมป์") ?? clearLogCell(row, "lossRamp")),
+    lossTransport: lossOnly(rowCell(row, "Loss รวม - ขนส่ง") ?? clearLogCell(row, "lossTransport")),
+    lossPrRamp: lossOnly(rowCell(row, "Loss ปลายราง - แรมป์") ?? clearLogCell(row, "lossPrRamp")),
+    lossPrTransport: lossOnly(rowCell(row, "Loss ปลายราง - ขนส่ง") ?? clearLogCell(row, "lossPrTransport")),
+    lossTkRamp: lossOnly(rowCell(row, "Loss ตะกุก - แรมป์") ?? clearLogCell(row, "lossTkRamp")),
+    lossTkTransport: lossOnly(rowCell(row, "Loss ตะกุก - ขนส่ง") ?? clearLogCell(row, "lossTkTransport")),
+    note: rowCell(row, "หมายเหตุ") || clearLogCell(row, "note") || rowCell(row, "Source / Note") || clearLogCell(row, "sourceNote") || "",
     source: "workbook",
   })).filter((row) => row.date);
 }
@@ -2915,12 +2961,12 @@ function fillAutoClearLoss(row) {
   const auto = autoClearLoss(row.date);
   return {
     ...row,
-    lossRamp: n(row.lossRamp) || auto.lossRamp,
-    lossTransport: auto.lossTransport,
-    lossPrRamp: n(row.lossPrRamp) || auto.lossPrRamp,
-    lossPrTransport: auto.lossPrTransport,
-    lossTkRamp: n(row.lossTkRamp) || auto.lossTkRamp,
-    lossTkTransport: auto.lossTkTransport,
+    lossRamp: isEnteredValue(row.lossRamp) ? n(row.lossRamp) : auto.lossRamp,
+    lossTransport: isEnteredValue(row.lossTransport) ? n(row.lossTransport) : auto.lossTransport,
+    lossPrRamp: isEnteredValue(row.lossPrRamp) ? n(row.lossPrRamp) : auto.lossPrRamp,
+    lossPrTransport: isEnteredValue(row.lossPrTransport) ? n(row.lossPrTransport) : auto.lossPrTransport,
+    lossTkRamp: isEnteredValue(row.lossTkRamp) ? n(row.lossTkRamp) : auto.lossTkRamp,
+    lossTkTransport: isEnteredValue(row.lossTkTransport) ? n(row.lossTkTransport) : auto.lossTkTransport,
   };
 }
 
@@ -9848,10 +9894,8 @@ function renderClear() {
       const gardenDocs = outboundDocsForClear(r.date, "garden", clearPr, clearPrSet);
       const takukDocs = outboundDocsForClear(r.date, "takuk", clearTk, clearTkSet);
       const nextDocsText = gardenDocs === "-" && takukDocs === "-" ? "-" : `ปลายราง: ${gardenDocs}<br>ตะกุก: ${takukDocs}`;
-      const lossPrRamp = clearPrSet ? clearPr - gardenBalance : (report?.lossPrRamp ?? n(garden?.lossRamp));
-      const lossTkRamp = clearTkSet ? clearTk - takukBalance : (report?.lossTkRamp ?? n(takuk?.lossRamp));
-      const lossRamp = lossPrRamp + lossTkRamp;
-      const lossTransport = report?.lossTransport ?? (n(garden?.lossTransport) + n(takuk?.lossTransport));
+      const lossRamp = n(r.lossRamp);
+      const lossTransport = n(r.lossTransport);
       return `<tr>
         <td>${displayDate(r.date)}</td>
         <td class="num">${fmt(gardenBalance)}</td>
