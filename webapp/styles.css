@@ -4827,6 +4827,28 @@ tfoot td {
   border-radius: 3px;
 }
 
+.farm-work-legend i.baseline {
+  width: 18px;
+  height: 8px;
+  border: 1px dashed #ef4444;
+  background: rgba(239, 68, 68, .08);
+}
+
+.farm-work-legend i.milestone {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: #f97316;
+  transform: rotate(45deg);
+}
+
+.farm-work-legend i.today {
+  width: 3px;
+  height: 14px;
+  border-radius: 999px;
+  background: #f97316;
+}
+
 .farm-work-legend b {
   color: var(--ink);
 }
@@ -4838,6 +4860,7 @@ tfoot td {
   align-items: start;
 }
 
+.farm-work-gantt,
 .farm-work-timeline {
   min-width: 0;
   overflow: auto;
@@ -4849,31 +4872,54 @@ tfoot td {
 .farm-work-grid-head,
 .farm-work-row {
   display: grid;
-  grid-template-columns: 300px max-content;
+  grid-template-columns: 520px max-content;
   min-width: max-content;
 }
 
 .farm-work-left-head {
   position: sticky;
   left: 0;
-  z-index: 5;
-  display: flex;
+  z-index: 7;
+  display: grid;
+  grid-template-columns: 88px minmax(160px, 1fr) 120px 90px 48px 86px;
+  gap: 8px;
   align-items: center;
-  min-height: 44px;
+  min-height: 58px;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   padding: 0 12px;
   background: #f8fafc;
   color: var(--navy);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-work-scale {
+  display: grid;
+  min-height: 58px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.farm-work-months {
+  display: grid;
+  min-height: 25px;
+  border-bottom: 1px solid #dbe5f2;
+}
+
+.farm-work-months span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #dbe5f2;
+  color: var(--navy);
+  font-size: 11px;
   font-weight: 900;
 }
 
 .farm-work-days {
   display: grid;
-  min-height: 44px;
-  border-bottom: 1px solid var(--line);
-  background: #f8fafc;
+  min-height: 32px;
 }
 
 .farm-work-days span {
@@ -4885,30 +4931,42 @@ tfoot td {
   font-weight: 900;
 }
 
+.farm-work-days span.is-today {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
 .farm-work-days small {
   color: var(--muted);
   font-size: 9px;
   font-weight: 800;
 }
 
+.farm-work-rows {
+  position: relative;
+}
+
 .farm-work-row {
-  min-height: 58px;
+  min-height: 54px;
   border-bottom: 1px solid #edf2f7;
 }
 
 .farm-work-row.active .farm-work-left {
   background: #eef6ff;
+  box-shadow: inset 3px 0 0 var(--primary);
 }
 
 .farm-work-left {
   position: sticky;
   left: 0;
-  z-index: 4;
+  z-index: 5;
   display: grid;
-  gap: 2px;
+  grid-template-columns: 88px minmax(160px, 1fr) 120px 90px 48px 86px;
+  gap: 8px;
+  align-items: center;
   border: 0;
   border-right: 1px solid var(--line);
-  padding: 8px 10px;
+  padding: 7px 12px;
   background: #fff;
   text-align: left;
 }
@@ -4919,9 +4977,20 @@ tfoot td {
 }
 
 .farm-work-left strong {
+  display: grid;
+  gap: 2px;
   overflow: hidden;
   color: var(--ink);
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-work-left strong small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4934,31 +5003,61 @@ tfoot td {
   white-space: nowrap;
 }
 
+.farm-work-left em {
+  color: var(--navy);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  text-align: right;
+}
+
+.farm-work-left > i {
+  justify-self: start;
+  border-radius: 999px;
+  padding: 4px 7px;
+  background: color-mix(in srgb, var(--status) 14%, #fff);
+  color: var(--status);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .farm-work-lane {
   position: relative;
-  min-height: 58px;
-  background-image: linear-gradient(to right, #edf2f7 1px, transparent 1px);
-  background-size: 28px 100%;
+  min-height: 54px;
+  background-image:
+    linear-gradient(to right, #edf2f7 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(248, 250, 252, .75), rgba(248, 250, 252, .75));
+  background-size: 30px 100%, 100% 100%;
 }
 
 .farm-work-bar {
   position: absolute;
-  top: 17px;
-  min-height: 22px;
+  top: 16px;
+  min-height: 20px;
   border: 1px solid rgba(15, 23, 42, .28);
   border-radius: 4px;
   color: #fff;
   font-size: 10px;
   font-weight: 900;
   overflow: hidden;
+  box-shadow: 0 5px 12px rgba(15, 23, 42, .14);
 }
 
 .farm-work-bar.needs-approval {
-  outline: 2px dashed #ef4444;
+  outline: 2px dashed #f97316;
   outline-offset: 2px;
 }
 
+.farm-work-bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(255, 255, 255, .32);
+}
+
 .farm-work-bar span {
+  position: relative;
   display: block;
   overflow: hidden;
   padding: 3px 6px;
@@ -4969,10 +5068,77 @@ tfoot td {
 .farm-work-original {
   position: absolute;
   top: 10px;
-  width: 10px;
-  height: 38px;
-  border: 2px solid #ef4444;
+  height: 34px;
+  border: 1px dashed #ef4444;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, .05);
+}
+
+.farm-work-milestone {
+  position: absolute;
+  top: 20px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
   border-radius: 2px;
+  transform: rotate(45deg);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, .2);
+}
+
+.farm-work-milestone.approval {
+  border: 0;
+  background: #f97316;
+  cursor: pointer;
+}
+
+.farm-work-milestone.approved {
+  background: #22c55e;
+}
+
+.farm-work-milestone.closed {
+  background: #0f172a;
+}
+
+.farm-work-today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 2px;
+  background: #f97316;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, .12);
+}
+
+.farm-work-group-row {
+  min-height: 34px;
+  background: #f8fafc;
+}
+
+.farm-work-group-left {
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-right: 1px solid var(--line);
+  padding: 0 12px;
+  background: #eaf1f8;
+  color: var(--navy);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-work-group-left span {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.farm-work-group-lane {
+  min-height: 34px;
+  background: repeating-linear-gradient(135deg, #f8fafc 0, #f8fafc 8px, #eef4fa 8px, #eef4fa 16px);
 }
 
 .farm-work-empty {

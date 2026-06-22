@@ -8706,6 +8706,41 @@ function renderFarmWorkSelect(id, label, options, value) {
     </label>`;
 }
 
+function farmWorkProgress(order) {
+  const status = order?.statusMeta?.key || order?.status || "planned";
+  const map = {
+    planned: 10,
+    scheduled: 18,
+    pending_approval: 32,
+    approved: 45,
+    sent_to_mobile: 58,
+    rescheduled: 52,
+    in_progress: 72,
+    completed: 92,
+    closed: 100,
+    rejected: 0,
+  };
+  return map[status] ?? 20;
+}
+
+function farmWorkMonthBands(days) {
+  const bands = [];
+  for (const day of days) {
+    const key = day.slice(0, 7);
+    const current = bands.at(-1);
+    if (current?.key === key) current.days += 1;
+    else bands.push({ key, label: `${thaiMonthName(day.slice(5, 7))} ${Number(day.slice(0, 4)) + 543}`, days: 1 });
+  }
+  return bands;
+}
+
+function farmWorkGroupKey(row) {
+  return [
+    row.activityGroup?.group_name || row.activityGroup?.group_code || "ไม่ระบุกลุ่มกิจกรรม",
+    row.plotGroup?.group_name || row.plotGroup?.group_code || "ไม่ระบุกลุ่มแปลง",
+  ].join(" / ");
+}
+
 function renderFarmPlannerOptionRows(tableKey, rows, titleField, subFields = []) {
   const table = farmTableByKey(tableKey);
   return rows.map((row, index) => {
@@ -8964,8 +8999,11 @@ function renderFarmWorkBoard() {
   const timelineStart = farmAddDays(minStart, -2) || farmToday();
   const maxDays = Math.min(60, Math.max(14, farmDaysBetween(timelineStart, farmAddDays(maxEnd, 3)) + 1));
   const days = Array.from({ length: maxDays }, (_, index) => farmAddDays(timelineStart, index));
-  const dayWidth = 28;
+  const dayWidth = 30;
   const timelineWidth = days.length * dayWidth;
+  const monthBands = farmWorkMonthBands(days);
+  const today = farmToday();
+  const todayIndex = days.includes(today) ? days.indexOf(today) : -1;
   const statusCounts = rows.reduce((acc, row) => {
     acc[row.statusMeta.key] = (acc[row.statusMeta.key] || 0) + 1;
     return acc;
@@ -8973,6 +9011,19 @@ function renderFarmWorkBoard() {
   const approvalCount = rows.filter((row) => row.statusMeta.key === "pending_approval").length;
   const shiftedCount = rows.filter((row) => row.statusMeta.key === "rescheduled").length;
   const closedCount = rows.filter((row) => row.statusMeta.key === "closed").length;
+  const timelineRows = rows.slice().sort((a, b) => farmWorkGroupKey(a).localeCompare(farmWorkGroupKey(b), "th")
+    || farmDateMs(a.startDate) - farmDateMs(b.startDate)
+    || String(a.work_order_no || a.id).localeCompare(String(b.work_order_no || b.id), "th"));
+  const groupedRows = [];
+  let lastGroup = "";
+  for (const row of timelineRows) {
+    const group = farmWorkGroupKey(row);
+    if (group !== lastGroup) {
+      groupedRows.push({ type: "group", id: `group-${group}`, group, count: timelineRows.filter((item) => farmWorkGroupKey(item) === group).length });
+      lastGroup = group;
+    }
+    groupedRows.push({ type: "order", row });
+  }
   const activityOptions = farmWorkFilterOptions(allRows, "activityGroup");
   const teamOptions = farmWorkFilterOptions(allRows, "team");
   const zoneOptions = farmWorkFilterOptions(allRows, "zone");
@@ -9012,33 +9063,68 @@ function renderFarmWorkBoard() {
           const meta = farmWorkStatusMeta({ status: item.value, approval_status: item.value === "pending_approval" ? "pending" : "" });
           return `<span><i style="background:${esc(meta.color)}"></i>${esc(item.label)} <b>${fmt(statusCounts[item.value] || 0)}</b></span>`;
         }).join("")}
+        <span><i class="baseline"></i>วันเดิม/เลื่อนวัน</span>
+        <span><i class="milestone"></i>Milestone / อนุมัติ / ปิดงาน</span>
+        <span><i class="today"></i>วันนี้</span>
       </div>
       <div class="farm-work-layout">
-        <div class="farm-work-timeline">
+        <div class="farm-work-gantt" role="region" aria-label="Work Order Gantt Timeline">
           <div class="farm-work-grid-head">
-            <div class="farm-work-left-head">Work Order / พื้นที่ / งาน</div>
-            <div class="farm-work-days" style="width:${timelineWidth}px;grid-template-columns:repeat(${days.length}, ${dayWidth}px)">
-              ${days.map((day) => `<span>${esc(day.slice(8, 10))}<small>${esc(day.slice(5, 7))}</small></span>`).join("")}
+            <div class="farm-work-left-head">
+              <span>WO</span>
+              <span>งาน / Activity</span>
+              <span>พื้นที่</span>
+              <span>ทีม</span>
+              <span>%</span>
+              <span>ขั้นตอน</span>
+            </div>
+            <div class="farm-work-scale" style="width:${timelineWidth}px">
+              <div class="farm-work-months" style="grid-template-columns:${monthBands.map((band) => `${band.days * dayWidth}px`).join(" ")}">
+                ${monthBands.map((band) => `<span>${esc(band.label)}</span>`).join("")}
+              </div>
+              <div class="farm-work-days" style="grid-template-columns:repeat(${days.length}, ${dayWidth}px)">
+                ${days.map((day) => `<span class="${day === today ? "is-today" : ""}">${esc(day.slice(8, 10))}<small>${esc(["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"][new Date(`${day}T00:00:00`).getDay()])}</small></span>`).join("")}
+              </div>
             </div>
           </div>
           <div class="farm-work-rows">
-            ${rows.map((row) => {
+            ${todayIndex >= 0 ? `<i class="farm-work-today-line" style="left:${520 + todayIndex * dayWidth + Math.floor(dayWidth / 2)}px"></i>` : ""}
+            ${groupedRows.map((item) => {
+              if (item.type === "group") {
+                return `
+                  <div class="farm-work-row farm-work-group-row">
+                    <div class="farm-work-group-left"><strong>${esc(item.group)}</strong><span>${fmt(item.count)} work orders</span></div>
+                    <div class="farm-work-group-lane" style="width:${timelineWidth}px"></div>
+                  </div>`;
+              }
+              const row = item.row;
               const startIndex = Math.max(0, farmDaysBetween(timelineStart, row.startDate || timelineStart));
               const span = Math.max(1, farmDaysBetween(row.startDate || timelineStart, row.endDate || row.startDate || timelineStart) + 1);
               const originalIndex = row.original_scheduled_date ? Math.max(0, farmDaysBetween(timelineStart, row.original_scheduled_date)) : -1;
+              const approvedIndex = row.approved_at ? Math.max(0, farmDaysBetween(timelineStart, row.approved_at)) : -1;
+              const closedIndex = row.closed_at ? Math.max(0, farmDaysBetween(timelineStart, row.closed_at)) : -1;
+              const progress = farmWorkProgress(row);
               const needsApproval = row.statusMeta.key === "pending_approval";
+              const areaText = `${row.plot?.plot_code || "-"} / ${row.block?.block_code || "-"} · ${row.block?.ap_code || row.block?.AP_code || "ไม่มี AP"}`;
               return `
                 <div class="farm-work-row${selected?.id === row.id ? " active" : ""}" data-farm-work-detail="${esc(row.id)}">
                   <button type="button" class="farm-work-left">
                     <b>${esc(row.work_order_no || row.id)}</b>
-                    <strong>${esc(row.work_order_title || "-")}</strong>
-                    <span>${esc(row.plot?.plot_code || "-")} / ${esc(row.block?.block_code || "-")} · ${esc(row.block?.ap_code || row.block?.AP_code || "ไม่มี AP")} · ${esc(row.activity?.activity_name || "-")} · ${esc(row.team?.team_name || "-")}</span>
+                    <strong>${esc(row.work_order_title || row.activity?.activity_name || "-")}<small>${esc(row.activity?.activity_name || "-")}</small></strong>
+                    <span>${esc(areaText)}</span>
+                    <span>${esc(row.team?.team_name || "-")}</span>
+                    <em>${fmt(progress)}%</em>
+                    <i style="--status:${esc(row.statusMeta.color)}">${esc(row.statusMeta.label)}</i>
                   </button>
                   <div class="farm-work-lane" style="width:${timelineWidth}px">
-                    ${originalIndex >= 0 && originalIndex !== startIndex ? `<i class="farm-work-original" title="วันที่เดิม ${esc(row.original_scheduled_date)}" style="left:${originalIndex * dayWidth + 9}px"></i>` : ""}
+                    ${originalIndex >= 0 && originalIndex !== startIndex ? `<i class="farm-work-original" title="วันที่เดิม ${esc(row.original_scheduled_date)}" style="left:${originalIndex * dayWidth + 6}px;width:${Math.max(dayWidth, span * dayWidth)}px"></i>` : ""}
                     <button class="farm-work-bar ${needsApproval ? "needs-approval" : ""}" type="button" data-farm-work-detail="${esc(row.id)}" style="left:${startIndex * dayWidth + 2}px;width:${Math.max(18, span * dayWidth - 4)}px;background:${esc(row.statusMeta.color)}">
+                      <i style="width:${progress}%"></i>
                       <span>${esc(row.statusMeta.label)}</span>
                     </button>
+                    ${needsApproval ? `<button class="farm-work-milestone approval" type="button" data-farm-work-detail="${esc(row.id)}" title="ต้องอนุมัติ" style="left:${startIndex * dayWidth + Math.max(10, span * dayWidth - 12)}px"></button>` : ""}
+                    ${approvedIndex >= 0 ? `<i class="farm-work-milestone approved" title="อนุมัติ ${esc(row.approved_at)}" style="left:${approvedIndex * dayWidth + 10}px"></i>` : ""}
+                    ${closedIndex >= 0 ? `<i class="farm-work-milestone closed" title="ปิดงาน ${esc(row.closed_at)}" style="left:${closedIndex * dayWidth + 10}px"></i>` : ""}
                   </div>
                 </div>`;
             }).join("") || `<div class="farm-work-empty">ไม่พบ Work Order ตามตัวกรอง</div>`}
