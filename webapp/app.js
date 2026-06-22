@@ -2179,18 +2179,22 @@ async function refreshTransportFromQuery() {
   try {
     writeClearOverridesLocal();
     await persistClearOverridesToServer();
-    const res = await fetch(`${TRANSPORT_REFRESH_API}?t=${Date.now()}`, { method: "POST", cache: "no-store" });
+    const res = await fetchWithTimeout(`${TRANSPORT_REFRESH_API}?t=${Date.now()}`, { method: "POST", cache: "no-store" }, 120000);
     const payload = await res.json();
     if (!res.ok || payload.ok === false) throw new Error(payload.error || "Refresh failed");
     await loadPayload({ silent: true });
     await Promise.all([loadMillWeightData(), loadClearOverridesFromServer()]);
     render();
-    await syncTransportDatabase("refresh_data");
-    els.refreshTransportBtn.textContent = `Data ${fmt(payload.source?.rowCount || 0)} rows`;
+    const synced = await syncTransportDatabase("refresh_data");
+    if (!synced) {
+      setClearSyncStatus(`อัปเดต local แล้ว แต่ sync online ไม่สำเร็จ: ${state.transportSyncResult?.error || ""}`, "error");
+    }
+    els.refreshTransportBtn.textContent = `Data ${fmt(payload.source?.rowCount || 0)} rows${synced ? "" : " local"}`;
     window.setTimeout(() => {
       els.refreshTransportBtn.textContent = original;
     }, 2500);
   } catch (error) {
+    setSourceRefreshError(error);
     els.refreshTransportBtn.textContent = "Refresh failed";
     window.setTimeout(() => {
       els.refreshTransportBtn.textContent = original;
@@ -2448,6 +2452,16 @@ function endpointIsLocalOnly(url) {
   }
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 60000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 function setClearSyncStatus(message, type = "") {
   if (!els.clearSyncStatus) return;
   els.clearSyncStatus.textContent = message || "";
@@ -2653,12 +2667,12 @@ async function syncTransportDatabase(reason = "manual") {
       millRows: millRowsForDatabase(),
       reconciliations: millCompareRows(),
     }));
-    const res = await fetch(`${TRANSPORT_SYNC_API}?t=${Date.now()}`, {
+    const res = await fetchWithTimeout(`${TRANSPORT_SYNC_API}?t=${Date.now()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       cache: "no-store",
-    });
+    }, 45000);
     const result = await res.json();
     if (!res.ok || result?.ok === false) throw new Error(result?.error || "transport sync failed");
     state.transportSyncResult = result;
@@ -2680,6 +2694,12 @@ function updateSourceInfo() {
   const recordSource = source.recordSource === "query" ? "ODBC Query" : "Excel Sheet";
   const generated = source.generatedAt ? `\nupdated ${source.generatedAt}` : "";
   els.sourceInfo.textContent = `${live} · ${recordSource}\n${fmt(source.rowCount)} rows\n${source.dateMin} - ${source.dateMax}${generated}`;
+}
+
+function setSourceRefreshError(error) {
+  const message = String(error?.message || error || "refresh failed").slice(0, 140);
+  const base = String(els.sourceInfo.textContent || "").split("\nrefresh failed")[0];
+  els.sourceInfo.textContent = `${base}\nrefresh failed: ${message}`;
 }
 
 async function loadPayload({ silent = false } = {}) {
@@ -2750,7 +2770,7 @@ function startLiveRefresh() {
     try {
       await loadPayload({ silent: true });
     } catch (error) {
-      els.sourceInfo.textContent = `${els.sourceInfo.textContent}\nrefresh failed`;
+      setSourceRefreshError(error);
     }
   }, 15000);
 }
@@ -10522,7 +10542,7 @@ async function init() {
 
   render();
   startLiveRefresh();
-  autoRefreshTransportFromQuery();
+  if (new URLSearchParams(window.location.search).has("autoRefresh")) autoRefreshTransportFromQuery();
 }
 
 init().catch((error) => {
