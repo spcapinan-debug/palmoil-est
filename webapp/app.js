@@ -293,7 +293,7 @@ const FARM_MODULES = [
     group: "Master Data",
     accent: "Estate → Zone → Plot → Block",
     description: "จัดการ Estate, Zone, Plot และ Block โดยเก็บพื้นที่จริง จำนวนต้น ปีปลูก RSPO และ AP Code ที่ระดับ Block",
-    tables: ["estates", "zones", "plots", "blocks", "plot_groups"],
+    tables: ["areas", "plot_groups"],
     fields: [
       ["code", "รหัสพื้นที่", "BLK-001"],
       ["name", "ชื่อพื้นที่ / Block", "Block ตัวอย่าง 01"],
@@ -318,7 +318,7 @@ const FARM_MODULES = [
     group: "Master Data",
     accent: "Employees / Contractors / Teams",
     description: "จัดการพนักงาน ผู้รับเหมา ทีม สมาชิกทีม และทักษะตามกิจกรรม โดยเก็บประวัติการย้ายทีม",
-    tables: ["departments", "housing_units", "employees", "employee_housing_assignments", "housing_utility_charges", "contractors", "teams", "team_members", "team_activity_skills"],
+    tables: ["people", "departments", "housing_units", "person_housing_assignments", "housing_utility_charges", "teams", "team_members", "team_activity_skills"],
     fields: [
       ["code", "รหัส", "EMP-001"],
       ["name", "ชื่อ", "หัวหน้าทีมตัวอย่าง"],
@@ -342,7 +342,7 @@ const FARM_MODULES = [
     group: "Master Data",
     accent: "Activity + Material Usage + Survey",
     description: "จัดการกลุ่มกิจกรรม กิจกรรม อัตราใช้วัสดุตามกิจกรรม และแบบประเมินประสิทธิภาพ",
-    tables: ["activity_groups", "wage_codes", "activities", "activity_wage_code_mappings", "activity_material_usage_rates", "survey_templates", "survey_questions"],
+    tables: ["activity_groups", "wage_codes", "activities", "activity_wage_codes", "activity_material_rates", "survey_templates"],
     fields: [
       ["code", "รหัสกิจกรรม", "ACT-001"],
       ["name", "กิจกรรม", "ใส่ปุ๋ย"],
@@ -364,7 +364,7 @@ const FARM_MODULES = [
     group: "Operation",
     accent: "Plan → Work Order → Daily Record",
     description: "วางแผน สั่งงาน อนุมัติ QR Code Work Order เช็คอิน GPS และบันทึกประจำวันผ่านมือถือ",
-    tables: ["annual_work_plans", "planned_work_items", "planned_work_materials", "work_orders", "work_order_workers", "work_order_materials", "work_order_qr_codes", "work_attendance", "work_results"],
+    tables: ["work_plans", "plan_materials", "work_orders", "work_order_resources", "work_order_qr_codes", "work_order_locations", "work_attendance", "work_results"],
     fields: [
       ["code", "เลขที่งาน", "WO-2569-001"],
       ["name", "ชื่องาน", "ใส่ปุ๋ยแปลง PLT-001"],
@@ -385,7 +385,7 @@ const FARM_MODULES = [
     group: "Inventory",
     accent: "Stock Transactions",
     description: "รับพัสดุ จ่ายพัสดุ คืนพัสดุ โอนย้าย ปรับยอด ตรวจนับ แปลง SKU รถ เครื่องจักร และน้ำมัน",
-    tables: ["materials", "material_categories", "units", "warehouses", "goods_receipts", "goods_issues", "goods_returns", "stock_transactions", "stock_balances", "vehicles", "fuel_requisitions"],
+    tables: ["inventory_master", "warehouses", "inventory_documents", "inventory_document_lines", "stock_transactions", "stock_balances", "unit_conversions", "material_lots"],
     fields: [
       ["code", "รหัส", "MAT-001"],
       ["name", "รายการ", "ปุ๋ย 25kg"],
@@ -406,7 +406,7 @@ const FARM_MODULES = [
     group: "Payroll",
     accent: "Rate / OT / Deduction / Allowance",
     description: "คำนวณค่าแรงจาก work_results, OT, เงินหัก, เงินเพิ่ม, งวดค่าแรง และปิดงวด",
-    tables: ["payroll_periods", "payroll_period_lines", "payroll_rates", "overtime_rules", "payroll_overtime_records", "deduction_types", "payroll_deductions", "allowance_types", "payroll_allowances"],
+    tables: ["payroll_periods", "payroll_lines", "payroll_rates", "payroll_rules"],
     fields: [
       ["code", "งวด/รหัส", "PAY-2569-01"],
       ["name", "รายการ", "งวดค่าแรงมกราคม"],
@@ -448,7 +448,7 @@ const FARM_MODULES = [
     group: "Control",
     accent: "Role → Scope → Approval → Audit",
     description: "จัดการผู้ใช้ บทบาท สิทธิ์ ขอบเขตพื้นที่ ลำดับอนุมัติใบสั่งงาน และ audit trail ให้ชัดเจนตามขั้นตอนงาน",
-    tables: ["profiles", "permissions", "role_permissions", "user_access_scopes", "work_order_approvals", "work_order_status_logs", "master_record_versions", "audit_logs"],
+    tables: ["profiles", "permissions", "access_scopes", "approval_logs", "master_versions", "audit_logs"],
     fields: [
       ["code", "รหัส", "GOV-001"],
       ["name", "ชื่อรายการ", "อนุมัติใบสั่งงาน"],
@@ -504,21 +504,345 @@ const FARM_MODULES = [
 
 const FARM_WORKFLOW_STAGES = [
   { no: "01", title: "ข้อมูลหลัก", views: ["farm-area", "farm-people", "farm-activities", "farm-inventory", "farm-budget"], note: "เตรียมพื้นที่ คน กิจกรรม พัสดุ และอัตรางบประมาณ", role: "Admin / Manager" },
-  { no: "02", title: "วางแผน", views: ["farm-work"], table: "annual_work_plans", note: "กำหนดแผนรายปี แผนรายกิจกรรม และพื้นที่ทำงาน", role: "Estate Manager" },
+  { no: "02", title: "วางแผน", views: ["farm-work"], table: "work_plans", note: "กำหนดแผนรายปี แผนรายกิจกรรม และพื้นที่ทำงาน", role: "Estate Manager" },
   { no: "03", title: "สั่งงาน", views: ["farm-work"], table: "work_orders", note: "สร้างใบสั่งงาน ทีม วัสดุ QR และกำหนดวันทำงาน", role: "Supervisor" },
-  { no: "04", title: "อนุมัติ", views: ["farm-governance"], table: "work_order_approvals", note: "ตรวจสิทธิ์ ขอบเขตพื้นที่ และลำดับอนุมัติ", role: "Director / Manager" },
+  { no: "04", title: "อนุมัติ", views: ["farm-governance"], table: "approval_logs", note: "ตรวจสิทธิ์ ขอบเขตพื้นที่ และลำดับอนุมัติ", role: "Director / Manager" },
   { no: "05", title: "บันทึกงาน", views: ["farm-work"], table: "work_results", note: "เช็คชื่อ GPS ผลงาน วัสดุใช้จริง และสถานะงาน", role: "Supervisor / Mobile" },
   { no: "06", title: "ค่าแรง / ต้นทุน", views: ["farm-payroll", "farm-budget"], note: "คำนวณค่าแรง รายชั่วโมง OT เงินเพิ่ม เงินหัก และต้นทุน", role: "Accounting" },
   { no: "07", title: "รายงาน", views: ["farm-reports"], note: "สรุปรายงาน ตรวจย้อนหลัง และส่งออก Excel/PDF", role: "Viewer / Auditor" },
 ];
 
-const VERSIONED_FARM_TABLES = new Set(["employees", "contractors", "payroll_rates"]);
+const VERSIONED_FARM_TABLES = new Set(["people", "employees", "contractors", "payroll_rates"]);
 
 const FARM_STATUS_OPTIONS = ["all", "active", "draft", "planned", "scheduled", "submitted", "pending_approval", "approved", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed", "rejected", "open", "ready", "inactive"];
 
 const F = (key, label, options = {}) => ({ key, label, ...options });
 
 const FARM_TABLE_SCHEMAS = {
+  areas: {
+    moduleId: "farm-area",
+    title: "พื้นที่รวม",
+    primaryKey: "id",
+    codeField: "area_code",
+    labelField: "area_name",
+    fields: [
+      F("area_code", "รหัสพื้นที่", { required: true }),
+      F("area_name", "ชื่อพื้นที่", { required: true }),
+      F("area_level", "ระดับพื้นที่", { options: ["estate", "zone", "plot", "block"], required: true }),
+      F("parent_area_id", "พื้นที่แม่", { references: "areas" }),
+      F("estate_id", "Estate อ้างอิงเดิม", { references: "estates" }),
+      F("zone_id", "Zone อ้างอิงเดิม", { references: "zones" }),
+      F("plot_id", "Plot อ้างอิงเดิม", { references: "plots" }),
+      F("plot_group_id", "กลุ่มแปลง", { references: "plot_groups" }),
+      F("ap_code", "AP Code"),
+      F("area_rai", "พื้นที่ไร่", { type: "number" }),
+      F("planting_year", "ปีปลูก", { type: "number" }),
+      F("tree_count", "จำนวนต้น", { type: "number" }),
+      F("rspo_status", "RSPO", { options: ["RSPO", "Non-RSPO"] }),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [
+      { id: "area-estate-spc", area_code: "SPC", area_name: "SPC Estate", area_level: "estate", status: "active" },
+      { id: "area-block-001", area_code: "BLK-001", area_name: "Block ตัวอย่าง 01", area_level: "block", parent_area_id: "area-estate-spc", ap_code: "AP-001", area_rai: "120", planting_year: "2562", tree_count: "2640", rspo_status: "RSPO", status: "active" },
+    ],
+  },
+  people: {
+    moduleId: "farm-people",
+    title: "บุคลากร / ผู้รับเหมา",
+    primaryKey: "id",
+    codeField: "person_code",
+    labelField: "full_name",
+    fields: [
+      F("person_code", "รหัส", { required: true }),
+      F("full_name", "ชื่อ-สกุล / ชื่อผู้รับเหมา", { required: true }),
+      F("person_type", "ประเภทบุคคล", { options: ["employee", "worker", "supervisor", "driver", "admin", "contractor"], required: true }),
+      F("nationality", "สัญชาติ", { options: ["ไทย", "เมียนมา", "กัมพูชา", "ลาว", "มาเลเซีย", "อื่นๆ"] }),
+      F("payment_type", "ประเภทการจ่าย", { options: ["รายวัน", "รายเดือน", "รายเหมา"] }),
+      F("department_id", "แผนกงาน", { references: "departments" }),
+      F("default_housing_unit_id", "บ้านพักปัจจุบัน", { references: "housing_units" }),
+      F("default_activity_group_id", "กลุ่มกิจกรรมหลัก", { references: "activity_groups" }),
+      F("position", "ตำแหน่ง"),
+      F("default_role", "Role", { options: FARM_ROLES }),
+      F("daily_wage", "ค่าแรงรายวัน", { type: "number" }),
+      F("monthly_salary", "เงินเดือน", { type: "number" }),
+      F("contract_rate", "อัตราเหมา", { type: "number" }),
+      F("normal_hours_per_day", "ชั่วโมงทำงาน/วัน", { type: "number" }),
+      F("hourly_wage_rate", "ค่าแรงรายชั่วโมง", { type: "number", calculated: "daily_wage / normal_hours_per_day" }),
+      F("phone", "เบอร์โทร"),
+      F("start_date", "เริ่มงาน", { type: "date" }),
+      F("effective_from", "เริ่มใช้ Version", { type: "date" }),
+      F("effective_to", "สิ้นสุด Version", { type: "date" }),
+      F("version_no", "Version", { type: "number" }),
+      F("is_current", "Version ปัจจุบัน", { type: "boolean" }),
+      F("previous_version_id", "Version ก่อนหน้า", { references: "people" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [
+      { id: "person-emp-001", person_code: "EMP-001", full_name: "หัวหน้าทีมตัวอย่าง", person_type: "supervisor", nationality: "ไทย", payment_type: "รายวัน", daily_wage: "650", normal_hours_per_day: "8", hourly_wage_rate: "81.25", version_no: "1", is_current: "true", status: "active" },
+      { id: "person-con-001", person_code: "CON-001", full_name: "ผู้รับเหมางานเก็บเกี่ยว", person_type: "contractor", nationality: "ไทย", payment_type: "รายเหมา", contract_rate: "0", version_no: "1", is_current: "true", status: "active" },
+    ],
+  },
+  person_housing_assignments: {
+    moduleId: "farm-people",
+    title: "ประวัติเข้าพัก",
+    primaryKey: "id",
+    codeField: "start_date",
+    labelField: "person_id",
+    fields: [
+      F("person_id", "บุคลากร/ผู้รับเหมา", { references: "people", required: true }),
+      F("housing_unit_id", "บ้านพัก", { references: "housing_units", required: true }),
+      F("start_date", "วันที่เข้าพัก", { type: "date", required: true }),
+      F("end_date", "วันที่ออก", { type: "date" }),
+      F("occupant_count", "จำนวนผู้พักอาศัย", { type: "number" }),
+      F("share_utility_percent", "สัดส่วนค่าน้ำไฟ (%)", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  activity_wage_codes: {
+    moduleId: "farm-activities",
+    title: "ผูกกิจกรรมกับรหัสค่าแรง",
+    primaryKey: "id",
+    codeField: "activity_id",
+    labelField: "wage_code_id",
+    fields: [
+      F("activity_id", "กิจกรรม", { references: "activities", required: true }),
+      F("wage_code_id", "รหัสค่าแรง", { references: "wage_codes", required: true }),
+      F("is_primary", "รหัสหลัก", { type: "boolean" }),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [],
+  },
+  activity_material_rates: {
+    moduleId: "farm-activities",
+    title: "อัตราใช้วัสดุตามกิจกรรม",
+    primaryKey: "id",
+    codeField: "activity_id",
+    labelField: "material_id",
+    fields: [
+      F("activity_id", "กิจกรรม", { references: "activities", required: true }),
+      F("item_id", "วัสดุ", { references: "inventory_master", required: true }),
+      F("usage_rate", "อัตราใช้", { type: "number" }),
+      F("usage_unit", "หน่วยใช้"),
+      F("usage_basis", "ฐานคำนวณ", { options: ["per_tree", "per_rai", "per_work_order", "per_ton"] }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  inventory_master: {
+    moduleId: "farm-inventory",
+    title: "วัสดุ / รถ / เครื่องจักร",
+    primaryKey: "id",
+    codeField: "item_code",
+    labelField: "item_name",
+    fields: [
+      F("item_code", "รหัสรายการ", { required: true }),
+      F("item_name", "ชื่อรายการ", { required: true }),
+      F("item_type", "ประเภทรายการ", { options: ["material", "equipment", "vehicle", "fuel", "tank"], required: true }),
+      F("category_name", "หมวด"),
+      F("unit_name", "หน่วยหลัก"),
+      F("warehouse_id", "คลังเริ่มต้น", { references: "warehouses" }),
+      F("fuel_type", "ชนิดน้ำมัน"),
+      F("plate_no", "ทะเบียน/เลขเครื่อง"),
+      F("capacity", "ความจุ", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [
+      { id: "item-mat-001", item_code: "MAT-001", item_name: "ปุ๋ย 25kg", item_type: "material", category_name: "ปุ๋ย", unit_name: "กระสอบ", status: "active" },
+      { id: "item-fuel-001", item_code: "FUEL-001", item_name: "น้ำมันดีเซล", item_type: "fuel", category_name: "น้ำมัน", unit_name: "ลิตร", status: "active" },
+    ],
+  },
+  inventory_documents: {
+    moduleId: "farm-inventory",
+    title: "เอกสารพัสดุ",
+    primaryKey: "id",
+    codeField: "document_no",
+    labelField: "doc_type",
+    fields: [
+      F("document_no", "เลขที่เอกสาร", { required: true }),
+      F("doc_type", "ประเภทเอกสาร", { options: ["receipt", "issue", "return", "transfer", "adjustment", "count", "fuel_requisition"], required: true }),
+      F("doc_date", "วันที่เอกสาร", { type: "date", required: true }),
+      F("warehouse_id", "คลัง", { references: "warehouses" }),
+      F("work_order_id", "Work Order", { references: "work_orders" }),
+      F("requested_by", "ผู้ขอ", { references: "people" }),
+      F("approved_by", "ผู้อนุมัติ", { references: "profiles" }),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [],
+  },
+  inventory_document_lines: {
+    moduleId: "farm-inventory",
+    title: "รายการเอกสารพัสดุ",
+    primaryKey: "id",
+    codeField: "line_no",
+    labelField: "document_id",
+    fields: [
+      F("document_id", "เอกสาร", { references: "inventory_documents", required: true }),
+      F("line_no", "ลำดับ", { type: "number" }),
+      F("item_id", "รายการ", { references: "inventory_master", required: true }),
+      F("quantity", "จำนวน", { type: "number" }),
+      F("unit_name", "หน่วย"),
+      F("lot_id", "Lot", { references: "material_lots" }),
+      F("work_order_id", "Work Order", { references: "work_orders" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  work_plans: {
+    moduleId: "farm-work",
+    title: "แผนงาน",
+    primaryKey: "id",
+    codeField: "plan_code",
+    labelField: "plan_name",
+    fields: [
+      F("plan_code", "รหัสแผน", { required: true }),
+      F("plan_name", "ชื่อแผน", { required: true }),
+      F("plan_level", "ระดับแผน", { options: ["annual", "activity", "area", "task"] }),
+      F("parent_plan_id", "แผนแม่", { references: "work_plans" }),
+      F("fiscal_year", "ปีงบประมาณ", { type: "number" }),
+      F("estate_id", "Estate", { references: "areas" }),
+      F("block_id", "Block", { references: "areas" }),
+      F("activity_id", "กิจกรรม", { references: "activities" }),
+      F("planned_start_date", "วันที่เริ่มแผน", { type: "date" }),
+      F("planned_end_date", "วันที่สิ้นสุดแผน", { type: "date" }),
+      F("planned_quantity", "ปริมาณแผน", { type: "number" }),
+      F("planned_unit", "หน่วย"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  plan_materials: {
+    moduleId: "farm-work",
+    title: "วัสดุตามแผน",
+    primaryKey: "id",
+    codeField: "plan_id",
+    labelField: "item_id",
+    fields: [
+      F("plan_id", "แผนงาน", { references: "work_plans", required: true }),
+      F("item_id", "วัสดุ", { references: "inventory_master", required: true }),
+      F("planned_quantity", "ปริมาณแผน", { type: "number" }),
+      F("unit_name", "หน่วย"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  work_order_resources: {
+    moduleId: "farm-work",
+    title: "ทรัพยากร Work Order",
+    primaryKey: "id",
+    codeField: "resource_type",
+    labelField: "work_order_id",
+    fields: [
+      F("work_order_id", "Work Order", { references: "work_orders", required: true }),
+      F("resource_type", "ประเภททรัพยากร", { options: ["person", "contractor", "material", "equipment", "vehicle", "fuel"], required: true }),
+      F("person_id", "บุคลากร/ผู้รับเหมา", { references: "people" }),
+      F("item_id", "วัสดุ/อุปกรณ์", { references: "inventory_master" }),
+      F("planned_quantity", "ปริมาณแผน", { type: "number" }),
+      F("actual_quantity", "ปริมาณจริง", { type: "number" }),
+      F("unit_name", "หน่วย"),
+      F("rate_snapshot", "อัตรา Snapshot", { type: "number" }),
+      F("amount_snapshot", "ยอดเงิน Snapshot", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  payroll_lines: {
+    moduleId: "farm-payroll",
+    title: "รายการค่าแรง",
+    primaryKey: "id",
+    codeField: "line_type",
+    labelField: "person_id",
+    fields: [
+      F("payroll_period_id", "งวดค่าแรง", { references: "payroll_periods", required: true }),
+      F("person_id", "บุคลากร/ผู้รับเหมา", { references: "people", required: true }),
+      F("work_result_id", "ผลงานจริง", { references: "work_results" }),
+      F("line_type", "ประเภทรายการ", { options: ["wage", "ot", "deduction", "allowance"], required: true }),
+      F("rule_id", "กฎ/ประเภท", { references: "payroll_rules" }),
+      F("quantity", "จำนวน", { type: "number" }),
+      F("rate_snapshot", "อัตรา Snapshot", { type: "number" }),
+      F("amount", "จำนวนเงิน", { type: "number" }),
+      F("note", "หมายเหตุ"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  payroll_rules: {
+    moduleId: "farm-payroll",
+    title: "กฎค่าแรง / เงินเพิ่ม / เงินหัก",
+    primaryKey: "id",
+    codeField: "rule_code",
+    labelField: "rule_name",
+    fields: [
+      F("rule_code", "รหัสกฎ", { required: true }),
+      F("rule_name", "ชื่อกฎ", { required: true }),
+      F("rule_type", "ประเภทกฎ", { options: ["rate", "overtime", "deduction", "allowance"], required: true }),
+      F("calculation_method", "วิธีคำนวณ", { options: ["fixed", "percent", "hourly", "daily", "piece", "contract"] }),
+      F("default_amount", "ค่าเริ่มต้น", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [],
+  },
+  access_scopes: {
+    moduleId: "farm-governance",
+    title: "ขอบเขตการเข้าถึง",
+    primaryKey: "id",
+    codeField: "scope_type",
+    labelField: "profile_id",
+    fields: [
+      F("profile_id", "ผู้ใช้", { references: "profiles", required: true }),
+      F("area_id", "พื้นที่", { references: "areas" }),
+      F("scope_type", "ชนิดสิทธิ์", { options: ["read", "write", "approve"] }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  approval_logs: {
+    moduleId: "farm-governance",
+    title: "อนุมัติ / ประวัติสถานะ",
+    primaryKey: "id",
+    codeField: "event_type",
+    labelField: "entity_id",
+    fields: [
+      F("entity_table", "ตารางอ้างอิง", { required: true }),
+      F("entity_id", "รหัสรายการ", { required: true }),
+      F("event_type", "ประเภทเหตุการณ์", { options: ["approval", "status_change"], required: true }),
+      F("from_status", "จากสถานะ"),
+      F("to_status", "เป็นสถานะ"),
+      F("decision", "ผลอนุมัติ", { options: ["pending", "approved", "rejected"] }),
+      F("approval_level", "ระดับอนุมัติ", { type: "number" }),
+      F("actor_profile_id", "ผู้ทำรายการ", { references: "profiles" }),
+      F("event_date", "วันที่", { type: "date" }),
+      F("note", "หมายเหตุ"),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  master_versions: {
+    moduleId: "farm-governance",
+    title: "ประวัติ Version ข้อมูลหลัก",
+    primaryKey: "id",
+    codeField: "version_no",
+    labelField: "entity_table",
+    fields: [
+      F("entity_table", "ตารางข้อมูล", { required: true }),
+      F("entity_id", "รหัส Version ใหม่", { required: true }),
+      F("business_key", "รหัสธุรกิจ"),
+      F("previous_entity_id", "Version ก่อนหน้า"),
+      F("version_no", "Version", { type: "number" }),
+      F("effective_from", "เริ่มใช้", { type: "date" }),
+      F("effective_to", "สิ้นสุด", { type: "date" }),
+      F("locked_target", "ข้อมูลที่ต้องไม่เปลี่ยนย้อนหลัง"),
+      F("change_note", "หมายเหตุการเปลี่ยนแปลง"),
+      F("changed_at", "วันที่เปลี่ยน", { type: "date" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
   estates: {
     moduleId: "farm-area",
     title: "Estate / บริษัท / สวน",
@@ -1866,7 +2190,7 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "version-rule-payroll", entity_table: "employees / contractors / payroll_rates", entity_id: "system-rule", business_key: "payroll-lock", version_no: "1", effective_from: "2026-01-01", locked_target: "payroll_period_lines snapshot", change_note: "รายการค่าแรงที่คำนวณแล้วต้องอ้าง snapshot/version เดิม", changed_at: "2026-01-01", status: "active" },
+      { id: "version-rule-payroll", entity_table: "people / payroll_rules", entity_id: "system-rule", business_key: "payroll-lock", version_no: "1", effective_from: "2026-01-01", locked_target: "payroll_lines snapshot", change_note: "รายการค่าแรงที่คำนวณแล้วต้องอ้าง snapshot/version เดิม", changed_at: "2026-01-01", status: "active" },
     ],
   },
   audit_logs: {
@@ -8121,6 +8445,11 @@ function selectedFarmModule() {
 }
 
 function farmTablesForModule(module = selectedFarmModule()) {
+  if (Array.isArray(module?.tables) && module.tables.length) {
+    return module.tables
+      .map((key) => FARM_TABLE_SCHEMAS[key] ? { key, ...FARM_TABLE_SCHEMAS[key] } : null)
+      .filter(Boolean);
+  }
   return Object.entries(FARM_TABLE_SCHEMAS)
     .filter(([, table]) => table.moduleId === module.id)
     .map(([key, table]) => ({ key, ...table }));
@@ -8169,6 +8498,8 @@ function farmRows(table = selectedFarmTable()) {
   const customRows = state.farmRecords
     .filter((row) => row.tableId === tableId && !row._overrideOf && !row._deleted && !baseIds.has(row.id));
   const rows = [...baseRows, ...customRows];
+  const cleanRows = farmCleanRows(tableId, rows);
+  if (cleanRows) return cleanRows;
   if (tableId !== "blocks") return rows;
   const existingPlotIds = new Set(rows.map((row) => row.plot_id).filter(Boolean));
   const legacyPlots = farmRows(farmTableByKey("plots"))
@@ -8193,6 +8524,336 @@ function farmRows(table = selectedFarmTable()) {
       status: plot.status || "active",
     }));
   return [...rows, ...legacyPlots];
+}
+
+function farmRowsByKey(tableKey) {
+  const schema = FARM_TABLE_SCHEMAS[tableKey];
+  return schema ? farmRows({ key: tableKey, ...schema }) : [];
+}
+
+function mergeCleanRows(currentRows, derivedRows) {
+  const map = new Map();
+  for (const row of [...derivedRows, ...currentRows]) {
+    const key = row.id || `${row.tableId}:${JSON.stringify(row)}`;
+    map.set(key, { ...map.get(key), ...row });
+  }
+  return [...map.values()];
+}
+
+function farmCleanRows(tableId, rows) {
+  if (tableId === "areas") {
+    const estates = farmRowsByKey("estates").map((row) => ({
+      id: `area-${row.id}`,
+      tableId: "areas",
+      moduleId: "farm-area",
+      readonly: true,
+      _source: row._source || "legacy-estates",
+      area_code: row.estate_code || row.id,
+      area_name: row.estate_name || row.estate_code || row.id,
+      area_level: "estate",
+      estate_id: row.id,
+      status: row.status || "active",
+      note: row.company_name || "",
+    }));
+    const zones = farmRowsByKey("zones").map((row) => ({
+      id: `area-${row.id}`,
+      tableId: "areas",
+      moduleId: "farm-area",
+      readonly: true,
+      _source: row._source || "legacy-zones",
+      area_code: row.zone_code || row.id,
+      area_name: row.zone_name || row.zone_code || row.id,
+      area_level: "zone",
+      parent_area_id: row.estate_id ? `area-${row.estate_id}` : "",
+      estate_id: row.estate_id || "",
+      zone_id: row.id,
+      status: row.status || "active",
+    }));
+    const plots = farmRowsByKey("plots").map((row) => ({
+      id: `area-${row.id}`,
+      tableId: "areas",
+      moduleId: "farm-area",
+      readonly: true,
+      _source: row._source || "legacy-plots",
+      area_code: row.plot_code || row.id,
+      area_name: row.plot_name || row.plot_code || row.id,
+      area_level: "plot",
+      parent_area_id: row.zone_id ? `area-${row.zone_id}` : "",
+      estate_id: row.estate_id || "",
+      zone_id: row.zone_id || "",
+      plot_id: row.id,
+      plot_group_id: row.plot_group_id || "",
+      status: row.status || "active",
+    }));
+    const blocks = farmRowsByKey("blocks").map((row) => ({
+      id: `area-${row.id}`,
+      tableId: "areas",
+      moduleId: "farm-area",
+      readonly: true,
+      _source: row._source || "legacy-blocks",
+      area_code: row.block_code || row.id,
+      area_name: row.block_name || row.block_code || row.id,
+      area_level: "block",
+      parent_area_id: row.plot_id ? `area-${row.plot_id}` : "",
+      estate_id: row.estate_id || "",
+      zone_id: row.zone_id || "",
+      plot_id: row.plot_id || "",
+      plot_group_id: row.plot_group_id || "",
+      ap_code: row.ap_code || row.AP_code || "",
+      area_rai: row.area_rai || "",
+      planting_year: row.planting_year || "",
+      tree_count: row.tree_count || "",
+      rspo_status: row.rspo_status || "",
+      status: row.status || "active",
+    }));
+    return mergeCleanRows(rows, [...estates, ...zones, ...plots, ...blocks]);
+  }
+  if (tableId === "people") {
+    const employees = farmRowsByKey("employees").map((row) => ({
+      ...row,
+      id: `person-${row.id}`,
+      tableId: "people",
+      moduleId: "farm-people",
+      readonly: true,
+      _source: row._source || "legacy-employees",
+      person_code: row.employee_code || row.id,
+      person_type: row.worker_type === "หัวหน้างาน" ? "supervisor" : row.worker_type === "คนขับ" ? "driver" : "employee",
+      full_name: row.full_name || row.employee_code || row.id,
+    }));
+    const contractors = farmRowsByKey("contractors").map((row) => ({
+      id: `person-${row.id}`,
+      tableId: "people",
+      moduleId: "farm-people",
+      readonly: true,
+      _source: row._source || "legacy-contractors",
+      person_code: row.contractor_code || row.id,
+      full_name: row.contractor_name || row.contractor_code || row.id,
+      person_type: "contractor",
+      nationality: row.nationality || "",
+      payment_type: row.payment_type || "รายเหมา",
+      default_activity_group_id: row.default_activity_group_id || "",
+      contract_rate: row.default_contract_rate || "",
+      phone: row.phone || "",
+      effective_from: row.effective_from || "",
+      effective_to: row.effective_to || "",
+      version_no: row.version_no || "",
+      is_current: row.is_current || "",
+      previous_version_id: row.previous_version_id ? `person-${row.previous_version_id}` : "",
+      status: row.status || "active",
+    }));
+    return mergeCleanRows(rows, [...employees, ...contractors]);
+  }
+  if (tableId === "person_housing_assignments") {
+    return mergeCleanRows(rows, farmRowsByKey("employee_housing_assignments").map((row) => ({
+      ...row,
+      id: `person-house-${row.id}`,
+      tableId,
+      moduleId: "farm-people",
+      readonly: true,
+      person_id: row.employee_id ? `person-${row.employee_id}` : "",
+    })));
+  }
+  if (tableId === "activity_wage_codes") {
+    return mergeCleanRows(rows, farmRowsByKey("activity_wage_code_mappings").map((row) => ({
+      ...row,
+      id: `activity-wage-${row.id}`,
+      tableId,
+      moduleId: "farm-activities",
+      readonly: true,
+    })));
+  }
+  if (tableId === "activity_material_rates") {
+    return mergeCleanRows(rows, farmRowsByKey("activity_material_usage_rates").map((row) => ({
+      ...row,
+      id: `activity-material-${row.id}`,
+      tableId,
+      moduleId: "farm-activities",
+      readonly: true,
+      item_id: row.material_id ? `item-${row.material_id}` : "",
+    })));
+  }
+  if (tableId === "inventory_master") {
+    const materials = farmRowsByKey("materials").map((row) => ({
+      id: `item-${row.id}`,
+      tableId,
+      moduleId: "farm-inventory",
+      readonly: true,
+      _source: row._source || "legacy-materials",
+      item_code: row.material_code || row.id,
+      item_name: row.material_name || row.material_code || row.id,
+      item_type: "material",
+      category_name: row.category_id || row.category_name || "",
+      unit_name: row.unit_id || row.unit_name || "",
+      warehouse_id: row.default_warehouse_id || "",
+      status: row.status || "active",
+      note: row.note || "",
+    }));
+    const vehicles = farmRowsByKey("vehicles").map((row) => ({
+      id: `item-${row.id}`,
+      tableId,
+      moduleId: "farm-inventory",
+      readonly: true,
+      _source: row._source || "legacy-vehicles",
+      item_code: row.vehicle_code || row.id,
+      item_name: row.vehicle_name || row.vehicle_code || row.id,
+      item_type: row.vehicle_type || "vehicle",
+      plate_no: row.plate_no || "",
+      capacity: row.capacity || "",
+      status: row.status || "active",
+      note: row.note || "",
+    }));
+    return mergeCleanRows(rows, [...materials, ...vehicles]);
+  }
+  if (tableId === "work_plans") {
+    const annual = farmRowsByKey("annual_work_plans").map((row) => ({
+      id: `plan-${row.id}`,
+      tableId,
+      moduleId: "farm-work",
+      readonly: true,
+      plan_code: row.plan_code || row.work_plan_code || row.id,
+      plan_name: row.plan_name || row.work_plan_name || row.id,
+      plan_level: "annual",
+      fiscal_year: row.fiscal_year || "",
+      estate_id: row.estate_id ? `area-${row.estate_id}` : "",
+      planned_start_date: row.start_date || row.planned_start_date || "",
+      planned_end_date: row.end_date || row.planned_end_date || "",
+      status: row.status || "planned",
+    }));
+    const items = farmRowsByKey("planned_work_items").map((row) => ({
+      id: `plan-${row.id}`,
+      tableId,
+      moduleId: "farm-work",
+      readonly: true,
+      plan_code: row.item_code || row.plan_item_code || row.id,
+      plan_name: row.item_name || row.work_item_name || row.note || row.id,
+      plan_level: "task",
+      parent_plan_id: row.annual_work_plan_id ? `plan-${row.annual_work_plan_id}` : "",
+      block_id: row.block_id ? `area-${row.block_id}` : "",
+      activity_id: row.activity_id || "",
+      planned_start_date: row.planned_start_date || "",
+      planned_end_date: row.planned_end_date || "",
+      planned_quantity: row.planned_quantity || "",
+      planned_unit: row.planned_unit || "",
+      status: row.status || "planned",
+    }));
+    return mergeCleanRows(rows, [...annual, ...items]);
+  }
+  if (tableId === "plan_materials") {
+    return mergeCleanRows(rows, farmRowsByKey("planned_work_materials").map((row) => ({
+      ...row,
+      id: `plan-material-${row.id}`,
+      tableId,
+      moduleId: "farm-work",
+      readonly: true,
+      plan_id: row.planned_work_item_id ? `plan-${row.planned_work_item_id}` : row.plan_id || "",
+      item_id: row.material_id ? `item-${row.material_id}` : "",
+      unit_name: row.unit_id || row.unit_name || "",
+    })));
+  }
+  if (tableId === "work_order_resources") {
+    const workers = farmRowsByKey("work_order_workers").map((row) => ({
+      id: `wo-resource-${row.id}`,
+      tableId,
+      moduleId: "farm-work",
+      readonly: true,
+      work_order_id: row.work_order_id || "",
+      resource_type: row.contractor_id ? "contractor" : "person",
+      person_id: row.employee_id ? `person-${row.employee_id}` : row.contractor_id ? `person-${row.contractor_id}` : "",
+      planned_quantity: row.planned_hours || row.planned_quantity || "",
+      actual_quantity: row.actual_hours || row.actual_quantity || "",
+      unit_name: row.unit_name || "ชม.",
+      rate_snapshot: row.rate_snapshot || "",
+      amount_snapshot: row.amount_snapshot || "",
+      status: row.status || "active",
+    }));
+    const materials = farmRowsByKey("work_order_materials").map((row) => ({
+      id: `wo-resource-${row.id}`,
+      tableId,
+      moduleId: "farm-work",
+      readonly: true,
+      work_order_id: row.work_order_id || "",
+      resource_type: "material",
+      item_id: row.material_id ? `item-${row.material_id}` : "",
+      planned_quantity: row.planned_quantity || "",
+      actual_quantity: row.actual_quantity || "",
+      unit_name: row.unit_id || row.unit_name || "",
+      status: row.status || "active",
+    }));
+    const machines = farmRowsByKey("work_order_machines").map((row) => ({
+      id: `wo-resource-${row.id}`,
+      tableId,
+      moduleId: "farm-work",
+      readonly: true,
+      work_order_id: row.work_order_id || "",
+      resource_type: row.resource_type || "equipment",
+      item_id: row.vehicle_id ? `item-${row.vehicle_id}` : row.item_id || "",
+      planned_quantity: row.planned_hours || row.planned_quantity || "",
+      actual_quantity: row.actual_hours || row.actual_quantity || "",
+      unit_name: row.unit_name || "ชม.",
+      status: row.status || "active",
+    }));
+    return mergeCleanRows(rows, [...workers, ...materials, ...machines]);
+  }
+  if (tableId === "payroll_lines") {
+    const base = farmRowsByKey("payroll_period_lines").map((row) => ({ ...row, id: `payline-${row.id}`, tableId, moduleId: "farm-payroll", readonly: true, person_id: row.employee_id ? `person-${row.employee_id}` : row.contractor_id ? `person-${row.contractor_id}` : row.person_id || "", line_type: row.line_type || "wage" }));
+    const ot = farmRowsByKey("payroll_overtime_records").map((row) => ({ ...row, id: `payline-${row.id}`, tableId, moduleId: "farm-payroll", readonly: true, person_id: row.employee_id ? `person-${row.employee_id}` : row.person_id || "", line_type: "ot" }));
+    const deductions = farmRowsByKey("payroll_deductions").map((row) => ({ ...row, id: `payline-${row.id}`, tableId, moduleId: "farm-payroll", readonly: true, person_id: row.employee_id ? `person-${row.employee_id}` : row.person_id || "", line_type: "deduction", rule_id: row.deduction_type_id ? `payrule-${row.deduction_type_id}` : "" }));
+    const allowances = farmRowsByKey("payroll_allowances").map((row) => ({ ...row, id: `payline-${row.id}`, tableId, moduleId: "farm-payroll", readonly: true, person_id: row.employee_id ? `person-${row.employee_id}` : row.person_id || "", line_type: "allowance", rule_id: row.allowance_type_id ? `payrule-${row.allowance_type_id}` : "" }));
+    return mergeCleanRows(rows, [...base, ...ot, ...deductions, ...allowances]);
+  }
+  if (tableId === "payroll_rules") {
+    const rates = farmRowsByKey("payroll_rates").map((row) => ({ ...row, id: `payrule-${row.id}`, tableId, moduleId: "farm-payroll", readonly: true, rule_code: row.rate_code || row.id, rule_name: row.rate_name || row.id, rule_type: "rate" }));
+    const ot = farmRowsByKey("overtime_rules").map((row) => ({ ...row, id: `payrule-${row.id}`, tableId, moduleId: "farm-payroll", readonly: true, rule_code: row.rule_code || row.id, rule_name: row.rule_name || row.id, rule_type: "overtime" }));
+    const deductions = farmRowsByKey("deduction_types").map((row) => ({ ...row, id: `payrule-${row.id}`, tableId, moduleId: "farm-payroll", readonly: true, rule_code: row.deduction_code || row.id, rule_name: row.deduction_name || row.id, rule_type: "deduction" }));
+    const allowances = farmRowsByKey("allowance_types").map((row) => ({ ...row, id: `payrule-${row.id}`, tableId, moduleId: "farm-payroll", readonly: true, rule_code: row.allowance_code || row.id, rule_name: row.allowance_name || row.id, rule_type: "allowance" }));
+    return mergeCleanRows(rows, [...rates, ...ot, ...deductions, ...allowances]);
+  }
+  if (tableId === "access_scopes") {
+    return mergeCleanRows(rows, farmRowsByKey("user_access_scopes").map((row) => ({
+      ...row,
+      id: `access-${row.id}`,
+      tableId,
+      moduleId: "farm-governance",
+      readonly: true,
+      area_id: row.block_id ? `area-${row.block_id}` : row.plot_id ? `area-${row.plot_id}` : row.zone_id ? `area-${row.zone_id}` : row.estate_id ? `area-${row.estate_id}` : "",
+    })));
+  }
+  if (tableId === "approval_logs") {
+    const approvals = farmRowsByKey("work_order_approvals").map((row) => ({
+      id: `approval-${row.id}`,
+      tableId,
+      moduleId: "farm-governance",
+      readonly: true,
+      entity_table: "work_orders",
+      entity_id: row.work_order_id || "",
+      event_type: "approval",
+      decision: row.decision || "",
+      approval_level: row.approval_level || "",
+      actor_profile_id: row.approver_profile_id || "",
+      event_date: row.decided_at || "",
+      status: row.status || "active",
+    }));
+    const statuses = farmRowsByKey("work_order_status_logs").map((row) => ({
+      id: `approval-${row.id}`,
+      tableId,
+      moduleId: "farm-governance",
+      readonly: true,
+      entity_table: "work_orders",
+      entity_id: row.work_order_id || "",
+      event_type: "status_change",
+      from_status: row.from_status || "",
+      to_status: row.to_status || "",
+      actor_profile_id: row.changed_by || "",
+      event_date: row.changed_at || "",
+      note: row.note || "",
+      status: row.status || "active",
+    }));
+    return mergeCleanRows(rows, [...approvals, ...statuses]);
+  }
+  if (tableId === "master_versions") {
+    return mergeCleanRows(rows, farmRowsByKey("master_record_versions").map((row) => ({ ...row, id: `master-version-${row.id}`, tableId, moduleId: "farm-governance", readonly: true })));
+  }
+  return null;
 }
 
 function filteredFarmRows(table = selectedFarmTable()) {
@@ -8326,6 +8987,13 @@ function farmBusinessKey(table, row) {
 }
 
 function applyFarmCalculatedFields(table, row) {
+  if (table.key === "people") {
+    const daily = n(row.daily_wage);
+    const hours = n(row.normal_hours_per_day);
+    if (daily && hours) row.hourly_wage_rate = String(Math.round((daily / hours) * 100) / 100);
+    if (!row.payment_type) row.payment_type = row.person_type === "contractor" ? "รายเหมา" : row.person_type === "admin" ? "รายเดือน" : "รายวัน";
+    if (!row.nationality) row.nationality = "ไทย";
+  }
   if (table.key === "employees") {
     const daily = n(row.daily_wage);
     const hours = n(row.normal_hours_per_day);
@@ -8341,6 +9009,21 @@ function applyFarmCalculatedFields(table, row) {
     if (!row.effective_from) row.effective_from = farmToday();
     if (!row.version_no) row.version_no = "1";
     if (!row.is_current) row.is_current = "true";
+  }
+  if (table.key === "payroll_lines") {
+    if (!row.calculated_at) row.calculated_at = farmToday();
+    if (!row.is_locked) row.is_locked = "true";
+    if (row.person_id && (!row.payee_snapshot_name || !row.master_version_id)) {
+      const person = farmRows(farmTableByKey("people")).find((item) => item.id === row.person_id);
+      if (person) {
+        row.master_version_id = person.id;
+        row.payee_snapshot_name = person.full_name || "";
+        row.nationality_snapshot = person.nationality || "";
+        row.payment_type_snapshot = person.payment_type || "";
+        row.rate_snapshot = person.payment_type === "รายเดือน" ? (person.monthly_salary || "") : person.payment_type === "รายเหมา" ? (person.contract_rate || "") : (person.daily_wage || "");
+        row.normal_hours_snapshot = person.normal_hours_per_day || "";
+      }
+    }
   }
   if (table.key === "payroll_period_lines") {
     if (!row.calculated_at) row.calculated_at = farmToday();
@@ -8375,7 +9058,7 @@ function appendFarmVersionLog(table, original, nextRow) {
   state.farmRecords.push({
     id: `farm-master-version-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     moduleId: "farm-governance",
-    tableId: "master_record_versions",
+    tableId: "master_versions",
     entity_table: table.key,
     entity_id: nextRow.id,
     business_key: farmBusinessKey(table, nextRow),
@@ -8383,7 +9066,7 @@ function appendFarmVersionLog(table, original, nextRow) {
     version_no: nextRow.version_no,
     effective_from: nextRow.effective_from,
     effective_to: nextRow.effective_to || "",
-    locked_target: table.key === "payroll_rates" ? "payroll_period_lines.rate_snapshot" : "payroll_period_lines.master_version_id",
+    locked_target: table.key === "payroll_rates" || table.key === "payroll_rules" ? "payroll_lines.rate_snapshot" : "payroll_lines.master_version_id",
     change_note: "สร้าง version ใหม่เพื่อไม่ให้ค่าแรงที่คำนวณแล้วเปลี่ยนย้อนหลัง",
     changed_at: now.slice(0, 10),
     status: "active",
@@ -8690,10 +9373,9 @@ function renderFarmGovernanceBoard(table) {
     { table: "profiles", no: "1", title: "ผู้ใช้และบทบาท", detail: "ผูกผู้ใช้กับพนักงานและ Role ก่อนเปิดสิทธิ์" },
     { table: "permissions", no: "2", title: "สิทธิ์ตามงาน", detail: "กำหนด module/action เช่น read, create, update, approve" },
     { table: "role_permissions", no: "3", title: "Role Permission", detail: "ระบุว่าแต่ละ Role ทำอะไรได้บ้าง" },
-    { table: "user_access_scopes", no: "4", title: "ขอบเขตพื้นที่", detail: "จำกัด Estate, Zone, Plot ตามหน้าที่รับผิดชอบ" },
-    { table: "work_order_approvals", no: "5", title: "ลำดับอนุมัติ", detail: "กำหนดระดับ ผู้อนุมัติ และผลอนุมัติของใบสั่งงาน" },
-    { table: "work_order_status_logs", no: "6", title: "ประวัติสถานะ", detail: "ตรวจลำดับสถานะของแผนและใบสั่งงานย้อนหลัง" },
-    { table: "master_record_versions", no: "7", title: "Version Lock", detail: "ตรวจ version ของข้อมูลหลักที่ใช้ล็อกผลค่าแรง" },
+    { table: "access_scopes", no: "4", title: "ขอบเขตพื้นที่", detail: "จำกัด Estate, Zone, Plot ตามหน้าที่รับผิดชอบ" },
+    { table: "approval_logs", no: "5", title: "อนุมัติ / ประวัติสถานะ", detail: "รวมลำดับอนุมัติและประวัติสถานะของใบสั่งงาน" },
+    { table: "master_versions", no: "6", title: "Version Lock", detail: "ตรวจ version ของข้อมูลหลักที่ใช้ล็อกผลค่าแรง" },
   ];
   return `
     <section class="farm-approval-board">
@@ -8715,7 +9397,7 @@ function renderFarmGovernanceBoard(table) {
 
 function renderFarmVersionNotice(module, table) {
   if (!["farm-people", "farm-payroll", "farm-governance"].includes(module.id)) return "";
-  const active = isFarmVersionedTable(table.key) || table.key === "payroll_period_lines" || table.key === "master_record_versions";
+  const active = isFarmVersionedTable(table.key) || table.key === "payroll_lines" || table.key === "master_versions";
   return `
     <section class="farm-version-notice${active ? " active" : ""}">
       <div>
@@ -9097,14 +9779,14 @@ function renderFarmWorkPlanner() {
           <div class="farm-plan-resource-block">
             <div class="farm-plan-resource-head">
               <strong>วัสดุหลัก</strong>
-              <button type="button" data-farm-open-work-table="work_order_materials">เพิ่ม/แก้วัสดุ</button>
+              <button type="button" data-farm-open-work-table="work_order_resources">เพิ่ม/แก้วัสดุ</button>
             </div>
             ${materialResourceRows}
           </div>
           <div class="farm-plan-resource-block">
             <div class="farm-plan-resource-head">
               <strong>รถ/เครื่องจักร</strong>
-              <button type="button" data-farm-open-work-table="work_order_machines">เพิ่ม/แก้รถ/เครื่องจักร</button>
+              <button type="button" data-farm-open-work-table="work_order_resources">เพิ่ม/แก้รถ/เครื่องจักร</button>
             </div>
             ${vehicleResourceRows}
           </div>
@@ -9140,7 +9822,7 @@ function renderFarmWorkPlanner() {
           </div>
           <div class="farm-plan-actions">
             <button type="button" data-farm-open-work-table="work_orders">สร้างแผน Draft</button>
-            <button type="button" data-farm-open-work-table="work_order_approvals">ส่งอนุมัติ</button>
+            <button type="button" data-farm-open-work-table="approval_logs">ส่งอนุมัติ</button>
           </div>
         </article>
       </div>
@@ -9364,23 +10046,28 @@ function updateFarmWorkOrderDecision(id, decision) {
   state.farmRecords.push({
     id: `farm-approval-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     moduleId: "farm-governance",
-    tableId: "work_order_approvals",
-    work_order_id: id,
+    tableId: "approval_logs",
+    entity_table: "work_orders",
+    entity_id: id,
+    event_type: "approval",
     approval_level: "1",
-    approver_profile_id: "profile-admin",
+    actor_profile_id: "profile-admin",
     decision,
-    decided_at: now.slice(0, 10),
+    event_date: now.slice(0, 10),
     status: "active",
     updatedAt: now,
   });
   state.farmRecords.push({
     id: `farm-status-log-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     moduleId: "farm-governance",
-    tableId: "work_order_status_logs",
-    work_order_id: id,
+    tableId: "approval_logs",
+    entity_table: "work_orders",
+    entity_id: id,
+    event_type: "status_change",
     from_status: current.status || "",
     to_status: approved ? "approved" : "rejected",
-    changed_by: "profile-admin",
+    actor_profile_id: "profile-admin",
+    event_date: now.slice(0, 10),
     note: approved ? "อนุมัติจากหน้า Work Order Timeline" : "ไม่อนุมัติจากหน้า Work Order Timeline",
     status: "active",
     updatedAt: now,
@@ -10619,13 +11306,19 @@ async function init() {
     }
     const openWorkTable = e.target.closest("[data-farm-open-work-table]");
     if (openWorkTable) {
-      state.farmTableId = openWorkTable.dataset.farmOpenWorkTable;
+      const tableKey = openWorkTable.dataset.farmOpenWorkTable;
+      const schema = FARM_TABLE_SCHEMAS[tableKey];
+      if (schema?.moduleId && schema.moduleId !== state.view) state.view = schema.moduleId;
+      state.farmTableId = tableKey;
       render();
       return;
     }
     const farmOpenTable = e.target.closest("[data-farm-open-table]");
     if (farmOpenTable) {
-      state.farmTableId = farmOpenTable.dataset.farmOpenTable;
+      const tableKey = farmOpenTable.dataset.farmOpenTable;
+      const schema = FARM_TABLE_SCHEMAS[tableKey];
+      if (schema?.moduleId && schema.moduleId !== state.view) state.view = schema.moduleId;
+      state.farmTableId = tableKey;
       state.farmEditId = "";
       state.farmDetailId = "";
       render();

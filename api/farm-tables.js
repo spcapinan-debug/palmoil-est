@@ -1,5 +1,21 @@
 const FARM_TABLES = new Set([
   "profiles",
+  "areas",
+  "people",
+  "person_housing_assignments",
+  "activity_wage_codes",
+  "activity_material_rates",
+  "inventory_master",
+  "inventory_documents",
+  "inventory_document_lines",
+  "work_plans",
+  "plan_materials",
+  "work_order_resources",
+  "payroll_lines",
+  "payroll_rules",
+  "access_scopes",
+  "approval_logs",
+  "master_versions",
   "estates",
   "zones",
   "plot_groups",
@@ -13,14 +29,18 @@ const FARM_TABLES = new Set([
   "contractors",
   "teams",
   "team_members",
+  "team_activity_skills",
   "activity_groups",
   "wage_codes",
   "activities",
   "activity_wage_code_mappings",
   "material_categories",
   "units",
+  "unit_conversions",
   "materials",
+  "material_lots",
   "activity_material_usage_rates",
+  "survey_templates",
   "vehicles",
   "annual_work_plans",
   "planned_work_items",
@@ -52,6 +72,9 @@ const FARM_TABLES = new Set([
   "user_access_scopes",
   "master_record_versions",
   "audit_logs",
+  "system_settings",
+  "attachments",
+  "report_exports",
 ]);
 
 const REQUIRED_TABLES = new Set([
@@ -243,6 +266,12 @@ const UNIQUE_KEYS = {
   vehicles: "vehicle_code",
   work_orders: "work_order_no",
   permissions: "permission_key",
+  areas: "area_code",
+  people: "person_code",
+  inventory_master: "item_code",
+  inventory_documents: "document_no",
+  work_plans: "plan_code",
+  payroll_rules: "rule_code",
 };
 
 function sanitizeDbRow(row) {
@@ -322,19 +351,24 @@ module.exports = async function handler(req, res) {
     const warnings = {};
 
     for (const table of tables) {
+      let realRows = [];
+      let realError = null;
+      let fallbackRows = [];
       try {
-        const [realRows, fallbackRows] = await Promise.all([
-          supabaseFetch(`${table}?select=*&limit=${limit}`),
-          loadFallbackRows(table).catch(() => []),
-        ]);
-        const map = new Map();
-        for (const row of Array.isArray(realRows) ? realRows : []) map.set(row.id || JSON.stringify(row), row);
-        for (const row of fallbackRows) map.set(row.id || row.databaseId || JSON.stringify(row), row);
-        result[table] = [...map.values()];
+        realRows = await supabaseFetch(`${table}?select=*&limit=${limit}`);
       } catch (err) {
-        result[table] = [];
-        if (REQUIRED_TABLES.has(table)) errors[table] = err.message;
-        else warnings[table] = err.message;
+        realError = err;
+      }
+      try {
+        fallbackRows = await loadFallbackRows(table);
+      } catch {}
+      const map = new Map();
+      for (const row of Array.isArray(realRows) ? realRows : []) map.set(row.id || JSON.stringify(row), row);
+      for (const row of fallbackRows) map.set(row.id || row.databaseId || JSON.stringify(row), row);
+      result[table] = [...map.values()];
+      if (realError && !result[table].length) {
+        if (REQUIRED_TABLES.has(table)) errors[table] = realError.message;
+        else warnings[table] = realError.message;
       }
     }
 
