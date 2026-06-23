@@ -8645,6 +8645,7 @@ function farmDaysBetween(startIso, endIso) {
 function farmWorkOrders() {
   const orders = farmRows(farmTableByKey("work_orders"));
   const blocks = farmRows(farmTableByKey("blocks"));
+  const results = farmRows(farmTableByKey("work_results"));
   return orders.map((order) => {
     const block = farmLookup("blocks", order.block_id) || blocks.find((item) => item.plot_id === order.plot_id) || null;
     const plot = farmLookup("plots", order.plot_id || block?.plot_id);
@@ -8655,10 +8656,20 @@ function farmWorkOrders() {
     const plotGroup = farmLookup("plot_groups", order.plot_group_id || plot?.plot_group_id);
     const startDate = isoDay(order.planned_start_date || order.scheduled_date || order.original_scheduled_date);
     const endDate = isoDay(order.planned_end_date || order.rescheduled_date || order.scheduled_date || startDate);
+    const orderResults = results.filter((row) => row.work_order_id === order.id);
+    const resultDates = orderResults.map((row) => isoDay(row.result_date)).filter(Boolean).sort();
+    const closedDate = isoDay(order.closed_at);
+    const actualFallback = (["completed", "closed"].includes(String(order.status || "")) && (closedDate || isoDay(order.rescheduled_date || order.scheduled_date || order.planned_end_date || startDate))) || "";
+    const actualStartDate = resultDates[0] || actualFallback;
+    const actualEndDate = resultDates.at(-1) || closedDate || actualStartDate;
     return {
       ...order,
       startDate,
       endDate,
+      actualStartDate,
+      actualEndDate,
+      actualResultCount: orderResults.length,
+      actualQuantity: orderResults.reduce((sum, row) => sum + n(row.actual_quantity), 0),
       plot,
       block,
       zone,
@@ -9059,11 +9070,9 @@ function renderFarmWorkBoard() {
         <label>ค้นหา<input id="farmWorkSearch" type="search" value="${esc(state.farmWorkFilters.query)}" placeholder="WO, งาน, แปลง, ทีม"></label>
       </div>
       <div class="farm-work-legend">
-        ${statusOptions.map((item) => {
-          const meta = farmWorkStatusMeta({ status: item.value, approval_status: item.value === "pending_approval" ? "pending" : "" });
-          return `<span><i style="background:${esc(meta.color)}"></i>${esc(item.label)} <b>${fmt(statusCounts[item.value] || 0)}</b></span>`;
-        }).join("")}
-        <span><i class="baseline"></i>วันเดิม/เลื่อนวัน</span>
+        <span><i class="plan-draft"></i>แผนก่อนอนุมัติ / วันเดิม</span>
+        <span><i class="plan-approved"></i>แผนอนุมัติแล้ว</span>
+        <span><i class="actual-done"></i>บันทึกงานจริง / ปิดงาน</span>
         <span><i class="milestone"></i>Milestone / อนุมัติ / ปิดงาน</span>
         <span><i class="today"></i>วันนี้</span>
       </div>
@@ -9101,10 +9110,15 @@ function renderFarmWorkBoard() {
               const startIndex = Math.max(0, farmDaysBetween(timelineStart, row.startDate || timelineStart));
               const span = Math.max(1, farmDaysBetween(row.startDate || timelineStart, row.endDate || row.startDate || timelineStart) + 1);
               const originalIndex = row.original_scheduled_date ? Math.max(0, farmDaysBetween(timelineStart, row.original_scheduled_date)) : -1;
+              const originalSpan = Math.max(1, farmDaysBetween(row.original_scheduled_date || row.startDate || timelineStart, row.planned_end_date || row.original_scheduled_date || row.startDate || timelineStart) + 1);
               const approvedIndex = row.approved_at ? Math.max(0, farmDaysBetween(timelineStart, row.approved_at)) : -1;
               const closedIndex = row.closed_at ? Math.max(0, farmDaysBetween(timelineStart, row.closed_at)) : -1;
+              const actualIndex = row.actualStartDate ? Math.max(0, farmDaysBetween(timelineStart, row.actualStartDate)) : -1;
+              const actualSpan = row.actualStartDate ? Math.max(1, farmDaysBetween(row.actualStartDate, row.actualEndDate || row.actualStartDate) + 1) : 0;
               const progress = farmWorkProgress(row);
               const needsApproval = row.statusMeta.key === "pending_approval";
+              const hasApprovedPlan = row.approval_status === "approved" || ["approved", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(row.statusMeta.key);
+              const showDraftPlan = !hasApprovedPlan || (originalIndex >= 0 && originalIndex !== startIndex);
               const areaText = `${row.plot?.plot_code || "-"} / ${row.block?.block_code || "-"} · ${row.block?.ap_code || row.block?.AP_code || "ไม่มี AP"}`;
               return `
                 <div class="farm-work-row${selected?.id === row.id ? " active" : ""}" data-farm-work-detail="${esc(row.id)}">
@@ -9117,11 +9131,9 @@ function renderFarmWorkBoard() {
                     <i style="--status:${esc(row.statusMeta.color)}">${esc(row.statusMeta.label)}</i>
                   </button>
                   <div class="farm-work-lane" style="width:${timelineWidth}px">
-                    ${originalIndex >= 0 && originalIndex !== startIndex ? `<i class="farm-work-original" title="วันที่เดิม ${esc(row.original_scheduled_date)}" style="left:${originalIndex * dayWidth + 6}px;width:${Math.max(dayWidth, span * dayWidth)}px"></i>` : ""}
-                    <button class="farm-work-bar ${needsApproval ? "needs-approval" : ""}" type="button" data-farm-work-detail="${esc(row.id)}" style="left:${startIndex * dayWidth + 2}px;width:${Math.max(18, span * dayWidth - 4)}px;background:${esc(row.statusMeta.color)}">
-                      <i style="width:${progress}%"></i>
-                      <span>${esc(row.statusMeta.label)}</span>
-                    </button>
+                    ${showDraftPlan ? `<button class="farm-work-plan-bar draft ${needsApproval ? "needs-approval" : ""}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนก่อนอนุมัติ ${esc(row.original_scheduled_date || row.startDate || "-")} - ${esc(row.planned_end_date || row.endDate || "-")}" style="left:${(originalIndex >= 0 ? originalIndex : startIndex) * dayWidth + 3}px;width:${Math.max(18, (originalIndex >= 0 ? originalSpan : span) * dayWidth - 6)}px"><span>${needsApproval ? "รออนุมัติ" : "แผน"}</span></button>` : ""}
+                    ${hasApprovedPlan ? `<button class="farm-work-plan-bar approved" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนอนุมัติแล้ว ${esc(row.startDate || "-")} - ${esc(row.endDate || "-")}" style="left:${startIndex * dayWidth + 3}px;width:${Math.max(18, span * dayWidth - 6)}px"><span>อนุมัติ</span></button>` : ""}
+                    ${actualIndex >= 0 ? `<button class="farm-work-actual-bar" type="button" data-farm-work-detail="${esc(row.id)}" title="บันทึกงานจริง ${esc(row.actualStartDate || "-")} - ${esc(row.actualEndDate || "-")} (${fmt(row.actualResultCount)} รายการ)" style="left:${actualIndex * dayWidth + 3}px;width:${Math.max(18, actualSpan * dayWidth - 6)}px"><span>${row.statusMeta.key === "closed" ? "ปิดงาน" : "ทำจริง"}</span></button>` : ""}
                     ${needsApproval ? `<button class="farm-work-milestone approval" type="button" data-farm-work-detail="${esc(row.id)}" title="ต้องอนุมัติ" style="left:${startIndex * dayWidth + Math.max(10, span * dayWidth - 12)}px"></button>` : ""}
                     ${approvedIndex >= 0 ? `<i class="farm-work-milestone approved" title="อนุมัติ ${esc(row.approved_at)}" style="left:${approvedIndex * dayWidth + 10}px"></i>` : ""}
                     ${closedIndex >= 0 ? `<i class="farm-work-milestone closed" title="ปิดงาน ${esc(row.closed_at)}" style="left:${closedIndex * dayWidth + 10}px"></i>` : ""}

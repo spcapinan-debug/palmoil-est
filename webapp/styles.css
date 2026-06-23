@@ -4843,6 +4843,30 @@ tfoot td {
   background: rgba(239, 68, 68, .08);
 }
 
+.farm-work-legend i.plan-draft,
+.farm-work-legend i.plan-approved {
+  width: 18px;
+  height: 8px;
+  border-radius: 3px;
+  background: rgba(59, 130, 246, .08);
+}
+
+.farm-work-legend i.plan-draft {
+  border: 2px dashed #60a5fa;
+}
+
+.farm-work-legend i.plan-approved {
+  border: 2px dashed #ef4444;
+  background: rgba(239, 68, 68, .08);
+}
+
+.farm-work-legend i.actual-done {
+  width: 18px;
+  height: 8px;
+  border-radius: 3px;
+  background: #ef4444;
+}
+
 .farm-work-legend i.milestone {
   width: 10px;
   height: 10px;
@@ -5042,11 +5066,59 @@ tfoot td {
 
 .farm-work-lane {
   position: relative;
-  min-height: 54px;
+  min-height: 68px;
   background-image:
     linear-gradient(to right, #edf2f7 1px, transparent 1px),
     linear-gradient(to bottom, rgba(248, 250, 252, .75), rgba(248, 250, 252, .75));
   background-size: 30px 100%, 100% 100%;
+}
+
+.farm-work-plan-bar,
+.farm-work-actual-bar {
+  position: absolute;
+  min-height: 16px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 900;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.farm-work-plan-bar span,
+.farm-work-actual-bar span {
+  display: block;
+  overflow: hidden;
+  padding: 1px 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-work-plan-bar.draft {
+  top: 8px;
+  border: 2px dashed #60a5fa;
+  background: rgba(219, 234, 254, .7);
+  color: #1d4ed8;
+}
+
+.farm-work-plan-bar.approved {
+  top: 28px;
+  border: 2px dashed #ef4444;
+  background: rgba(254, 226, 226, .72);
+  color: #b91c1c;
+}
+
+.farm-work-actual-bar {
+  top: 48px;
+  border: 1px solid #b91c1c;
+  background: #ef4444;
+  color: #fff;
+  box-shadow: 0 5px 12px rgba(185, 28, 28, .22);
+}
+
+.farm-work-plan-bar.needs-approval {
+  border-color: #f59e0b;
+  background: rgba(254, 243, 199, .82);
+  color: #92400e;
 }
 
 .farm-work-bar {
@@ -5103,16 +5175,19 @@ tfoot td {
 }
 
 .farm-work-milestone.approval {
+  top: 10px;
   border: 0;
   background: #f97316;
   cursor: pointer;
 }
 
 .farm-work-milestone.approved {
+  top: 30px;
   background: #22c55e;
 }
 
 .farm-work-milestone.closed {
+  top: 50px;
   background: #0f172a;
 }
 
