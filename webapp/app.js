@@ -35,6 +35,8 @@
   farmDbRows: {},
   farmDbSource: null,
   farmDbErrors: {},
+  summaryPalmoilAreas: [],
+  summaryPalmoilSource: null,
   farmSyncMessage: "",
   farmSyncStatus: "",
   farmSyncBusy: false,
@@ -521,30 +523,34 @@ const F = (key, label, options = {}) => ({ key, label, ...options });
 const FARM_TABLE_SCHEMAS = {
   areas: {
     moduleId: "farm-area",
-    title: "พื้นที่รวม",
+    title: "พื้นที่รวม / Block จาก Summary Palmoil",
     primaryKey: "id",
     codeField: "area_code",
     labelField: "area_name",
     fields: [
-      F("area_code", "รหัสพื้นที่", { required: true }),
-      F("area_name", "ชื่อพื้นที่", { required: true }),
-      F("area_level", "ระดับพื้นที่", { options: ["estate", "zone", "plot", "block"], required: true }),
-      F("parent_area_id", "พื้นที่แม่", { references: "areas" }),
-      F("estate_id", "Estate อ้างอิงเดิม", { references: "estates" }),
-      F("zone_id", "Zone อ้างอิงเดิม", { references: "zones" }),
-      F("plot_id", "Plot อ้างอิงเดิม", { references: "plots" }),
-      F("plot_group_id", "กลุ่มแปลง", { references: "plot_groups" }),
+      F("area_code", "รหัส Block / Terrain", { required: true, placeholder: "เช่น 30-B14" }),
+      F("area_name", "ชื่อ Block / Terrain", { placeholder: "ถ้าไม่กรอกจะใช้รหัส Terrain" }),
+      F("area_level", "ระดับพื้นที่", { options: ["block"], required: true, defaultValue: "block", hidden: true }),
+      F("estate_name", "Estate", { required: true, placeholder: "เช่น Kirirat" }),
+      F("zone_name", "Zone", { required: true, placeholder: "Upper / Lower" }),
+      F("plot_group_code", "แปลง / กลุ่มพื้นที่", { required: true, placeholder: "เช่น B, C, T, PU" }),
       F("ap_code", "AP Code"),
+      F("payroll_department_code", "รหัสฝ่ายค่าแรง"),
+      F("payroll_code_description", "ชื่อฝ่ายค่าแรง"),
       F("area_rai", "พื้นที่ไร่", { type: "number" }),
       F("planting_year", "ปีปลูก", { type: "number" }),
       F("tree_count", "จำนวนต้น", { type: "number" }),
       F("rspo_status", "RSPO", { options: ["RSPO", "Non-RSPO"] }),
+      F("parent_area_id", "พื้นที่แม่", { references: "areas", hidden: true }),
+      F("estate_id", "Estate อ้างอิงเดิม", { references: "estates", hidden: true }),
+      F("zone_id", "Zone อ้างอิงเดิม", { references: "zones", hidden: true }),
+      F("plot_id", "Plot อ้างอิงเดิม", { references: "plots", hidden: true }),
+      F("plot_group_id", "กลุ่มแปลงอ้างอิงเดิม", { references: "plot_groups", hidden: true }),
       F("status", "สถานะ", { type: "status" }),
       F("note", "หมายเหตุ"),
     ],
     seed: [
-      { id: "area-estate-spc", area_code: "SPC", area_name: "SPC Estate", area_level: "estate", status: "active" },
-      { id: "area-block-001", area_code: "BLK-001", area_name: "Block ตัวอย่าง 01", area_level: "block", parent_area_id: "area-estate-spc", ap_code: "AP-001", area_rai: "120", planting_year: "2562", tree_count: "2640", rspo_status: "RSPO", status: "active" },
+      { id: "area-block-001", area_code: "30-B14", area_name: "30-B14", area_level: "block", estate_name: "Kirirat", zone_name: "Upper", plot_group_code: "B", ap_code: "EST002", area_rai: "6", tree_count: "126", rspo_status: "Non-RSPO", payroll_department_code: "651", payroll_code_description: "บางกัน", status: "active" },
     ],
   },
   people: {
@@ -3146,6 +3152,14 @@ async function loadMasterFolderData() {
       || payload.tables[0];
     state.masterFolderTableId = priority.id;
   }
+}
+
+async function loadSummaryPalmoilAreas() {
+  const payload = window.__SUMMARY_PALMOIL_TERRAIN__ || await fetch(`./data/summary_palmoil_terrain.json?t=${Date.now()}`, { cache: "no-store" })
+    .then((res) => res.json())
+    .catch(() => ({ source: null, records: [] }));
+  state.summaryPalmoilSource = payload.source || null;
+  state.summaryPalmoilAreas = Array.isArray(payload.records) ? payload.records : [];
 }
 
 function startLiveRefresh() {
@@ -8540,52 +8554,37 @@ function mergeCleanRows(currentRows, derivedRows) {
   return [...map.values()];
 }
 
+function mergeAreaRows(currentRows, derivedRows) {
+  const map = new Map();
+  for (const row of [...derivedRows, ...currentRows]) {
+    const key = String(row.area_code || row.id || "").trim().toLowerCase();
+    if (!key) continue;
+    const previous = map.get(key) || {};
+    map.set(key, {
+      ...previous,
+      ...row,
+      id: previous.id || row.id,
+      area_level: "block",
+      area_name: row.area_name || row.area_code || previous.area_name || "",
+      status: row.status || previous.status || "active",
+    });
+  }
+  return [...map.values()].sort((a, b) => String(a.area_code || "").localeCompare(String(b.area_code || ""), "th", { numeric: true }));
+}
+
 function farmCleanRows(tableId, rows) {
   if (tableId === "areas") {
-    const estates = farmRowsByKey("estates").map((row) => ({
-      id: `area-${row.id}`,
+    const summaryBlocks = (state.summaryPalmoilAreas || []).map((row) => ({
+      ...row,
       tableId: "areas",
       moduleId: "farm-area",
       readonly: true,
-      _source: row._source || "legacy-estates",
-      area_code: row.estate_code || row.id,
-      area_name: row.estate_name || row.estate_code || row.id,
-      area_level: "estate",
-      estate_id: row.id,
+      area_level: "block",
+      area_name: row.area_name || row.area_code || "",
       status: row.status || "active",
-      note: row.company_name || "",
+      _source: row._source || "Summary Palmoil.xlsx:Terrain",
     }));
-    const zones = farmRowsByKey("zones").map((row) => ({
-      id: `area-${row.id}`,
-      tableId: "areas",
-      moduleId: "farm-area",
-      readonly: true,
-      _source: row._source || "legacy-zones",
-      area_code: row.zone_code || row.id,
-      area_name: row.zone_name || row.zone_code || row.id,
-      area_level: "zone",
-      parent_area_id: row.estate_id ? `area-${row.estate_id}` : "",
-      estate_id: row.estate_id || "",
-      zone_id: row.id,
-      status: row.status || "active",
-    }));
-    const plots = farmRowsByKey("plots").map((row) => ({
-      id: `area-${row.id}`,
-      tableId: "areas",
-      moduleId: "farm-area",
-      readonly: true,
-      _source: row._source || "legacy-plots",
-      area_code: row.plot_code || row.id,
-      area_name: row.plot_name || row.plot_code || row.id,
-      area_level: "plot",
-      parent_area_id: row.zone_id ? `area-${row.zone_id}` : "",
-      estate_id: row.estate_id || "",
-      zone_id: row.zone_id || "",
-      plot_id: row.id,
-      plot_group_id: row.plot_group_id || "",
-      status: row.status || "active",
-    }));
-    const blocks = farmRowsByKey("blocks").map((row) => ({
+    const blocks = summaryBlocks.length ? [] : farmRowsByKey("blocks").map((row) => ({
       id: `area-${row.id}`,
       tableId: "areas",
       moduleId: "farm-area",
@@ -8594,7 +8593,10 @@ function farmCleanRows(tableId, rows) {
       area_code: row.block_code || row.id,
       area_name: row.block_name || row.block_code || row.id,
       area_level: "block",
-      parent_area_id: row.plot_id ? `area-${row.plot_id}` : "",
+      estate_name: row.estate_name || "",
+      zone_name: row.zone_name || "",
+      plot_group_code: row.plot_group_code || "",
+      parent_area_id: "",
       estate_id: row.estate_id || "",
       zone_id: row.zone_id || "",
       plot_id: row.plot_id || "",
@@ -8606,7 +8608,14 @@ function farmCleanRows(tableId, rows) {
       rspo_status: row.rspo_status || "",
       status: row.status || "active",
     }));
-    return mergeCleanRows(rows, [...estates, ...zones, ...plots, ...blocks]);
+    const summaryCodes = new Set(summaryBlocks.map((row) => String(row.area_code || "").trim().toLowerCase()).filter(Boolean));
+    const blockRows = rows.filter((row) => {
+      if (row.area_level && row.area_level !== "block") return false;
+      if (!summaryCodes.size) return true;
+      const code = String(row.area_code || "").trim().toLowerCase();
+      return summaryCodes.has(code);
+    });
+    return mergeAreaRows(blockRows, [...summaryBlocks, ...blocks]);
   }
   if (tableId === "people") {
     const employees = farmRowsByKey("employees").map((row) => ({
@@ -8885,6 +8894,15 @@ function farmFieldReferences(field) {
   return Array.isArray(field) ? "" : field.references || "";
 }
 
+function farmVisibleFields(table, scope = "form") {
+  return (table.fields || []).filter((field) => {
+    if (Array.isArray(field)) return true;
+    if (field.hidden === true) return false;
+    if (Array.isArray(field.hiddenIn) && field.hiddenIn.includes(scope)) return false;
+    return true;
+  });
+}
+
 function farmSelectedRow(table = selectedFarmTable()) {
   return farmRows(table).find((row) => row.id === state.farmDetailId || row.id === state.farmEditId) || {};
 }
@@ -8987,6 +9005,17 @@ function farmBusinessKey(table, row) {
 }
 
 function applyFarmCalculatedFields(table, row) {
+  for (const field of table.fields || []) {
+    if (Array.isArray(field)) continue;
+    const key = farmFieldKey(field);
+    if ((row[key] === undefined || row[key] === "") && field.defaultValue !== undefined) row[key] = field.defaultValue;
+  }
+  if (table.key === "areas") {
+    row.area_level = "block";
+    if (!row.area_name) row.area_name = row.area_code || "";
+    if (String(row.rspo_status || "").toUpperCase() === "YES") row.rspo_status = "RSPO";
+    if (String(row.rspo_status || "").toUpperCase() === "NO") row.rspo_status = "Non-RSPO";
+  }
   if (table.key === "people") {
     const daily = n(row.daily_wage);
     const hours = n(row.normal_hours_per_day);
@@ -9193,7 +9222,7 @@ function exportFarmCsv() {
   const module = selectedFarmModule();
   const table = selectedFarmTable(module);
   const rows = filteredFarmRows(table);
-  const headers = ["id", ...table.fields.map(farmFieldKey)];
+  const headers = ["id", ...farmVisibleFields(table, "export").map(farmFieldKey)];
   const csv = [headers.join(",")].concat(rows.map((row) => headers.map((key) => `"${String(row[key] ?? "").replace(/"/g, '""')}"`).join(","))).join("\n");
   const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -10078,7 +10107,7 @@ function updateFarmWorkOrderDecision(id, decision) {
 }
 
 function renderFarmKeyBindings(table) {
-  const refs = (table.fields || []).filter((field) => farmFieldReferences(field));
+  const refs = farmVisibleFields(table).filter((field) => farmFieldReferences(field));
   return `
     <section class="farm-key-panel farm-panel">
       <div class="section-head">
@@ -10111,12 +10140,13 @@ function renderFarmPage() {
   const module = selectedFarmModule();
   const tables = farmTablesForModule(module);
   const table = selectedFarmTable(module);
+  const visibleFields = farmVisibleFields(table);
   const rows = filteredFarmRows(table);
   const allRows = farmRows(table);
   const selected = farmSelectedRow(table);
   const editing = state.farmEditId ? selected : {};
   const inactiveCount = allRows.filter((row) => String(row.status).toLowerCase() === "inactive").length;
-  const refCount = (table.fields || []).filter((field) => farmFieldReferences(field)).length;
+  const refCount = farmVisibleFields(table).filter((field) => farmFieldReferences(field)).length;
   const dbRowCount = Object.values(state.farmDbRows || {}).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0);
   const dbErrorCount = Object.keys(state.farmDbErrors || {}).length;
   const isWorkPage = module.id === "farm-work";
@@ -10174,7 +10204,7 @@ function renderFarmPage() {
             <label class="auto-id-field">id อัตโนมัติ
               <input type="text" value="${esc(editing.id || "สร้างอัตโนมัติ")}" disabled aria-disabled="true">
             </label>
-            ${table.fields.map((field) => renderFarmInput(field, editing[farmFieldKey(field)] ?? "")).join("")}
+            ${visibleFields.map((field) => renderFarmInput(field, editing[farmFieldKey(field)] ?? "")).join("")}
             <div class="farm-form-actions">
               <button type="button" data-farm-save ${farmCan(state.farmEditId ? "update" : "create") && !state.farmSyncBusy ? "" : "disabled"}>${state.farmSyncBusy ? "กำลังบันทึก..." : (state.farmEditId ? "บันทึกแก้ไข" : "บันทึกเพิ่ม")}</button>
               <button type="button" data-farm-clear>ล้างฟอร์ม</button>
@@ -10184,7 +10214,7 @@ function renderFarmPage() {
         <article class="farm-panel">
           <div class="section-head"><h3>รายละเอียดที่เลือก</h3><span>${selected.id ? esc(selected.code || selected.name || selected.id) : "เลือกแถวในตารางเพื่อดูรายละเอียด"}</span></div>
           <dl class="farm-detail">
-            ${selected.id ? table.fields.map((field) => {
+            ${selected.id ? visibleFields.map((field) => {
               const key = farmFieldKey(field);
               return `<dt>${esc(farmFieldLabel(field))}</dt><dd>${esc(farmDisplayValue(field, selected) || "-")}</dd>`;
             }).join("") : `<dt>ยังไม่ได้เลือก</dt><dd>กดแถวหรือปุ่มดูในตาราง</dd>`}
@@ -10197,18 +10227,18 @@ function renderFarmPage() {
         <div class="table-wrap farm-table-wrap">
           <table class="mini-table farm-table">
             <thead>
-              <tr>${table.fields.map((field) => `<th>${esc(farmFieldLabel(field))}</th>`).join("")}<th>จัดการ</th></tr>
+              <tr>${visibleFields.map((field) => `<th>${esc(farmFieldLabel(field))}</th>`).join("")}<th>จัดการ</th></tr>
             </thead>
             <tbody>
               ${rows.map((row) => `
                 <tr data-farm-row="${esc(row.id)}">
-                  ${table.fields.map((field) => `<td>${esc(farmDisplayValue(field, row))}</td>`).join("")}
+                  ${visibleFields.map((field) => `<td>${esc(farmDisplayValue(field, row))}</td>`).join("")}
                   <td class="farm-actions">
                     <button type="button" data-farm-view="${esc(row.id)}">ดู</button>
                     <button type="button" data-farm-edit="${esc(row.id)}" ${farmCan("update") ? "" : "disabled"}>แก้ไข</button>
                     <button type="button" data-farm-inactive="${esc(row.id)}" ${farmCan("delete") ? "" : "disabled"}>ปิดใช้งาน</button>
                   </td>
-                </tr>`).join("") || `<tr><td colspan="${table.fields.length + 1}">ไม่พบรายการ</td></tr>`}
+                </tr>`).join("") || `<tr><td colspan="${visibleFields.length + 1}">ไม่พบรายการ</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -10967,7 +10997,7 @@ async function init() {
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
-  await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadClearOverridesFromServer()]);
+  await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadSummaryPalmoilAreas(), loadClearOverridesFromServer()]);
   setDefaultTransportDateRange();
   setDateValue(els.clearDate, state.payload.source.dateMax);
   loadFarmTablesFromDatabase({ silent: true });
