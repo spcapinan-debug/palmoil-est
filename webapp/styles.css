@@ -4393,6 +4393,11 @@ tfoot td {
   font-size: 13px;
 }
 
+.farm-work-page .farm-plan-simple {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .farm-plan-card label {
   display: grid;
   gap: 6px;
@@ -4751,6 +4756,10 @@ tfoot td {
   box-shadow: var(--shadow-sm);
 }
 
+.farm-work-page .farm-work-console {
+  padding: 14px;
+}
+
 .farm-work-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4860,6 +4869,10 @@ tfoot td {
   align-items: start;
 }
 
+.farm-work-page .farm-work-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .farm-work-gantt,
 .farm-work-timeline {
   min-width: 0;
@@ -4867,6 +4880,10 @@ tfoot td {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+
+.farm-work-page .farm-work-gantt {
+  max-height: 620px;
 }
 
 .farm-work-grid-head,
@@ -5157,6 +5174,10 @@ tfoot td {
   border-radius: 8px;
   padding: 12px;
   background: #fff;
+}
+
+.farm-work-page .farm-work-detail-panel {
+  position: static;
 }
 
 .farm-work-detail-head {

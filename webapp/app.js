@@ -9263,25 +9263,26 @@ function renderFarmPage() {
   const refCount = (table.fields || []).filter((field) => farmFieldReferences(field)).length;
   const dbRowCount = Object.values(state.farmDbRows || {}).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0);
   const dbErrorCount = Object.keys(state.farmDbErrors || {}).length;
+  const isWorkPage = module.id === "farm-work";
   return `
-    <div class="farm-page">
-      <div class="report-title">
+    <div class="farm-page${isWorkPage ? " farm-work-page" : ""}">
+      <div class="report-title${isWorkPage ? " farm-work-title" : ""}">
         <div>
-          <h2>${esc(module.title)}</h2>
-          <p>${esc(module.description)}</p>
+          <h2>${isWorkPage ? "วางแผน / สั่งงาน / บันทึกงาน" : esc(module.title)}</h2>
+          <p>${isWorkPage ? "Director วางแผน → Estate Manager สั่งงาน → Supervisor บันทึกงาน" : esc(module.description)}</p>
         </div>
         <button type="button" data-farm-db-refresh>Refresh DB</button>
       </div>
-      ${renderFarmWorkflowNav(module)}
-      <section class="farm-hero">
+      ${isWorkPage ? "" : renderFarmWorkflowNav(module)}
+      ${isWorkPage ? "" : `<section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
         <article><span>ข้อมูลจริง DB</span><strong>${fmt(dbRowCount)}</strong><small>${esc(state.farmDbSource?.mode || "fallback-seed")} · error ${fmt(dbErrorCount)}</small></article>
         <article><span>Foreign Key</span><strong>${fmt(refCount)}</strong><small>Inactive ${fmt(inactiveCount)} รายการ</small></article>
-      </section>
+      </section>`}
       ${state.farmSyncMessage ? `<div class="farm-sync-status ${esc(state.farmSyncStatus)}">${esc(state.farmSyncMessage)}</div>` : ""}
-      ${module.id === "farm-work" ? `${renderFarmWorkPlanner()}${renderFarmWorkBoard()}` : ""}
+      ${isWorkPage ? `${renderFarmWorkBoard()}${renderFarmWorkPlanner()}` : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
       <section class="farm-toolbar">
@@ -9304,7 +9305,7 @@ function renderFarmPage() {
         <button type="button" data-farm-new ${farmCan("create") ? "" : "disabled"}>Add</button>
         <button type="button" data-farm-export ${farmCan("export") ? "" : "disabled"}>Export Excel</button>
       </section>
-      ${renderFarmKeyBindings(table)}
+      ${isWorkPage ? "" : renderFarmKeyBindings(table)}
       <section class="farm-layout">
         <article class="farm-panel">
           <div class="section-head"><h3>${state.farmEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูล"}</h3><span>${esc(table.key)} / * คือข้อมูลจำเป็น</span></div>
