@@ -10159,7 +10159,7 @@ function renderFarmPage() {
         </div>
         <button type="button" data-farm-db-refresh>Refresh DB</button>
       </div>
-      ${isWorkPage ? "" : renderFarmWorkflowNav(module)}
+      ${renderFarmWorkflowNav(module)}
       ${isWorkPage ? "" : `<section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
