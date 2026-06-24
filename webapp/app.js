@@ -5780,6 +5780,65 @@ function simpleTable(headers, rows, emptyText = "ไม่มีข้อมู�
     </table>`;
 }
 
+function dashboardAreaChart(rows) {
+  const ordered = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const sample = ordered.length > 18
+    ? ordered.filter((_, index) => index % Math.ceil(ordered.length / 18) === 0).slice(0, 18)
+    : ordered;
+  const points = sample.length ? sample : [{ date: "", totalRamp: 0, outboundTotal: 0 }];
+  const width = 760;
+  const height = 230;
+  const pad = { left: 44, right: 18, top: 18, bottom: 34 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+  const maxValue = Math.max(...points.flatMap((row) => [n(row.totalRamp), n(row.outboundTotal)]), 1);
+  const x = (index) => pad.left + (points.length === 1 ? chartW / 2 : (index / (points.length - 1)) * chartW);
+  const y = (value) => pad.top + chartH - (n(value) / maxValue) * chartH;
+  const linePath = (key) => points.map((row, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(row[key]).toFixed(1)}`).join(" ");
+  const areaPath = (key) => {
+    const top = points.map((row, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(row[key]).toFixed(1)}`).join(" ");
+    return `${top} L${x(points.length - 1).toFixed(1)},${(pad.top + chartH).toFixed(1)} L${x(0).toFixed(1)},${(pad.top + chartH).toFixed(1)} Z`;
+  };
+  const xLabels = points.map((row, index) => {
+    if (points.length > 8 && index % Math.ceil(points.length / 6) !== 0 && index !== points.length - 1) return "";
+    return `<text x="${x(index).toFixed(1)}" y="${height - 10}" text-anchor="middle">${displayDate(row.date).slice(0, 5)}</text>`;
+  }).join("");
+  const grid = [0, .25, .5, .75, 1].map((ratio) => {
+    const gy = pad.top + chartH - ratio * chartH;
+    return `<line x1="${pad.left}" y1="${gy.toFixed(1)}" x2="${width - pad.right}" y2="${gy.toFixed(1)}"></line>
+      <text x="8" y="${(gy + 4).toFixed(1)}">${fmt(maxValue * ratio)}</text>`;
+  }).join("");
+  return `
+    <div class="gentelella-chart">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="กราฟเปรียบเทียบน้ำหนักรับเข้าและส่งออกตามวันที่">
+        <g class="chart-grid">${grid}</g>
+        <path class="area inbound" d="${areaPath("totalRamp")}"></path>
+        <path class="area outbound" d="${areaPath("outboundTotal")}"></path>
+        <path class="line inbound" d="${linePath("totalRamp")}"></path>
+        <path class="line outbound" d="${linePath("outboundTotal")}"></path>
+        <g class="chart-axis">${xLabels}</g>
+      </svg>
+      <div class="chart-legend">
+        <span><i class="inbound"></i>รับเข้า</span>
+        <span><i class="outbound"></i>ส่งออก</span>
+      </div>
+    </div>`;
+}
+
+function dashboardPerformanceBars(items, totalKey = "inbound") {
+  const maxValue = Math.max(...items.map((item) => n(item[totalKey])), 1);
+  if (!items.length) return '<p class="analytics-empty">ไม่มีข้อมูลตามเงื่อนไขที่เลือก</p>';
+  return items.map((item) => {
+    const value = n(item[totalKey]);
+    const width = Math.max(2, (value / maxValue) * 100);
+    return `
+      <div class="performance-row">
+        <div><strong>${item.label}</strong><span>${fmt(value)} kg</span></div>
+        <em><b style="width:${width}%"></b></em>
+      </div>`;
+  }).join("");
+}
+
 function renderAdvancedDashboard() {
   const rows = buildStockFromData(yardScope());
   const stats = dashboardStats(rows);
@@ -5907,16 +5966,51 @@ function renderAdvancedDashboard() {
       <p>${filterContextLine([`เปรียบเทียบ ${compareModeLabel(state.dashboardCompareMode)}`])}</p>
     </div>
     <div class="analytics-layout">
-      <section class="analytics-hero">
-        <div>
-          <h3>ภาพรวมการเคลื่อนไหว</h3>
-          <p>คำนวณรับเข้า ส่งออก สูญหาย คงเหลือ และเปรียบเทียบตามลาน/มาตรฐานจากข้อมูลปัจจุบัน</p>
+      <section class="analytics-card wide dashboard-network">
+        <div class="section-head">
+          <div>
+            <h3>Network Activities</h3>
+            <span>กราฟเปรียบเทียบ รับเข้า / ส่งออก ตามวันที่ที่เลือก</span>
+          </div>
+          <small>${displayDate(rows[0]?.date)} - ${displayDate(rows.at(-1)?.date)}</small>
         </div>
-        <div class="analytics-hero-grid">
-          ${metricTile("Net Movement", fmt(stats.net), "รับเข้า - ส่งออก - สูญหาย", stats.net < 0 ? "danger" : "good")}
+        <div class="network-grid">
+          ${dashboardAreaChart(rows)}
+          <aside class="performance-panel">
+            <h4>Top Standard Performance</h4>
+            ${dashboardPerformanceBars(standardRows, "inbound")}
+          </aside>
+        </div>
+      </section>
+
+      <section class="analytics-card compact">
+        <div class="section-head">
+          <h3>App Versions</h3>
+          <span>เทียบตามลานเท</span>
+        </div>
+        <div class="bar-list slim">${barRows(yardRows.map((row) => ({
+          label: row.label,
+          sub: `ส่งออก ${fmt(row.stats.outbound)} | สูญหาย ${fmt(row.stats.loss)}`,
+          value: row.stats.inbound,
+        })), "value")}</div>
+      </section>
+
+      <section class="analytics-card compact">
+        <div class="section-head">
+          <h3>Device Usage</h3>
+          <span>สัดส่วนมาตรฐาน</span>
+        </div>
+        ${simpleTable(["มาตรฐาน", "รับเข้า", "%"], standardRows.map((row) => `<tr><td class="left">${row.label}</td><td class="num">${fmt(row.inbound)}</td><td class="num">${pct(row.inbound, stats.inbound)}</td></tr>`))}
+      </section>
+
+      <section class="analytics-card compact">
+        <div class="section-head">
+          <h3>Quick Settings</h3>
+          <span>ตัวชี้วัดควบคุม</span>
+        </div>
+        <div class="quick-metrics">
           ${metricTile("Loss Rate", `${stats.lossRate.toFixed(2)}%`, "สูญหาย / ส่งออก", stats.lossRate > 2 ? "danger" : "")}
           ${metricTile("Factory Diff", `${signed(stats.factoryDiff)} kg`, "โรงงาน - ส่งออก", stats.factoryDiff < 0 ? "danger" : "good")}
-          ${metricTile("Trips", fmt(stats.trips), "จำนวนเที่ยวส่งออก")}
         </div>
       </section>
 
