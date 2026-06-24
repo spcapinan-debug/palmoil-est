@@ -8820,3 +8820,49 @@ td.num,
     box-shadow: 0 10px 28px rgba(42, 63, 84, .045) !important;
   }
 }
+
+/* Make the Dashboard Network Activities graph use the full table width. */
+@media screen {
+  .dashboard-network .network-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+    padding: 10px 14px 12px !important;
+  }
+
+  .dashboard-network .gentelella-chart {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .dashboard-network .gentelella-chart svg {
+    width: 100% !important;
+    height: clamp(280px, 34vh, 430px) !important;
+  }
+
+  .dashboard-network .performance-panel {
+    display: grid !important;
+    grid-template-columns: 150px repeat(4, minmax(0, 1fr)) !important;
+    align-items: center !important;
+    gap: 8px 12px !important;
+    min-height: 0 !important;
+    padding: 8px 10px !important;
+    border-top: 1px solid var(--gt-line) !important;
+    border-left: 0 !important;
+    background: #fff !important;
+  }
+
+  .dashboard-network .performance-panel h4 {
+    margin: 0 !important;
+    font-size: 12px !important;
+    color: #5a6672 !important;
+    white-space: nowrap !important;
+  }
+
+  .dashboard-network .performance-panel .performance-row {
+    margin: 0 !important;
+  }
+
+  .dashboard-network .performance-panel .performance-row div {
+    margin-bottom: 4px !important;
+  }
+}
