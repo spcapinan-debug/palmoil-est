@@ -99,6 +99,7 @@ const TRANSPORT_REFRESH_API = window.__TRANSPORT_REFRESH_API__ || CULTIVATE_API_
 const CLEAR_RAMP_API = window.__CLEAR_RAMP_API__ || CULTIVATE_API_BASE.replace(/cultivate\.php.*$/, "clear_ramp_log.php");
 const TRANSPORT_SYNC_API = window.__TRANSPORT_SYNC_API__ || "https://palmoil-est.vercel.app/api/transport-sync";
 const CLEAR_RAMP_STORAGE_KEY = "palm-clear-ramp-log";
+const CLEAR_RAMP_DATA_URL = window.__CLEAR_RAMP_DATA_URL__ || "./data/clear_ramp_log.json";
 const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
 const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_weight.json";
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
@@ -2853,10 +2854,24 @@ async function loadClearOverridesFromServer() {
     const payload = await fetch(`${CLEAR_RAMP_API}?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
     if (payload?.ok === false) return false;
     state.clearOverrides = mergeClearOverrides(state.clearOverrides, payload.rows || []);
+    if (!payload.rows?.length) await loadClearOverridesFromSnapshot();
     writeClearOverridesLocal();
     return true;
   } catch {
-    return loadClearOverridesFromTransportDb();
+    const dbOk = await loadClearOverridesFromTransportDb();
+    if (!dbOk || !state.clearOverrides.length) await loadClearOverridesFromSnapshot();
+    return dbOk;
+  }
+}
+
+async function loadClearOverridesFromSnapshot() {
+  try {
+    const payload = await fetch(`${CLEAR_RAMP_DATA_URL}?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
+    state.clearOverrides = mergeClearOverrides(state.clearOverrides, payload.rows || []);
+    writeClearOverridesLocal();
+    return Boolean(payload.rows?.length);
+  } catch {
+    return false;
   }
 }
 
@@ -2883,6 +2898,7 @@ async function loadClearOverridesFromTransportDb() {
       updatedAt: row.updated_at || "",
     }));
     state.clearOverrides = mergeClearOverrides(state.clearOverrides, rows);
+    if (!rows.length) await loadClearOverridesFromSnapshot();
     writeClearOverridesLocal();
     return true;
   } catch {
@@ -10843,7 +10859,9 @@ function renderPalmManagement() {
 }
 
 function renderClear() {
-  const rows = clearRows().filter((r) => inRange(r.date));
+  const clearByDate = new Map(clearRows().map((row) => [row.date, row]));
+  const rows = daysBetween(dateValue(els.startDate) || state.payload?.source?.dateMin || todayIso(), dateValue(els.endDate) || state.payload?.source?.dateMax || todayIso())
+    .map((date) => fillAutoClearLoss(clearByDate.get(date) || autoClearLoss(date)));
   const gardenStock = new Map(buildStockFromData("garden").map((row) => [row.date, row]));
   const takukStock = new Map(buildStockFromData("takuk").map((row) => [row.date, row]));
   els.clearTable.innerHTML = `
