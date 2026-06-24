@@ -4211,11 +4211,6 @@ function combineScopeDays(date, garden, takuk, clear) {
 }
 
 function renderStock(scope) {
-  const exact = globalFiltersAreAll() ? exactRows(scope) : [];
-  if (exact.length) {
-    renderExactStock(scope, exact);
-    return;
-  }
   const rows = buildStockFromData(scope);
   state.currentRows = rows;
   renderDashboard(rows);
