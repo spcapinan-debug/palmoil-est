@@ -23,6 +23,470 @@
   --hard-radius: 8px;
 }
 
+/* Final visible refresh: executive console look, data unchanged. */
+@media screen {
+  body {
+    background:
+      radial-gradient(circle at 18% 18%, rgba(255, 255, 255, .92) 0 13%, transparent 14%),
+      linear-gradient(135deg, #ece7e3 0%, #f8f5f2 44%, #e4ddd7 100%);
+  }
+
+  .app-shell {
+    max-width: none;
+    padding: 18px;
+    gap: 18px;
+  }
+
+  .sidebar {
+    width: 236px;
+    min-width: 236px;
+    background: linear-gradient(180deg, #151b21 0%, #202932 58%, #2c3339 100%) !important;
+    border: 1px solid rgba(255,255,255,.16) !important;
+    border-radius: 30px !important;
+    box-shadow: 0 26px 70px rgba(42, 35, 31, .26) !important;
+    color: #f6f1ed !important;
+  }
+
+  .brand {
+    border-bottom: 1px solid rgba(255,255,255,.14) !important;
+  }
+
+  .brand-logo,
+  .team-logo {
+    background: #f7f0ea !important;
+    color: #17232d !important;
+    box-shadow: 0 10px 26px rgba(0,0,0,.22);
+  }
+
+  .brand-title,
+  .team-name,
+  .side-nav button span {
+    color: #fffaf6 !important;
+  }
+
+  .brand-subtitle,
+  .menu-section-title,
+  .menu-subtitle,
+  .source-info,
+  .team-role {
+    color: rgba(255,250,246,.62) !important;
+  }
+
+  .side-nav button {
+    min-height: 44px;
+    border: 1px solid transparent !important;
+    color: rgba(255,250,246,.78) !important;
+    background: transparent !important;
+  }
+
+  .side-nav button::before {
+    background: rgba(255,255,255,.1) !important;
+    color: #fffaf6 !important;
+  }
+
+  .side-nav button.active {
+    background: #fffaf6 !important;
+    border-color: rgba(255,255,255,.72) !important;
+    box-shadow: 0 14px 34px rgba(0,0,0,.24) !important;
+  }
+
+  .side-nav button.active span {
+    color: #17232d !important;
+  }
+
+  .side-nav button.active::before {
+    background: #d7654f !important;
+    color: #fff !important;
+  }
+
+  .source-info,
+  .sidebar-footer {
+    background: rgba(255,255,255,.1) !important;
+    border-color: rgba(255,255,255,.16) !important;
+  }
+
+  .content {
+    gap: 14px;
+  }
+
+  .content-head {
+    min-height: 84px;
+    background: rgba(255,255,255,.72) !important;
+    border: 1px solid rgba(255,255,255,.78) !important;
+    box-shadow: 0 22px 70px rgba(62, 52, 47, .14) !important;
+    backdrop-filter: blur(18px);
+  }
+
+  .content-head h1 {
+    color: #191f24 !important;
+    font-size: 26px;
+    letter-spacing: 0;
+  }
+
+  .eyebrow {
+    color: #d7654f !important;
+    font-weight: 900;
+  }
+
+  .date-panel,
+  .global-filter-panel,
+  .input-panel,
+  .report-page,
+  .dashboard > div,
+  .summary-card,
+  .daily-summary,
+  .farm-page,
+  .master-page,
+  .est-page {
+    background: rgba(255,255,255,.72) !important;
+    border: 1px solid rgba(255,255,255,.84) !important;
+    border-radius: 26px !important;
+    box-shadow: 0 18px 52px rgba(62, 52, 47, .12) !important;
+    backdrop-filter: blur(18px);
+  }
+
+  .date-panel {
+    grid-template-columns: 220px 220px 190px 140px 140px;
+    align-items: end;
+  }
+
+  input,
+  select,
+  textarea,
+  .date-input-control {
+    background: rgba(255,255,255,.9) !important;
+    border-color: #ded7d1 !important;
+    border-radius: 14px !important;
+    color: #1d252b !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.84);
+  }
+
+  button,
+  .btn,
+  .action-btn {
+    border-radius: 14px !important;
+  }
+
+  .primary,
+  button.primary,
+  #refreshBtn,
+  #saveClearBtn {
+    background: linear-gradient(135deg, #21354a, #45647e) !important;
+    color: #fff !important;
+    border: 0 !important;
+    box-shadow: 0 12px 26px rgba(33, 53, 74, .24) !important;
+  }
+
+  .summary-card,
+  .metric-card,
+  .daily-summary,
+  .kpi-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .summary-card::after,
+  .metric-card::after,
+  .daily-summary::after,
+  .kpi-card::after {
+    content: "";
+    position: absolute;
+    inset: auto -12px -26px auto;
+    width: 90px;
+    height: 90px;
+    border-radius: 999px;
+    background: rgba(215, 101, 79, .1);
+  }
+
+  .summary-card strong,
+  .metric-card strong,
+  .daily-summary strong,
+  .kpi-card strong {
+    color: #101820 !important;
+    font-size: clamp(20px, 2vw, 30px);
+  }
+
+  .table-wrap,
+  .daily-table-wrap,
+  .stock-web-table,
+  .farm-table-wrap,
+  .master-data-table-wrap,
+  .est-table-wrap,
+  .est-rate-table-wrap {
+    border-radius: 24px !important;
+    border: 1px solid #ded7d1 !important;
+    background: rgba(255,255,255,.86) !important;
+    box-shadow: 0 14px 36px rgba(64, 53, 47, .08) !important;
+  }
+
+  table,
+  .mini-table,
+  .farm-table,
+  .master-table,
+  .est-table {
+    background: #fffaf7 !important;
+    border-collapse: separate !important;
+    border-spacing: 0;
+  }
+
+  th,
+  .mini-table th,
+  .master-table th,
+  .farm-table th,
+  .est-table th,
+  .farm-table thead th,
+  .master-data-table-wrap thead th {
+    background: #ebe4de !important;
+    color: #2c3339 !important;
+    border-bottom: 1px solid #d7cdc5 !important;
+    font-size: 11px !important;
+    letter-spacing: 0 !important;
+  }
+
+  td,
+  .mini-table td,
+  .master-table td,
+  .farm-table td,
+  .est-table td {
+    border-bottom: 1px solid #eee8e3 !important;
+    color: #2b3136;
+  }
+
+  tbody tr:nth-child(even) td {
+    background: #fbf7f3 !important;
+  }
+
+  tbody tr:hover td {
+    background: #f0f5f6 !important;
+  }
+
+  tfoot td,
+  .est-table tr.is-total td,
+  .section-label td {
+    background: #24394d !important;
+    color: #fff !important;
+  }
+
+  .farm-gantt-chart,
+  .timeline-grid {
+    background: #fffaf7 !important;
+    border-color: #ded7d1 !important;
+  }
+
+  .farm-gantt-bar.is-planned {
+    background: transparent !important;
+    border: 2px dashed #55a6d8 !important;
+  }
+
+  .farm-gantt-bar.is-approved,
+  .farm-gantt-bar.is-scheduled {
+    background: transparent !important;
+    border: 2px dashed #dd6b58 !important;
+  }
+
+  .farm-gantt-bar.is-done,
+  .farm-gantt-bar.is-closed {
+    background: #dd6b58 !important;
+    border: 1px solid #b94f42 !important;
+  }
+
+  @media (max-width: 1180px) {
+    .date-panel {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .sidebar {
+      width: 220px;
+      min-width: 220px;
+    }
+  }
+}
+
+/* Hard final override for production cache refresh. Keep this block last. */
+@media screen {
+  body {
+    background:
+      radial-gradient(circle at 15% 12%, rgba(255,255,255,.88) 0 12%, transparent 13%),
+      linear-gradient(135deg, #ebe5e1 0%, #fbf8f5 46%, #ded6d0 100%) !important;
+  }
+
+  .app-shell {
+    max-width: none !important;
+    padding: 18px !important;
+    gap: 18px !important;
+  }
+
+  .sidebar {
+    width: 236px !important;
+    min-width: 236px !important;
+    background: linear-gradient(180deg, #151b21 0%, #202932 58%, #2c3339 100%) !important;
+    border: 1px solid rgba(255,255,255,.16) !important;
+    border-radius: 30px !important;
+    box-shadow: 0 26px 70px rgba(42,35,31,.26) !important;
+    color: #fffaf6 !important;
+  }
+
+  .brand,
+  .sidebar-footer,
+  .source-info {
+    border-color: rgba(255,255,255,.16) !important;
+  }
+
+  .brand-title,
+  .team-name,
+  .side-nav button span {
+    color: #fffaf6 !important;
+  }
+
+  .brand-subtitle,
+  .menu-section-title,
+  .menu-subtitle,
+  .source-info,
+  .team-role {
+    color: rgba(255,250,246,.64) !important;
+  }
+
+  .brand-logo,
+  .team-logo {
+    background: #f7f0ea !important;
+    color: #17232d !important;
+  }
+
+  .side-nav button {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: rgba(255,250,246,.78) !important;
+  }
+
+  .side-nav button::before {
+    background: rgba(255,255,255,.1) !important;
+    color: #fffaf6 !important;
+  }
+
+  .side-nav button.active {
+    background: #fffaf6 !important;
+    border-color: rgba(255,255,255,.75) !important;
+    box-shadow: 0 14px 34px rgba(0,0,0,.24) !important;
+  }
+
+  .side-nav button.active span {
+    color: #17232d !important;
+  }
+
+  .side-nav button.active::before {
+    background: #d7654f !important;
+    color: #fff !important;
+  }
+
+  .content-head,
+  .date-panel,
+  .global-filter-panel,
+  .input-panel,
+  .report-page,
+  .dashboard > div,
+  .summary-card,
+  .daily-summary,
+  .farm-page,
+  .master-page,
+  .est-page {
+    background: rgba(255,255,255,.74) !important;
+    border: 1px solid rgba(255,255,255,.84) !important;
+    border-radius: 26px !important;
+    box-shadow: 0 18px 52px rgba(62,52,47,.12) !important;
+    backdrop-filter: blur(18px);
+  }
+
+  .content-head h1 {
+    color: #191f24 !important;
+    font-size: 26px !important;
+  }
+
+  .eyebrow {
+    color: #d7654f !important;
+    font-weight: 900 !important;
+  }
+
+  input,
+  select,
+  textarea,
+  .date-input-control {
+    background: rgba(255,255,255,.9) !important;
+    border-color: #ded7d1 !important;
+    border-radius: 14px !important;
+    color: #1d252b !important;
+  }
+
+  .primary,
+  button.primary,
+  #refreshBtn,
+  #saveClearBtn {
+    background: linear-gradient(135deg, #21354a, #45647e) !important;
+    color: #fff !important;
+    border: 0 !important;
+  }
+
+  .table-wrap,
+  .daily-table-wrap,
+  .stock-web-table,
+  .farm-table-wrap,
+  .master-data-table-wrap,
+  .est-table-wrap,
+  .est-rate-table-wrap {
+    border-radius: 24px !important;
+    border: 1px solid #ded7d1 !important;
+    background: rgba(255,255,255,.88) !important;
+    box-shadow: 0 14px 36px rgba(64,53,47,.08) !important;
+  }
+
+  table,
+  .mini-table,
+  .farm-table,
+  .master-table,
+  .est-table {
+    background: #fffaf7 !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+  }
+
+  th,
+  .mini-table th,
+  .master-table th,
+  .farm-table th,
+  .est-table th,
+  .farm-table thead th,
+  .master-data-table-wrap thead th {
+    background: #ebe4de !important;
+    color: #2c3339 !important;
+    border-bottom: 1px solid #d7cdc5 !important;
+    font-size: 11px !important;
+    letter-spacing: 0 !important;
+  }
+
+  td,
+  .mini-table td,
+  .master-table td,
+  .farm-table td,
+  .est-table td {
+    border-bottom: 1px solid #eee8e3 !important;
+    color: #2b3136 !important;
+  }
+
+  tbody tr:nth-child(even) td {
+    background: #fbf7f3 !important;
+  }
+
+  tbody tr:hover td {
+    background: #f0f5f6 !important;
+  }
+
+  tfoot td,
+  .est-table tr.is-total td,
+  .section-label td {
+    background: #24394d !important;
+    color: #fff !important;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -7031,5 +7495,147 @@ td.num,
     .date-panel {
       grid-template-columns: 1fr;
     }
+  }
+}
+
+/* Production final theme override: must remain at end of file. */
+@media screen {
+  body {
+    background:
+      radial-gradient(circle at 15% 12%, rgba(255,255,255,.88) 0 12%, transparent 13%),
+      linear-gradient(135deg, #ebe5e1 0%, #fbf8f5 46%, #ded6d0 100%) !important;
+  }
+
+  .app-shell {
+    max-width: none !important;
+    padding: 18px !important;
+    gap: 18px !important;
+  }
+
+  .sidebar {
+    width: 236px !important;
+    min-width: 236px !important;
+    background: linear-gradient(180deg, #151b21 0%, #202932 58%, #2c3339 100%) !important;
+    border: 1px solid rgba(255,255,255,.16) !important;
+    border-radius: 30px !important;
+    box-shadow: 0 26px 70px rgba(42,35,31,.26) !important;
+    color: #fffaf6 !important;
+  }
+
+  .brand-title,
+  .team-name,
+  .side-nav button span {
+    color: #fffaf6 !important;
+  }
+
+  .brand-subtitle,
+  .menu-section-title,
+  .menu-subtitle,
+  .source-info,
+  .team-role {
+    color: rgba(255,250,246,.64) !important;
+  }
+
+  .brand-logo,
+  .team-logo {
+    background: #f7f0ea !important;
+    color: #17232d !important;
+  }
+
+  .side-nav button {
+    background: transparent !important;
+    border-color: transparent !important;
+  }
+
+  .side-nav button::before {
+    background: rgba(255,255,255,.1) !important;
+    color: #fffaf6 !important;
+  }
+
+  .side-nav button.active {
+    background: #fffaf6 !important;
+    border-color: rgba(255,255,255,.75) !important;
+    box-shadow: 0 14px 34px rgba(0,0,0,.24) !important;
+  }
+
+  .side-nav button.active span {
+    color: #17232d !important;
+  }
+
+  .side-nav button.active::before {
+    background: #d7654f !important;
+    color: #fff !important;
+  }
+
+  .content-head,
+  .date-panel,
+  .global-filter-panel,
+  .input-panel,
+  .report-page,
+  .dashboard > div,
+  .summary-card,
+  .daily-summary,
+  .farm-page,
+  .master-page,
+  .est-page {
+    background: rgba(255,255,255,.74) !important;
+    border: 1px solid rgba(255,255,255,.84) !important;
+    border-radius: 26px !important;
+    box-shadow: 0 18px 52px rgba(62,52,47,.12) !important;
+    backdrop-filter: blur(18px);
+  }
+
+  input,
+  select,
+  textarea,
+  .date-input-control {
+    background: rgba(255,255,255,.9) !important;
+    border-color: #ded7d1 !important;
+    border-radius: 14px !important;
+    color: #1d252b !important;
+  }
+
+  .primary,
+  button.primary,
+  #refreshBtn,
+  #saveClearBtn {
+    background: linear-gradient(135deg, #21354a, #45647e) !important;
+    color: #fff !important;
+    border: 0 !important;
+  }
+
+  .table-wrap,
+  .daily-table-wrap,
+  .stock-web-table,
+  .farm-table-wrap,
+  .master-data-table-wrap,
+  .est-table-wrap,
+  .est-rate-table-wrap {
+    border-radius: 24px !important;
+    border: 1px solid #ded7d1 !important;
+    background: rgba(255,255,255,.88) !important;
+    box-shadow: 0 14px 36px rgba(64,53,47,.08) !important;
+  }
+
+  th,
+  .mini-table th,
+  .master-table th,
+  .farm-table th,
+  .est-table th,
+  .farm-table thead th,
+  .master-data-table-wrap thead th {
+    background: #ebe4de !important;
+    color: #2c3339 !important;
+    border-bottom: 1px solid #d7cdc5 !important;
+    letter-spacing: 0 !important;
+  }
+
+  td,
+  .mini-table td,
+  .master-table td,
+  .farm-table td,
+  .est-table td {
+    border-bottom: 1px solid #eee8e3 !important;
+    color: #2b3136 !important;
   }
 }
