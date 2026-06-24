@@ -6361,3 +6361,675 @@ td.num,
     margin: 2px 0;
   }
 }
+
+@media screen {
+  /* Modern operations console refresh */
+  :root {
+    --bg: #eeeae8;
+    --surface: #fbfaf9;
+    --surface-solid: #ffffff;
+    --surface-soft: #f5f2f0;
+    --glass: rgba(255, 255, 255, .86);
+    --glass-strong: #ffffff;
+    --ink: #171717;
+    --muted: #73706d;
+    --line: #e2ddda;
+    --line-strong: #d1cac5;
+    --head: #f2efec;
+    --navy: #203d54;
+    --navy-2: #132b3f;
+    --primary: #203d54;
+    --orange: #cf7158;
+    --green: #2f7d63;
+    --red: #c2413a;
+    --purple: #6a5ac7;
+    --shadow: 0 22px 60px rgba(35, 29, 26, .10);
+    --shadow-sm: 0 12px 34px rgba(35, 29, 26, .08);
+    --soft-radius: 22px;
+    --hard-radius: 12px;
+  }
+
+  body {
+    background:
+      linear-gradient(135deg, rgba(255,255,255,.74) 0 12%, transparent 12.2% 100%),
+      radial-gradient(circle at 18% 12%, rgba(255,255,255,.9), transparent 24%),
+      linear-gradient(180deg, #f2eeee, #e8e2df 55%, #eee9e6);
+    color: var(--ink);
+    font-family: "Inter", "Segoe UI", "Noto Sans Thai", Tahoma, Arial, sans-serif;
+    letter-spacing: 0;
+  }
+
+  body::before {
+    background:
+      linear-gradient(105deg, transparent 0 58%, rgba(255,255,255,.34) 58.2% 62%, transparent 62.2% 100%),
+      linear-gradient(118deg, transparent 0 10%, rgba(255,255,255,.48) 10.2% 12%, transparent 12.2% 100%);
+    opacity: .9;
+  }
+
+  .app-shell {
+    grid-template-columns: 264px minmax(0, 1fr);
+    gap: 18px;
+    min-height: 100vh;
+    padding: 18px;
+  }
+
+  .app-shell.sidebar-collapsed,
+  .app-shell:has(.sidebar.collapsed) {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .sidebar {
+    height: calc(100vh - 36px);
+    margin: 0;
+    padding: 16px 12px;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 28px;
+    background:
+      linear-gradient(180deg, rgba(26, 31, 36, .98), rgba(28, 39, 48, .95)),
+      #1a2026;
+    box-shadow: 0 24px 70px rgba(16, 22, 28, .22);
+    color: #f8fafc;
+  }
+
+  .brand {
+    min-height: 58px;
+    padding: 0 4px 14px;
+    border-bottom: 1px solid rgba(255,255,255,.10);
+  }
+
+  .brand-logo,
+  .team-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: #fff;
+    color: #111315;
+  }
+
+  .team-logo {
+    background: rgba(255,255,255,.12);
+    color: #fff;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.10);
+  }
+
+  .brand-text strong,
+  .team-text strong {
+    color: #f8fafc;
+    font-size: 13px;
+    font-weight: 850;
+  }
+
+  .brand-text small,
+  .team-text small,
+  .source-info {
+    color: #aab4bc;
+  }
+
+  .sidebar-trigger {
+    width: 38px;
+    height: 38px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255,255,255,.10);
+    color: #f8fafc;
+    box-shadow: none;
+  }
+
+  .side-nav {
+    gap: 16px;
+  }
+
+  .menu-section {
+    gap: 6px;
+  }
+
+  .menu-section-title,
+  .menu-subtitle {
+    color: #8e9aa4;
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .side-nav button {
+    min-height: 38px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    color: #d6dde3;
+    font-size: 12px;
+    font-weight: 760;
+  }
+
+  .side-nav button::before,
+  .dashboard article::before,
+  .team-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.08);
+    color: #c3ccd4;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+  }
+
+  .side-nav button:hover {
+    border-color: rgba(255,255,255,.10);
+    background: rgba(255,255,255,.08);
+  }
+
+  .side-nav button.active {
+    border-color: rgba(255,255,255,.16);
+    background: #f8fafc;
+    color: #17344b;
+    box-shadow: 0 14px 30px rgba(0,0,0,.18);
+  }
+
+  .side-nav button.active::before {
+    background: #cf7158;
+    color: #fff;
+  }
+
+  .source-info {
+    margin-top: auto;
+    padding: 14px 10px 0;
+    border-top: 1px solid rgba(255,255,255,.10);
+    font-size: 11px;
+  }
+
+  .sidebar-footer {
+    min-height: 56px;
+    border: 0;
+    border-radius: 22px;
+    background: rgba(255,255,255,.08);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+  }
+
+  .content {
+    gap: 18px;
+    padding: 0 0 24px;
+  }
+
+  .content-head {
+    min-height: 76px;
+    margin: 0;
+    padding: 12px 18px;
+    border: 1px solid rgba(255,255,255,.74);
+    border-radius: 28px;
+    background: rgba(255,255,255,.78);
+    box-shadow: 0 18px 46px rgba(38, 31, 29, .08);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .eyebrow {
+    margin-bottom: 3px;
+    color: #8b8580;
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  h1 {
+    color: #111315;
+    font-size: 21px;
+    font-weight: 850;
+  }
+
+  h2,
+  .report-title h2 {
+    color: #111315;
+    font-weight: 850;
+  }
+
+  .actions {
+    align-items: center;
+    gap: 10px;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    min-height: 38px;
+    border: 1px solid #ddd6d1;
+    border-radius: 999px;
+    background: rgba(255,255,255,.86);
+    color: #151515;
+    box-shadow: none;
+  }
+
+  button {
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  button:hover {
+    border-color: #cabfb8;
+    background: #fff;
+    transform: translateY(-1px);
+  }
+
+  .actions button:first-child,
+  .input-panel button,
+  #applyBtn,
+  .master-section-head button,
+  .farm-toolbar button,
+  .farm-form-actions button,
+  .farm-actions button,
+  .farm-planner-taskbar button,
+  .farm-planner-card button,
+  .farm-planner-card-head button,
+  .est-budget-title-actions button,
+  .est-rate-actions button,
+  .folder-command-bar button {
+    border-color: transparent;
+    background: linear-gradient(180deg, #254b67, #17344b);
+    color: #fff;
+    box-shadow: 0 14px 28px rgba(23,52,75,.22);
+  }
+
+  #csvBtn,
+  .actions button:not(:first-child),
+  .table-export-actions button {
+    background: rgba(255,255,255,.78);
+    color: #1f2d38;
+    box-shadow: inset 0 0 0 1px rgba(31,45,56,.06);
+  }
+
+  .date-panel,
+  .global-filter-panel,
+  .input-panel,
+  .farm-toolbar,
+  .est-toolbar,
+  .master-toolbar,
+  .cultivate-credential-panel,
+  .cultivate-import-panel {
+    border: 1px solid rgba(255,255,255,.72);
+    border-radius: 24px;
+    background: rgba(255,255,255,.76);
+    box-shadow: 0 16px 42px rgba(38, 31, 29, .08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .date-panel {
+    grid-template-columns: repeat(2, minmax(190px, 230px)) minmax(150px, 180px) 140px 140px 1fr;
+    padding: 16px;
+  }
+
+  label {
+    color: #56514d;
+    font-size: 11px;
+    font-weight: 850;
+  }
+
+  .date-input-control input[type="text"] {
+    padding-right: 46px;
+  }
+
+  .calendar-btn {
+    top: 4px;
+    right: 4px;
+    width: 30px;
+    min-height: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #f4f1ef;
+    color: #203d54;
+  }
+
+  .dashboard,
+  .daily-summary,
+  .mill-kpis,
+  .master-kpis,
+  .est-kpis,
+  .farm-work-kpis {
+    gap: 14px;
+  }
+
+  .dashboard article,
+  .daily-summary article,
+  .mill-kpis article,
+  .master-kpis article,
+  .est-kpis article,
+  .farm-work-kpis article,
+  .farm-hero article,
+  .palm-card,
+  .analytics-card,
+  .farm-panel,
+  .farm-approval-card,
+  .farm-planner-card,
+  .farm-plan-card,
+  .farm-work-detail-panel,
+  .master-detail-card,
+  .master-editor,
+  .master-table-panel,
+  .est-panel {
+    border: 1px solid rgba(255,255,255,.76);
+    border-radius: 24px;
+    background: linear-gradient(145deg, rgba(255,255,255,.90), rgba(250,247,245,.72));
+    box-shadow: 0 18px 44px rgba(38, 31, 29, .08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .dashboard article {
+    min-height: 116px;
+    padding: 18px 18px 16px;
+  }
+
+  .dashboard article::before {
+    margin-bottom: 18px;
+  }
+
+  .dashboard strong,
+  .daily-summary strong,
+  .mill-kpis strong,
+  .master-kpis strong,
+  .est-kpis strong,
+  .farm-work-kpis strong {
+    color: #111315;
+    font-size: 25px;
+    font-weight: 900;
+  }
+
+  .dashboard span,
+  .daily-summary span,
+  .mill-kpis span,
+  .mill-kpis small,
+  .master-kpis span,
+  .est-kpis span,
+  .farm-work-kpis span {
+    color: #736d68;
+    font-size: 11px;
+    font-weight: 780;
+  }
+
+  .report-page,
+  .clear-page,
+  .master-page,
+  .farm-page {
+    border: 1px solid rgba(255,255,255,.70);
+    border-radius: 28px;
+    background: rgba(255,255,255,.64);
+    box-shadow: 0 22px 60px rgba(38, 31, 29, .08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .report-title {
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(29, 29, 29, .08);
+  }
+
+  .report-title p,
+  .section-head span,
+  .farm-work-detail-head span,
+  .farm-work-shift-note {
+    color: #77716c;
+  }
+
+  .table-wrap,
+  .daily-table-wrap,
+  .stock-web-table,
+  .farm-table-wrap,
+  .master-data-table-wrap,
+  .est-table-wrap,
+  .est-rate-table-wrap {
+    border: 1px solid #e4ddd8;
+    border-radius: 22px;
+    background: #fffdfc;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.88);
+    overflow: auto;
+  }
+
+  table,
+  .mini-table,
+  .farm-table,
+  .master-table,
+  .est-table {
+    background: #fffdfc;
+    color: #222222;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  th,
+  td,
+  .mini-table th,
+  .mini-table td,
+  .master-table th,
+  .master-table td,
+  .farm-table th,
+  .farm-table td,
+  .est-table th,
+  .est-table td {
+    padding: 10px 12px;
+    border-color: #ebe5e1;
+  }
+
+  th,
+  .mini-table th,
+  .master-table th,
+  .farm-table th,
+  .est-table th,
+  .farm-table thead th,
+  .master-data-table-wrap thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f5f1ee;
+    color: #514b46;
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  tbody tr:nth-child(even) td {
+    background: #fbf8f6;
+  }
+
+  tbody tr:hover td,
+  .master-table tbody tr[data-folder-detail-row]:hover td {
+    background: #f2f6f7;
+  }
+
+  tfoot td,
+  .est-table tr.is-total td,
+  .section-label td {
+    background: #eee9e5;
+    color: #172f43;
+    font-weight: 900;
+  }
+
+  td.num,
+  .bar-value,
+  .dashboard strong,
+  .daily-summary strong {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .loss,
+  td.loss {
+    color: #bd3f37 !important;
+  }
+
+  .filter-row {
+    gap: 8px;
+  }
+
+  .filter-row button,
+  .master-relations span,
+  .farm-table-list span,
+  .farm-report-grid em,
+  .farm-work-legend span,
+  .farm-plan-tags span {
+    min-height: 32px;
+    border: 1px solid #e2dbd6;
+    border-radius: 999px;
+    background: rgba(255,255,255,.76);
+    color: #504b47;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .filter-row button.active,
+  .master-nav button.active,
+  .farm-planner-tabs button.active {
+    background: #203d54;
+    color: #fff;
+  }
+
+  .master-nav,
+  .master-nav-group {
+    border: 1px solid rgba(255,255,255,.72);
+    border-radius: 24px;
+    background: rgba(255,255,255,.62);
+  }
+
+  .master-nav button {
+    border-radius: 18px;
+  }
+
+  .master-nav button.active {
+    box-shadow: 0 12px 24px rgba(32,61,84,.16);
+  }
+
+  .master-row-actions button,
+  .farm-actions button,
+  .table-export-actions button {
+    min-height: 30px;
+    border-radius: 999px;
+  }
+
+  .master-row-actions button:first-child,
+  .farm-actions button:first-child {
+    background: #eef4f7;
+    color: #1f4e68;
+  }
+
+  .master-row-actions button:last-child,
+  .farm-actions button:last-child {
+    background: #fff0ed;
+    color: #b33a32;
+  }
+
+  .farm-flow-nav {
+    gap: 8px;
+  }
+
+  .farm-flow-step {
+    border-radius: 18px;
+    background: rgba(255,255,255,.70);
+  }
+
+  .farm-flow-step.active {
+    border-color: rgba(32,61,84,.28);
+    background: #fff;
+  }
+
+  .farm-work-gantt,
+  .farm-work-timeline {
+    border-radius: 24px;
+    background: #fffdfc;
+  }
+
+  .farm-work-grid-head,
+  .farm-work-row {
+    background: #fffdfc;
+  }
+
+  .farm-work-left,
+  .farm-work-left-head {
+    background: #fbf8f6;
+  }
+
+  .farm-work-plan-bar.draft {
+    border-color: #5aa4c8;
+    background: repeating-linear-gradient(90deg, rgba(90,164,200,.18) 0 7px, rgba(90,164,200,.04) 7px 12px);
+  }
+
+  .farm-work-plan-bar.approved {
+    border-color: #cf7158;
+    background: repeating-linear-gradient(90deg, rgba(207,113,88,.20) 0 7px, rgba(207,113,88,.04) 7px 12px);
+  }
+
+  .farm-work-actual-bar {
+    background: #cf7158;
+    box-shadow: 0 8px 18px rgba(207,113,88,.26);
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus,
+  button:focus-visible {
+    outline: 3px solid rgba(207,113,88,.18);
+    outline-offset: 2px;
+    border-color: rgba(207,113,88,.48);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f0ebe8;
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #c9beb7;
+    border: 2px solid #f0ebe8;
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #9d9189;
+  }
+
+  @media (max-width: 1100px) {
+    .app-shell {
+      gap: 12px;
+      padding: 12px;
+    }
+
+    .sidebar {
+      height: auto;
+    }
+
+    .date-panel {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 720px) {
+    body {
+      background: #eeeae8;
+    }
+
+    .app-shell {
+      padding: 8px;
+    }
+
+    .content-head,
+    .date-panel,
+    .global-filter-panel,
+    .report-page,
+    .clear-page,
+    .master-page,
+    .farm-page {
+      border-radius: 20px;
+    }
+
+    .date-panel {
+      grid-template-columns: 1fr;
+    }
+  }
+}
