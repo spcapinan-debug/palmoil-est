@@ -7298,7 +7298,7 @@ function renderEstDashboard() {
     <div class="est-page">
       <div class="report-title">
         <div>
-          <h2>ระบบบริหารงานสวนปาล์ม</h2>
+          <h2>ระบบบริหารงานสวนปาล์มคีรีรัฐ</h2>
           <p>ใช้ ${esc(source.budgetFile || "ประมาณการค่าใช้จ่าย 2569.xlsx")} เป็นหลัก และรวมข้อมูลอ้างอิงจากโฟลเดอร์ Master Data</p>
         </div>
       </div>
