@@ -5854,6 +5854,41 @@ function dashboardPerformanceBars(items, totalKey = "inbound") {
   }).join("");
 }
 
+function dashboardStandardPie(rows, totalValue) {
+  const cleanRows = rows.filter((row) => n(row.inbound) > 0);
+  const total = n(totalValue) || cleanRows.reduce((sum, row) => sum + n(row.inbound), 0);
+  if (!cleanRows.length || !total) return '<p class="analytics-empty">ไม่มีข้อมูลตามเงื่อนไขที่เลือก</p>';
+  const colors = ["#1abb9c", "#3498db", "#9b59b6", "#f39c12", "#e74c3c"];
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const segments = cleanRows.map((row, index) => {
+    const value = n(row.inbound);
+    const dash = (value / total) * circumference;
+    const segment = `<circle class="pie-segment" cx="60" cy="60" r="${radius}" stroke="${colors[index % colors.length]}" stroke-dasharray="${dash.toFixed(2)} ${(circumference - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}"></circle>`;
+    offset += dash;
+    return segment;
+  }).join("");
+  const legend = cleanRows.map((row, index) => {
+    const share = total ? (n(row.inbound) / total) * 100 : 0;
+    return `
+      <div class="pie-legend-row">
+        <span><i style="background:${colors[index % colors.length]}"></i>${row.label}</span>
+        <strong>${share.toFixed(1)}%</strong>
+      </div>`;
+  }).join("");
+  return `
+    <div class="standard-pie">
+      <svg viewBox="0 0 120 120" role="img" aria-label="กราฟวงกลมสัดส่วนมาตรฐานตามน้ำหนักรับเข้า">
+        <circle class="pie-bg" cx="60" cy="60" r="${radius}"></circle>
+        <g transform="rotate(-90 60 60)">${segments}</g>
+        <text x="60" y="57" text-anchor="middle">${fmt(total)}</text>
+        <text x="60" y="72" text-anchor="middle">kg</text>
+      </svg>
+      <div class="pie-legend">${legend}</div>
+    </div>`;
+}
+
 function renderAdvancedDashboard() {
   const rows = buildStockFromData(yardScope());
   const stats = dashboardStats(rows);
@@ -6058,6 +6093,14 @@ function renderAdvancedDashboard() {
           <span>RSPO / NON-RSPO / Contract Farmer</span>
         </div>
         ${simpleTable(["มาตรฐาน", "รับเข้า", "ส่งออก", "ใบชั่ง", "โรงงาน", "สูญหาย", "% รับเข้า"], standardTableRows)}
+      </section>
+
+      <section class="analytics-card standard-pie-card">
+        <div class="section-head">
+          <h3>สัดส่วนตามมาตรฐาน</h3>
+          <span>อ้างอิงตารางเทียบตามมาตรฐาน</span>
+        </div>
+        ${dashboardStandardPie(standardRows, stats.inbound)}
       </section>
 
       <section class="analytics-card wide">
