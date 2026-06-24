@@ -8644,3 +8644,179 @@ td.num,
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Menu balance and non-intrusive palm sunset background. */
+@media screen {
+  body {
+    background:
+      linear-gradient(90deg, rgba(247, 247, 247, .96) 0 15%, rgba(247, 247, 247, .90) 32%, rgba(247, 247, 247, .96) 100%),
+      linear-gradient(180deg, rgba(255,255,255,.72), rgba(247,247,247,.94)),
+      url("./assets/palm-sunset-bg.png") center center / cover fixed no-repeat !important;
+  }
+
+  .app-shell {
+    gap: 0 !important;
+    padding: 0 !important;
+    grid-template-columns: 224px minmax(0, 1fr) !important;
+    background: transparent !important;
+  }
+
+  .sidebar {
+    width: 224px !important;
+    min-width: 224px !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border-right: 1px solid rgba(255,255,255,.12) !important;
+    background:
+      linear-gradient(180deg, rgba(42,63,84,.96), rgba(32,50,67,.98)) !important;
+  }
+
+  .content {
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+    background: rgba(247,247,247,.88) !important;
+    backdrop-filter: blur(2px);
+  }
+
+  .content-head {
+    margin-left: -18px !important;
+    margin-right: -18px !important;
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+    border-radius: 0 !important;
+  }
+
+  .side-nav {
+    gap: 0 !important;
+    padding: 8px 0 0 !important;
+  }
+
+  .menu-section {
+    gap: 2px !important;
+    padding: 0 0 10px !important;
+  }
+
+  .menu-section + .menu-section {
+    border-top: 1px solid rgba(255,255,255,.08) !important;
+    padding-top: 10px !important;
+  }
+
+  .menu-section-title,
+  .menu-subtitle {
+    margin: 12px 14px 6px !important;
+    color: rgba(236,240,241,.62) !important;
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+    font-weight: 800 !important;
+  }
+
+  .side-nav button {
+    width: calc(100% - 12px) !important;
+    min-height: 38px !important;
+    margin: 0 0 0 0 !important;
+    padding: 0 12px 0 14px !important;
+    border-radius: 0 18px 18px 0 !important;
+    border-left: 4px solid transparent !important;
+    gap: 9px !important;
+    font-size: 11.5px !important;
+    line-height: 1.25 !important;
+  }
+
+  .side-nav button::before {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    font-size: 11px !important;
+  }
+
+  .side-nav button.active {
+    width: 100% !important;
+    border-left-color: var(--gt-green) !important;
+    border-radius: 0 !important;
+    background: rgba(0,0,0,.2) !important;
+  }
+
+  .side-nav button.active::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--gt-green);
+  }
+
+  .side-nav button span {
+    font-weight: 700 !important;
+  }
+
+  .app-shell.sidebar-collapsed,
+  .app-shell:has(.sidebar.collapsed) {
+    grid-template-columns: 58px minmax(0, 1fr) !important;
+  }
+
+  .sidebar.collapsed {
+    width: 58px !important;
+    min-width: 58px !important;
+    padding: 10px 0 !important;
+  }
+
+  .sidebar.collapsed .brand {
+    justify-content: flex-start !important;
+    padding: 0 0 10px 0 !important;
+  }
+
+  .sidebar.collapsed .sidebar-trigger {
+    margin: 0 !important;
+    width: 44px !important;
+    height: 34px !important;
+    border-radius: 0 17px 17px 0 !important;
+    justify-self: start !important;
+  }
+
+  .sidebar.collapsed .side-nav {
+    align-items: flex-start !important;
+    justify-items: start !important;
+  }
+
+  .sidebar.collapsed .menu-section {
+    align-items: flex-start !important;
+    justify-items: start !important;
+    width: 100% !important;
+  }
+
+  .sidebar.collapsed .side-nav button {
+    justify-content: flex-start !important;
+    width: 46px !important;
+    min-height: 38px !important;
+    margin: 0 !important;
+    padding: 0 0 0 12px !important;
+    border-radius: 0 18px 18px 0 !important;
+  }
+
+  .sidebar.collapsed .side-nav button::before {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  .sidebar.collapsed .sidebar-footer {
+    justify-content: flex-start !important;
+    width: 46px !important;
+    padding-left: 12px !important;
+    border-radius: 0 18px 18px 0 !important;
+  }
+
+  .date-panel,
+  .global-filter-panel,
+  .dashboard,
+  .analytics-card,
+  .table-wrap,
+  .input-panel,
+  .report-page,
+  .farm-page,
+  .master-page,
+  .est-page {
+    box-shadow: 0 10px 28px rgba(42, 63, 84, .045) !important;
+  }
+}
