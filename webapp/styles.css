@@ -8321,8 +8321,9 @@ td.num,
 /* Gentelella dashboard density correction. Keep last. */
 @media screen {
   .sidebar {
-    width: 210px !important;
-    min-width: 210px !important;
+    width: 224px !important;
+    min-width: 224px !important;
+    border-radius: 0 10px 10px 0 !important;
   }
 
   .brand {
@@ -8342,9 +8343,10 @@ td.num,
   }
 
   .side-nav button {
-    min-height: 36px !important;
-    padding: 0 14px !important;
-    font-size: 11px !important;
+    min-height: 38px !important;
+    padding: 0 16px !important;
+    border-radius: 0 18px 18px 0 !important;
+    font-size: 12px !important;
   }
 
   .content {
@@ -8444,6 +8446,107 @@ td.num,
 
   .menu-section {
     flex: 0 0 auto !important;
+  }
+
+  .menu-section-title,
+  .menu-subtitle {
+    margin-top: 16px !important;
+    margin-bottom: 7px !important;
+  }
+
+  .date-panel,
+  .global-filter-panel,
+  .analytics-card,
+  .analytics-hero,
+  .table-wrap,
+  .daily-table-wrap,
+  .stock-web-table,
+  .farm-table-wrap,
+  .master-data-table-wrap,
+  .est-table-wrap,
+  .est-rate-table-wrap,
+  .input-panel,
+  .report-page,
+  .farm-page,
+  .master-page,
+  .est-page {
+    border-radius: 8px !important;
+  }
+
+  .content-head {
+    border-radius: 0 0 8px 8px !important;
+  }
+
+  input,
+  select,
+  textarea,
+  .date-input-control,
+  .actions button,
+  .date-panel button,
+  .table-export-actions button,
+  .home-actions button,
+  .filter-row button,
+  .analytics-tile {
+    border-radius: 6px !important;
+  }
+
+  .dashboard {
+    border-radius: 8px !important;
+    overflow: hidden !important;
+  }
+
+  .dashboard article:first-child {
+    border-radius: 8px 0 0 8px !important;
+  }
+
+  .dashboard article:last-child {
+    border-radius: 0 8px 8px 0 !important;
+  }
+
+  .section-head {
+    border-radius: 8px 8px 0 0 !important;
+  }
+
+  .gentelella-chart {
+    border-radius: 8px !important;
+  }
+
+  .gentelella-chart svg {
+    overflow: visible;
+  }
+
+  .gentelella-chart .line {
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .gentelella-chart .line.balance {
+    fill: none;
+    stroke: rgba(155, 89, 182, .78);
+    stroke-width: 2;
+    stroke-dasharray: 5 5;
+  }
+
+  .gentelella-chart .line.loss-line {
+    fill: none;
+    stroke: rgba(231, 76, 60, .78);
+    stroke-width: 2;
+    stroke-dasharray: 3 6;
+  }
+
+  .chart-legend .balance {
+    background: var(--gt-purple);
+  }
+
+  .chart-legend .loss-line {
+    background: var(--gt-red);
+  }
+
+  .performance-row em,
+  .performance-row b,
+  .bar-track,
+  .bar-track span {
+    border-radius: 999px !important;
   }
 }
 

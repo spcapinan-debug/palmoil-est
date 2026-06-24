@@ -5785,18 +5785,36 @@ function dashboardAreaChart(rows) {
   const sample = ordered.length > 18
     ? ordered.filter((_, index) => index % Math.ceil(ordered.length / 18) === 0).slice(0, 18)
     : ordered;
-  const points = sample.length ? sample : [{ date: "", totalRamp: 0, outboundTotal: 0 }];
+  const points = sample.length ? sample : [{ date: "", totalRamp: 0, outboundTotal: 0, balance: 0, loss: 0 }];
   const width = 760;
   const height = 230;
   const pad = { left: 44, right: 18, top: 18, bottom: 34 };
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
-  const maxValue = Math.max(...points.flatMap((row) => [n(row.totalRamp), n(row.outboundTotal)]), 1);
+  const series = [
+    { key: "totalRamp", label: "รับเข้า", className: "inbound", area: true },
+    { key: "outboundTotal", label: "ส่งออก", className: "outbound", area: true },
+    { key: "balance", label: "คงเหลือ", className: "balance" },
+    { key: "loss", label: "สูญหาย", className: "loss-line" },
+  ];
+  const maxValue = Math.max(...points.flatMap((row) => series.map((item) => n(row[item.key]))), 1);
   const x = (index) => pad.left + (points.length === 1 ? chartW / 2 : (index / (points.length - 1)) * chartW);
   const y = (value) => pad.top + chartH - (n(value) / maxValue) * chartH;
-  const linePath = (key) => points.map((row, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(row[key]).toFixed(1)}`).join(" ");
+
+  const smoothPath = (key) => {
+    const coords = points.map((row, index) => [x(index), y(row[key])]);
+    if (coords.length === 1) return `M${coords[0][0].toFixed(1)},${coords[0][1].toFixed(1)}`;
+    return coords.reduce((path, point, index) => {
+      if (!index) return `M${point[0].toFixed(1)},${point[1].toFixed(1)}`;
+      const prev = coords[index - 1];
+      const midX = (prev[0] + point[0]) / 2;
+      const midY = (prev[1] + point[1]) / 2;
+      return `${path} Q${prev[0].toFixed(1)},${prev[1].toFixed(1)} ${midX.toFixed(1)},${midY.toFixed(1)}`;
+    }, "") + ` T${coords.at(-1)[0].toFixed(1)},${coords.at(-1)[1].toFixed(1)}`;
+  };
+
   const areaPath = (key) => {
-    const top = points.map((row, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(row[key]).toFixed(1)}`).join(" ");
+    const top = smoothPath(key);
     return `${top} L${x(points.length - 1).toFixed(1)},${(pad.top + chartH).toFixed(1)} L${x(0).toFixed(1)},${(pad.top + chartH).toFixed(1)} Z`;
   };
   const xLabels = points.map((row, index) => {
@@ -5812,15 +5830,12 @@ function dashboardAreaChart(rows) {
     <div class="gentelella-chart">
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="กราฟเปรียบเทียบน้ำหนักรับเข้าและส่งออกตามวันที่">
         <g class="chart-grid">${grid}</g>
-        <path class="area inbound" d="${areaPath("totalRamp")}"></path>
-        <path class="area outbound" d="${areaPath("outboundTotal")}"></path>
-        <path class="line inbound" d="${linePath("totalRamp")}"></path>
-        <path class="line outbound" d="${linePath("outboundTotal")}"></path>
+        ${series.filter((item) => item.area).map((item) => `<path class="area ${item.className}" d="${areaPath(item.key)}"></path>`).join("")}
+        ${series.map((item) => `<path class="line ${item.className}" d="${smoothPath(item.key)}"></path>`).join("")}
         <g class="chart-axis">${xLabels}</g>
       </svg>
       <div class="chart-legend">
-        <span><i class="inbound"></i>รับเข้า</span>
-        <span><i class="outbound"></i>ส่งออก</span>
+        ${series.map((item) => `<span><i class="${item.className}"></i>${item.label}</span>`).join("")}
       </div>
     </div>`;
 }
@@ -5958,6 +5973,13 @@ function renderAdvancedDashboard() {
     `อัตราสูญหายต่อส่งออก: ${stats.lossRate.toFixed(2)}%`,
     `ส่วนต่างน้ำหนักโรงงานเทียบส่งออก: ${signed(stats.factoryDiff)} kg`,
   ];
+  const comparisonTotals = [
+    { label: "รับเข้ารวม", value: stats.inbound },
+    { label: "ส่งออกรวม", value: stats.outbound },
+    { label: "น้ำหนักโรงงาน", value: stats.factory },
+    { label: "คงเหลือ", value: Math.max(0, stats.balance) },
+    { label: "สูญหาย", value: Math.abs(stats.loss) },
+  ];
 
   els.reportPage.innerHTML = `
     <div class="report-title">
@@ -5977,8 +5999,8 @@ function renderAdvancedDashboard() {
         <div class="network-grid">
           ${dashboardAreaChart(rows)}
           <aside class="performance-panel">
-            <h4>Top Standard Performance</h4>
-            ${dashboardPerformanceBars(standardRows, "inbound")}
+            <h4>เปรียบเทียบยอดรวม</h4>
+            ${dashboardPerformanceBars(comparisonTotals, "value")}
           </aside>
         </div>
       </section>
