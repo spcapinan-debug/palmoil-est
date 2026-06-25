@@ -2265,7 +2265,7 @@ function renderPalmSidebar() {
 
 function sidebarDropdownState() {
   try {
-    return JSON.parse(localStorage.getItem("sidebarDropdowns") || "{}") || {};
+    return JSON.parse(localStorage.getItem("sidebarDropdownsV3") || "{}") || {};
   } catch {
     return {};
   }
@@ -2276,7 +2276,7 @@ function syncSidebarDropdowns() {
   const saved = sidebarDropdownState();
   for (const detail of els.tabs.querySelectorAll(".menu-dropdown[data-menu-group]")) {
     const key = detail.dataset.menuGroup;
-    if (Object.hasOwn(saved, key)) detail.open = Boolean(saved[key]);
+    detail.open = Object.hasOwn(saved, key) ? Boolean(saved[key]) : false;
   }
   const active = els.tabs.querySelector("button.active[data-view]");
   active?.closest(".menu-dropdown")?.setAttribute("open", "");
@@ -2286,7 +2286,7 @@ function saveSidebarDropdownState(detail) {
   if (!detail?.matches?.(".menu-dropdown[data-menu-group]")) return;
   const saved = sidebarDropdownState();
   saved[detail.dataset.menuGroup] = detail.open;
-  localStorage.setItem("sidebarDropdowns", JSON.stringify(saved));
+  localStorage.setItem("sidebarDropdownsV3", JSON.stringify(saved));
 }
 
 function applySidebarState() {
