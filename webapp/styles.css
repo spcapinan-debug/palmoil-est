@@ -9031,6 +9031,7 @@ td.num,
   .menu-dropdown[data-menu-group="operation"] > summary { --menu-icon: var(--icon-clipboard); }
   .menu-dropdown[data-menu-group="governance"] > summary { --menu-icon: var(--icon-shield); }
   .menu-dropdown[data-menu-group="hr"] > summary { --menu-icon: var(--icon-users); }
+  .menu-dropdown[data-menu-group="system"] > summary { --menu-icon: var(--icon-settings); }
 
   .side-nav button[data-view="dashboard"] { --menu-icon: var(--icon-dashboard); }
   .side-nav button[data-view="stock"] { --menu-icon: var(--icon-box); }
@@ -9219,6 +9220,10 @@ td.num,
 
   .sidebar.collapsed .menu-dropdown[data-menu-group="hr"] .menu-items::before {
     content: "งานบริหารบุคคล";
+  }
+
+  .sidebar.collapsed .menu-dropdown[data-menu-group="system"] .menu-items::before {
+    content: "ระบบ";
   }
 
   .sidebar.collapsed .menu-dropdown .menu-items button {
