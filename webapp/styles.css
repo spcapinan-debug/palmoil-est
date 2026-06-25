@@ -9044,8 +9044,14 @@ td.num,
   .side-nav button[data-view="farm-people"],
   .side-nav button[data-view="farm-people-daily"],
   .side-nav button[data-view="farm-people-monthly"],
-  .side-nav button[data-view="farm-people-contract"] { --menu-icon: var(--icon-users); }
-  .side-nav button[data-view="farm-people-docs"] { --menu-icon: var(--icon-report); }
+  .side-nav button[data-view="farm-people-contract"],
+  .side-nav button[data-view="farm-hr-org"],
+  .side-nav button[data-view="farm-hr-talent"] { --menu-icon: var(--icon-users); }
+  .side-nav button[data-view="farm-people-docs"],
+  .side-nav button[data-view="farm-hr-dashboard"] { --menu-icon: var(--icon-report); }
+  .side-nav button[data-view="farm-hr-time"],
+  .side-nav button[data-view="farm-hr-leave"] { --menu-icon: var(--icon-calendar); }
+  .side-nav button[data-view="farm-hr-payroll"] { --menu-icon: var(--icon-coin); }
   .side-nav button[data-view="farm-activities"] { --menu-icon: var(--icon-activity); }
   .side-nav button[data-view="farm-inventory"] { --menu-icon: var(--icon-tool); }
   .side-nav button[data-view="farm-budget"],
@@ -9433,6 +9439,49 @@ td.num,
     margin-bottom: 14px;
   }
 
+  .hr-area-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  .hr-area-grid button {
+    appearance: none;
+    border: 1px solid rgba(42,63,84,.14);
+    background: rgba(255,255,255,.76);
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: #1b2d43;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: 0 10px 22px rgba(15,23,42,.04);
+    transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+  }
+
+  .hr-area-grid button:hover,
+  .hr-area-grid button.active {
+    border-color: rgba(42,63,84,.38);
+    box-shadow: 0 14px 28px rgba(15,23,42,.08);
+    transform: translateY(-1px);
+  }
+
+  .hr-area-grid strong,
+  .hr-area-grid span {
+    display: block;
+  }
+
+  .hr-area-grid strong {
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .hr-area-grid span {
+    margin-top: 5px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: #73879c;
+  }
+
   .hr-segment-grid,
   .hr-flow-grid {
     display: grid;
@@ -9529,6 +9578,7 @@ td.num,
   }
 
   @media (max-width: 1100px) {
+    .hr-area-grid,
     .hr-segment-grid,
     .hr-flow-grid,
     .hr-two-col {
@@ -9537,6 +9587,7 @@ td.num,
   }
 
   @media (max-width: 720px) {
+    .hr-area-grid,
     .hr-segment-grid,
     .hr-flow-grid,
     .hr-two-col {

@@ -317,10 +317,10 @@ const FARM_MODULES = [
   },
   {
     id: "farm-people",
-    title: "ภาพรวมบุคคล",
+    title: "ข้อมูลบุคลากร",
     group: "งานบริหารบุคคล",
-    accent: "Daily / Monthly / Contractor",
-    description: "ศูนย์ข้อมูลบุคคลสำหรับรายวัน รายเดือน รายเหมา ทีมงาน บ้านพัก และเอกสารสำคัญ โดยตัดส่วน ADMIN SERVICE ออก",
+    accent: "Employee Central / Workers / Contractors",
+    description: "ศูนย์ข้อมูลบุคลากรรวมรายวัน รายเดือน รายเหมา บ้านพัก ทีมงาน และเอกสารต่างด้าวในหน้าเดียว โดยข้อมูลเดิมถูกนำมาใช้ต่อผ่านตารางที่เลือก",
     tables: ["people", "employees", "contractors", "worker_documents", "departments", "housing_units", "person_housing_assignments", "housing_utility_charges", "teams", "team_members", "team_activity_skills"],
     fields: [
       ["code", "รหัส", "EMP-001"],
@@ -340,42 +340,62 @@ const FARM_MODULES = [
     ],
   },
   {
-    id: "farm-people-daily",
-    title: "รายวัน / คนงาน",
+    id: "farm-hr-dashboard",
+    title: "Dashboard HR",
     group: "งานบริหารบุคคล",
-    accent: "Workers / Migrant Documents / Attendance",
-    description: "จัดการคนงานรายวัน รวมแรงงานต่างด้าว ค่าแรงรายวัน คิดรายชั่วโมง บ้านพัก ทีมงาน เข้างาน และเอกสารที่ต้องเตือน",
-    tables: ["employees", "worker_documents", "attendance_records", "leave_requests", "employee_housing_assignments", "teams", "team_members"],
+    accent: "People / Time / Pay / Document Alerts",
+    description: "ภาพรวมบริหารบุคคลแบบ HR dashboard ครอบคลุมจำนวนคน การลงเวลา เอกสารหมดอายุ ลา/OT และค่าแรงตั้งต้น",
+    tables: ["people", "employees", "contractors", "worker_documents", "attendance_records", "leave_requests", "payroll_period_lines", "training_records", "performance_reviews"],
     fields: [],
     seed: [],
   },
   {
-    id: "farm-people-monthly",
-    title: "รายเดือน / พนักงาน",
+    id: "farm-hr-org",
+    title: "โครงสร้างองค์กร",
     group: "งานบริหารบุคคล",
-    accent: "Staff / Salary / Leave",
-    description: "จัดการพนักงานรายเดือน ตำแหน่ง แผนก เงินเดือน วันลา การเข้างาน และข้อมูลที่ส่งต่อให้ระบบค่าแรง",
-    tables: ["employees", "leave_requests", "attendance_records", "departments", "housing_units"],
+    accent: "Departments / Teams / Supervisor",
+    description: "จัดโครงสร้างแผนก ทีม หัวหน้า และการผูกบุคลากรเข้าทีม เพื่อส่งต่อให้ Work Order และสิทธิ์การทำงาน",
+    tables: ["departments", "teams", "team_members", "employees", "contractors"],
     fields: [],
     seed: [],
   },
   {
-    id: "farm-people-contract",
-    title: "รายเหมา / ผู้รับเหมา",
+    id: "farm-hr-time",
+    title: "ลงเวลา / กะงาน",
     group: "งานบริหารบุคคล",
-    accent: "Contractors / Teams / Contract Rate",
-    description: "จัดการผู้รับเหมา อัตราเหมา ทีมงาน กิจกรรมหลัก ผู้ติดต่อ และข้อมูลผูกกับ Work Order / ค่าแรงรายงวด",
-    tables: ["contractors", "teams", "team_members", "worker_documents"],
+    accent: "Attendance / Shift / Work Order",
+    description: "เก็บการลงเวลา กะงาน ขาด สาย และข้อมูลทำงานจริง เพื่อเชื่อมต่อการคำนวณค่าแรงโดยไม่ปนกับข้อมูลตั้งต้น",
+    tables: ["attendance_records", "employees", "teams", "team_members", "work_orders"],
     fields: [],
     seed: [],
   },
   {
-    id: "farm-people-docs",
-    title: "เอกสารต่างด้าว",
+    id: "farm-hr-leave",
+    title: "ลางาน / OT",
     group: "งานบริหารบุคคล",
-    accent: "Passport / Visa / Work Permit Alerts",
-    description: "ติดตามเอกสารแรงงานต่างด้าว เช่น Passport, Visa, Work Permit และเตือนก่อนหมดอายุเพื่อไม่หลุดการต่ออายุ",
-    tables: ["worker_documents", "employees", "contractors"],
+    accent: "Leave / Overtime / Approval",
+    description: "บันทึกคำขอลา OT และการปรับปรุงวันทำงาน พร้อมสถานะอนุมัติ ก่อนส่งต่อไปคำนวณค่าแรง",
+    tables: ["leave_requests", "attendance_records", "employees", "payroll_period_lines"],
+    fields: [],
+    seed: [],
+  },
+  {
+    id: "farm-hr-payroll",
+    title: "เงินเดือน / ค่าแรง",
+    group: "งานบริหารบุคคล",
+    accent: "Payroll / Snapshot / Locked Result",
+    description: "รวมงวดค่าแรง รายการค่าแรง กฎเงินเพิ่ม/เงินหัก และ snapshot ที่ล็อกผลคำนวณแล้วไม่เปลี่ยนตามข้อมูลหลักใหม่",
+    tables: ["payroll_periods", "payroll_period_lines", "payroll_lines", "payroll_rates", "payroll_rules", "employees", "contractors"],
+    fields: [],
+    seed: [],
+  },
+  {
+    id: "farm-hr-talent",
+    title: "อบรม / ประเมินผล",
+    group: "งานบริหารบุคคล",
+    accent: "Training / Performance / Skills",
+    description: "เก็บข้อมูลอบรม ทักษะกิจกรรม และผลประเมิน เพื่อใช้ดูความพร้อมของทีมและผู้ทำงานในแต่ละกิจกรรม",
+    tables: ["training_records", "performance_reviews", "team_activity_skills", "employees", "contractors"],
     fields: [],
     seed: [],
   },
@@ -1260,6 +1280,52 @@ const FARM_TABLE_SCHEMAS = {
     seed: [
       { id: "leave-emp-001-001", request_no: "LV-001", employee_id: "emp-001", request_type: "annual_leave", start_date: "2026-06-10", end_date: "2026-06-10", quantity: "1", approval_status: "approved", status: "active" },
       { id: "ot-emp-002-001", request_no: "OT-001", employee_id: "emp-002", request_type: "ot", start_date: "2026-06-12", quantity: "2", approval_status: "pending", status: "active" },
+    ],
+  },
+  training_records: {
+    moduleId: "farm-hr-talent",
+    title: "ประวัติอบรม",
+    primaryKey: "id",
+    codeField: "training_code",
+    labelField: "training_topic",
+    fields: [
+      F("training_code", "รหัสอบรม", { required: true }),
+      F("employee_id", "บุคลากร", { references: "employees", required: true }),
+      F("training_topic", "หัวข้ออบรม", { required: true }),
+      F("training_type", "ประเภทอบรม", { options: ["safety", "skill", "compliance", "supervisor", "other"] }),
+      F("start_date", "วันที่เริ่ม", { type: "date" }),
+      F("end_date", "วันที่สิ้นสุด", { type: "date" }),
+      F("provider", "ผู้จัดอบรม"),
+      F("result_status", "ผลอบรม", { options: ["planned", "passed", "failed", "expired"] }),
+      F("certificate_url", "ใบรับรอง/ไฟล์แนบ"),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [
+      { id: "train-emp-001-safety", training_code: "TR-2569-001", employee_id: "emp-001", training_topic: "ความปลอดภัยงานสวนปาล์ม", training_type: "safety", start_date: "2026-06-05", end_date: "2026-06-05", provider: "ฝ่ายสวน", result_status: "passed", status: "active" },
+    ],
+  },
+  performance_reviews: {
+    moduleId: "farm-hr-talent",
+    title: "ประเมินผลงาน",
+    primaryKey: "id",
+    codeField: "review_no",
+    labelField: "employee_id",
+    fields: [
+      F("review_no", "เลขที่ประเมิน", { required: true }),
+      F("employee_id", "บุคลากร", { references: "employees", required: true }),
+      F("period_name", "รอบประเมิน", { required: true }),
+      F("reviewer_id", "ผู้ประเมิน", { references: "employees" }),
+      F("kpi_score", "คะแนน KPI", { type: "number" }),
+      F("behavior_score", "คะแนนพฤติกรรม", { type: "number" }),
+      F("total_score", "คะแนนรวม", { type: "number" }),
+      F("review_status", "สถานะประเมิน", { options: ["draft", "submitted", "approved", "closed"] }),
+      F("reviewed_at", "วันที่ประเมิน", { type: "date" }),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [
+      { id: "review-emp-001-2569h1", review_no: "RV-2569-001", employee_id: "emp-001", period_name: "ครึ่งปีแรก 2569", reviewer_id: "emp-001", kpi_score: "85", behavior_score: "90", total_score: "87.5", review_status: "draft", reviewed_at: "2026-06-30", status: "active" },
     ],
   },
   activity_groups: {
@@ -10539,7 +10605,8 @@ function renderFarmDataEntryGuide(table) {
 }
 
 function farmHrModuleActive(module = selectedFarmModule()) {
-  return String(module?.id || "").startsWith("farm-people");
+  const id = String(module?.id || "");
+  return id === "farm-people" || id.startsWith("farm-hr-") || id.startsWith("farm-people-");
 }
 
 function farmHrPersonRows() {
@@ -10619,12 +10686,25 @@ function renderFarmHrBoard(module, table) {
   const monthlyCost = monthly.reduce((sum, row) => sum + row.monthlySalary, 0);
   const contractRate = contract.reduce((sum, row) => sum + row.contractRate, 0);
   const focusMap = {
-    "farm-people": "ภาพรวม Core HR เฉพาะข้อมูลบุคคล เอกสาร แจ้งเตือน ลา/OT และลงเวลา",
+    "farm-hr-dashboard": "ภาพรวม Dashboard HR รวมจำนวนคน เอกสารเตือน ลงเวลา ลา/OT ค่าแรง และทักษะทีม",
+    "farm-people": "ข้อมูลบุคลากรรวมรายวัน รายเดือน รายเหมา บ้านพัก ทีมงาน และเอกสารต่างด้าวในหน้าเดียว",
+    "farm-hr-org": "โครงสร้างองค์กร แผนก ทีม หัวหน้า และการผูกคนเข้าทีมเพื่อใช้งานต่อกับ Work Order",
+    "farm-hr-time": "Work & Time สำหรับลงเวลา กะงาน ขาด/สาย และข้อมูลจากงานจริง",
+    "farm-hr-leave": "Leave & OT สำหรับคำขอลา OT และสถานะอนุมัติที่ส่งต่อเข้าค่าแรง",
+    "farm-hr-payroll": "Compensation สำหรับเงินเดือน ค่าแรง เงินเพิ่ม/หัก และ snapshot ที่ล็อกผลคำนวณแล้ว",
+    "farm-hr-talent": "Talent สำหรับอบรม ทักษะกิจกรรม และประเมินผลการทำงาน",
     "farm-people-daily": "โฟกัสคนงานรายวัน รวมต่างด้าว บ้านพัก ทีมงาน ลงเวลา และเอกสารหมดอายุ",
     "farm-people-monthly": "โฟกัสพนักงานรายเดือน แผนก ตำแหน่ง เงินเดือน ลา/OT และการอนุมัติ",
     "farm-people-contract": "โฟกัสผู้รับเหมา อัตราเหมา ทีมงาน และการผูกกับ Work Order",
     "farm-people-docs": "โฟกัส Passport / Visa / Work Permit / Pink Card พร้อมเตือนล่วงหน้า",
   };
+  const hrAreas = [
+    ["Dashboard HR", "ภาพรวมกำลังคน เอกสารเตือน เวลา ลา/OT และค่าแรง", "farm-hr-dashboard"],
+    ["ข้อมูลบุคลากร", "พนักงานรายเดือน คนงานรายวัน ผู้รับเหมา บ้านพัก และเอกสารต่างด้าว", "farm-people"],
+    ["Work & Time", "ลงเวลา กะงาน ลา OT และข้อมูลทำงานจริง", "farm-hr-time"],
+    ["Compensation", "งวดเงินเดือน ค่าแรง เงินเพิ่ม/หัก และ snapshot ปิดงวด", "farm-hr-payroll"],
+    ["Talent", "อบรม ทักษะกิจกรรม และผลประเมิน", "farm-hr-talent"],
+  ];
   const flow = [
     ["01", "ข้อมูลบุคคล", "รหัส, ชื่อ, สัญชาติ, ประเภทจ่าย, แผนก, บ้านพัก"],
     ["02", "เอกสารต่างด้าว", "Passport, Visa, Work Permit, วันหมดอายุ, ผู้รับผิดชอบ"],
@@ -10636,6 +10716,12 @@ function renderFarmHrBoard(module, table) {
       <div class="section-head">
         <h3>งานบริหารบุคคล</h3>
         <span>${esc(focusMap[module.id] || module.description)}</span>
+      </div>
+      <div class="hr-area-grid">
+        ${hrAreas.map((item) => `<button type="button" class="${module.id === item[2] ? "active" : ""}" data-view-jump="${esc(item[2])}">
+          <strong>${esc(item[0])}</strong>
+          <span>${esc(item[1])}</span>
+        </button>`).join("")}
       </div>
       <div class="hr-segment-grid">
         <article><span>รายวัน / คนงาน</span><strong>${fmt(daily.length)}</strong><small>ต่างด้าว ${fmt(daily.filter(farmHrIsForeign).length)} คน · ค่าแรงตั้งต้น ${fmt(dailyCost)}</small></article>
@@ -11605,6 +11691,11 @@ async function init() {
       openSidebarFlyout(summary.closest(".menu-dropdown"));
       return;
     }
+    const jumpBtn = e.target.closest("button[data-view-jump]");
+    if (jumpBtn) {
+      setView(jumpBtn.dataset.viewJump);
+      return;
+    }
     const btn = e.target.closest("button[data-view]");
     if (btn) {
       setView(btn.dataset.view);
@@ -11880,6 +11971,11 @@ async function init() {
     state.estSearchTimer = setTimeout(render, 250);
   });
   els.reportPage.addEventListener("click", (e) => {
+    const jumpBtn = e.target.closest("button[data-view-jump]");
+    if (jumpBtn) {
+      setView(jumpBtn.dataset.viewJump);
+      return;
+    }
     if (e.target.closest("[data-farm-db-refresh]")) {
       loadFarmTablesFromDatabase({ silent: true });
       return;
