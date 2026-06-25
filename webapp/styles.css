@@ -8994,6 +8994,126 @@ td.num,
   }
 }
 
+/* Modern icon set and refined transient flyout navigation. */
+@media screen {
+  :root {
+    --icon-dashboard: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='7'/%3E%3Crect x='14' y='3' width='7' height='7'/%3E%3Crect x='14' y='14' width='7' height='7'/%3E%3Crect x='3' y='14' width='7' height='7'/%3E%3C/svg%3E");
+    --icon-truck: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7h11v10H3z'/%3E%3Cpath d='M14 10h4l3 3v4h-7z'/%3E%3Ccircle cx='7' cy='17' r='2'/%3E%3Ccircle cx='18' cy='17' r='2'/%3E%3C/svg%3E");
+    --icon-box: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 8l-9-5-9 5 9 5 9-5z'/%3E%3Cpath d='M3 8v8l9 5 9-5V8'/%3E%3Cpath d='M12 13v8'/%3E%3C/svg%3E");
+    --icon-scale: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v18'/%3E%3Cpath d='M5 6h14'/%3E%3Cpath d='M6 6l-3 7h6L6 6z'/%3E%3Cpath d='M18 6l-3 7h6l-3-7z'/%3E%3C/svg%3E");
+    --icon-leaf: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 4c-7 0-12 4-12 10 0 3 2 6 5 6 6 0 8-8 7-16z'/%3E%3Cpath d='M4 20c4-6 8-9 16-16'/%3E%3C/svg%3E");
+    --icon-calendar: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
+    --icon-chart: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 19V5'/%3E%3Cpath d='M4 19h16'/%3E%3Cpath d='M8 16v-5'/%3E%3Cpath d='M12 16V8'/%3E%3Cpath d='M16 16v-9'/%3E%3C/svg%3E");
+    --icon-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E");
+    --icon-database: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cellipse cx='12' cy='5' rx='8' ry='3'/%3E%3Cpath d='M4 5v14c0 2 4 3 8 3s8-1 8-3V5'/%3E%3Cpath d='M4 12c0 2 4 3 8 3s8-1 8-3'/%3E%3C/svg%3E");
+    --icon-users: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9' cy='8' r='4'/%3E%3Cpath d='M2 21c1-4 4-6 7-6s6 2 7 6'/%3E%3Cpath d='M16 11c2 0 4 2 5 5'/%3E%3C/svg%3E");
+    --icon-activity: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 13h4l2-6 4 12 2-6h4'/%3E%3C/svg%3E");
+    --icon-tool: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 7l3 3'/%3E%3Cpath d='M5 19l7-7'/%3E%3Cpath d='M14 4l6 6-3 3-6-6 3-3z'/%3E%3C/svg%3E");
+    --icon-coin: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M9 9h5a2 2 0 010 4h-4'/%3E%3Cpath d='M10 7v10'/%3E%3C/svg%3E");
+    --icon-clipboard: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='4' width='12' height='17' rx='2'/%3E%3Cpath d='M9 4h6v4H9z'/%3E%3Cpath d='M9 13h6M9 17h4'/%3E%3C/svg%3E");
+    --icon-shield: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l8 4v5c0 5-3 8-8 9-5-1-8-4-8-9V7l8-4z'/%3E%3Cpath d='M9 12l2 2 4-4'/%3E%3C/svg%3E");
+    --icon-settings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19 12a7 7 0 00-.1-1l2-1.5-2-3.4-2.4 1a7 7 0 00-1.7-1L14.5 3h-5l-.3 3.1a7 7 0 00-1.7 1l-2.4-1-2 3.4L5.1 11a7 7 0 000 2l-2 1.5 2 3.4 2.4-1a7 7 0 001.7 1l.3 3.1h5l.3-3.1a7 7 0 001.7-1l2.4 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z'/%3E%3C/svg%3E");
+    --icon-report: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3h9l3 3v15H6z'/%3E%3Cpath d='M14 3v4h4'/%3E%3Cpath d='M9 14h6M9 18h4M9 10h2'/%3E%3C/svg%3E");
+    --icon-bell: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 00-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9'/%3E%3Cpath d='M10 21h4'/%3E%3C/svg%3E");
+  }
+
+  .menu-dropdown > summary::before,
+  .side-nav button::before {
+    content: "" !important;
+    color: #ecf0f1 !important;
+    background: currentColor !important;
+    -webkit-mask: var(--menu-icon, var(--icon-dashboard)) center / 15px 15px no-repeat;
+    mask: var(--menu-icon, var(--icon-dashboard)) center / 15px 15px no-repeat;
+  }
+
+  .menu-dropdown[data-menu-group="transport"] > summary { --menu-icon: var(--icon-truck); }
+  .menu-dropdown[data-menu-group="master"] > summary { --menu-icon: var(--icon-database); }
+  .menu-dropdown[data-menu-group="operation"] > summary { --menu-icon: var(--icon-clipboard); }
+  .menu-dropdown[data-menu-group="governance"] > summary { --menu-icon: var(--icon-shield); }
+
+  .side-nav button[data-view="dashboard"] { --menu-icon: var(--icon-dashboard); }
+  .side-nav button[data-view="stock"] { --menu-icon: var(--icon-box); }
+  .side-nav button[data-view="mill"] { --menu-icon: var(--icon-scale); }
+  .side-nav button[data-view="rspo"] { --menu-icon: var(--icon-leaf); }
+  .side-nav button[data-view="daily"] { --menu-icon: var(--icon-calendar); }
+  .side-nav button[data-view="summary"] { --menu-icon: var(--icon-chart); }
+  .side-nav button[data-view="clear"] { --menu-icon: var(--icon-check); }
+  .side-nav button[data-view="farm-area"] { --menu-icon: var(--icon-leaf); }
+  .side-nav button[data-view="farm-people"] { --menu-icon: var(--icon-users); }
+  .side-nav button[data-view="farm-activities"] { --menu-icon: var(--icon-activity); }
+  .side-nav button[data-view="farm-inventory"] { --menu-icon: var(--icon-tool); }
+  .side-nav button[data-view="farm-budget"],
+  .side-nav button[data-view="farm-payroll"] { --menu-icon: var(--icon-coin); }
+  .side-nav button[data-view="farm-work"] { --menu-icon: var(--icon-clipboard); }
+  .side-nav button[data-view="farm-governance"] { --menu-icon: var(--icon-shield); }
+  .side-nav button[data-view="farm-general"] { --menu-icon: var(--icon-settings); }
+  .side-nav button[data-view="farm-reports"] { --menu-icon: var(--icon-report); }
+
+  .sidebar-footer {
+    display: none !important;
+  }
+
+  .topbar-brand {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+  }
+
+  .topbar-logo {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #1abb9c, #2a3f54);
+    box-shadow: 0 10px 22px rgba(26,187,156,.2);
+  }
+
+  .topbar-logo::before {
+    content: "";
+    width: 21px;
+    height: 21px;
+    background: #fff;
+    -webkit-mask: var(--icon-leaf) center / contain no-repeat;
+    mask: var(--icon-leaf) center / contain no-repeat;
+  }
+
+  .topbar-brand .eyebrow {
+    margin: 0 0 2px !important;
+    color: #2a3f54 !important;
+    font-size: 12px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .topbar-brand h1 {
+    margin: 0 !important;
+    color: #73879c !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
+  }
+}
+
+/* Make flyout group headings stronger than submenu text. */
+@media screen {
+  .sidebar.collapsed .menu-dropdown .menu-items::before {
+    padding: 4px 8px 10px !important;
+    color: #fff !important;
+    font-size: 13px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .sidebar.collapsed .menu-dropdown .menu-items button {
+    font-size: 11.25px !important;
+    font-weight: 700 !important;
+  }
+}
+
 /* Icon-first navigation rail with flyout dropdowns and Cultivate-like topbar actions. */
 @media screen {
   .app-shell.sidebar-collapsed,
@@ -9138,9 +9258,12 @@ td.num,
   }
 
   .topbar-notification::before {
-    content: "🔔";
-    font-size: 14px;
-    line-height: 1;
+    content: "";
+    width: 17px;
+    height: 17px;
+    background: currentColor;
+    -webkit-mask: var(--icon-bell) center / contain no-repeat;
+    mask: var(--icon-bell) center / contain no-repeat;
   }
 
   .topbar-notification span {
@@ -9201,5 +9324,27 @@ td.num,
   .user-caret {
     color: #73879c;
     font-size: 12px;
+  }
+}
+
+/* In icon rail mode, flyouts are transient: visible only while hovering/focusing the group. */
+@media screen {
+  .sidebar.collapsed .menu-dropdown[open] .menu-items {
+    display: none !important;
+  }
+
+  .sidebar.collapsed .menu-dropdown:hover .menu-items,
+  .sidebar.collapsed .menu-dropdown:focus-within .menu-items {
+    display: grid !important;
+  }
+
+  .sidebar.collapsed .menu-dropdown[open] > summary {
+    background: transparent !important;
+  }
+
+  .sidebar.collapsed .menu-dropdown:hover > summary,
+  .sidebar.collapsed .menu-dropdown:focus-within > summary {
+    border-left-color: var(--gt-green) !important;
+    background: rgba(0,0,0,.24) !important;
   }
 }

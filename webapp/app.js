@@ -2288,9 +2288,36 @@ function syncSidebarDropdowns() {
 
 function saveSidebarDropdownState(detail) {
   if (!detail?.matches?.(".menu-dropdown[data-menu-group]")) return;
+  if (state.sidebarCollapsed) return;
   const saved = sidebarDropdownState();
   saved[detail.dataset.menuGroup] = detail.open;
   localStorage.setItem("sidebarDropdownsV3", JSON.stringify(saved));
+}
+
+let sidebarFlyoutTimer = null;
+
+function closeSidebarFlyouts(except = null) {
+  if (!els.tabs) return;
+  for (const detail of els.tabs.querySelectorAll(".menu-dropdown[data-menu-group]")) {
+    if (detail !== except) detail.open = false;
+  }
+  if (!except && els.tabs.contains(document.activeElement)) document.activeElement.blur();
+}
+
+function openSidebarFlyout(detail) {
+  if (!state.sidebarCollapsed || !detail?.matches?.(".menu-dropdown[data-menu-group]")) return;
+  window.clearTimeout(sidebarFlyoutTimer);
+  closeSidebarFlyouts(detail);
+  detail.open = true;
+}
+
+function scheduleSidebarFlyoutClose(detail) {
+  if (!state.sidebarCollapsed || !detail?.matches?.(".menu-dropdown[data-menu-group]")) return;
+  window.clearTimeout(sidebarFlyoutTimer);
+  sidebarFlyoutTimer = window.setTimeout(() => {
+    detail.open = false;
+    if (detail.contains(document.activeElement)) document.activeElement.blur();
+  }, 140);
 }
 
 function applySidebarState() {
@@ -11256,8 +11283,32 @@ async function init() {
     render();
   });
   els.tabs.addEventListener("click", (e) => {
+    const summary = e.target.closest(".menu-dropdown > summary");
+    if (summary && state.sidebarCollapsed) {
+      e.preventDefault();
+      openSidebarFlyout(summary.closest(".menu-dropdown"));
+      return;
+    }
     const btn = e.target.closest("button[data-view]");
-    if (btn) setView(btn.dataset.view);
+    if (btn) {
+      setView(btn.dataset.view);
+      closeSidebarFlyouts();
+    }
+  });
+  els.tabs.addEventListener("pointerenter", (e) => {
+    const summary = e.target.closest?.(".menu-dropdown > summary");
+    if (summary) openSidebarFlyout(summary.closest(".menu-dropdown"));
+  }, true);
+  els.tabs.addEventListener("pointerleave", (e) => {
+    const detail = e.target.closest?.(".menu-dropdown");
+    if (detail) scheduleSidebarFlyoutClose(detail);
+  }, true);
+  els.tabs.addEventListener("pointermove", (e) => {
+    const detail = e.target.closest?.(".menu-dropdown[open]");
+    if (detail && state.sidebarCollapsed) window.clearTimeout(sidebarFlyoutTimer);
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (state.sidebarCollapsed && !e.target.closest?.("#tabs")) closeSidebarFlyouts();
   });
   document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
