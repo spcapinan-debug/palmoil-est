@@ -4407,6 +4407,117 @@ tfoot td {
   line-height: 1.15;
 }
 
+.farm-budget-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.9fr);
+  gap: 12px;
+}
+
+.farm-budget-summary,
+.farm-budget-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.farm-budget-summary {
+  grid-row: span 2;
+}
+
+.farm-budget-wide {
+  grid-column: 1 / -1;
+}
+
+.farm-budget-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.farm-budget-stat-grid div,
+.farm-budget-type-grid div {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #e4eaf2;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.farm-budget-stat-grid span,
+.farm-budget-type-grid span,
+.farm-budget-bars span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.farm-budget-stat-grid strong {
+  color: var(--navy);
+  font-size: 20px;
+}
+
+.farm-budget-stat-grid small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.farm-budget-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.farm-budget-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #dbe5f2;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--navy);
+  font-weight: 900;
+}
+
+.farm-budget-actions button:first-child {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.farm-budget-bars {
+  display: grid;
+  gap: 9px;
+}
+
+.farm-budget-bars div {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 52px;
+  gap: 8px;
+  align-items: center;
+  padding-bottom: 8px;
+}
+
+.farm-budget-bars em {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #5bbda8, #31506d);
+}
+
+.farm-budget-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .farm-toolbar {
   display: grid;
   grid-template-columns: minmax(240px, 1.1fr) minmax(220px, 1fr) 150px 170px auto auto;
@@ -6444,6 +6555,7 @@ td.num,
   .palm-pipeline,
   .farm-flow-nav,
   .farm-hero,
+  .farm-budget-board,
   .farm-approval-grid,
   .farm-version-notice,
   .farm-planner-steps,
@@ -6472,6 +6584,12 @@ td.num,
   .cultivate-menu-grid,
   .cultivate-menu-card div {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .farm-budget-summary,
+  .farm-budget-wide {
+    grid-column: auto;
+    grid-row: auto;
   }
 
   .master-nav {
