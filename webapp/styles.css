@@ -290,7 +290,7 @@
     border: 1px solid #b94f42 !important;
   }
 
-  @media (max-width: 1180px) {
+@media (max-width: 1180px) {
     .date-panel {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -4516,6 +4516,203 @@ tfoot td {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.farm-budget-contract {
+  display: grid;
+  gap: 10px;
+}
+
+.farm-budget-contract-head,
+.budget-contract-options,
+.budget-rate-builder,
+.farm-budget-stat-strip,
+.farm-budget-rate-table,
+.budget-rate-edit-panel {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.budget-contract-grid {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(180px, 0.9fr) minmax(160px, 0.9fr) minmax(160px, 0.9fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.budget-contract-grid label,
+.budget-rate-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.budget-contract-grid input,
+.budget-contract-grid select,
+.budget-rate-form input,
+.budget-rate-form select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #d8dfe8;
+  border-radius: 4px;
+  background: #f9fafb;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.budget-contract-buttons,
+.budget-rate-form {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+}
+
+.budget-contract-buttons button,
+.budget-rate-form button {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 900;
+}
+
+.budget-contract-buttons button:last-child {
+  background: #1f3b59;
+}
+
+.budget-switch {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.budget-tree-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.budget-tree-card {
+  min-width: 0;
+  border: 1px solid #cfd8e3;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.budget-tree-card h4 {
+  margin: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid #dbe2ec;
+  color: var(--navy);
+  font-size: 12px;
+}
+
+.budget-tree-scroll {
+  height: 300px;
+  overflow: auto;
+  padding: 6px 8px;
+}
+
+.budget-tree-scroll details {
+  margin: 2px 0;
+}
+
+.budget-tree-scroll summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  list-style-position: outside;
+}
+
+.budget-tree-scroll summary small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.budget-tree-item {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 5px;
+  align-items: start;
+  margin: 3px 0 3px 18px;
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.budget-tree-item input {
+  margin-top: 2px;
+  accent-color: #e75f9a;
+}
+
+.budget-tree-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.budget-tree-item em {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.budget-tree-empty {
+  padding: 16px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.budget-rate-form {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+}
+
+.budget-selection-summary,
+.farm-budget-stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.budget-selection-summary span,
+.farm-budget-stat-strip span {
+  padding: 7px 10px;
+  border: 1px solid #dbe5f2;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.budget-selection-summary b,
+.farm-budget-stat-strip b {
+  color: var(--navy);
+}
+
+.farm-budget-rate-table .farm-table-wrap {
+  max-height: 430px;
+}
+
+.budget-rate-edit-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .farm-toolbar {
@@ -9738,4 +9935,33 @@ td.num,
 .date-panel.hidden,
 .global-filter-panel.hidden {
   display: none !important;
+}
+
+@media (max-width: 1180px) {
+  .budget-contract-grid,
+  .budget-rate-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .budget-tree-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .budget-contract-grid,
+  .budget-rate-form,
+  .budget-tree-grid,
+  .budget-rate-edit-form {
+    grid-template-columns: 1fr;
+  }
+
+  .budget-contract-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .budget-tree-scroll {
+    height: 240px;
+  }
 }
