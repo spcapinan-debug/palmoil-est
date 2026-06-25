@@ -105,7 +105,7 @@ const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
 const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_weight.json";
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
-const FARM_BUDGET_IMPORT_API = window.__FARM_BUDGET_IMPORT_API__ || "/api/farm-budget-import";
+const FARM_BUDGET_SYNC_API = window.__FARM_BUDGET_SYNC_API__ || "/api/farm-budget-sync";
 const MASTER_FOLDER_DATA_URL = window.__MASTER_FOLDER_DATA_URL__ || "./data/master_data_full.json";
 const FARM_BUDGET_RATE_DATA_URL = window.__FARM_BUDGET_RATE_DATA_URL__ || "./data/farm_budget_rates_2569.json";
 const TRANSPORT_VIEWS = new Set(["dashboard", "stock", "mill", "rspo", "daily", "summary", "clear"]);
@@ -491,9 +491,9 @@ const FARM_MODULES = [
     id: "farm-budget",
     title: "อัตรางบประมาณ",
     group: "งานจัดการสวนปาล์ม",
-    accent: "Fiscal Year → Activity Rate → Basis → Area",
-    description: "จัดเก็บอัตรางานตามปีงบประมาณจาก Summary Palmoil_Rate_Job_2569 โดยแยกเรทกิจกรรม หน่วยเทียบ พื้นที่ วัสดุ และกลุ่มคนงานให้แก้ไขย้อนหลังได้",
-    tables: ["budget_years", "budget_activity_rates", "budget_rate_materials", "budget_rate_roles", "budget_rate_import_rows", "budget_rates", "contractor_period_estimates", "cost_entries"],
+    accent: "Budget → Activity Rate → Block → Payroll",
+    description: "จัดเก็บงบประมาณและเรทงานตามปี กิจกรรม และ Block เพื่อใช้วางแผน Work Order และคำนวณค่าแรงจากฐานเทียบที่กำหนด",
+    tables: ["budget_years", "budget_activity_rates", "budget_rate_materials", "budget_rate_roles"],
     fields: [
       ["code", "รหัสอัตรา", "BUD-001"],
       ["name", "ชื่ออัตรา", "ค่าแรงใส่ปุ๋ย"],
@@ -2213,7 +2213,7 @@ const FARM_TABLE_SCHEMAS = {
   },
   budget_years: {
     moduleId: "farm-budget",
-    title: "ปีงบประมาณเรทงาน",
+    title: "งบประมาณรายปี",
     primaryKey: "id",
     codeField: "fiscal_year",
     labelField: "budget_name",
@@ -2222,8 +2222,8 @@ const FARM_TABLE_SCHEMAS = {
       F("budget_name", "ชื่อชุดอัตรา", { required: true }),
       F("effective_from", "เริ่มใช้", { type: "date" }),
       F("effective_to", "สิ้นสุด", { type: "date" }),
-      F("source_file", "ไฟล์ต้นทาง"),
-      F("source_sheet", "ชีตต้นทาง"),
+      F("source_file", "ไฟล์ตั้งต้น", { hidden: true }),
+      F("source_sheet", "ชีตตั้งต้น", { hidden: true }),
       F("status", "สถานะ", { type: "status" }),
       F("note", "หมายเหตุ"),
     ],
@@ -2231,7 +2231,7 @@ const FARM_TABLE_SCHEMAS = {
   },
   budget_activity_rates: {
     moduleId: "farm-budget",
-    title: "เรทกิจกรรมรายพื้นที่",
+    title: "เรทกิจกรรมตาม Block",
     primaryKey: "id",
     codeField: "rate_code",
     labelField: "activity_name",
@@ -2240,6 +2240,7 @@ const FARM_TABLE_SCHEMAS = {
       F("fiscal_year", "ปี", { required: true, options: ["2569", "2570", "2571"] }),
       F("rate_code", "รหัสเรท", { required: true }),
       F("activity_group_name", "กลุ่มกิจกรรม", { required: true, options: ["เก็บเกี่ยว", "งานบำรุงรักษา", "วัสดุ/สารเคมี", "วัสดุ/ปุ๋ย"] }),
+      F("activity_id", "กิจกรรมอ้างอิง", { references: "activities" }),
       F("activity_code", "รหัสกิจกรรม"),
       F("activity_name", "กิจกรรม", { required: true }),
       F("rate_type", "ประเภทเรท", { required: true, options: ["labor", "material", "contractor", "machine", "fuel", "other"] }),
@@ -2252,6 +2253,7 @@ const FARM_TABLE_SCHEMAS = {
       F("estate_name", "Estate"),
       F("zone_name", "Zone"),
       F("plot_group_code", "กลุ่มแปลง"),
+      F("block_id", "Block อ้างอิง", { references: "blocks" }),
       F("terrain_code", "Block / Terrain", { required: true }),
       F("ap_code", "AP Code"),
       F("payroll_department_code", "รหัสฝ่ายค่าแรง"),
@@ -2264,10 +2266,10 @@ const FARM_TABLE_SCHEMAS = {
       F("approval_status", "สถานะอนุมัติ", { options: ["draft", "pending_approval", "approved", "rejected"] }),
       F("version_no", "Version", { type: "number" }),
       F("is_current", "Version ปัจจุบัน", { options: ["true", "false"] }),
-      F("source_file", "ไฟล์ต้นทาง", { hidden: true }),
-      F("source_sheet", "ชีตต้นทาง", { hidden: true }),
-      F("source_column", "คอลัมน์ต้นทาง", { hidden: true }),
-      F("source_row", "แถวต้นทาง", { hidden: true }),
+      F("source_file", "ข้อมูลตั้งต้น", { hidden: true }),
+      F("source_sheet", "ชุดข้อมูลตั้งต้น", { hidden: true }),
+      F("source_column", "คอลัมน์ตั้งต้น", { hidden: true }),
+      F("source_row", "แถวตั้งต้น", { hidden: true }),
       F("mapping_rule", "หลักการดึงค่า", { hidden: true }),
       F("status", "สถานะ", { type: "status" }),
       F("note", "หมายเหตุ"),
@@ -2789,27 +2791,27 @@ async function persistFarmRowToDatabase(table, row) {
   return { ...payload, row: saved || payload.row || row };
 }
 
-async function importFarmBudgetRatesToDatabase() {
+async function syncFarmBudgetRatesToDatabase() {
   state.farmSyncBusy = true;
   state.farmSyncStatus = "";
-  state.farmSyncMessage = "กำลังนำเข้าเรทปี 2569 เข้าฐานข้อมูล...";
+  state.farmSyncMessage = "กำลังบันทึกชุดงบประมาณและเรทตั้งต้นเข้า DB...";
   render();
   try {
-    const res = await fetch(FARM_BUDGET_IMPORT_API, {
+    const res = await fetch(FARM_BUDGET_SYNC_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fiscalYear: "2569" }),
       cache: "no-store",
     });
     const payload = await res.json().catch(() => ({}));
-    if (!res.ok || payload?.ok === false) throw new Error(payload?.error || `Budget import API ${res.status}`);
+    if (!res.ok || payload?.ok === false) throw new Error(payload?.error || `Budget sync API ${res.status}`);
     const counts = payload.counts || {};
     state.farmSyncStatus = payload.mode === "fallback" ? "warning" : "success";
-    state.farmSyncMessage = `นำเข้าเรท 2569 แล้ว: ปี ${fmt(counts.budget_years || 0)}, เรท ${fmt(counts.budget_activity_rates || 0)}, วัสดุ ${fmt(counts.budget_rate_materials || 0)}, กลุ่มคนงาน ${fmt(counts.budget_rate_roles || 0)}`;
+    state.farmSyncMessage = `บันทึกชุดงบประมาณเข้า DB แล้ว: Budget ${fmt(counts.budget_years || 0)}, Rate ${fmt(counts.budget_activity_rates || 0)}, วัสดุ ${fmt(counts.budget_rate_materials || 0)}, กลุ่มค่าแรง ${fmt(counts.budget_rate_roles || 0)}`;
     await loadFarmTablesFromDatabase({ silent: false });
   } catch (error) {
     state.farmSyncStatus = "error";
-    state.farmSyncMessage = `นำเข้าเรทไม่สำเร็จ: ${error.message}`;
+    state.farmSyncMessage = `บันทึกชุดงบประมาณไม่สำเร็จ: ${error.message}`;
   } finally {
     state.farmSyncBusy = false;
     render();
@@ -10318,6 +10320,79 @@ function renderFarmPlannerQuickList(tableKey, rows, titleField, subFields = [], 
   }).join("");
 }
 
+function farmNormalizeKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function farmBlockRateKeys(block = {}) {
+  return new Set([
+    block.id,
+    block.block_code,
+    block.block_name,
+    block.area_code,
+    block.terrain_code,
+  ].map(farmNormalizeKey).filter(Boolean));
+}
+
+function farmRateMatchesBlock(rate, block) {
+  if (!rate || !block) return false;
+  if (rate.block_id && block.id && rate.block_id === block.id) return true;
+  const keys = farmBlockRateKeys(block);
+  if (rate.terrain_code && keys.has(farmNormalizeKey(rate.terrain_code))) return true;
+  if (rate.ap_code && farmNormalizeKey(rate.ap_code) === farmNormalizeKey(block.ap_code || block.AP_code)) return true;
+  return false;
+}
+
+function farmRateMatchesActivity(rate, activity) {
+  if (!rate || !activity) return false;
+  if (rate.activity_id && activity.id && rate.activity_id === activity.id) return true;
+  const rateName = farmNormalizeKey(rate.activity_name || rate.activity_code);
+  const activityNames = [
+    activity.activity_name,
+    activity.activity_code,
+    activity.name,
+    activity.code,
+  ].map(farmNormalizeKey).filter(Boolean);
+  return activityNames.includes(rateName);
+}
+
+function farmBestBudgetRateForPlan(rates, activity, blocks, preferredTypes = ["labor", "contractor"]) {
+  const activeRates = (rates || []).filter((row) => String(row.status || "active").toLowerCase() !== "inactive");
+  const typeOk = (row) => !preferredTypes.length || preferredTypes.includes(row.rate_type || "");
+  const blockMatched = activeRates.find((row) => typeOk(row) && farmRateMatchesActivity(row, activity) && blocks.some((block) => farmRateMatchesBlock(row, block)));
+  if (blockMatched) return blockMatched;
+  const activityMatched = activeRates.find((row) => typeOk(row) && farmRateMatchesActivity(row, activity));
+  if (activityMatched) return activityMatched;
+  const blockOnly = activeRates.find((row) => typeOk(row) && blocks.some((block) => farmRateMatchesBlock(row, block)));
+  return blockOnly || activeRates.find(typeOk) || activeRates[0] || {};
+}
+
+function farmBudgetRateBaseQuantity(rate, blocks) {
+  const basis = rate?.comparison_basis || "";
+  const areaRai = blocks.reduce((sum, row) => sum + n(row.area_rai), 0);
+  const treeCount = blocks.reduce((sum, row) => sum + n(row.tree_count), 0);
+  if (basis === "tree_count") return { quantity: treeCount, label: "จำนวนต้น", unit: "ต้น" };
+  if (basis === "area_rai") return { quantity: areaRai, label: "พื้นที่", unit: "ไร่" };
+  if (basis === "weight_ton") return { quantity: n(rate?.planned_quantity || 0), label: "ผลผลิตแผน", unit: "ตัน" };
+  if (basis === "bag_count") return { quantity: n(rate?.planned_quantity || 0), label: "จำนวนกระสอบ", unit: "กระสอบ" };
+  if (basis === "trip_count") return { quantity: n(rate?.planned_quantity || 0), label: "จำนวนเที่ยว", unit: "เที่ยว" };
+  if (basis === "day_count") return { quantity: 1, label: "จำนวนวัน", unit: "วัน" };
+  if (basis === "hour_count") return { quantity: 8, label: "ชั่วโมง", unit: "ชม." };
+  return { quantity: blocks.length || 1, label: "จำนวนงาน", unit: "งาน" };
+}
+
+function farmBudgetRateCost(rate, blocks) {
+  const base = farmBudgetRateBaseQuantity(rate, blocks);
+  const rateAmount = n(rate?.rate_amount || 0);
+  return {
+    ...base,
+    rateAmount,
+    amount: base.quantity * rateAmount,
+    unitName: rate?.unit_name || base.unit,
+    rateLabel: rate?.rate_text || moneyNf.format(rateAmount),
+  };
+}
+
 function renderFarmWorkPlanner() {
   const plots = farmRows(farmTableByKey("plots"));
   const blocks = farmRows(farmTableByKey("blocks"));
@@ -10342,15 +10417,9 @@ function renderFarmWorkPlanner() {
   const selectedBlocks = blocks.slice(0, Math.min(2, blocks.length));
   const totalRai = selectedBlocks.reduce((sum, row) => sum + n(row.area_rai), 0);
   const totalTrees = selectedBlocks.reduce((sum, row) => sum + n(row.tree_count), 0);
-  const previewActivityName = previewActivity?.activity_name || previewActivity?.name || "";
-  const selectedBudgetRate = budgetRates.find((row) => row.activity_id === previewActivity?.id || row.activity_name === previewActivityName) || budgetRates[0] || {};
-  const laborBudgetRate = budgetRates.find((row) => (row.activity_id === previewActivity?.id || row.activity_name === previewActivityName) && ["labor", "contractor"].includes(row.rate_type))
-    || budgetRates.find((row) => row.rate_type === "labor")
-    || budgetRates.find((row) => row.rate_type === "contractor")
-    || selectedBudgetRate;
-  const materialBudgetRate = budgetRates.find((row) => (row.activity_id === previewActivity?.id || row.activity_name === previewActivityName) && row.rate_type === "material")
-    || budgetRates.find((row) => row.rate_type === "material")
-    || {};
+  const selectedBudgetRate = farmBestBudgetRateForPlan(budgetRates, previewActivity, selectedBlocks, []);
+  const laborBudgetRate = farmBestBudgetRateForPlan(budgetRates, previewActivity, selectedBlocks, ["labor", "contractor"]);
+  const materialBudgetRate = farmBestBudgetRateForPlan(budgetRates, previewActivity, selectedBlocks, ["material"]);
   const selectedMaterials = materials.slice(0, Math.min(3, materials.length));
   const selectedVehicles = vehicles.slice(0, Math.min(3, vehicles.length));
   const selectedUsageRate = usageRates.find((row) => row.activity_id === previewActivity?.id) || {
@@ -10360,9 +10429,10 @@ function renderFarmWorkPlanner() {
   const selectedMaterial = materials.find((row) => row.id === (selectedUsageRate.material_id || materialBudgetRate.material_id || selectedBudgetRate.material_id)) || materials[0] || {};
   const calculationBase = selectedUsageRate.usage_basis === "per_tree" ? totalTrees : selectedUsageRate.usage_basis === "per_rai" ? totalRai : selectedBlocks.length;
   const materialQuantity = calculationBase * n(selectedUsageRate.usage_rate || 0);
-  const laborRate = n(laborBudgetRate.rate_amount || 0);
+  const laborEstimate = farmBudgetRateCost(laborBudgetRate, selectedBlocks);
+  const laborRate = laborEstimate.rateAmount;
   const materialRate = n(materialBudgetRate.rate_amount || 0);
-  const laborCost = totalRai * laborRate;
+  const laborCost = laborEstimate.amount;
   const materialCost = materialQuantity * materialRate;
   const totalCost = laborCost + materialCost;
   const materialOptions = (selectedId = "") => materials.map((row) => `<option value="${esc(row.id || "")}"${row.id === selectedId ? " selected" : ""}>${esc(row.material_name || row.material_code || "")}</option>`).join("");
@@ -10506,7 +10576,7 @@ function renderFarmWorkPlanner() {
             ${vehicleResourceRows}
           </div>
           <label>อัตรางบประมาณ
-            <select>${budgetRates.map((row) => `<option>${esc(row.budget_rate_code || row.id)} · ${esc(farmLookupLabel("activities", row.activity_id))} · ${moneyNf.format(n(row.rate_amount))}</option>`).join("")}</select>
+            <select>${budgetRates.map((row) => `<option${row.id === selectedBudgetRate.id ? " selected" : ""}>${esc(row.rate_code || row.budget_rate_code || row.id)} · ${esc(row.activity_name || farmLookupLabel("activities", row.activity_id))} · ${esc(row.terrain_code || row.block_id || "ทุก Block")} · ${esc(row.rate_text || moneyNf.format(n(row.rate_amount)))}/${esc(row.unit_name || "")}</option>`).join("")}</select>
           </label>
           <div class="farm-plan-resource-note">
             <span>เลือกวิธีคำนวณได้ครั้งละ 1 แบบ</span>
@@ -10527,8 +10597,9 @@ function renderFarmWorkPlanner() {
             <strong>ต้นทุนประมาณการก่อนสร้างแผน</strong>
             <table>
               <tbody>
-                <tr><th>ฐานคำนวณ</th><td>${moneyNf.format(totalRai)} ไร่ / ${fmt(totalTrees)} ต้น</td></tr>
-                <tr><th>ค่าแรง</th><td>${moneyNf.format(totalRai)} ไร่ × ${moneyNf.format(laborRate)} = ${moneyNf.format(laborCost)}</td></tr>
+                <tr><th>Rate ที่ใช้</th><td>${esc(laborBudgetRate.rate_code || laborBudgetRate.budget_rate_code || laborBudgetRate.id || "-")} · ${esc(laborBudgetRate.activity_name || "-")} · ${esc(laborBudgetRate.terrain_code || "ทุก Block")}</td></tr>
+                <tr><th>ฐานคำนวณ</th><td>${esc(laborEstimate.label)} ${moneyNf.format(laborEstimate.quantity)} ${esc(laborEstimate.unit)} / ข้อมูลแปลง ${moneyNf.format(totalRai)} ไร่ / ${fmt(totalTrees)} ต้น</td></tr>
+                <tr><th>ค่าแรง</th><td>${moneyNf.format(laborEstimate.quantity)} ${esc(laborEstimate.unit)} × ${esc(laborEstimate.rateLabel)} = ${moneyNf.format(laborCost)}</td></tr>
                 <tr><th>วัสดุ</th><td>${esc(selectedMaterial.material_name || "-")} · ${moneyNf.format(materialQuantity)} ${esc(selectedUsageRate.usage_unit || "")}</td></tr>
                 <tr><th>ต้นทุนวัสดุ</th><td>${moneyNf.format(materialQuantity)} × ${moneyNf.format(materialRate)} = ${moneyNf.format(materialCost)}</td></tr>
                 <tr class="total"><th>รวมประมาณการ</th><td>${moneyNf.format(totalCost)}</td></tr>
@@ -11019,8 +11090,8 @@ function renderFarmBudgetBoard() {
     <section class="farm-budget-board">
       <article class="farm-budget-summary">
         <div class="section-head">
-          <h3>อัตรางานจาก Summary Palmoil_Rate_Job_2569</h3>
-          <span>${esc(source.file || "webapp/data/farm_budget_rates_2569.json")} · ${fmt(source.rate_count || rates.length)} rates</span>
+          <h3>ฐานข้อมูลงบประมาณและเรทกิจกรรม</h3>
+          <span>Budget / Rate ตามกิจกรรมและ Block · ${fmt(source.rate_count || rates.length)} rates</span>
         </div>
         <div class="farm-budget-stat-grid">
           <div><span>ปีงบประมาณ</span><strong>${esc(years[0]?.fiscal_year || "2569")}</strong><small>${esc(years[0]?.effective_from || "2026-01-01")} - ${esc(years[0]?.effective_to || "2026-12-31")}</small></div>
@@ -11031,9 +11102,10 @@ function renderFarmBudgetBoard() {
           <div><span>กลุ่มคนงาน/ผู้รับเหมา</span><strong>${fmt(roles.length)}</strong><small>ใช้ตอนวางแผนและปิดงาน</small></div>
         </div>
         <div class="farm-budget-actions">
-          <button type="button" data-farm-budget-import ${state.farmSyncBusy ? "disabled" : ""}>นำเข้าเรท 2569 เข้า DB</button>
-          <button type="button" data-farm-open-table="budget_activity_rates">เปิดตารางเรทกิจกรรม</button>
+          <button type="button" data-farm-open-table="budget_activity_rates">เพิ่ม/แก้ไข Rate ตาม Block</button>
+          <button type="button" data-farm-open-table="budget_years">เพิ่ม/แก้ไข Budget รายปี</button>
           <button type="button" data-farm-open-table="budget_rate_materials">เปิดวัสดุที่ผูกกับเรท</button>
+          <button type="button" data-farm-budget-sync ${state.farmSyncBusy ? "disabled" : ""}>Sync ข้อมูลตั้งต้นเข้า DB</button>
         </div>
       </article>
       <article class="farm-budget-card">
@@ -11058,7 +11130,7 @@ function renderFarmBudgetBoard() {
         </div>
       </article>
       <article class="farm-budget-card farm-budget-wide">
-        <div class="section-head"><h3>ตัวอย่างเรทที่นำเข้า</h3><span>กดเปิดตารางเพื่อแก้ไขรายละเอียดได้</span></div>
+        <div class="section-head"><h3>ตัวอย่าง Rate ที่ใช้วางแผน</h3><span>แก้ไขที่ตารางเรทกิจกรรมตาม Block แล้วนำไปคำนวณ Work Order</span></div>
         <table class="mini-table">
           <thead><tr><th>พื้นที่</th><th>กิจกรรม</th><th>ฐานเทียบ</th><th>อัตรา</th><th>AP</th><th>ฝ่ายค่าแรง</th></tr></thead>
           <tbody>
@@ -12295,8 +12367,8 @@ async function init() {
       loadFarmTablesFromDatabase({ silent: true });
       return;
     }
-    if (e.target.closest("[data-farm-budget-import]")) {
-      importFarmBudgetRatesToDatabase();
+    if (e.target.closest("[data-farm-budget-sync]")) {
+      syncFarmBudgetRatesToDatabase();
       return;
     }
     const plannerTab = e.target.closest("[data-farm-planner-tab]");

@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const IMPORT_TABLES = [
+const SYNC_TABLES = [
   "budget_years",
   "budget_activity_rates",
   "budget_rate_materials",
@@ -55,7 +55,7 @@ async function supabaseFetch(restPath, options = {}) {
   return data;
 }
 
-function loadSeedData() {
+function loadDefaultBudgetData() {
   const filePath = path.join(process.cwd(), "webapp", "data", "farm_budget_rates_2569.json");
   const payload = JSON.parse(fs.readFileSync(filePath, "utf8"));
   if (!payload?.ok || !payload.tables) throw new Error("Invalid farm budget seed data");
@@ -123,12 +123,12 @@ module.exports = async function handler(req, res) {
   if (req.method !== "POST") return json(res, 405, { ok: false, error: "Method not allowed" });
 
   try {
-    const seed = loadSeedData();
+    const seed = loadDefaultBudgetData();
     const counts = {};
     const warnings = {};
     let fallbackCount = 0;
 
-    for (const table of IMPORT_TABLES) {
+    for (const table of SYNC_TABLES) {
       const rows = Array.isArray(seed.tables?.[table]) ? seed.tables[table] : [];
       if (!rows.length) {
         counts[table] = 0;
@@ -149,7 +149,7 @@ module.exports = async function handler(req, res) {
       source: seed.source,
       counts,
       warnings,
-      importedAt: new Date().toISOString(),
+      syncedAt: new Date().toISOString(),
     });
   } catch (error) {
     return json(res, 500, { ok: false, error: error.message });

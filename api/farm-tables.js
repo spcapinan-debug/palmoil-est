@@ -94,7 +94,6 @@ const REQUIRED_TABLES = new Set([
   "vehicles",
   "budget_years",
   "budget_activity_rates",
-  "budget_rates",
   "work_orders",
 ]);
 

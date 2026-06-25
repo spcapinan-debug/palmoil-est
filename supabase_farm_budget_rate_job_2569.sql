@@ -17,6 +17,7 @@ create table if not exists public.budget_activity_rates (
   budget_year_id text references public.budget_years(id) on delete set null,
   fiscal_year text not null,
   rate_code text not null unique,
+  activity_id uuid references public.activities(id) on delete set null,
   activity_code text,
   activity_name text not null,
   activity_group_name text,
@@ -25,6 +26,7 @@ create table if not exists public.budget_activity_rates (
   estate_name text,
   zone_name text,
   plot_group_code text,
+  block_id uuid references public.blocks(id) on delete set null,
   terrain_code text,
   ap_code text,
   payroll_department_code text,
@@ -106,6 +108,8 @@ create table if not exists public.budget_rate_import_rows (
 );
 
 create index if not exists idx_budget_activity_rates_year on public.budget_activity_rates(fiscal_year);
+create index if not exists idx_budget_activity_rates_activity_id on public.budget_activity_rates(activity_id);
+create index if not exists idx_budget_activity_rates_block_id on public.budget_activity_rates(block_id);
 create index if not exists idx_budget_activity_rates_activity on public.budget_activity_rates(activity_group_name, activity_name);
 create index if not exists idx_budget_activity_rates_terrain on public.budget_activity_rates(terrain_code);
 create index if not exists idx_budget_activity_rates_ap on public.budget_activity_rates(ap_code);
