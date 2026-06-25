@@ -9030,6 +9030,7 @@ td.num,
   .menu-dropdown[data-menu-group="master"] > summary { --menu-icon: var(--icon-database); }
   .menu-dropdown[data-menu-group="operation"] > summary { --menu-icon: var(--icon-clipboard); }
   .menu-dropdown[data-menu-group="governance"] > summary { --menu-icon: var(--icon-shield); }
+  .menu-dropdown[data-menu-group="hr"] > summary { --menu-icon: var(--icon-users); }
 
   .side-nav button[data-view="dashboard"] { --menu-icon: var(--icon-dashboard); }
   .side-nav button[data-view="stock"] { --menu-icon: var(--icon-box); }
@@ -9205,7 +9206,7 @@ td.num,
   }
 
   .sidebar.collapsed .menu-dropdown[data-menu-group="master"] .menu-items::before {
-    content: "ข้อมูลตั้งต้น";
+    content: "งานจัดการสวนปาล์ม";
   }
 
   .sidebar.collapsed .menu-dropdown[data-menu-group="operation"] .menu-items::before {
@@ -9214,6 +9215,10 @@ td.num,
 
   .sidebar.collapsed .menu-dropdown[data-menu-group="governance"] .menu-items::before {
     content: "ควบคุมและตรวจสอบ";
+  }
+
+  .sidebar.collapsed .menu-dropdown[data-menu-group="hr"] .menu-items::before {
+    content: "งานบริหารบุคคล";
   }
 
   .sidebar.collapsed .menu-dropdown .menu-items button {
