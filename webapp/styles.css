@@ -9041,7 +9041,11 @@ td.num,
   .side-nav button[data-view="summary"] { --menu-icon: var(--icon-chart); }
   .side-nav button[data-view="clear"] { --menu-icon: var(--icon-check); }
   .side-nav button[data-view="farm-area"] { --menu-icon: var(--icon-leaf); }
-  .side-nav button[data-view="farm-people"] { --menu-icon: var(--icon-users); }
+  .side-nav button[data-view="farm-people"],
+  .side-nav button[data-view="farm-people-daily"],
+  .side-nav button[data-view="farm-people-monthly"],
+  .side-nav button[data-view="farm-people-contract"] { --menu-icon: var(--icon-users); }
+  .side-nav button[data-view="farm-people-docs"] { --menu-icon: var(--icon-report); }
   .side-nav button[data-view="farm-activities"] { --menu-icon: var(--icon-activity); }
   .side-nav button[data-view="farm-inventory"] { --menu-icon: var(--icon-tool); }
   .side-nav button[data-view="farm-budget"],
@@ -9418,5 +9422,125 @@ td.num,
     color: #73879c !important;
     font-size: 10px !important;
     font-weight: 700 !important;
+  }
+}
+
+/* HR OneFlow-inspired people management, scoped to farm HR pages. */
+@media screen {
+  .hr-oneflow-board {
+    display: grid;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+
+  .hr-segment-grid,
+  .hr-flow-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .hr-segment-grid article,
+  .hr-flow-grid article {
+    position: relative;
+    min-width: 0;
+    padding: 14px 16px;
+    border: 1px solid rgba(42,63,84,.12);
+    border-radius: 8px;
+    background: rgba(255,255,255,.84);
+    box-shadow: 0 10px 24px rgba(15,23,42,.04);
+  }
+
+  .hr-segment-grid span,
+  .hr-segment-grid small,
+  .hr-flow-grid span {
+    display: block;
+    color: #73879c;
+    font-size: 11px;
+  }
+
+  .hr-segment-grid strong {
+    display: block;
+    margin: 5px 0;
+    color: #2a3f54;
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .hr-flow-grid b {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 24px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    background: rgba(42,63,84,.08);
+    color: #2a3f54;
+    font-size: 11px;
+  }
+
+  .hr-flow-grid strong {
+    display: block;
+    margin-bottom: 3px;
+    color: #2a3f54;
+    font-size: 13px;
+  }
+
+  .hr-two-col {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr);
+    gap: 14px;
+  }
+
+  .mini-table td small {
+    display: block;
+    margin-top: 2px;
+    color: #73879c;
+    font-size: 10px;
+  }
+
+  .status-pill.warning {
+    background: rgba(245,158,11,.14);
+    color: #92400e;
+  }
+
+  .status-pill.danger {
+    background: rgba(239,68,68,.12);
+    color: #991b1b;
+  }
+
+  .hr-link-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .hr-link-list span {
+    display: block;
+    padding: 10px 12px;
+    border: 1px solid rgba(42,63,84,.12);
+    border-radius: 8px;
+    background: rgba(42,63,84,.035);
+    color: #73879c;
+    font-size: 12px;
+  }
+
+  .hr-link-list b {
+    color: #2a3f54;
+  }
+
+  @media (max-width: 1100px) {
+    .hr-segment-grid,
+    .hr-flow-grid,
+    .hr-two-col {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .hr-segment-grid,
+    .hr-flow-grid,
+    .hr-two-col {
+      grid-template-columns: 1fr;
+    }
   }
 }

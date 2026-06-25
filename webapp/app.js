@@ -317,11 +317,11 @@ const FARM_MODULES = [
   },
   {
     id: "farm-people",
-    title: "ข้อมูลพนักงาน / ผู้รับเหมา",
-    group: "Master Data",
-    accent: "Employees / Contractors / Teams",
-    description: "จัดการพนักงาน ผู้รับเหมา ทีม สมาชิกทีม และทักษะตามกิจกรรม โดยเก็บประวัติการย้ายทีม",
-    tables: ["people", "departments", "housing_units", "person_housing_assignments", "housing_utility_charges", "teams", "team_members", "team_activity_skills"],
+    title: "ภาพรวมบุคคล",
+    group: "งานบริหารบุคคล",
+    accent: "Daily / Monthly / Contractor",
+    description: "ศูนย์ข้อมูลบุคคลสำหรับรายวัน รายเดือน รายเหมา ทีมงาน บ้านพัก และเอกสารสำคัญ โดยตัดส่วน ADMIN SERVICE ออก",
+    tables: ["people", "employees", "contractors", "worker_documents", "departments", "housing_units", "person_housing_assignments", "housing_utility_charges", "teams", "team_members", "team_activity_skills"],
     fields: [
       ["code", "รหัส", "EMP-001"],
       ["name", "ชื่อ", "หัวหน้าทีมตัวอย่าง"],
@@ -338,6 +338,46 @@ const FARM_MODULES = [
       { code: "EMP-001", name: "หัวหน้าทีมตัวอย่าง", type: "supervisor", nationality: "ไทย", team: "ทีมตัดปาล์ม A", role: "supervisor", paymentType: "รายวัน", dailyWage: "650", phone: "", status: "active" },
       { code: "CON-001", name: "ผู้รับเหมางานเก็บเกี่ยว", type: "harvest_contractor", nationality: "ไทย", team: "ผู้รับเหมา", role: "contractor", paymentType: "รายเหมา", dailyWage: "0", phone: "", status: "active" },
     ],
+  },
+  {
+    id: "farm-people-daily",
+    title: "รายวัน / คนงาน",
+    group: "งานบริหารบุคคล",
+    accent: "Workers / Migrant Documents / Attendance",
+    description: "จัดการคนงานรายวัน รวมแรงงานต่างด้าว ค่าแรงรายวัน คิดรายชั่วโมง บ้านพัก ทีมงาน เข้างาน และเอกสารที่ต้องเตือน",
+    tables: ["employees", "worker_documents", "attendance_records", "leave_requests", "employee_housing_assignments", "teams", "team_members"],
+    fields: [],
+    seed: [],
+  },
+  {
+    id: "farm-people-monthly",
+    title: "รายเดือน / พนักงาน",
+    group: "งานบริหารบุคคล",
+    accent: "Staff / Salary / Leave",
+    description: "จัดการพนักงานรายเดือน ตำแหน่ง แผนก เงินเดือน วันลา การเข้างาน และข้อมูลที่ส่งต่อให้ระบบค่าแรง",
+    tables: ["employees", "leave_requests", "attendance_records", "departments", "housing_units"],
+    fields: [],
+    seed: [],
+  },
+  {
+    id: "farm-people-contract",
+    title: "รายเหมา / ผู้รับเหมา",
+    group: "งานบริหารบุคคล",
+    accent: "Contractors / Teams / Contract Rate",
+    description: "จัดการผู้รับเหมา อัตราเหมา ทีมงาน กิจกรรมหลัก ผู้ติดต่อ และข้อมูลผูกกับ Work Order / ค่าแรงรายงวด",
+    tables: ["contractors", "teams", "team_members", "worker_documents"],
+    fields: [],
+    seed: [],
+  },
+  {
+    id: "farm-people-docs",
+    title: "เอกสารต่างด้าว",
+    group: "งานบริหารบุคคล",
+    accent: "Passport / Visa / Work Permit Alerts",
+    description: "ติดตามเอกสารแรงงานต่างด้าว เช่น Passport, Visa, Work Permit และเตือนก่อนหมดอายุเพื่อไม่หลุดการต่ออายุ",
+    tables: ["worker_documents", "employees", "contractors"],
+    fields: [],
+    seed: [],
   },
   {
     id: "farm-activities",
@@ -1018,7 +1058,8 @@ const FARM_TABLE_SCHEMAS = {
     ],
     seed: [
       { id: "emp-001", employee_code: "EMP-001", full_name: "หัวหน้าทีมตัวอย่าง", nationality: "ไทย", worker_type: "หัวหน้างาน", payment_type: "รายวัน", department_id: "dept-field", default_housing_unit_id: "house-a01", position: "Supervisor", default_role: "supervisor", daily_wage: "650", normal_hours_per_day: "8", hourly_wage_rate: "81.25", effective_from: "2026-01-01", version_no: "1", is_current: "true", status: "active" },
-      { id: "emp-002", employee_code: "EMP-002", full_name: "คนงานตัวอย่าง", nationality: "ไทย", worker_type: "คนงาน", payment_type: "รายวัน", department_id: "dept-harvest", default_housing_unit_id: "house-a01", position: "Worker", default_role: "viewer", daily_wage: "450", normal_hours_per_day: "8", hourly_wage_rate: "56.25", effective_from: "2026-01-01", version_no: "1", is_current: "true", status: "active" },
+      { id: "emp-002", employee_code: "EMP-002", full_name: "คนงานตัวอย่าง", nationality: "เมียนมา", worker_type: "คนงาน", payment_type: "รายวัน", department_id: "dept-harvest", default_housing_unit_id: "house-a01", position: "Worker", default_role: "viewer", daily_wage: "450", normal_hours_per_day: "8", hourly_wage_rate: "56.25", effective_from: "2026-01-01", version_no: "1", is_current: "true", status: "active" },
+      { id: "emp-003", employee_code: "EMP-003", full_name: "พนักงานรายเดือนตัวอย่าง", nationality: "ไทย", worker_type: "พนักงาน", payment_type: "รายเดือน", department_id: "dept-field", position: "Admin Officer", default_role: "viewer", monthly_salary: "18000", normal_hours_per_day: "8", effective_from: "2026-01-01", version_no: "1", is_current: "true", status: "active" },
     ],
   },
   employee_housing_assignments: {
@@ -1143,6 +1184,83 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [],
+  },
+  worker_documents: {
+    moduleId: "farm-people",
+    title: "เอกสารบุคคล / ต่างด้าว",
+    primaryKey: "id",
+    codeField: "document_no",
+    labelField: "document_type",
+    fields: [
+      F("employee_id", "พนักงาน/คนงาน", { references: "employees" }),
+      F("contractor_id", "ผู้รับเหมา", { references: "contractors" }),
+      F("holder_name_snapshot", "ชื่อผู้ถือเอกสาร"),
+      F("nationality_snapshot", "สัญชาติ"),
+      F("payment_type_snapshot", "ประเภทการจ่าย", { options: ["รายวัน", "รายเดือน", "รายเหมา"] }),
+      F("document_type", "ประเภทเอกสาร", { options: ["passport", "visa", "work_permit", "pink_card", "contract", "id_card", "other"], required: true }),
+      F("document_no", "เลขที่เอกสาร", { required: true }),
+      F("issue_date", "วันที่ออก", { type: "date" }),
+      F("expiry_date", "วันหมดอายุ", { type: "date", required: true }),
+      F("alert_days_before", "เตือนล่วงหน้า (วัน)", { type: "number" }),
+      F("responsible_person_id", "ผู้รับผิดชอบ", { references: "employees" }),
+      F("file_url", "ไฟล์แนบ/ลิงก์"),
+      F("renewal_status", "สถานะต่ออายุ", { options: ["valid", "warning", "expired", "renewing", "completed"] }),
+      F("last_alert_at", "แจ้งเตือนล่าสุด", { type: "date" }),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [
+      { id: "doc-emp-002-passport", employee_id: "emp-002", holder_name_snapshot: "คนงานตัวอย่าง", nationality_snapshot: "เมียนมา", payment_type_snapshot: "รายวัน", document_type: "passport", document_no: "PP-MMR-001", issue_date: "2024-07-01", expiry_date: "2026-07-10", alert_days_before: "45", renewal_status: "warning", status: "active", note: "ตัวอย่างเอกสารแรงงานต่างด้าว" },
+      { id: "doc-emp-002-workpermit", employee_id: "emp-002", holder_name_snapshot: "คนงานตัวอย่าง", nationality_snapshot: "เมียนมา", payment_type_snapshot: "รายวัน", document_type: "work_permit", document_no: "WP-001", issue_date: "2025-01-01", expiry_date: "2026-09-30", alert_days_before: "60", renewal_status: "valid", status: "active" },
+    ],
+  },
+  attendance_records: {
+    moduleId: "farm-people",
+    title: "ลงเวลา / เข้างาน",
+    primaryKey: "id",
+    codeField: "work_date",
+    labelField: "employee_id",
+    fields: [
+      F("employee_id", "พนักงาน/คนงาน", { references: "employees", required: true }),
+      F("work_date", "วันที่", { type: "date", required: true }),
+      F("shift_code", "กะ/ช่วงเวลา"),
+      F("check_in_time", "เวลาเข้า"),
+      F("check_out_time", "เวลาออก"),
+      F("work_hours", "ชั่วโมงทำงาน", { type: "number" }),
+      F("source", "แหล่งข้อมูล", { options: ["mobile", "manual", "work_order", "import"] }),
+      F("work_order_id", "Work Order", { references: "work_orders" }),
+      F("status", "สถานะ", { options: ["present", "late", "absent", "leave", "pending"] }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [
+      { id: "att-emp-001-20260601", employee_id: "emp-001", work_date: "2026-06-01", shift_code: "08:00-17:00", check_in_time: "08:03", check_out_time: "17:05", work_hours: "8", source: "manual", status: "present" },
+      { id: "att-emp-002-20260601", employee_id: "emp-002", work_date: "2026-06-01", shift_code: "08:00-17:00", check_in_time: "08:20", check_out_time: "17:00", work_hours: "8", source: "manual", status: "late" },
+    ],
+  },
+  leave_requests: {
+    moduleId: "farm-people",
+    title: "ลา / OT",
+    primaryKey: "id",
+    codeField: "request_no",
+    labelField: "employee_id",
+    fields: [
+      F("request_no", "เลขที่คำขอ", { required: true }),
+      F("employee_id", "พนักงาน/คนงาน", { references: "employees", required: true }),
+      F("request_type", "ประเภท", { options: ["annual_leave", "sick_leave", "personal_leave", "ot", "absence_adjustment"], required: true }),
+      F("start_date", "วันที่เริ่ม", { type: "date", required: true }),
+      F("end_date", "วันที่สิ้นสุด", { type: "date" }),
+      F("quantity", "จำนวนวัน/ชั่วโมง", { type: "number" }),
+      F("approval_status", "สถานะอนุมัติ", { options: ["draft", "pending", "approved", "rejected"] }),
+      F("approved_by", "ผู้อนุมัติ", { references: "employees" }),
+      F("approved_at", "วันที่อนุมัติ", { type: "date" }),
+      F("attachment_url", "ไฟล์แนบ"),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "เหตุผล/หมายเหตุ"),
+    ],
+    seed: [
+      { id: "leave-emp-001-001", request_no: "LV-001", employee_id: "emp-001", request_type: "annual_leave", start_date: "2026-06-10", end_date: "2026-06-10", quantity: "1", approval_status: "approved", status: "active" },
+      { id: "ot-emp-002-001", request_no: "OT-001", employee_id: "emp-002", request_type: "ot", start_date: "2026-06-12", quantity: "2", approval_status: "pending", status: "active" },
+    ],
   },
   activity_groups: {
     moduleId: "farm-activities",
@@ -9093,12 +9211,68 @@ function farmCleanRows(tableId, rows) {
   return null;
 }
 
+function farmHrEmployeeById(id) {
+  if (!id) return null;
+  return farmRowsByKey("employees").find((row) => row.id === id || row.employee_code === id) || null;
+}
+
+function farmHrContractorById(id) {
+  if (!id) return null;
+  return farmRowsByKey("contractors").find((row) => row.id === id || row.contractor_code === id) || null;
+}
+
+function farmHrIsForeign(row) {
+  const nationality = String(row?.nationality || row?.nationality_snapshot || "").trim();
+  return nationality && nationality !== "ไทย";
+}
+
+function farmHrPaymentType(row) {
+  return String(row?.payment_type || row?.payment_type_snapshot || "").trim();
+}
+
+function farmHrViewRowOk(tableKey, row, view = state.view) {
+  if (!String(view).startsWith("farm-people")) return true;
+  if (view === "farm-people") return true;
+  if (view === "farm-people-daily") {
+    if (tableKey === "employees") return farmHrPaymentType(row) === "รายวัน" || row.worker_type === "คนงาน";
+    if (tableKey === "people") return farmHrPaymentType(row) === "รายวัน" || ["worker", "supervisor", "driver"].includes(row.person_type);
+    if (tableKey === "worker_documents" || tableKey === "attendance_records" || tableKey === "leave_requests") {
+      const employee = farmHrEmployeeById(row.employee_id);
+      return !employee || farmHrPaymentType(employee) === "รายวัน" || employee.worker_type === "คนงาน";
+    }
+  }
+  if (view === "farm-people-monthly") {
+    if (tableKey === "employees") return farmHrPaymentType(row) === "รายเดือน" || row.worker_type === "พนักงาน";
+    if (tableKey === "people") return farmHrPaymentType(row) === "รายเดือน" || row.person_type === "employee";
+    if (tableKey === "attendance_records" || tableKey === "leave_requests") {
+      const employee = farmHrEmployeeById(row.employee_id);
+      return !!employee && (farmHrPaymentType(employee) === "รายเดือน" || employee.worker_type === "พนักงาน");
+    }
+  }
+  if (view === "farm-people-contract") {
+    if (tableKey === "contractors") return true;
+    if (tableKey === "people") return farmHrPaymentType(row) === "รายเหมา" || row.person_type === "contractor";
+    if (tableKey === "teams") return row.team_type === "contractor" || !!row.contractor_id;
+    if (tableKey === "team_members") return true;
+    if (tableKey === "worker_documents") return !!row.contractor_id;
+  }
+  if (view === "farm-people-docs") {
+    if (tableKey === "worker_documents") {
+      const employee = farmHrEmployeeById(row.employee_id);
+      const contractor = farmHrContractorById(row.contractor_id);
+      return farmHrIsForeign(row) || farmHrIsForeign(employee) || farmHrIsForeign(contractor);
+    }
+    if (tableKey === "employees" || tableKey === "contractors" || tableKey === "people") return farmHrIsForeign(row);
+  }
+  return true;
+}
+
 function filteredFarmRows(table = selectedFarmTable()) {
   const query = state.farmFilters.query.trim().toLowerCase();
   return farmRows(table).filter((row) => {
     const statusOk = state.farmFilters.status === "all" || String(row.status || "").toLowerCase() === state.farmFilters.status;
     const queryOk = !query || Object.values(row).join(" ").toLowerCase().includes(query);
-    return statusOk && queryOk;
+    return statusOk && queryOk && farmHrViewRowOk(table.key, row);
   });
 }
 
@@ -10364,6 +10538,146 @@ function renderFarmDataEntryGuide(table) {
     </section>`;
 }
 
+function farmHrModuleActive(module = selectedFarmModule()) {
+  return String(module?.id || "").startsWith("farm-people");
+}
+
+function farmHrPersonRows() {
+  const employees = farmRowsByKey("employees").map((row) => ({
+    id: row.id,
+    code: row.employee_code,
+    name: row.full_name,
+    source: "employees",
+    personType: row.worker_type || "พนักงาน",
+    paymentType: row.payment_type || (row.worker_type === "พนักงาน" ? "รายเดือน" : "รายวัน"),
+    nationality: row.nationality || "ไทย",
+    department: farmLookupLabel("departments", row.department_id),
+    housing: farmLookupLabel("housing_units", row.default_housing_unit_id),
+    dailyWage: n(row.daily_wage),
+    monthlySalary: n(row.monthly_salary),
+    contractRate: n(row.contract_rate),
+    status: row.status || "active",
+  }));
+  const contractors = farmRowsByKey("contractors").map((row) => ({
+    id: row.id,
+    code: row.contractor_code,
+    name: row.contractor_name,
+    source: "contractors",
+    personType: row.contractor_type || "ผู้รับเหมา",
+    paymentType: row.payment_type || "รายเหมา",
+    nationality: row.nationality || "ไทย",
+    department: "ผู้รับเหมา",
+    housing: "",
+    dailyWage: 0,
+    monthlySalary: 0,
+    contractRate: n(row.default_contract_rate),
+    status: row.status || "active",
+  }));
+  return [...employees, ...contractors].filter((row) => String(row.status).toLowerCase() !== "inactive");
+}
+
+function farmHrDocDaysLeft(row) {
+  if (!row?.expiry_date) return null;
+  const expiry = new Date(`${row.expiry_date}T00:00:00`);
+  if (Number.isNaN(expiry.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((expiry.getTime() - today.getTime()) / 86400000);
+}
+
+function farmHrDocumentRows() {
+  return farmRowsByKey("worker_documents").map((row) => {
+    const employee = farmHrEmployeeById(row.employee_id);
+    const contractor = farmHrContractorById(row.contractor_id);
+    const holder = employee || contractor || {};
+    const daysLeft = farmHrDocDaysLeft(row);
+    const alertDays = n(row.alert_days_before || 45);
+    const status = daysLeft === null ? "unknown" : daysLeft < 0 ? "expired" : daysLeft <= alertDays ? "warning" : "valid";
+    return {
+      ...row,
+      holderName: row.holder_name_snapshot || holder.full_name || holder.contractor_name || "-",
+      nationalityText: row.nationality_snapshot || holder.nationality || "-",
+      paymentText: row.payment_type_snapshot || holder.payment_type || "-",
+      daysLeft,
+      alertDays,
+      alertStatus: row.renewal_status || status,
+    };
+  });
+}
+
+function renderFarmHrBoard(module, table) {
+  const people = farmHrPersonRows();
+  const daily = people.filter((row) => row.paymentType === "รายวัน");
+  const monthly = people.filter((row) => row.paymentType === "รายเดือน");
+  const contract = people.filter((row) => row.paymentType === "รายเหมา");
+  const foreignPeople = people.filter(farmHrIsForeign);
+  const docs = farmHrDocumentRows().filter((row) => farmHrIsForeign(row) || row.nationalityText !== "ไทย");
+  const warningDocs = docs
+    .filter((row) => row.daysLeft !== null && row.daysLeft <= row.alertDays)
+    .sort((a, b) => (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999));
+  const dailyCost = daily.reduce((sum, row) => sum + row.dailyWage, 0);
+  const monthlyCost = monthly.reduce((sum, row) => sum + row.monthlySalary, 0);
+  const contractRate = contract.reduce((sum, row) => sum + row.contractRate, 0);
+  const focusMap = {
+    "farm-people": "ภาพรวม Core HR เฉพาะข้อมูลบุคคล เอกสาร แจ้งเตือน ลา/OT และลงเวลา",
+    "farm-people-daily": "โฟกัสคนงานรายวัน รวมต่างด้าว บ้านพัก ทีมงาน ลงเวลา และเอกสารหมดอายุ",
+    "farm-people-monthly": "โฟกัสพนักงานรายเดือน แผนก ตำแหน่ง เงินเดือน ลา/OT และการอนุมัติ",
+    "farm-people-contract": "โฟกัสผู้รับเหมา อัตราเหมา ทีมงาน และการผูกกับ Work Order",
+    "farm-people-docs": "โฟกัส Passport / Visa / Work Permit / Pink Card พร้อมเตือนล่วงหน้า",
+  };
+  const flow = [
+    ["01", "ข้อมูลบุคคล", "รหัส, ชื่อ, สัญชาติ, ประเภทจ่าย, แผนก, บ้านพัก"],
+    ["02", "เอกสารต่างด้าว", "Passport, Visa, Work Permit, วันหมดอายุ, ผู้รับผิดชอบ"],
+    ["03", "เวลา/ลา/OT", "ลงเวลาและคำขอ เพื่อส่งต่อค่าแรง"],
+    ["04", "Snapshot ค่าแรง", "เมื่อปิดงวดแล้วไม่เปลี่ยนตามข้อมูลหลักใหม่"],
+  ];
+  return `
+    <section class="hr-oneflow-board">
+      <div class="section-head">
+        <h3>งานบริหารบุคคล</h3>
+        <span>${esc(focusMap[module.id] || module.description)}</span>
+      </div>
+      <div class="hr-segment-grid">
+        <article><span>รายวัน / คนงาน</span><strong>${fmt(daily.length)}</strong><small>ต่างด้าว ${fmt(daily.filter(farmHrIsForeign).length)} คน · ค่าแรงตั้งต้น ${fmt(dailyCost)}</small></article>
+        <article><span>รายเดือน / พนักงาน</span><strong>${fmt(monthly.length)}</strong><small>เงินเดือนตั้งต้น ${fmt(monthlyCost)}</small></article>
+        <article><span>รายเหมา / ผู้รับเหมา</span><strong>${fmt(contract.length)}</strong><small>อัตราเหมาตั้งต้น ${fmt(contractRate)}</small></article>
+        <article><span>เอกสารต้องเตือน</span><strong>${fmt(warningDocs.length)}</strong><small>แรงงานต่างด้าวทั้งหมด ${fmt(foreignPeople.length)} คน</small></article>
+      </div>
+      <div class="hr-flow-grid">
+        ${flow.map((item) => `<article><b>${item[0]}</b><strong>${esc(item[1])}</strong><span>${esc(item[2])}</span></article>`).join("")}
+      </div>
+      <div class="hr-two-col">
+        <article class="farm-panel">
+          <div class="section-head"><h3>เตือนเอกสารแรงงานต่างด้าว</h3><span>เรียงตามวันหมดอายุ</span></div>
+          <div class="table-wrap">
+            <table class="mini-table">
+              <thead><tr><th>ชื่อ</th><th>สัญชาติ</th><th>เอกสาร</th><th>หมดอายุ</th><th>คงเหลือ</th><th>สถานะ</th></tr></thead>
+              <tbody>
+                ${warningDocs.slice(0, 8).map((row) => `<tr>
+                  <td>${esc(row.holderName)}</td>
+                  <td>${esc(row.nationalityText)}</td>
+                  <td>${esc(row.document_type)}<small>${esc(row.document_no || "")}</small></td>
+                  <td>${esc(row.expiry_date || "-")}</td>
+                  <td>${row.daysLeft === null ? "-" : `${fmt(row.daysLeft)} วัน`}</td>
+                  <td><span class="status-pill ${row.daysLeft < 0 ? "danger" : "warning"}">${row.daysLeft < 0 ? "หมดอายุ" : "ใกล้หมดอายุ"}</span></td>
+                </tr>`).join("") || `<tr><td colspan="6">ยังไม่มีเอกสารที่ต้องเตือน</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article class="farm-panel">
+          <div class="section-head"><h3>โครงสร้างที่นำไปใช้ต่อ</h3><span>ไม่รวมงานบริการอาคาร รถส่วนกลาง หรือพัสดุสำนักงาน</span></div>
+          <div class="hr-link-list">
+            <span><b>Work Order</b> ใช้ทีม, คนงาน, ผู้รับเหมา และทักษะกิจกรรม</span>
+            <span><b>Payroll</b> ใช้ประเภทจ่ายและ snapshot อัตราตอนปิดงวด</span>
+            <span><b>Housing</b> ใช้บ้านพักเพื่อกระจายค่าน้ำค่าไฟ</span>
+            <span><b>Alert</b> ใช้ expiry_date + alert_days_before เพื่อเตือนต่ออายุเอกสาร</span>
+          </div>
+        </article>
+      </div>
+    </section>`;
+}
+
 function renderFarmPage() {
   const module = selectedFarmModule();
   const tables = farmTablesForModule(module);
@@ -10378,6 +10692,7 @@ function renderFarmPage() {
   const dbRowCount = Object.values(state.farmDbRows || {}).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0);
   const dbErrorCount = Object.keys(state.farmDbErrors || {}).length;
   const isWorkPage = module.id === "farm-work";
+  const isHrPage = farmHrModuleActive(module);
   return `
     <div class="farm-page${isWorkPage ? " farm-work-page" : ""}">
       <div class="report-title${isWorkPage ? " farm-work-title" : ""}">
@@ -10388,6 +10703,7 @@ function renderFarmPage() {
         <button type="button" data-farm-db-refresh>Refresh DB</button>
       </div>
       ${renderFarmWorkflowNav(module)}
+      ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isWorkPage ? "" : `<section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
