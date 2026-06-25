@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ระบบบริหารงานสวนปาล์มคีรีรัฐ</title>
-    <link rel="stylesheet" href="./styles.css?v=gentelella-dashboard-20260625a">
+    <link rel="stylesheet" href="./styles.css?v=gentelella-dashboard-20260625b">
   </head>
   <body>
     <div class="app-shell">
@@ -22,31 +22,47 @@
 
         <nav id="tabs" class="side-nav">
           <section class="menu-section">
-            <p class="menu-section-title">งานขนส่งออก</p>
-            <button class="active" type="button" data-view="dashboard" data-icon="⌂"><span>Dashboard</span></button>
-            <button type="button" data-view="stock" data-icon="▣"><span>Stock Report</span></button>
-            <button type="button" data-view="mill" data-icon="⇄"><span>Mill-Weight</span></button>
-            <button type="button" data-view="rspo" data-icon="◎"><span>RSPO</span></button>
-            <button type="button" data-view="daily" data-icon="◫"><span>Daily Report</span></button>
-            <button type="button" data-view="summary" data-icon="Σ"><span>Summary</span></button>
-            <button type="button" data-view="clear" data-icon="✓"><span>Clear Ramp</span></button>
+            <details class="menu-dropdown" open data-menu-group="transport">
+              <summary data-icon="T"><span>งานขนส่งออก</span></summary>
+              <div class="menu-items">
+                <button class="active" type="button" data-view="dashboard" data-icon="⌂"><span>Dashboard</span></button>
+                <button type="button" data-view="stock" data-icon="▣"><span>Stock Report</span></button>
+                <button type="button" data-view="mill" data-icon="⇄"><span>Mill-Weight</span></button>
+                <button type="button" data-view="rspo" data-icon="◎"><span>RSPO</span></button>
+                <button type="button" data-view="daily" data-icon="◫"><span>Daily Report</span></button>
+                <button type="button" data-view="summary" data-icon="Σ"><span>Summary</span></button>
+                <button type="button" data-view="clear" data-icon="✓"><span>Clear Ramp</span></button>
+              </div>
+            </details>
           </section>
 
           <section class="menu-section">
             <p class="menu-section-title">ระบบบริหารงานสวนปาล์มคีรีรัฐ</p>
-            <p class="menu-subtitle">ข้อมูลตั้งต้น</p>
-            <button type="button" data-view="farm-area" data-icon="A"><span>ข้อมูลพื้นที่</span></button>
-            <button type="button" data-view="farm-people" data-icon="P"><span>ข้อมูลพนักงาน / ผู้รับเหมา</span></button>
-            <button type="button" data-view="farm-activities" data-icon="G"><span>ข้อมูลกิจกรรม</span></button>
-            <button type="button" data-view="farm-inventory" data-icon="I"><span>พัสดุ / อุปกรณ์</span></button>
-            <button type="button" data-view="farm-budget" data-icon="B"><span>อัตรางบประมาณ</span></button>
-            <p class="menu-subtitle">ทำงานประจำวัน</p>
-            <button type="button" data-view="farm-work" data-icon="W"><span>วางแผน / สั่งงาน / บันทึกงาน</span></button>
-            <button type="button" data-view="farm-payroll" data-icon="฿"><span>ค่าแรง / เงินเพิ่ม / เงินหัก</span></button>
-            <p class="menu-subtitle">ควบคุมและตรวจสอบ</p>
-            <button type="button" data-view="farm-governance" data-icon="K"><span>สิทธิ์ / อนุมัติ</span></button>
-            <button type="button" data-view="farm-general" data-icon="S"><span>ตั้งค่าระบบ</span></button>
-            <button type="button" data-view="farm-reports" data-icon="R"><span>รายงาน</span></button>
+            <details class="menu-dropdown" open data-menu-group="master">
+              <summary data-icon="M"><span>ข้อมูลตั้งต้น</span></summary>
+              <div class="menu-items">
+                <button type="button" data-view="farm-area" data-icon="A"><span>ข้อมูลพื้นที่</span></button>
+                <button type="button" data-view="farm-people" data-icon="P"><span>ข้อมูลพนักงาน / ผู้รับเหมา</span></button>
+                <button type="button" data-view="farm-activities" data-icon="G"><span>ข้อมูลกิจกรรม</span></button>
+                <button type="button" data-view="farm-inventory" data-icon="I"><span>พัสดุ / อุปกรณ์</span></button>
+                <button type="button" data-view="farm-budget" data-icon="B"><span>อัตรางบประมาณ</span></button>
+              </div>
+            </details>
+            <details class="menu-dropdown" open data-menu-group="operation">
+              <summary data-icon="W"><span>ทำงานประจำวัน</span></summary>
+              <div class="menu-items">
+                <button type="button" data-view="farm-work" data-icon="W"><span>วางแผน / สั่งงาน / บันทึกงาน</span></button>
+                <button type="button" data-view="farm-payroll" data-icon="฿"><span>ค่าแรง / เงินเพิ่ม / เงินหัก</span></button>
+              </div>
+            </details>
+            <details class="menu-dropdown" open data-menu-group="governance">
+              <summary data-icon="K"><span>ควบคุมและตรวจสอบ</span></summary>
+              <div class="menu-items">
+                <button type="button" data-view="farm-governance" data-icon="K"><span>สิทธิ์ / อนุมัติ</span></button>
+                <button type="button" data-view="farm-general" data-icon="S"><span>ตั้งค่าระบบ</span></button>
+                <button type="button" data-view="farm-reports" data-icon="R"><span>รายงาน</span></button>
+              </div>
+            </details>
           </section>
         </nav>
 
@@ -167,6 +183,6 @@
       </div>
     </div>
 
-    <script src="./app.js?v=gentelella-dashboard-20260625a"></script>
+    <script src="./app.js?v=gentelella-dashboard-20260625b"></script>
   </body>
 </html>

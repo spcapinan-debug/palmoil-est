@@ -2260,6 +2260,33 @@ function renderPalmSidebar() {
         <span>${esc(module.title)}</span>
       </button>`).join("")}`;
   for (const btn of els.tabs.querySelectorAll("button")) btn.classList.toggle("active", btn.dataset.view === state.view);
+  syncSidebarDropdowns();
+}
+
+function sidebarDropdownState() {
+  try {
+    return JSON.parse(localStorage.getItem("sidebarDropdowns") || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+function syncSidebarDropdowns() {
+  if (!els.tabs) return;
+  const saved = sidebarDropdownState();
+  for (const detail of els.tabs.querySelectorAll(".menu-dropdown[data-menu-group]")) {
+    const key = detail.dataset.menuGroup;
+    if (Object.hasOwn(saved, key)) detail.open = Boolean(saved[key]);
+  }
+  const active = els.tabs.querySelector("button.active[data-view]");
+  active?.closest(".menu-dropdown")?.setAttribute("open", "");
+}
+
+function saveSidebarDropdownState(detail) {
+  if (!detail?.matches?.(".menu-dropdown[data-menu-group]")) return;
+  const saved = sidebarDropdownState();
+  saved[detail.dataset.menuGroup] = detail.open;
+  localStorage.setItem("sidebarDropdowns", JSON.stringify(saved));
 }
 
 function applySidebarState() {
@@ -11068,6 +11095,7 @@ function render() {
   for (const btn of els.tabs.querySelectorAll("button[data-view]")) {
     btn.classList.toggle("active", btn.dataset.view === state.view);
   }
+  syncSidebarDropdowns();
   const isClear = state.view === "clear";
   const isEst = isEstView(state.view);
   const isFarm = isFarmView(state.view);
@@ -11227,6 +11255,7 @@ async function init() {
     const btn = e.target.closest("button[data-view]");
     if (btn) setView(btn.dataset.view);
   });
+  document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
   els.sidebarToggle?.addEventListener("click", () => {
     state.sidebarCollapsed = !state.sidebarCollapsed;
