@@ -49,7 +49,7 @@
   farmDetailId: "",
   farmEditId: "",
   estSearchTimer: null,
-  sidebarCollapsed: localStorage.getItem("sidebarCollapsed") === "1",
+  sidebarCollapsed: localStorage.getItem("sidebarIconRailExpanded") !== "1",
 };
 
 const els = {
@@ -2275,11 +2275,15 @@ function syncSidebarDropdowns() {
   if (!els.tabs) return;
   const saved = sidebarDropdownState();
   for (const detail of els.tabs.querySelectorAll(".menu-dropdown[data-menu-group]")) {
+    if (state.sidebarCollapsed) {
+      detail.open = false;
+      continue;
+    }
     const key = detail.dataset.menuGroup;
     detail.open = Object.hasOwn(saved, key) ? Boolean(saved[key]) : false;
   }
   const active = els.tabs.querySelector("button.active[data-view]");
-  active?.closest(".menu-dropdown")?.setAttribute("open", "");
+  if (!state.sidebarCollapsed) active?.closest(".menu-dropdown")?.setAttribute("open", "");
 }
 
 function saveSidebarDropdownState(detail) {
@@ -11259,7 +11263,7 @@ async function init() {
   document.addEventListener("click", handleEnhancedTableClick);
   els.sidebarToggle?.addEventListener("click", () => {
     state.sidebarCollapsed = !state.sidebarCollapsed;
-    localStorage.setItem("sidebarCollapsed", state.sidebarCollapsed ? "1" : "0");
+    localStorage.setItem("sidebarIconRailExpanded", state.sidebarCollapsed ? "0" : "1");
     applySidebarState();
   });
   document.querySelector(".brand-lockup")?.addEventListener("click", (e) => {
