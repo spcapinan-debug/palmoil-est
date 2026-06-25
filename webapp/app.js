@@ -6035,15 +6035,32 @@ function simpleTable(headers, rows, emptyText = "ไม่มีข้อมู�
     </table>`;
 }
 
+function niceChartStep(rawStep) {
+  const step = Math.max(1, Math.abs(rawStep));
+  const exponent = Math.floor(Math.log10(step));
+  const base = 10 ** exponent;
+  const fraction = step / base;
+  const niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+  return niceFraction * base;
+}
+
+function axisLabel(value) {
+  const abs = Math.abs(n(value));
+  const sign = n(value) < 0 ? "-" : "";
+  if (abs >= 1000000) return `${sign}${(abs / 1000000).toFixed(abs >= 10000000 ? 0 : 1)}M`;
+  if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}k`;
+  return fmt(value);
+}
+
 function dashboardAreaChart(rows) {
   const ordered = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
   const sample = ordered.length > 18
     ? ordered.filter((_, index) => index % Math.ceil(ordered.length / 18) === 0).slice(0, 18)
     : ordered;
   const points = sample.length ? sample : [{ date: "", totalRamp: 0, outboundTotal: 0, balance: 0, loss: 0 }];
-  const width = 760;
-  const height = 230;
-  const pad = { left: 44, right: 18, top: 18, bottom: 34 };
+  const width = 980;
+  const height = 320;
+  const pad = { left: 58, right: 20, top: 18, bottom: 34 };
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
   const series = [
@@ -6052,12 +6069,19 @@ function dashboardAreaChart(rows) {
     { key: "balance", label: "คงเหลือ", className: "balance" },
     { key: "loss", label: "สูญหาย", className: "loss-line" },
   ];
-  const maxValue = Math.max(...points.flatMap((row) => series.map((item) => n(row[item.key]))), 1);
+  const chartValue = (row, key) => key === "loss" ? Math.abs(n(row[key])) : n(row[key]);
+  const values = points.flatMap((row) => series.map((item) => chartValue(row, item.key)));
+  const rawMin = Math.min(0, ...values);
+  const rawMax = Math.max(1, ...values);
+  const step = niceChartStep((rawMax - rawMin) / 4);
+  const minValue = Math.floor(rawMin / step) * step;
+  const maxValue = Math.ceil(rawMax / step) * step;
+  const valueRange = Math.max(1, maxValue - minValue);
   const x = (index) => pad.left + (points.length === 1 ? chartW / 2 : (index / (points.length - 1)) * chartW);
-  const y = (value) => pad.top + chartH - (n(value) / maxValue) * chartH;
+  const y = (value) => pad.top + chartH - ((n(value) - minValue) / valueRange) * chartH;
 
   const smoothPath = (key) => {
-    const coords = points.map((row, index) => [x(index), y(row[key])]);
+    const coords = points.map((row, index) => [x(index), y(chartValue(row, key))]);
     if (coords.length === 1) return `M${coords[0][0].toFixed(1)},${coords[0][1].toFixed(1)}`;
     return coords.reduce((path, point, index) => {
       if (!index) return `M${point[0].toFixed(1)},${point[1].toFixed(1)}`;
@@ -6070,16 +6094,18 @@ function dashboardAreaChart(rows) {
 
   const areaPath = (key) => {
     const top = smoothPath(key);
-    return `${top} L${x(points.length - 1).toFixed(1)},${(pad.top + chartH).toFixed(1)} L${x(0).toFixed(1)},${(pad.top + chartH).toFixed(1)} Z`;
+    const baseline = y(0);
+    return `${top} L${x(points.length - 1).toFixed(1)},${baseline.toFixed(1)} L${x(0).toFixed(1)},${baseline.toFixed(1)} Z`;
   };
   const xLabels = points.map((row, index) => {
     if (points.length > 8 && index % Math.ceil(points.length / 6) !== 0 && index !== points.length - 1) return "";
     return `<text x="${x(index).toFixed(1)}" y="${height - 10}" text-anchor="middle">${displayDate(row.date).slice(0, 5)}</text>`;
   }).join("");
-  const grid = [0, .25, .5, .75, 1].map((ratio) => {
-    const gy = pad.top + chartH - ratio * chartH;
+  const tickValues = Array.from({ length: 5 }, (_, index) => minValue + step * index).filter((value) => value <= maxValue + step / 2);
+  const grid = tickValues.map((value) => {
+    const gy = y(value);
     return `<line x1="${pad.left}" y1="${gy.toFixed(1)}" x2="${width - pad.right}" y2="${gy.toFixed(1)}"></line>
-      <text x="8" y="${(gy + 4).toFixed(1)}">${fmt(maxValue * ratio)}</text>`;
+      <text x="${pad.left - 10}" y="${(gy + 4).toFixed(1)}" text-anchor="end">${axisLabel(value)}</text>`;
   }).join("");
   return `
     <div class="gentelella-chart">
@@ -6287,11 +6313,11 @@ function renderAdvancedDashboard() {
           <small>${displayDate(rows[0]?.date)} - ${displayDate(rows.at(-1)?.date)}</small>
         </div>
         <div class="network-grid">
-          ${dashboardAreaChart(rows)}
           <aside class="performance-panel">
             <h4>เปรียบเทียบยอดรวม</h4>
             ${dashboardPerformanceBars(comparisonTotals, "value")}
           </aside>
+          ${dashboardAreaChart(rows)}
         </div>
       </section>
 

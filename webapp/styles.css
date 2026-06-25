@@ -8824,9 +8824,10 @@ td.num,
 /* Make the Dashboard Network Activities graph use the full table width. */
 @media screen {
   .dashboard-network .network-grid {
-    grid-template-columns: minmax(0, 1fr) !important;
-    gap: 10px !important;
-    padding: 10px 14px 12px !important;
+    grid-template-columns: minmax(210px, 240px) minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    gap: 16px !important;
+    padding: 12px 16px 14px !important;
   }
 
   .dashboard-network .gentelella-chart {
@@ -8836,24 +8837,25 @@ td.num,
 
   .dashboard-network .gentelella-chart svg {
     width: 100% !important;
-    height: clamp(280px, 34vh, 430px) !important;
+    height: clamp(340px, 42vh, 520px) !important;
   }
 
   .dashboard-network .performance-panel {
     display: grid !important;
-    grid-template-columns: 150px repeat(4, minmax(0, 1fr)) !important;
-    align-items: center !important;
-    gap: 8px 12px !important;
+    grid-template-columns: 1fr !important;
+    align-content: start !important;
+    gap: 12px !important;
     min-height: 0 !important;
-    padding: 8px 10px !important;
-    border-top: 1px solid var(--gt-line) !important;
+    padding: 12px 12px !important;
+    border-top: 0 !important;
+    border-right: 1px solid var(--gt-line) !important;
     border-left: 0 !important;
     background: #fff !important;
   }
 
   .dashboard-network .performance-panel h4 {
-    margin: 0 !important;
-    font-size: 12px !important;
+    margin: 0 0 2px !important;
+    font-size: 13px !important;
     color: #5a6672 !important;
     white-space: nowrap !important;
   }
@@ -8863,7 +8865,24 @@ td.num,
   }
 
   .dashboard-network .performance-panel .performance-row div {
-    margin-bottom: 4px !important;
+    display: block !important;
+    margin-bottom: 5px !important;
+  }
+
+  .dashboard-network .performance-panel .performance-row strong,
+  .dashboard-network .performance-panel .performance-row span {
+    display: block !important;
+  }
+
+  @media (max-width: 980px) {
+    .dashboard-network .network-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .dashboard-network .performance-panel {
+      border-right: 0 !important;
+      border-bottom: 1px solid var(--gt-line) !important;
+    }
   }
 }
 
