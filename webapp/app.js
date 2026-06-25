@@ -567,7 +567,7 @@ const FARM_MODULES = [
 ];
 
 const FARM_WORKFLOW_STAGES = [
-  { no: "01", title: "ข้อมูลหลัก", views: ["farm-area", "farm-people", "farm-activities", "farm-inventory", "farm-budget"], note: "เตรียมพื้นที่ คน กิจกรรม พัสดุ และอัตรางบประมาณ", role: "Admin / Manager" },
+  { no: "01", title: "ข้อมูลหลัก", views: ["farm-area", "farm-activities", "farm-inventory", "farm-budget"], note: "เตรียมพื้นที่ กิจกรรม พัสดุ และอัตรางบประมาณ", role: "Admin / Manager" },
   { no: "02", title: "วางแผน", views: ["farm-work"], table: "work_plans", note: "กำหนดแผนรายปี แผนรายกิจกรรม และพื้นที่ทำงาน", role: "Estate Manager" },
   { no: "03", title: "สั่งงาน", views: ["farm-work"], table: "work_orders", note: "สร้างใบสั่งงาน ทีม วัสดุ QR และกำหนดวันทำงาน", role: "Supervisor" },
   { no: "04", title: "อนุมัติ", views: ["farm-governance"], table: "approval_logs", note: "ตรวจสิทธิ์ ขอบเขตพื้นที่ และลำดับอนุมัติ", role: "Director / Manager" },
@@ -575,6 +575,15 @@ const FARM_WORKFLOW_STAGES = [
   { no: "06", title: "ค่าแรง / ต้นทุน", views: ["farm-payroll", "farm-budget"], note: "คำนวณค่าแรง รายชั่วโมง OT เงินเพิ่ม เงินหัก และต้นทุน", role: "Accounting" },
   { no: "07", title: "รายงาน", views: ["farm-reports"], note: "สรุปรายงาน ตรวจย้อนหลัง และส่งออก Excel/PDF", role: "Viewer / Auditor" },
 ];
+
+const FARM_OPERATION_WORKFLOW_VIEWS = new Set([
+  "farm-area",
+  "farm-activities",
+  "farm-inventory",
+  "farm-budget",
+  "farm-work",
+  "farm-reports",
+]);
 
 const VERSIONED_FARM_TABLES = new Set(["people", "employees", "contractors", "payroll_rates"]);
 
@@ -9853,6 +9862,7 @@ async function importFarmCsvToDatabase(file) {
 }
 
 function renderFarmWorkflowNav(module) {
+  if (!FARM_OPERATION_WORKFLOW_VIEWS.has(module?.id)) return "";
   return `
     <section class="farm-flow-nav">
       ${FARM_WORKFLOW_STAGES.map((stage) => {
