@@ -105,6 +105,7 @@ const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_wei
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
 const MASTER_FOLDER_DATA_URL = window.__MASTER_FOLDER_DATA_URL__ || "./data/master_data_full.json";
+const TRANSPORT_VIEWS = new Set(["dashboard", "stock", "mill", "rspo", "daily", "summary", "clear"]);
 const DAILY_HEADERS = [
   "วันที่",
   "เวลา",
@@ -2428,10 +2429,13 @@ function farmModuleMap() {
 function initialViewFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const requested = params.get("view") || params.get("page") || params.get("v") || "";
-  const transportViews = new Set(["dashboard", "stock", "mill", "rspo", "daily", "summary", "clear", "master-data"]);
   if (requested.startsWith("farm-")) return requested;
-  if (transportViews.has(requested) && requested !== "master-data") return requested;
+  if (TRANSPORT_VIEWS.has(requested)) return requested;
   return state.view;
+}
+
+function isTransportView(view = state.view) {
+  return TRANSPORT_VIEWS.has(view);
 }
 
 function renderPalmSidebar() {
@@ -11533,12 +11537,13 @@ function render() {
   const isEst = isEstView(state.view);
   const isFarm = isFarmView(state.view);
   const isMill = state.view === "mill";
+  const showTransportChrome = isTransportView(state.view);
   els.reportPage.className = "report-page";
   els.reportPage.classList.toggle("hidden", isClear);
   els.clearPage.classList.toggle("hidden", !isClear);
-  els.dashboard.classList.toggle("hidden", isEst || isFarm || isMill);
-  els.datePanel?.classList.toggle("hidden", isEst || isFarm);
-  els.globalFilterPanel?.classList.toggle("hidden", isEst || isFarm);
+  els.dashboard.classList.toggle("hidden", !showTransportChrome || isMill);
+  els.datePanel?.classList.toggle("hidden", !showTransportChrome);
+  els.globalFilterPanel?.classList.toggle("hidden", !showTransportChrome);
 
   if (isEst) renderEstView();
   if (isFarm) els.reportPage.innerHTML = renderFarmPage();

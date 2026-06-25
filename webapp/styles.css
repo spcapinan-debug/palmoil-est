@@ -9595,3 +9595,10 @@ td.num,
     }
   }
 }
+
+/* Final guard: transport filters and KPIs are only visible when JS allows them. */
+#dashboard.hidden,
+.date-panel.hidden,
+.global-filter-panel.hidden {
+  display: none !important;
+}
