@@ -9348,3 +9348,65 @@ td.num,
     background: rgba(0,0,0,.24) !important;
   }
 }
+
+/* Hard override for icon rail default and visible system identity in the top bar. */
+@media screen {
+  .app-shell.sidebar-collapsed,
+  .app-shell:has(.sidebar.collapsed) {
+    grid-template-columns: 58px minmax(0, 1fr) !important;
+  }
+
+  .sidebar.collapsed {
+    width: 58px !important;
+    min-width: 58px !important;
+    max-width: 58px !important;
+  }
+
+  .sidebar.collapsed .brand-lockup,
+  .sidebar.collapsed .brand-text,
+  .sidebar.collapsed .source-info,
+  .sidebar.collapsed .sidebar-footer,
+  .sidebar.collapsed .menu-dropdown > summary span {
+    display: none !important;
+  }
+
+  .content-head {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 16px !important;
+  }
+
+  .content-head > .topbar-brand:first-child,
+  .content-head .topbar-brand {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-width: 260px !important;
+    flex: 1 1 auto !important;
+  }
+
+  .content-head .topbar-logo {
+    display: grid !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .content-head .topbar-brand .eyebrow {
+    display: block !important;
+    margin: 0 0 2px !important;
+    color: #2a3f54 !important;
+    font-size: 12px !important;
+    font-weight: 900 !important;
+  }
+
+  .content-head .topbar-brand h1 {
+    display: block !important;
+    margin: 0 !important;
+    color: #73879c !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+  }
+}

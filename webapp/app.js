@@ -49,7 +49,7 @@
   farmDetailId: "",
   farmEditId: "",
   estSearchTimer: null,
-  sidebarCollapsed: localStorage.getItem("sidebarIconRailExpanded") !== "1",
+  sidebarCollapsed: localStorage.getItem("sidebarIconRailExpandedV2") !== "1",
 };
 
 const els = {
@@ -11314,7 +11314,7 @@ async function init() {
   document.addEventListener("click", handleEnhancedTableClick);
   els.sidebarToggle?.addEventListener("click", () => {
     state.sidebarCollapsed = !state.sidebarCollapsed;
-    localStorage.setItem("sidebarIconRailExpanded", state.sidebarCollapsed ? "0" : "1");
+    localStorage.setItem("sidebarIconRailExpandedV2", state.sidebarCollapsed ? "0" : "1");
     applySidebarState();
   });
   document.querySelector(".brand-lockup")?.addEventListener("click", (e) => {
