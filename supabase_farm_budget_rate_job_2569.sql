@@ -132,6 +132,41 @@ create index if not exists idx_budget_rate_materials_rate on public.budget_rate_
 create index if not exists idx_budget_rate_roles_rate on public.budget_rate_roles(budget_rate_id);
 create index if not exists idx_budget_rate_roles_line_type on public.budget_rate_roles(line_type, rate_category);
 
+comment on table public.budget_activity_rates is
+  'Full budget/rate table. Source and mapping columns are retained for import traceability; the app edit form uses the compact public.budget_activity_rate_editor view field set.';
+
+create or replace view public.budget_activity_rate_editor as
+select
+  id,
+  fiscal_year,
+  rate_code,
+  activity_group_name,
+  activity_code,
+  activity_name,
+  rate_type,
+  calculation_method,
+  comparison_basis,
+  unit_name,
+  rate_amount,
+  rate_text,
+  estate_name,
+  zone_name,
+  plot_group_code,
+  terrain_code,
+  ap_code,
+  area_rai,
+  tree_count,
+  effective_from,
+  effective_to,
+  approval_status,
+  status,
+  note,
+  updated_at
+from public.budget_activity_rates;
+
+comment on view public.budget_activity_rate_editor is
+  'Compact field set for editing budget/rate records in the web app without exposing import/source/system columns.';
+
 alter table public.budget_years enable row level security;
 alter table public.budget_activity_rates enable row level security;
 alter table public.budget_rate_materials enable row level security;

@@ -2277,11 +2277,11 @@ const FARM_TABLE_SCHEMAS = {
       F("rate_amount", "อัตราตัวเลข", { type: "number" }),
       F("rate_text", "อัตราแบบข้อความ"),
       F("area_scope_type", "ระดับพื้นที่", { options: ["all", "estate", "zone", "plot_group", "plot", "block"] }),
-      F("estate_name", "Estate"),
-      F("zone_name", "Zone"),
+      F("estate_name", "พื้นที่หลัก"),
+      F("zone_name", "โซน"),
       F("plot_group_code", "กลุ่มแปลง"),
       F("block_id", "Block อ้างอิง", { references: "blocks" }),
-      F("terrain_code", "Block / Terrain", { required: true }),
+      F("terrain_code", "Block", { required: true }),
       F("ap_code", "AP Code"),
       F("payroll_department_code", "รหัสฝ่ายค่าแรง"),
       F("payroll_department_name", "ชื่อฝ่ายค่าแรง"),
@@ -9823,7 +9823,14 @@ async function saveFarmRow() {
   const editId = state.farmEditId;
   const original = editId ? farmRows(table).find((row) => row.id === editId) : null;
   const shouldVersion = original && isFarmVersionedTable(table.key);
+  const originalFieldValues = original
+    ? Object.fromEntries((table.fields || []).map((field) => {
+        const key = farmFieldKey(field);
+        return [key, original[key] ?? ""];
+      }))
+    : {};
   const row = {
+    ...originalFieldValues,
     id: shouldVersion
       ? `farm-${table.key}-v${Date.now()}-${Math.random().toString(16).slice(2)}`
       : (original?.readonly ? `override-${editId}` : (editId || `farm-${table.key}-${Date.now()}-${Math.random().toString(16).slice(2)}`)),
@@ -11778,24 +11785,81 @@ function renderFarmBudgetCreateRateBar(rates) {
     </article>`;
 }
 
+const FARM_BUDGET_RATE_EDIT_GROUPS = [
+  {
+    title: "ข้อมูลเรท",
+    keys: [
+      "fiscal_year",
+      "rate_code",
+      "activity_group_name",
+      "activity_code",
+      "activity_name",
+      "rate_type",
+      "calculation_method",
+      "comparison_basis",
+      "unit_name",
+      "rate_amount",
+      "rate_text",
+    ],
+  },
+  {
+    title: "พื้นที่",
+    keys: [
+      "estate_name",
+      "zone_name",
+      "plot_group_code",
+      "terrain_code",
+      "ap_code",
+      "area_rai",
+      "tree_count",
+    ],
+  },
+  {
+    title: "ช่วงใช้งาน",
+    keys: [
+      "effective_from",
+      "effective_to",
+      "approval_status",
+      "status",
+      "note",
+    ],
+  },
+];
+
+function farmBudgetRateEditGroups(table) {
+  return FARM_BUDGET_RATE_EDIT_GROUPS.map((group) => ({
+    ...group,
+    fields: group.keys.map((key) => farmTableFieldByKey(table, key)).filter(Boolean),
+  })).filter((group) => group.fields.length);
+}
+
 function renderFarmBudgetEditPanel() {
   if (!state.farmEditId) return "";
   const table = farmTableByKey("budget_activity_rates");
   const editing = table ? farmRows(table).find((row) => row.id === state.farmEditId) : null;
   if (!table || !editing) return "";
-  const fields = farmVisibleFields(table).filter((field) => !["source_file", "source_sheet", "source_column", "source_row", "mapping_rule"].includes(farmFieldKey(field)));
+  const groups = farmBudgetRateEditGroups(table);
   return `
     <article class="budget-rate-edit-panel">
       <div class="section-head">
         <h3>แก้ไข Rate</h3>
-        <span>${esc(editing.rate_code || editing.id)}</span>
+        <span>${esc(editing.rate_code || editing.activity_name || editing.id)}</span>
+      </div>
+      <div class="budget-rate-edit-summary">
+        <b>${esc(editing.activity_name || "-")}</b>
+        <span>${esc(editing.terrain_code || editing.plot_group_code || editing.zone_name || "ทุกพื้นที่")}</span>
+        <span>${esc(editing.rate_text || `${fmt(n(editing.rate_amount))} ${editing.unit_name || ""}`)}</span>
       </div>
       <form class="farm-form budget-rate-edit-form">
-        <label class="auto-id-field">id อัตโนมัติ
-          <input type="text" value="${esc(editing.id)}" disabled aria-disabled="true">
-        </label>
-        ${fields.map((field) => renderFarmInput(field, editing[farmFieldKey(field)] ?? "")).join("")}
-        <div class="farm-form-actions">
+        ${groups.map((group) => `
+          <section class="budget-rate-edit-group">
+            <h4>${esc(group.title)}</h4>
+            <div class="budget-rate-edit-grid">
+              ${group.fields.map((field) => renderFarmInput(field, editing[farmFieldKey(field)] ?? "")).join("")}
+            </div>
+          </section>
+        `).join("")}
+        <div class="farm-form-actions budget-rate-edit-actions">
           <button type="button" data-farm-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกแก้ไข Rate</button>
           <button type="button" data-farm-clear>ปิดฟอร์ม</button>
         </div>

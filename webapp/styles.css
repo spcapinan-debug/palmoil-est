@@ -4628,7 +4628,7 @@ tfoot td {
 }
 
 .budget-tree-scroll {
-  height: 292px;
+  height: 420px;
   overflow: auto;
   padding: 4px 6px;
 }
@@ -4836,11 +4836,81 @@ tfoot td {
 }
 
 .farm-budget-rate-table .farm-table-wrap {
-  max-height: 430px;
+  max-height: 560px;
 }
 
 .budget-rate-edit-form {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.budget-rate-edit-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.budget-rate-edit-summary b {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.budget-rate-edit-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid #dbe2ec;
+  border-radius: 999px;
+  background: #f8fafc;
+}
+
+.budget-rate-edit-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #dbe2ec;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.budget-rate-edit-group h4 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.budget-rate-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.budget-rate-edit-grid label {
+  gap: 4px;
+  font-size: 11px;
+}
+
+.budget-rate-edit-grid input,
+.budget-rate-edit-grid select,
+.budget-rate-edit-grid textarea {
+  min-height: 34px;
+  padding: 7px 9px;
+  font-size: 12px;
+}
+
+.budget-rate-edit-grid textarea {
+  min-height: 34px;
+}
+
+.budget-rate-edit-actions {
+  grid-column: 1 / -1;
 }
 
 .farm-toolbar {
@@ -10099,7 +10169,11 @@ td.num,
   }
 
   .budget-tree-scroll {
-    height: 240px;
+    height: 320px;
+  }
+
+  .budget-rate-edit-grid {
+    grid-template-columns: 1fr;
   }
 
   .budget-area-tree-card {
