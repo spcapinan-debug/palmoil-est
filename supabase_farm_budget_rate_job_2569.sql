@@ -102,26 +102,6 @@ alter table public.budget_rate_roles add column if not exists affects_payroll bo
 alter table public.budget_rate_roles add column if not exists approval_required boolean default false;
 alter table public.budget_rate_roles add column if not exists survey_template_id uuid references public.survey_templates(id) on delete set null;
 
-create table if not exists public.budget_rate_import_rows (
-  id text primary key,
-  budget_year_id text references public.budget_years(id) on delete set null,
-  source_sheet text,
-  source_row integer,
-  estate_name text,
-  zone_name text,
-  plot_group_code text,
-  terrain_code text,
-  area_rai numeric,
-  tree_count numeric,
-  rspo_status text,
-  payroll_department_code text,
-  payroll_department_name text,
-  ap_code text,
-  status text default 'active',
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
-
 create index if not exists idx_budget_activity_rates_year on public.budget_activity_rates(fiscal_year);
 create index if not exists idx_budget_activity_rates_activity_id on public.budget_activity_rates(activity_id);
 create index if not exists idx_budget_activity_rates_block_id on public.budget_activity_rates(block_id);
@@ -171,4 +151,3 @@ alter table public.budget_years enable row level security;
 alter table public.budget_activity_rates enable row level security;
 alter table public.budget_rate_materials enable row level security;
 alter table public.budget_rate_roles enable row level security;
-alter table public.budget_rate_import_rows enable row level security;

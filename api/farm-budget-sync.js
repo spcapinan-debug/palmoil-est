@@ -6,7 +6,6 @@ const SYNC_TABLES = [
   "budget_activity_rates",
   "budget_rate_materials",
   "budget_rate_roles",
-  "budget_rate_import_rows",
 ];
 
 const CONFLICT_KEYS = {
@@ -14,7 +13,6 @@ const CONFLICT_KEYS = {
   budget_activity_rates: "rate_code",
   budget_rate_materials: "id",
   budget_rate_roles: "id",
-  budget_rate_import_rows: "id",
 };
 
 function json(res, status, payload) {

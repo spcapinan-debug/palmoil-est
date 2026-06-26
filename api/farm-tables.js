@@ -63,8 +63,6 @@ const FARM_TABLES = new Set([
   "budget_activity_rates",
   "budget_rate_materials",
   "budget_rate_roles",
-  "budget_rate_import_rows",
-  "budget_rates",
   "contractor_period_estimates",
   "cost_entries",
   "payroll_periods",
@@ -261,7 +259,6 @@ const TEXT_ID_KEYS_BY_TABLE = {
   budget_activity_rates: new Set(["id", "budget_year_id"]),
   budget_rate_materials: new Set(["id", "budget_rate_id"]),
   budget_rate_roles: new Set(["id", "budget_rate_id"]),
-  budget_rate_import_rows: new Set(["id", "budget_year_id"]),
 };
 
 const UNIQUE_KEYS = {
@@ -282,7 +279,6 @@ const UNIQUE_KEYS = {
   budget_activity_rates: "rate_code",
   budget_rate_materials: "id",
   budget_rate_roles: "id",
-  budget_rate_import_rows: "id",
   work_orders: "work_order_no",
   permissions: "permission_key",
   areas: "area_code",

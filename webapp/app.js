@@ -2351,56 +2351,6 @@ const FARM_TABLE_SCHEMAS = {
     ],
     seed: [],
   },
-  budget_rate_import_rows: {
-    moduleId: "farm-budget",
-    title: "แถวอ้างอิงจากไฟล์เรท",
-    primaryKey: "id",
-    codeField: "terrain_code",
-    labelField: "ap_code",
-    fields: [
-      F("budget_year_id", "ปีงบประมาณ", { references: "budget_years" }),
-      F("source_sheet", "ชีต"),
-      F("source_row", "แถว"),
-      F("estate_name", "Estate"),
-      F("zone_name", "Zone"),
-      F("plot_group_code", "กลุ่มแปลง"),
-      F("terrain_code", "Block / Terrain", { required: true }),
-      F("ap_code", "AP Code"),
-      F("area_rai", "พื้นที่ไร่", { type: "number" }),
-      F("tree_count", "จำนวนต้น", { type: "number" }),
-      F("rspo_status", "RSPO", { options: ["RSPO", "NON-RSPO", "Non-RSPO"] }),
-      F("payroll_department_code", "รหัสฝ่ายค่าแรง"),
-      F("payroll_department_name", "ชื่อฝ่ายค่าแรง"),
-      F("status", "สถานะ", { type: "status" }),
-    ],
-    seed: [],
-  },
-  budget_rates: {
-    moduleId: "farm-budget",
-    title: "อัตรางบประมาณ",
-    primaryKey: "id",
-    codeField: "budget_rate_code",
-    labelField: "activity_id",
-    fields: [
-      F("budget_rate_code", "รหัสอัตรา", { required: true }),
-      F("fiscal_year", "ปีงบประมาณ", { type: "number", required: true }),
-      F("estate_id", "Estate", { references: "estates", required: true }),
-      F("plot_group_id", "กลุ่มแปลง", { references: "plot_groups" }),
-      F("plot_id", "Plot / แปลง", { references: "plots" }),
-      F("block_id", "Block", { references: "blocks" }),
-      F("ap_code", "AP Code"),
-      F("activity_id", "กิจกรรม", { references: "activities", required: true }),
-      F("material_id", "วัสดุ", { references: "materials" }),
-      F("team_id", "กลุ่มคนงาน", { references: "teams" }),
-      F("rate_type", "ประเภทเรท", { options: ["labor", "material", "contractor", "fuel", "machine"] }),
-      F("unit_id", "หน่วย", { references: "units" }),
-      F("rate_amount", "อัตรา", { type: "number" }),
-      F("status", "สถานะ", { type: "status" }),
-    ],
-    seed: [
-      { id: "budget-rate-001", budget_rate_code: "BUD-2569-001", fiscal_year: "2569", estate_id: "estate-spc", plot_group_id: "plot-group-rspo", plot_id: "plot-plt001", block_id: "block-plt001-a", ap_code: "AP-001", activity_id: "activity-fertilizer-0030", material_id: "material-fert-25", team_id: "team-a", rate_type: "labor", unit_id: "unit-kg", rate_amount: "250", status: "active" },
-    ],
-  },
   contractor_period_estimates: {
     moduleId: "farm-budget",
     title: "ประมาณงานผู้รับเหมารายงวด",
@@ -2854,7 +2804,7 @@ async function syncFarmBudgetRatesToDatabase() {
     if (!res.ok || payload?.ok === false) throw new Error(payload?.error || `Budget sync API ${res.status}`);
     const counts = payload.counts || {};
     state.farmSyncStatus = payload.mode === "fallback" ? "warning" : "success";
-    state.farmSyncMessage = `บันทึกชุดงบประมาณเข้า DB แล้ว: Budget ${fmt(counts.budget_years || 0)}, Rate ${fmt(counts.budget_activity_rates || 0)}, วัสดุ ${fmt(counts.budget_rate_materials || 0)}, กลุ่มค่าแรง ${fmt(counts.budget_rate_roles || 0)}`;
+    state.farmSyncMessage = `บันทึกชุดงบประมาณเข้า DB แล้ว: ปีงบประมาณ ${fmt(counts.budget_years || 0)}, Rate ${fmt(counts.budget_activity_rates || 0)}, วัสดุ ${fmt(counts.budget_rate_materials || 0)}, อัตราในสัญญา ${fmt(counts.budget_rate_roles || 0)}`;
     await loadFarmTablesFromDatabase({ silent: false });
   } catch (error) {
     state.farmSyncStatus = "error";
@@ -10692,9 +10642,7 @@ function renderFarmWorkPlanner() {
   const materials = farmRows(farmTableByKey("materials"));
   const vehicles = farmRows(farmTableByKey("vehicles"));
   const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
-  const activityBudgetRates = farmRows(farmTableByKey("budget_activity_rates"));
-  const legacyBudgetRates = farmRows(farmTableByKey("budget_rates"));
-  const budgetRates = activityBudgetRates.length ? activityBudgetRates : legacyBudgetRates;
+  const budgetRates = farmRows(farmTableByKey("budget_activity_rates"));
   const workOrders = farmWorkOrders().slice().sort((a, b) => farmDateMs(b.startDate) - farmDateMs(a.startDate));
   const previewActivity = activities[0];
   const previewGroup = activityGroups.find((item) => item.id === previewActivity?.activity_group_id) || activityGroups[0];
@@ -11889,6 +11837,81 @@ function farmBudgetRateEditGroups(table) {
   })).filter((group) => group.fields.length);
 }
 
+function farmBudgetLinkedRows(rateId) {
+  const materials = farmRowsByKey("budget_rate_materials").filter((row) => row.budget_rate_id === rateId);
+  const roles = farmRowsByKey("budget_rate_roles").filter((row) => row.budget_rate_id === rateId);
+  return { materials, roles };
+}
+
+function renderFarmBudgetEditRelations(editing) {
+  const { materials, roles } = farmBudgetLinkedRows(editing.id);
+  return `
+    <section class="budget-rate-linked">
+      <div class="budget-rate-linked-head">
+        <h4>ตารางที่ผูกกับ Rate นี้</h4>
+        <span>แสดงรายการลูกที่สร้างจากสัญญาเดียวกัน</span>
+      </div>
+      <div class="budget-rate-linked-grid">
+        <article>
+          <div class="budget-rate-linked-title">
+            <b>การตั้งค่าอัตราในสัญญา</b>
+            <small>${fmt(roles.length)} รายการ</small>
+          </div>
+          <div class="table-wrap budget-rate-linked-table">
+            <table class="mini-table">
+              <thead>
+                <tr>
+                  <th>ประเภท</th>
+                  <th>กลุ่ม/บทบาท</th>
+                  <th>วิธี</th>
+                  <th>อัตรา</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${roles.map((row) => `
+                  <tr>
+                    <td>${esc(row.line_type || "-")}</td>
+                    <td>${esc(row.worker_group_name || row.role_name || "-")}</td>
+                    <td>${esc(row.calculation_method || "-")}</td>
+                    <td class="num">${esc(row.rate_text || [fmt(n(row.rate_amount)), row.uom].filter(Boolean).join(" ") || "-")}</td>
+                  </tr>
+                `).join("") || `<tr><td colspan="4">ยังไม่มีอัตราในสัญญาที่ผูกกับ Rate นี้</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article>
+          <div class="budget-rate-linked-title">
+            <b>วัสดุที่ผูกกับ Rate</b>
+            <small>${fmt(materials.length)} รายการ</small>
+          </div>
+          <div class="table-wrap budget-rate-linked-table">
+            <table class="mini-table">
+              <thead>
+                <tr>
+                  <th>วัสดุ</th>
+                  <th>ฐาน</th>
+                  <th>อัตราใช้</th>
+                  <th>ต้นทุน</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${materials.map((row) => `
+                  <tr>
+                    <td>${esc(row.material_name || "-")}</td>
+                    <td>${esc(row.usage_basis || "-")}</td>
+                    <td class="num">${esc([fmt(n(row.usage_quantity)), row.usage_unit].filter(Boolean).join(" ") || "-")}</td>
+                    <td class="num">${esc(row.unit_cost ? fmt(n(row.unit_cost)) : "-")}</td>
+                  </tr>
+                `).join("") || `<tr><td colspan="4">ยังไม่มีวัสดุที่ผูกกับ Rate นี้</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>`;
+}
+
 function renderFarmBudgetEditPanel() {
   if (!state.farmEditId) return "";
   const table = farmTableByKey("budget_activity_rates");
@@ -11907,14 +11930,17 @@ function renderFarmBudgetEditPanel() {
         <span>${esc(editing.rate_text || `${fmt(n(editing.rate_amount))} ${editing.unit_name || ""}`)}</span>
       </div>
       <form class="farm-form budget-rate-edit-form">
-        ${groups.map((group) => `
-          <section class="budget-rate-edit-group">
-            <h4>${esc(group.title)}</h4>
-            <div class="budget-rate-edit-grid">
-              ${group.fields.map((field) => renderFarmInput(field, editing[farmFieldKey(field)] ?? "")).join("")}
-            </div>
-          </section>
-        `).join("")}
+        <div class="budget-rate-edit-main">
+          ${groups.map((group) => `
+            <section class="budget-rate-edit-group">
+              <h4>${esc(group.title)}</h4>
+              <div class="budget-rate-edit-grid">
+                ${group.fields.map((field) => renderFarmInput(field, editing[farmFieldKey(field)] ?? "")).join("")}
+              </div>
+            </section>
+          `).join("")}
+        </div>
+        ${renderFarmBudgetEditRelations(editing)}
         <div class="farm-form-actions budget-rate-edit-actions">
           <button type="button" data-farm-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกแก้ไข Rate</button>
           <button type="button" data-farm-clear>ปิดฟอร์ม</button>
