@@ -11815,7 +11815,7 @@ function renderFarmBudgetBoard() {
           <span>เลือกพื้นที่หลายรายการพร้อมกัน</span>
         </label>
         <div class="budget-tree-grid">
-          <section class="budget-tree-card budget-area-card"><h4>พื้นที่ / โซน / แปลง / Block</h4>${renderFarmBudgetAreaDropdowns()}</section>
+          <section class="budget-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetAreaTree()}</div></section>
           <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree()}</div></section>
           <section class="budget-tree-card"><h4>วัสดุ</h4><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree()}</div></section>
           <section class="budget-tree-card"><h4>พนักงาน</h4><div class="budget-tree-scroll">${renderFarmBudgetWorkerTree()}</div></section>

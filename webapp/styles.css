@@ -4604,81 +4604,43 @@ tfoot td {
 .budget-tree-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
 }
 
 .budget-tree-card {
   min-width: 0;
   border: 1px solid #cfd8e3;
-  border-radius: 4px;
+  border-radius: 3px;
   background: #fff;
 }
 
 .budget-tree-card h4 {
   margin: 0;
-  padding: 8px 10px;
+  padding: 5px 8px;
   border-bottom: 1px solid #dbe2ec;
   color: var(--navy);
-  font-size: 12px;
-}
-
-.budget-area-card {
-  display: grid;
-  grid-template-rows: auto 1fr;
-}
-
-.budget-area-dropdowns {
-  display: grid;
-  gap: 8px;
-  padding: 8px;
-}
-
-.budget-area-dropdowns label {
-  display: grid;
-  gap: 4px;
-  color: var(--muted);
   font-size: 11px;
   font-weight: 900;
-}
-
-.budget-area-dropdowns select {
-  width: 100%;
-  min-height: 34px;
-  border: 1px solid #d8dfe8;
-  border-radius: 5px;
-  background: #fff;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.budget-area-dropdowns span {
-  padding: 7px 9px;
-  border: 1px solid #dbe5f2;
-  border-radius: 999px;
-  background: #f8fafc;
-  color: var(--navy);
-  font-size: 11px;
-  font-weight: 900;
-  text-align: center;
 }
 
 .budget-tree-scroll {
-  height: 300px;
+  height: 292px;
   overflow: auto;
-  padding: 6px 8px;
+  padding: 4px 6px;
 }
 
 .budget-tree-scroll details {
-  margin: 2px 0;
+  margin: 1px 0;
 }
 
 .budget-tree-scroll summary {
   cursor: pointer;
   color: var(--ink);
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 800;
   list-style-position: outside;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 
 .budget-tree-scroll summary small {
@@ -4687,21 +4649,36 @@ tfoot td {
 }
 
 .budget-tree-item {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
+  display: flex;
   gap: 5px;
-  align-items: start;
-  margin: 3px 0 3px 18px;
+  align-items: center;
+  min-height: 17px;
+  margin: 1px 0 1px 15px;
   color: var(--ink);
-  font-size: 11px;
+  font-size: 10.5px;
+  line-height: 1.25;
 }
 
 .budget-tree-item input {
-  margin-top: 2px;
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  margin: 0;
   accent-color: #e75f9a;
 }
 
+.farm-page .budget-tree-item input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  padding: 0;
+}
+
 .budget-tree-item span {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4709,10 +4686,7 @@ tfoot td {
 }
 
 .budget-tree-item em {
-  grid-column: 2;
-  color: var(--muted);
-  font-size: 10px;
-  font-style: normal;
+  display: none;
 }
 
 .budget-tree-empty {
@@ -10101,4 +10075,15 @@ td.num,
   .budget-tree-scroll {
     height: 240px;
   }
+}
+
+.farm-page .budget-tree-card .budget-tree-item input[type="checkbox"] {
+  width: 12px !important;
+  height: 12px !important;
+  min-width: 12px !important;
+  min-height: 12px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  transform: scale(1.2);
+  transform-origin: center;
 }
