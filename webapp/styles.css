@@ -4526,6 +4526,8 @@ tfoot td {
 .farm-budget-contract-head,
 .budget-contract-options,
 .budget-rate-builder,
+.budget-extra-rates,
+.budget-approval-box,
 .farm-budget-stat-strip,
 .farm-budget-rate-table,
 .budget-rate-edit-panel {
@@ -4539,7 +4541,7 @@ tfoot td {
 
 .budget-contract-grid {
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) minmax(180px, 0.9fr) minmax(160px, 0.9fr) minmax(160px, 0.9fr) auto;
+  grid-template-columns: repeat(4, minmax(170px, 1fr)) auto;
   gap: 10px;
   align-items: end;
 }
@@ -4705,6 +4707,76 @@ tfoot td {
 .budget-selection-summary b,
 .farm-budget-stat-strip b {
   color: var(--navy);
+}
+
+.budget-extra-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.budget-extra-toolbar button,
+.budget-extra-table button {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid #d8dfe8;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--navy);
+  font-weight: 900;
+}
+
+.budget-extra-table-wrap {
+  max-height: 320px;
+}
+
+.budget-extra-table input,
+.budget-extra-table select {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid #d8dfe8;
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.budget-extra-table input[type="checkbox"] {
+  width: auto;
+  min-height: auto;
+  accent-color: #e75f9a;
+}
+
+.budget-approval-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.budget-approval-grid label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #dbe5f2;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.budget-approval-grid input {
+  accent-color: #e75f9a;
+}
+
+.budget-approval-box p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .farm-budget-rate-table .farm-table-wrap {
@@ -9952,6 +10024,7 @@ td.num,
   .budget-contract-grid,
   .budget-rate-form,
   .budget-tree-grid,
+  .budget-approval-grid,
   .budget-rate-edit-form {
     grid-template-columns: 1fr;
   }

@@ -53,6 +53,17 @@
     selectedActivities: [],
     selectedMaterials: [],
     selectedWorkers: [],
+    contractName: "",
+    approvalStatus: "approved",
+    externalContractNo: "",
+    supplierContractNo: "",
+    dataGroup: "",
+    approvalScope: "standard_contract",
+    approvalMode: "not_required",
+    extraRates: [
+      { id: "driver", lineType: "wage", roleName: "Driver Rate", rateAmount: "12", uom: "ตัน", calculationMethod: "per_ton", isHourly: true },
+      { id: "ramp", lineType: "wage", roleName: "Ramp Rate", rateAmount: "0", uom: "ตัน", calculationMethod: "per_ton", isHourly: false },
+    ],
     rateType: "labor",
     calculationMethod: "per_rai",
     comparisonBasis: "area_rai",
@@ -2322,11 +2333,18 @@ const FARM_TABLE_SCHEMAS = {
       F("budget_rate_id", "เรทกิจกรรม", { references: "budget_activity_rates", required: true }),
       F("team_id", "ทีม/กลุ่มคนงาน", { references: "teams" }),
       F("worker_group_name", "กลุ่มคนงาน", { required: true }),
-      F("payee_type", "ประเภทผู้รับเงิน", { options: ["daily_worker", "monthly_employee", "contractor", "driver", "machine_operator"] }),
+      F("line_type", "ประเภทรายการ", { options: ["wage", "allowance", "deduction", "survey_adjustment"], required: true }),
+      F("rate_category", "หมวด Rate", { options: ["base", "driver", "ramp", "harvester", "quality_bonus", "quality_deduction", "survey_score", "other"] }),
+      F("payee_type", "ประเภทผู้รับเงิน", { options: ["daily_worker", "monthly_employee", "contractor", "driver", "machine_operator", "team", "all"] }),
       F("role_name", "บทบาท"),
       F("rate_amount", "อัตรา", { type: "number" }),
+      F("uom", "หน่วย"),
       F("rate_text", "อัตราแบบข้อความ"),
-      F("calculation_method", "วิธีคำนวณ", { options: ["per_ton", "per_tree", "per_rai", "per_day", "per_hour", "per_unit", "fixed"] }),
+      F("calculation_method", "วิธีคำนวณ", { options: ["per_ton", "per_tree", "per_rai", "per_day", "per_hour", "per_unit", "fixed", "survey_score"] }),
+      F("is_hourly_enabled", "คิดรายชั่วโมง", { type: "boolean" }),
+      F("affects_payroll", "กระทบค่าแรง", { type: "boolean" }),
+      F("approval_required", "ต้องอนุมัติ", { type: "boolean" }),
+      F("survey_template_id", "แบบประเมินหลังงาน", { references: "survey_templates" }),
       F("status", "สถานะ", { type: "status" }),
       F("note", "หมายเหตุ"),
     ],
@@ -9946,9 +9964,15 @@ async function createFarmBudgetRatesFromSelection() {
           mapping_rule: picks.contractType,
           version_no: "1",
           is_current: "true",
-          approval_status: "approved",
+          approval_status: picks.approvalStatus || "approved",
           status: "active",
           note: [
+            picks.contractName ? `สัญญา ${picks.contractName}` : "",
+            picks.externalContractNo ? `เลขภายใน ${picks.externalContractNo}` : "",
+            picks.supplierContractNo ? `เลขซัพพลายเออร์ ${picks.supplierContractNo}` : "",
+            picks.dataGroup ? `กลุ่มข้อมูล ${picks.dataGroup}` : "",
+            picks.approvalScope ? `approval_scope=${picks.approvalScope}` : "",
+            picks.approvalMode ? `approval_mode=${picks.approvalMode}` : "",
             materials.length ? `วัสดุ ${materials.map(farmBudgetMaterialLabel).join(", ")}` : "",
             workers.length ? `กลุ่มคนงาน ${workers.map((item) => farmBudgetWorkerLabel({ ...item.row, _budgetType: item.kind })).join(", ")}` : "",
           ].filter(Boolean).join(" | "),
@@ -9981,12 +10005,44 @@ async function createFarmBudgetRatesFromSelection() {
             budget_rate_id: savedRateId,
             team_id: worker.kind === "team" ? worker.row.id : "",
             worker_group_name: farmBudgetWorkerLabel({ ...worker.row, _budgetType: worker.kind }),
+            line_type: "wage",
+            rate_category: "base",
             payee_type: worker.kind === "contractor" ? "contractor" : worker.kind === "team" ? "team" : (worker.row.payment_type || "daily_worker"),
             role_name: worker.row.worker_type || worker.row.team_type || "",
             rate_amount: rateAmount,
+            uom: picks.unitName || "",
             rate_text: rateAmount ? "" : "กำหนดภายหลัง",
             calculation_method: picks.calculationMethod,
+            is_hourly_enabled: "false",
+            affects_payroll: "true",
+            approval_required: picks.approvalMode === "not_required" ? "false" : "true",
             status: "active",
+          });
+        }
+        for (const extra of picks.extraRates || []) {
+          const extraAmount = n(extra.rateAmount || 0);
+          if (!String(extra.roleName || "").trim() && !extraAmount) continue;
+          await persistFarmRowToDatabase(roleTable, {
+            id: `budget-extra-${nowKey}-${sequence}-${farmBudgetSafeCode(extra.id)}`,
+            moduleId: "farm-budget",
+            tableId: "budget_rate_roles",
+            budget_rate_id: savedRateId,
+            team_id: "",
+            worker_group_name: extra.roleName || "Rate เพิ่มเติม",
+            line_type: extra.lineType || "wage",
+            rate_category: extra.rateCategory || (extra.lineType === "deduction" ? "quality_deduction" : extra.lineType === "allowance" ? "quality_bonus" : extra.lineType === "survey_adjustment" ? "survey_score" : "other"),
+            payee_type: extra.payeeType || "all",
+            role_name: extra.roleName || "",
+            rate_amount: extraAmount,
+            uom: extra.uom || "",
+            rate_text: extraAmount ? "" : "กำหนดภายหลัง",
+            calculation_method: extra.calculationMethod || "fixed",
+            is_hourly_enabled: extra.isHourly ? "true" : "false",
+            affects_payroll: extra.affectsPayroll === false ? "false" : "true",
+            approval_required: extra.approvalRequired || picks.approvalMode !== "not_required" ? "true" : "false",
+            survey_template_id: extra.lineType === "survey_adjustment" ? (extra.surveyTemplateId || "") : "",
+            status: "active",
+            note: extra.lineType === "survey_adjustment" ? "รองรับการประเมินการทำงานหลังปิดงาน" : "",
           });
         }
         sequence += 1;
@@ -9995,7 +10051,7 @@ async function createFarmBudgetRatesFromSelection() {
     state.farmTableId = "budget_activity_rates";
     state.farmDetailId = created[0] || "";
     state.farmSyncStatus = "success";
-    state.farmSyncMessage = `สร้าง Rate แล้ว ${fmt(created.length)} รายการ พร้อมผูกวัสดุ ${fmt(materials.length)} และกลุ่มคนงาน ${fmt(workers.length)}`;
+    state.farmSyncMessage = `สร้าง Rate แล้ว ${fmt(created.length)} รายการ พร้อมผูกวัสดุ ${fmt(materials.length)} กลุ่มคนงาน ${fmt(workers.length)} และเรทเสริม ${fmt((picks.extraRates || []).length)}`;
     await loadFarmTablesFromDatabase({ silent: false });
   } catch (error) {
     state.farmSyncStatus = "error";
@@ -11230,6 +11286,20 @@ function farmBudgetContractState() {
       rateAmount: "",
     };
   }
+  const picks = state.farmBudgetContract;
+  if (!Array.isArray(picks.extraRates)) {
+    picks.extraRates = [
+      { id: "driver", lineType: "wage", roleName: "Driver Rate", rateAmount: "12", uom: "ตัน", calculationMethod: "per_ton", isHourly: true },
+      { id: "ramp", lineType: "wage", roleName: "Ramp Rate", rateAmount: "0", uom: "ตัน", calculationMethod: "per_ton", isHourly: false },
+    ];
+  }
+  if (!picks.contractName) picks.contractName = "";
+  if (!picks.approvalStatus) picks.approvalStatus = "approved";
+  if (!picks.approvalScope) picks.approvalScope = "standard_contract";
+  if (!picks.approvalMode) picks.approvalMode = "not_required";
+  if (!picks.externalContractNo) picks.externalContractNo = "";
+  if (!picks.supplierContractNo) picks.supplierContractNo = "";
+  if (!picks.dataGroup) picks.dataGroup = "";
   return state.farmBudgetContract;
 }
 
@@ -11245,6 +11315,23 @@ function farmBudgetSafeCode(value, fallback = "ALL") {
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 32) || fallback;
+}
+
+function farmBudgetExtraRateTemplate(kind = "custom") {
+  const id = `extra-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 6)}`;
+  const templates = {
+    driver: { lineType: "wage", roleName: "Driver Rate", rateAmount: "12", uom: "ตัน", calculationMethod: "per_ton", isHourly: true, rateCategory: "driver" },
+    allowance: { lineType: "allowance", roleName: "เงินได้เพิ่ม", rateAmount: "0", uom: "ครั้ง", calculationMethod: "fixed", isHourly: false, rateCategory: "quality_bonus" },
+    deduction: { lineType: "deduction", roleName: "เงินหัก/ปรับคุณภาพ", rateAmount: "0", uom: "ครั้ง", calculationMethod: "fixed", isHourly: false, rateCategory: "quality_deduction" },
+    survey: { lineType: "survey_adjustment", roleName: "ปรับตามคะแนน Survey", rateAmount: "0", uom: "คะแนน", calculationMethod: "survey_score", isHourly: false, rateCategory: "survey_score" },
+    custom: { lineType: "wage", roleName: "Rate เพิ่มเติม", rateAmount: "0", uom: "ครั้ง", calculationMethod: "fixed", isHourly: false, rateCategory: "other" },
+  };
+  return { id, ...(templates[kind] || templates.custom) };
+}
+
+function farmBudgetUpdateExtraRate(id, field, value) {
+  const picks = farmBudgetContractState();
+  picks.extraRates = picks.extraRates.map((row) => row.id === id ? { ...row, [field]: value } : row);
 }
 
 function farmBudgetBlockLabel(block) {
@@ -11381,6 +11468,102 @@ function renderFarmBudgetWorkerTree() {
   }).join("") || `<div class="budget-tree-empty">ยังไม่มีข้อมูลพนักงาน/ทีม</div>`;
 }
 
+function renderFarmBudgetExtraRateRows() {
+  const picks = farmBudgetContractState();
+  const lineTypes = [
+    ["wage", "ค่าแรง/เรทงาน"],
+    ["allowance", "เงินได้เพิ่ม"],
+    ["deduction", "เงินหัก"],
+    ["survey_adjustment", "ปรับตาม Survey"],
+  ];
+  const methods = [
+    ["per_ton", "ต่อตัน"],
+    ["per_rai", "ต่อไร่"],
+    ["per_tree", "ต่อต้น"],
+    ["per_day", "ต่อวัน"],
+    ["per_hour", "ต่อชั่วโมง"],
+    ["fixed", "เหมาจ่าย"],
+    ["survey_score", "คะแนน Survey"],
+  ];
+  const uoms = ["ตัน", "ไร่", "ต้น", "วัน", "ชั่วโมง", "ครั้ง", "หน่วย", "คะแนน"];
+  return `
+    <article class="budget-extra-rates">
+      <div class="section-head">
+        <h3>การตั้งค่าอัตราในสัญญา</h3>
+        <span>เพิ่มเรทเสริม เงินได้ เงินหัก และรายการที่ผูกกับ Survey หลังงาน</span>
+      </div>
+      <div class="budget-extra-toolbar">
+        <button type="button" data-budget-extra-add="driver">+ Driver Rate</button>
+        <button type="button" data-budget-extra-add="allowance">+ เงินได้</button>
+        <button type="button" data-budget-extra-add="deduction">+ เงินหัก</button>
+        <button type="button" data-budget-extra-add="survey">+ Survey</button>
+      </div>
+      <div class="table-wrap budget-extra-table-wrap">
+        <table class="mini-table budget-extra-table">
+          <thead>
+            <tr>
+              <th>ประเภทรายการ</th>
+              <th>ชื่อ Rate / เงื่อนไข</th>
+              <th>UOM</th>
+              <th>Rate</th>
+              <th>วิธีคำนวณ</th>
+              <th>Hourly</th>
+              <th>ใช้คำนวณค่าแรง</th>
+              <th>อนุมัติ</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${picks.extraRates.map((row) => `
+              <tr>
+                <td>
+                  <select data-budget-extra-field="${esc(row.id)}" data-field="lineType">
+                    ${lineTypes.map(([value, label]) => `<option value="${esc(value)}"${row.lineType === value ? " selected" : ""}>${esc(label)}</option>`).join("")}
+                  </select>
+                </td>
+                <td><input data-budget-extra-field="${esc(row.id)}" data-field="roleName" value="${esc(row.roleName || "")}" placeholder="เช่น Driver Rate, Harvester Rate"></td>
+                <td>
+                  <select data-budget-extra-field="${esc(row.id)}" data-field="uom">
+                    ${uoms.map((unit) => `<option value="${esc(unit)}"${row.uom === unit ? " selected" : ""}>${esc(unit)}</option>`).join("")}
+                  </select>
+                </td>
+                <td><input data-budget-extra-field="${esc(row.id)}" data-field="rateAmount" type="number" value="${esc(row.rateAmount ?? "")}"></td>
+                <td>
+                  <select data-budget-extra-field="${esc(row.id)}" data-field="calculationMethod">
+                    ${methods.map(([value, label]) => `<option value="${esc(value)}"${row.calculationMethod === value ? " selected" : ""}>${esc(label)}</option>`).join("")}
+                  </select>
+                </td>
+                <td><input data-budget-extra-check="${esc(row.id)}" data-field="isHourly" type="checkbox"${row.isHourly ? " checked" : ""}></td>
+                <td><input data-budget-extra-check="${esc(row.id)}" data-field="affectsPayroll" type="checkbox"${row.affectsPayroll !== false ? " checked" : ""}></td>
+                <td><input data-budget-extra-check="${esc(row.id)}" data-field="approvalRequired" type="checkbox"${row.approvalRequired ? " checked" : ""}></td>
+                <td><button type="button" data-budget-extra-delete="${esc(row.id)}">ลบ</button></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </article>`;
+}
+
+function renderFarmBudgetApprovalBox() {
+  const picks = farmBudgetContractState();
+  return `
+    <article class="budget-approval-box">
+      <div class="section-head">
+        <h3>ข้อกำหนดการอนุมัติ</h3>
+        <span>ใช้กำหนดว่าสัญญาและ Rate ที่เพิ่มต้องผ่านผู้มีสิทธิ์หรือไม่</span>
+      </div>
+      <div class="budget-approval-grid">
+        <label><input name="budgetApprovalScope" type="radio" value="standard_contract"${picks.approvalScope === "standard_contract" ? " checked" : ""}> สัญญามาตรฐาน</label>
+        <label><input name="budgetApprovalScope" type="radio" value="estate_managed"${picks.approvalScope === "estate_managed" ? " checked" : ""}> จัดการโดยเอสเทท</label>
+        <label><input name="budgetApprovalMode" type="radio" value="not_required"${picks.approvalMode === "not_required" ? " checked" : ""}> ไม่ต้องอนุมัติ</label>
+        <label><input name="budgetApprovalMode" type="radio" value="estate_only"${picks.approvalMode === "estate_only" ? " checked" : ""}> เอสเททอนุมัติได้</label>
+        <label><input name="budgetApprovalMode" type="radio" value="estate_and_director"${picks.approvalMode === "estate_and_director" ? " checked" : ""}> เอสเททและผู้บริหารอนุมัติ</label>
+      </div>
+      <p>สัญญาที่มีเงินได้/เงินหักเพิ่มเติม หรือการปรับตาม Survey สามารถกำหนดให้ต้องอนุมัติก่อนนำไปใช้ใน Work Order และ Payroll ได้</p>
+    </article>`;
+}
+
 function renderFarmBudgetRateTable(rates) {
   const picks = farmBudgetContractState();
   const query = picks.query.trim().toLowerCase();
@@ -11487,10 +11670,21 @@ function renderFarmBudgetBoard() {
     <section class="farm-budget-contract">
       <article class="farm-budget-contract-head">
         <div class="section-head">
-          <h3>สัญญา / สร้างอัตรา Rate</h3>
-          <span>เลือกพื้นที่ กิจกรรม วัสดุ และพนักงาน แล้วสร้าง Rate เพื่อใช้วางแผนและคำนวณค่าแรง</span>
+          <h3>ข้อมูลสัญญา</h3>
+          <span>ข้อมูลส่วนหัวของสัญญาและเงื่อนไขการคำนวณ Rate</span>
         </div>
         <div class="budget-contract-grid">
+          <label>หมายเลขภายในของสัญญา
+            <input id="budgetExternalContractNo" value="${esc(picks.externalContractNo)}" placeholder="เช่น 1 - กลุ่มเก็บเกี่ยว">
+          </label>
+          <label>เวอร์ชัน
+            <select id="budgetContractVersion">
+              ${["1", "2", "3", "4", "5"].map((item) => `<option value="${esc(item)}"${String(picks.versionNo || "1") === item ? " selected" : ""}>${esc(item)}</option>`).join("")}
+            </select>
+          </label>
+          <label>ชื่อ/คำอธิบายของสัญญา
+            <input id="budgetContractName" value="${esc(picks.contractName)}" maxlength="256" placeholder="เช่น เกี่ยว 406 บาทต่อตัน">
+          </label>
           <label>ค้นหา
             <input id="budgetContractSearch" type="search" value="${esc(picks.query)}" placeholder="ค้นหา">
           </label>
@@ -11498,6 +11692,17 @@ function renderFarmBudgetBoard() {
             <select id="budgetContractType">
               ${["Role Based Compounded", "Role Based", "Activity Based", "Material Included", "Machine Included"].map((item) => `<option value="${esc(item)}"${picks.contractType === item ? " selected" : ""}>${esc(item)}</option>`).join("")}
             </select>
+          </label>
+          <label>สถานะ
+            <select id="budgetApprovalStatus">
+              ${["draft", "pending_approval", "approved", "inactive"].map((item) => `<option value="${esc(item)}"${picks.approvalStatus === item ? " selected" : ""}>${item === "approved" ? "อนุมัติ" : esc(item)}</option>`).join("")}
+            </select>
+          </label>
+          <label>หมายเลขสัญญาของซัพพลายเออร์
+            <input id="budgetSupplierContractNo" value="${esc(picks.supplierContractNo)}" placeholder="เลขอ้างอิงภายนอก">
+          </label>
+          <label>กลุ่มข้อมูล
+            <input id="budgetDataGroup" value="${esc(picks.dataGroup)}" placeholder="กลุ่มข้อมูล">
           </label>
           <label>Start date
             <input id="budgetContractStart" ${dateInputAttrs(picks.startDate, "")}>
@@ -11557,6 +11762,8 @@ function renderFarmBudgetBoard() {
           <span>ปี <b>${esc(years[0]?.fiscal_year || "2569")}</b></span>
         </div>
       </article>
+      ${renderFarmBudgetExtraRateRows()}
+      ${renderFarmBudgetApprovalBox()}
       <article class="farm-budget-stat-strip">
         <span>Block/Terrain <b>${fmt(terrainTotal)}</b></span>
         <span>เรทตัวเลข <b>${fmt(numericRates.length)}</b></span>
@@ -12618,6 +12825,16 @@ async function init() {
       render();
       return;
     }
+    if (e.target.id === "budgetContractVersion") {
+      farmBudgetContractState().versionNo = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.id === "budgetApprovalStatus") {
+      farmBudgetContractState().approvalStatus = e.target.value;
+      render();
+      return;
+    }
     if (e.target.id === "budgetContractStart") {
       farmBudgetContractState().startDate = dateValue(e.target);
       render();
@@ -12663,6 +12880,26 @@ async function init() {
         current.delete(e.target.value);
       }
       picks[key] = [...current];
+      render();
+      return;
+    }
+    if (e.target.matches("[data-budget-extra-field]")) {
+      farmBudgetUpdateExtraRate(e.target.dataset.budgetExtraField, e.target.dataset.field, e.target.value);
+      render();
+      return;
+    }
+    if (e.target.matches("[data-budget-extra-check]")) {
+      farmBudgetUpdateExtraRate(e.target.dataset.budgetExtraCheck, e.target.dataset.field, e.target.checked);
+      render();
+      return;
+    }
+    if (e.target.name === "budgetApprovalScope") {
+      farmBudgetContractState().approvalScope = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.name === "budgetApprovalMode") {
+      farmBudgetContractState().approvalMode = e.target.value;
       render();
       return;
     }
@@ -12811,6 +13048,22 @@ async function init() {
       farmBudgetContractState().rateAmount = e.target.value;
       return;
     }
+    if (e.target.id === "budgetContractName") {
+      farmBudgetContractState().contractName = e.target.value;
+      return;
+    }
+    if (e.target.id === "budgetExternalContractNo") {
+      farmBudgetContractState().externalContractNo = e.target.value;
+      return;
+    }
+    if (e.target.id === "budgetSupplierContractNo") {
+      farmBudgetContractState().supplierContractNo = e.target.value;
+      return;
+    }
+    if (e.target.id === "budgetDataGroup") {
+      farmBudgetContractState().dataGroup = e.target.value;
+      return;
+    }
     if (e.target.matches("[data-est-rate-edit]")) {
       const id = e.target.dataset.estRateEdit;
       const field = e.target.dataset.field;
@@ -12879,6 +13132,20 @@ async function init() {
     }
     if (e.target.closest("[data-budget-rate-create]")) {
       createFarmBudgetRatesFromSelection();
+      return;
+    }
+    const extraAdd = e.target.closest("[data-budget-extra-add]");
+    if (extraAdd) {
+      const picks = farmBudgetContractState();
+      picks.extraRates = [...(picks.extraRates || []), farmBudgetExtraRateTemplate(extraAdd.dataset.budgetExtraAdd)];
+      render();
+      return;
+    }
+    const extraDelete = e.target.closest("[data-budget-extra-delete]");
+    if (extraDelete) {
+      const picks = farmBudgetContractState();
+      picks.extraRates = (picks.extraRates || []).filter((row) => row.id !== extraDelete.dataset.budgetExtraDelete);
+      render();
       return;
     }
     const plannerTab = e.target.closest("[data-farm-planner-tab]");

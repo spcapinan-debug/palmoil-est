@@ -76,16 +76,31 @@ create table if not exists public.budget_rate_roles (
   budget_rate_id text references public.budget_activity_rates(id) on delete cascade,
   team_id uuid references public.teams(id) on delete set null,
   worker_group_name text not null,
+  line_type text default 'wage',
+  rate_category text,
   payee_type text,
   role_name text,
   rate_amount numeric,
+  uom text,
   rate_text text,
   calculation_method text,
+  is_hourly_enabled boolean default false,
+  affects_payroll boolean default true,
+  approval_required boolean default false,
+  survey_template_id uuid references public.survey_templates(id) on delete set null,
   status text default 'active',
   note text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+alter table public.budget_rate_roles add column if not exists line_type text default 'wage';
+alter table public.budget_rate_roles add column if not exists rate_category text;
+alter table public.budget_rate_roles add column if not exists uom text;
+alter table public.budget_rate_roles add column if not exists is_hourly_enabled boolean default false;
+alter table public.budget_rate_roles add column if not exists affects_payroll boolean default true;
+alter table public.budget_rate_roles add column if not exists approval_required boolean default false;
+alter table public.budget_rate_roles add column if not exists survey_template_id uuid references public.survey_templates(id) on delete set null;
 
 create table if not exists public.budget_rate_import_rows (
   id text primary key,
@@ -115,6 +130,7 @@ create index if not exists idx_budget_activity_rates_terrain on public.budget_ac
 create index if not exists idx_budget_activity_rates_ap on public.budget_activity_rates(ap_code);
 create index if not exists idx_budget_rate_materials_rate on public.budget_rate_materials(budget_rate_id);
 create index if not exists idx_budget_rate_roles_rate on public.budget_rate_roles(budget_rate_id);
+create index if not exists idx_budget_rate_roles_line_type on public.budget_rate_roles(line_type, rate_category);
 
 alter table public.budget_years enable row level security;
 alter table public.budget_activity_rates enable row level security;
