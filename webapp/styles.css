@@ -4927,59 +4927,6 @@ tfoot td {
   grid-column: 1 / -1;
 }
 
-.budget-rate-linked {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  padding: 10px;
-  border: 1px solid #dbe2ec;
-  border-radius: 6px;
-  background: #fbfcfe;
-}
-
-.budget-rate-linked-head,
-.budget-rate-linked-title {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.budget-rate-linked-head h4,
-.budget-rate-linked-title b {
-  margin: 0;
-  color: var(--navy);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.budget-rate-linked-head span,
-.budget-rate-linked-title small {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.budget-rate-linked-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.budget-rate-linked-grid article {
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  background: #fff;
-}
-
-.budget-rate-linked-table {
-  max-height: 240px;
-  margin-top: 8px;
-}
-
 .farm-area-map-panel {
   display: grid;
   gap: 12px;
@@ -10371,8 +10318,7 @@ td.num,
   .budget-tree-grid,
   .budget-approval-grid,
   .budget-rate-edit-form,
-  .budget-rate-edit-main,
-  .budget-rate-linked-grid {
+  .budget-rate-edit-main {
     grid-template-columns: 1fr;
   }
 
