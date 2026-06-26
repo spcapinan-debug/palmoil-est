@@ -10144,6 +10144,9 @@ function editFarmRow(id) {
   state.farmEditId = id;
   state.farmDetailId = id;
   render();
+  if (state.view === "farm-budget") {
+    setTimeout(() => document.querySelector(".budget-rate-edit-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
 }
 
 async function setFarmInactive(id) {
@@ -11831,17 +11834,9 @@ function renderFarmBudgetRateTable(rates) {
     </article>`;
 }
 
-function renderFarmBudgetCreateRateBar(rates) {
-  const picks = farmBudgetContractState();
+function renderFarmBudgetCreateRateBar() {
   return `
     <article class="budget-create-rate-bar">
-      <div class="budget-selection-summary">
-        <span>พื้นที่ <b>${fmt(picks.selectedBlocks.length)}</b></span>
-        <span>กิจกรรม <b>${fmt(picks.selectedActivities.length)}</b></span>
-        <span>วัสดุ <b>${fmt(picks.selectedMaterials.length)}</b></span>
-        <span>พนักงาน/ทีม <b>${fmt(picks.selectedWorkers.length)}</b></span>
-        <span>Rate DB <b>${fmt(rates.length)}</b></span>
-      </div>
       <button type="button" data-budget-rate-create ${state.farmSyncBusy ? "disabled" : ""}>สร้าง Rate</button>
     </article>`;
 }
@@ -11929,28 +11924,8 @@ function renderFarmBudgetEditPanel() {
 }
 
 function renderFarmBudgetBoard() {
-  const source = state.farmBudgetRateData?.source || {};
-  const years = farmRowsByKey("budget_years");
   const rates = farmRowsByKey("budget_activity_rates");
-  const materials = farmRowsByKey("budget_rate_materials");
-  const roles = farmRowsByKey("budget_rate_roles");
   const picks = farmBudgetContractState();
-  const terrains = new Set(rates.map((row) => row.terrain_code).filter(Boolean));
-  const terrainTotal = n(source.terrain_count || 0) || terrains.size;
-  const numericRates = rates.filter((row) => n(row.rate_amount) !== 0 || String(row.rate_amount || "").trim() !== "");
-  const quoteRates = rates.filter((row) => String(row.rate_text || "").trim());
-  const byGroup = farmBudgetGroupCount(rates, (row) => row.activity_group_name || "ไม่ระบุกลุ่ม")
-    .sort((a, b) => b.value - a.value);
-  const byBasis = farmBudgetGroupCount(rates, (row) => row.comparison_basis || "manual_qty")
-    .sort((a, b) => b.value - a.value);
-  const byType = farmBudgetGroupCount(rates, (row) => row.rate_type || "other")
-    .sort((a, b) => b.value - a.value);
-  const activityRows = byGroup.map((row) => {
-    const groupRates = rates.filter((item) => (item.activity_group_name || "ไม่ระบุกลุ่ม") === row.label);
-    const activities = new Set(groupRates.map((item) => item.activity_name).filter(Boolean));
-    const units = new Set(groupRates.map((item) => item.unit_name).filter(Boolean));
-    return { ...row, activities: activities.size, units: [...units].slice(0, 4).join(", ") };
-  });
   return `
     <section class="farm-budget-contract">
       <article class="farm-budget-contract-head">
@@ -12010,16 +11985,9 @@ function renderFarmBudgetBoard() {
         </div>
       </article>
       ${renderFarmBudgetExtraRateRows()}
-      <article class="farm-budget-stat-strip">
-        <span>Block <b>${fmt(terrainTotal)}</b></span>
-        <span>เรทตัวเลข <b>${fmt(numericRates.length)}</b></span>
-        <span>เรทประกวดราคา <b>${fmt(quoteRates.length)}</b></span>
-        <span>วัสดุผูกเรท <b>${fmt(materials.length)}</b></span>
-        <span>กลุ่มค่าแรง <b>${fmt(roles.length)}</b></span>
-      </article>
-      ${renderFarmBudgetEditPanel()}
-      ${renderFarmBudgetCreateRateBar(rates)}
+      ${renderFarmBudgetCreateRateBar()}
       ${renderFarmBudgetRateTable(rates)}
+      ${renderFarmBudgetEditPanel()}
     </section>`;
 }
 
@@ -12140,7 +12108,7 @@ function renderFarmPage() {
         </div>
         <button type="button" data-farm-db-refresh>Refresh DB</button>
       </div>
-      ${renderFarmWorkflowNav(module)}
+      ${isBudgetPage ? "" : renderFarmWorkflowNav(module)}
       ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isBudgetPage ? renderFarmBudgetBoard() : ""}
       ${isWorkPage || isBudgetPage ? "" : `<section class="farm-hero">
