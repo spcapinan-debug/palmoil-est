@@ -9893,7 +9893,17 @@ async function saveFarmRow() {
 
 async function createFarmBudgetRatesFromSelection() {
   const picks = farmBudgetContractState();
-  const blocks = picks.selectedBlocks.map((id) => farmLookup("blocks", id)).filter(Boolean);
+  const blocks = picks.selectedBlocks.map((id) => {
+    const block = farmLookup("blocks", id);
+    if (block) return block;
+    const area = farmLookup("areas", id);
+    return area ? {
+      ...area,
+      block_code: area.block_code || area.terrain_code || area.area_code || area.id,
+      block_name: area.block_name || area.area_name || area.area_code || area.id,
+      terrain_code: area.terrain_code || area.area_code || "",
+    } : null;
+  }).filter(Boolean);
   const activities = picks.selectedActivities.map((id) => farmLookup("activities", id)).filter(Boolean);
   const materials = picks.selectedMaterials.map((id) => farmLookup("materials", id)).filter(Boolean);
   const workers = picks.selectedWorkers.map((value) => {
@@ -9950,9 +9960,9 @@ async function createFarmBudgetRatesFromSelection() {
           rate_amount: rateAmount,
           rate_text: rateAmount ? "" : "กำหนดภายหลัง",
           area_scope_type: "block",
-          estate_name: estate?.estate_name || estate?.estate_code || "",
-          zone_name: zone?.zone_name || zone?.zone_code || "",
-          plot_group_code: plot?.plot_group_id ? farmLookupLabel("plot_groups", plot.plot_group_id) : "",
+          estate_name: block.estate_name || estate?.estate_name || estate?.estate_code || "",
+          zone_name: block.zone_name || zone?.zone_name || zone?.zone_code || "",
+          plot_group_code: block.plot_group_code || block.plot_group_name || (plot?.plot_group_id ? farmLookupLabel("plot_groups", plot.plot_group_id) : ""),
           block_id: block.id,
           terrain_code: block.block_code || block.terrain_code || block.area_code || "",
           ap_code: block.ap_code || block.AP_code || "",
@@ -11343,9 +11353,10 @@ function farmBudgetUpdateExtraRate(id, field, value) {
 function farmBudgetBlockLabel(block) {
   const plot = farmLookup("plots", block.plot_id);
   const zone = farmLookup("zones", block.zone_id || plot?.zone_id);
-  const code = block.block_code || block.terrain_code || block.id;
+  const code = block.block_code || block.terrain_code || block.area_code || block.id;
   const name = block.block_name || block.area_name || "";
-  return [code, name, zone?.zone_name].filter(Boolean).join(" · ");
+  const zoneName = block.zone_name || zone?.zone_name;
+  return [code, name && name !== code ? name : "", zoneName].filter(Boolean).join(" · ");
 }
 
 function farmBudgetActivityLabel(activity) {
@@ -11385,11 +11396,50 @@ function renderBudgetCheckbox(type, value, label, checkedList, meta = "") {
 
 function renderFarmBudgetAreaTree() {
   const picks = farmBudgetContractState();
-  const blocks = farmRowsByKey("blocks").filter((block) => farmBudgetMatchesQuery(farmBudgetBlockLabel(block)));
+  const areaBlocks = farmRowsByKey("areas")
+    .filter((area) => !area.area_level || area.area_level === "block")
+    .filter((area) => farmBudgetMatchesQuery(farmBudgetBlockLabel(area)));
+  const blocks = areaBlocks.length
+    ? areaBlocks
+    : farmRowsByKey("blocks").filter((block) => farmBudgetMatchesQuery(farmBudgetBlockLabel(block)));
   const estates = farmRowsByKey("estates");
   const zones = farmRowsByKey("zones");
   const plots = farmRowsByKey("plots");
   if (!blocks.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูล Block</div>`;
+  if (areaBlocks.length) {
+    const estateMap = new Map();
+    for (const block of areaBlocks) {
+      const estateName = block.estate_name || "ไม่ระบุพื้นที่";
+      const zoneName = block.zone_name || "ไม่ระบุโซน";
+      const groupName = block.plot_group_code || block.plot_group_name || "ไม่ระบุแปลง";
+      if (!estateMap.has(estateName)) estateMap.set(estateName, new Map());
+      const zoneMap = estateMap.get(estateName);
+      if (!zoneMap.has(zoneName)) zoneMap.set(zoneName, new Map());
+      const groupMap = zoneMap.get(zoneName);
+      if (!groupMap.has(groupName)) groupMap.set(groupName, []);
+      groupMap.get(groupName).push(block);
+    }
+    return [...estateMap.entries()].map(([estateName, zoneMap]) => {
+      const estateCount = [...zoneMap.values()].reduce((sum, groupMap) => sum + [...groupMap.values()].reduce((count, rows) => count + rows.length, 0), 0);
+      return `
+        <details open>
+          <summary>${esc(estateName)} <small>${fmt(estateCount)}</small></summary>
+          ${[...zoneMap.entries()].map(([zoneName, groupMap]) => {
+            const zoneCount = [...groupMap.values()].reduce((count, rows) => count + rows.length, 0);
+            return `
+              <details open>
+                <summary>${esc(zoneName)} <small>${fmt(zoneCount)}</small></summary>
+                ${[...groupMap.entries()].map(([groupName, groupBlocks]) => `
+                  <details open>
+                    <summary>${esc(groupName)} <small>${fmt(groupBlocks.length)}</small></summary>
+                    ${groupBlocks.map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่ · ${fmt(n(block.tree_count))} ต้น`)).join("")}
+                  </details>
+                `).join("")}
+              </details>`;
+          }).join("")}
+        </details>`;
+    }).join("");
+  }
   return estates.map((estate) => {
     const estateZones = zones.filter((zone) => zone.estate_id === estate.id);
     const estateBlocks = blocks.filter((block) => block.estate_id === estate.id || estateZones.some((zone) => zone.id === block.zone_id));
@@ -11498,8 +11548,24 @@ function renderFarmBudgetActivityTree() {
   const groups = farmRowsByKey("activity_groups");
   const activities = farmRowsByKey("activities").filter((activity) => farmBudgetMatchesQuery(farmBudgetActivityLabel(activity)));
   if (!activities.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลกิจกรรม</div>`;
-  return groups.map((group) => {
-    const groupActivities = activities.filter((activity) => activity.activity_group_id === group.id);
+  const knownGroupIds = new Set(groups.map((group) => group.id));
+  const inferredGroups = new Map();
+  for (const activity of activities) {
+    if (activity.activity_group_id && knownGroupIds.has(activity.activity_group_id)) continue;
+    const label = activity.activity_group_name || activity.group_name || activity.group || "ไม่ระบุกลุ่มกิจกรรม";
+    const key = farmBudgetSafeCode(label, "activity-group");
+    if (!inferredGroups.has(key)) inferredGroups.set(key, { id: key, group_code: "", group_name: label, inferred: true });
+  }
+  const allGroups = [...groups, ...inferredGroups.values()];
+  return allGroups.map((group) => {
+    const groupActivities = activities.filter((activity) => {
+      if (activity.activity_group_id && activity.activity_group_id === group.id) return true;
+      if (group.inferred) {
+        const label = activity.activity_group_name || activity.group_name || activity.group || "ไม่ระบุกลุ่มกิจกรรม";
+        return farmBudgetSafeCode(label, "activity-group") === group.id;
+      }
+      return false;
+    });
     if (!groupActivities.length) return "";
     return `
       <details open>
@@ -11822,7 +11888,6 @@ function renderFarmBudgetBoard() {
         </div>
       </article>
       ${renderFarmBudgetExtraRateRows()}
-      ${renderFarmBudgetApprovalBox()}
       <article class="farm-budget-stat-strip">
         <span>Block <b>${fmt(terrainTotal)}</b></span>
         <span>เรทตัวเลข <b>${fmt(numericRates.length)}</b></span>
