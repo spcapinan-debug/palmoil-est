@@ -11279,6 +11279,9 @@ function farmBudgetContractState() {
       selectedActivities: [],
       selectedMaterials: [],
       selectedWorkers: [],
+      areaEstateId: "",
+      areaZoneId: "",
+      areaPlotId: "",
       rateType: "labor",
       calculationMethod: "per_rai",
       comparisonBasis: "area_rai",
@@ -11300,6 +11303,9 @@ function farmBudgetContractState() {
   if (!picks.externalContractNo) picks.externalContractNo = "";
   if (!picks.supplierContractNo) picks.supplierContractNo = "";
   if (!picks.dataGroup) picks.dataGroup = "";
+  if (!picks.areaEstateId) picks.areaEstateId = "";
+  if (!picks.areaZoneId) picks.areaZoneId = "";
+  if (!picks.areaPlotId) picks.areaPlotId = "";
   return state.farmBudgetContract;
 }
 
@@ -11413,6 +11419,78 @@ function renderFarmBudgetAreaTree() {
         ${estateBlocks.filter((block) => !block.zone_id).map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่`)).join("")}
       </details>`;
   }).join("") || blocks.map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่`)).join("");
+}
+
+function farmBudgetAreaOptions(picks = farmBudgetContractState()) {
+  const estates = farmRowsByKey("estates");
+  const zones = farmRowsByKey("zones");
+  const plots = farmRowsByKey("plots");
+  const allBlocks = farmRowsByKey("blocks").filter((block) => farmBudgetMatchesQuery(farmBudgetBlockLabel(block)));
+  const selectedBlock = picks.selectedBlocks.length === 1 ? farmLookup("blocks", picks.selectedBlocks[0]) : null;
+  const selectedPlot = selectedBlock?.plot_id ? farmLookup("plots", selectedBlock.plot_id) : null;
+  const selectedZone = selectedBlock?.zone_id ? farmLookup("zones", selectedBlock.zone_id) : selectedPlot?.zone_id ? farmLookup("zones", selectedPlot.zone_id) : null;
+  const estateId = picks.areaEstateId || selectedBlock?.estate_id || selectedZone?.estate_id || selectedPlot?.estate_id || "";
+  const zoneId = picks.areaZoneId || selectedBlock?.zone_id || selectedPlot?.zone_id || "";
+  const plotId = picks.areaPlotId || selectedBlock?.plot_id || "";
+  const filteredZones = zones.filter((zone) => !estateId || zone.estate_id === estateId);
+  const filteredPlots = plots.filter((plot) => {
+    if (zoneId && plot.zone_id !== zoneId) return false;
+    if (estateId && plot.estate_id && plot.estate_id !== estateId) return false;
+    if (estateId && !plot.estate_id) {
+      const zone = farmLookup("zones", plot.zone_id);
+      if (zone?.estate_id && zone.estate_id !== estateId) return false;
+    }
+    return true;
+  });
+  const filteredBlocks = allBlocks.filter((block) => {
+    if (plotId && block.plot_id !== plotId) return false;
+    if (zoneId && block.zone_id !== zoneId && farmLookup("plots", block.plot_id)?.zone_id !== zoneId) return false;
+    if (estateId) {
+      const plot = farmLookup("plots", block.plot_id);
+      const zone = farmLookup("zones", block.zone_id || plot?.zone_id);
+      if (block.estate_id !== estateId && zone?.estate_id !== estateId && plot?.estate_id !== estateId) return false;
+    }
+    return true;
+  });
+  return { estates, zones: filteredZones, plots: filteredPlots, blocks: filteredBlocks, estateId, zoneId, plotId };
+}
+
+function renderFarmBudgetAreaDropdowns() {
+  const picks = farmBudgetContractState();
+  const { estates, zones, plots, blocks, estateId, zoneId, plotId } = farmBudgetAreaOptions(picks);
+  const selectedBlockId = picks.selectedBlocks.length === 1 ? picks.selectedBlocks[0] : "";
+  const selectedText = picks.selectedBlocks.length
+    ? `เลือกแล้ว ${fmt(picks.selectedBlocks.length)} Block`
+    : `เลือก Block เพื่อสร้าง Rate`;
+  return `
+    <div class="budget-area-dropdowns">
+      <label>พื้นที่
+        <select id="budgetAreaEstate">
+          <option value="">ทุกพื้นที่</option>
+          ${estates.map((estate) => `<option value="${esc(estate.id)}"${estateId === estate.id ? " selected" : ""}>${esc(estate.estate_name || estate.estate_code || estate.id)}</option>`).join("")}
+        </select>
+      </label>
+      <label>โซน
+        <select id="budgetAreaZone">
+          <option value="">ทุกโซน</option>
+          ${zones.map((zone) => `<option value="${esc(zone.id)}"${zoneId === zone.id ? " selected" : ""}>${esc(zone.zone_name || zone.zone_code || zone.id)}</option>`).join("")}
+        </select>
+      </label>
+      <label>แปลง
+        <select id="budgetAreaPlot">
+          <option value="">ทุกแปลง</option>
+          ${plots.map((plot) => `<option value="${esc(plot.id)}"${plotId === plot.id ? " selected" : ""}>${esc(plot.plot_name || plot.plot_code || plot.id)}</option>`).join("")}
+        </select>
+      </label>
+      <label>Block
+        <select id="budgetAreaBlock">
+          <option value="">เลือก Block</option>
+          <option value="__filtered__"${picks.selectedBlocks.length > 1 ? " selected" : ""}>ทุก Block ตามตัวกรอง (${fmt(blocks.length)})</option>
+          ${blocks.map((block) => `<option value="${esc(block.id)}"${selectedBlockId === block.id ? " selected" : ""}>${esc(farmBudgetBlockLabel(block))}</option>`).join("")}
+        </select>
+      </label>
+      <span>${esc(selectedText)}</span>
+    </div>`;
 }
 
 function renderFarmBudgetActivityTree() {
@@ -11555,10 +11633,10 @@ function renderFarmBudgetApprovalBox() {
       </div>
       <div class="budget-approval-grid">
         <label><input name="budgetApprovalScope" type="radio" value="standard_contract"${picks.approvalScope === "standard_contract" ? " checked" : ""}> สัญญามาตรฐาน</label>
-        <label><input name="budgetApprovalScope" type="radio" value="estate_managed"${picks.approvalScope === "estate_managed" ? " checked" : ""}> จัดการโดยเอสเทท</label>
+        <label><input name="budgetApprovalScope" type="radio" value="estate_managed"${picks.approvalScope === "estate_managed" ? " checked" : ""}> จัดการโดยพื้นที่</label>
         <label><input name="budgetApprovalMode" type="radio" value="not_required"${picks.approvalMode === "not_required" ? " checked" : ""}> ไม่ต้องอนุมัติ</label>
-        <label><input name="budgetApprovalMode" type="radio" value="estate_only"${picks.approvalMode === "estate_only" ? " checked" : ""}> เอสเททอนุมัติได้</label>
-        <label><input name="budgetApprovalMode" type="radio" value="estate_and_director"${picks.approvalMode === "estate_and_director" ? " checked" : ""}> เอสเททและผู้บริหารอนุมัติ</label>
+        <label><input name="budgetApprovalMode" type="radio" value="estate_only"${picks.approvalMode === "estate_only" ? " checked" : ""}> ผู้จัดการพื้นที่อนุมัติได้</label>
+        <label><input name="budgetApprovalMode" type="radio" value="estate_and_director"${picks.approvalMode === "estate_and_director" ? " checked" : ""}> พื้นที่และผู้บริหารอนุมัติ</label>
       </div>
       <p>สัญญาที่มีเงินได้/เงินหักเพิ่มเติม หรือการปรับตาม Survey สามารถกำหนดให้ต้องอนุมัติก่อนนำไปใช้ใน Work Order และ Payroll ได้</p>
     </article>`;
@@ -11615,6 +11693,21 @@ function renderFarmBudgetRateTable(rates) {
           </tbody>
         </table>
       </div>
+    </article>`;
+}
+
+function renderFarmBudgetCreateRateBar(rates) {
+  const picks = farmBudgetContractState();
+  return `
+    <article class="budget-create-rate-bar">
+      <div class="budget-selection-summary">
+        <span>พื้นที่ <b>${fmt(picks.selectedBlocks.length)}</b></span>
+        <span>กิจกรรม <b>${fmt(picks.selectedActivities.length)}</b></span>
+        <span>วัสดุ <b>${fmt(picks.selectedMaterials.length)}</b></span>
+        <span>พนักงาน/ทีม <b>${fmt(picks.selectedWorkers.length)}</b></span>
+        <span>Rate DB <b>${fmt(rates.length)}</b></span>
+      </div>
+      <button type="button" data-budget-rate-create ${state.farmSyncBusy ? "disabled" : ""}>สร้าง Rate</button>
     </article>`;
 }
 
@@ -11722,56 +11815,23 @@ function renderFarmBudgetBoard() {
           <span>เลือกพื้นที่หลายรายการพร้อมกัน</span>
         </label>
         <div class="budget-tree-grid">
-          <section class="budget-tree-card"><h4>เอสเทท / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetAreaTree()}</div></section>
+          <section class="budget-tree-card budget-area-card"><h4>พื้นที่ / โซน / แปลง / Block</h4>${renderFarmBudgetAreaDropdowns()}</section>
           <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree()}</div></section>
           <section class="budget-tree-card"><h4>วัสดุ</h4><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree()}</div></section>
           <section class="budget-tree-card"><h4>พนักงาน</h4><div class="budget-tree-scroll">${renderFarmBudgetWorkerTree()}</div></section>
         </div>
       </article>
-      <article class="budget-rate-builder">
-        <div class="budget-rate-form">
-          <label>ประเภท Rate
-            <select id="budgetRateType">
-              ${["labor", "material", "contractor", "machine", "fuel", "other"].map((item) => `<option value="${esc(item)}"${picks.rateType === item ? " selected" : ""}>${esc(item)}</option>`).join("")}
-            </select>
-          </label>
-          <label>วิธีคำนวณ
-            <select id="budgetRateMethod">
-              ${["per_rai", "per_tree", "per_ton", "per_day", "per_hour", "per_trip", "fixed"].map((item) => `<option value="${esc(item)}"${picks.calculationMethod === item ? " selected" : ""}>${esc(item)}</option>`).join("")}
-            </select>
-          </label>
-          <label>ฐานเทียบ
-            <select id="budgetRateBasis">
-              ${["area_rai", "tree_count", "weight_ton", "day_count", "hour_count", "trip_count", "manual_qty"].map((item) => `<option value="${esc(item)}"${picks.comparisonBasis === item ? " selected" : ""}>${esc(item)}</option>`).join("")}
-            </select>
-          </label>
-          <label>หน่วย
-            <input id="budgetUnitName" value="${esc(picks.unitName)}" placeholder="บาท/ไร่">
-          </label>
-          <label>อัตรา
-            <input id="budgetRateAmount" type="number" value="${esc(picks.rateAmount)}" placeholder="0">
-          </label>
-          <button type="button" data-budget-rate-create ${state.farmSyncBusy ? "disabled" : ""}>สร้าง Rate</button>
-        </div>
-        <div class="budget-selection-summary">
-          <span>พื้นที่ <b>${fmt(picks.selectedBlocks.length)}</b></span>
-          <span>กิจกรรม <b>${fmt(picks.selectedActivities.length)}</b></span>
-          <span>วัสดุ <b>${fmt(picks.selectedMaterials.length)}</b></span>
-          <span>พนักงาน/ทีม <b>${fmt(picks.selectedWorkers.length)}</b></span>
-          <span>Rate DB <b>${fmt(rates.length)}</b></span>
-          <span>ปี <b>${esc(years[0]?.fiscal_year || "2569")}</b></span>
-        </div>
-      </article>
       ${renderFarmBudgetExtraRateRows()}
       ${renderFarmBudgetApprovalBox()}
       <article class="farm-budget-stat-strip">
-        <span>Block/Terrain <b>${fmt(terrainTotal)}</b></span>
+        <span>Block <b>${fmt(terrainTotal)}</b></span>
         <span>เรทตัวเลข <b>${fmt(numericRates.length)}</b></span>
         <span>เรทประกวดราคา <b>${fmt(quoteRates.length)}</b></span>
         <span>วัสดุผูกเรท <b>${fmt(materials.length)}</b></span>
         <span>กลุ่มค่าแรง <b>${fmt(roles.length)}</b></span>
       </article>
       ${renderFarmBudgetEditPanel()}
+      ${renderFarmBudgetCreateRateBar(rates)}
       ${renderFarmBudgetRateTable(rates)}
     </section>`;
 }
@@ -12850,6 +12910,39 @@ async function init() {
       render();
       return;
     }
+    if (e.target.id === "budgetAreaEstate") {
+      const picks = farmBudgetContractState();
+      picks.areaEstateId = e.target.value;
+      picks.areaZoneId = "";
+      picks.areaPlotId = "";
+      picks.selectedBlocks = [];
+      render();
+      return;
+    }
+    if (e.target.id === "budgetAreaZone") {
+      const picks = farmBudgetContractState();
+      picks.areaZoneId = e.target.value;
+      picks.areaPlotId = "";
+      picks.selectedBlocks = [];
+      render();
+      return;
+    }
+    if (e.target.id === "budgetAreaPlot") {
+      const picks = farmBudgetContractState();
+      picks.areaPlotId = e.target.value;
+      picks.selectedBlocks = [];
+      render();
+      return;
+    }
+    if (e.target.id === "budgetAreaBlock") {
+      const picks = farmBudgetContractState();
+      const options = farmBudgetAreaOptions(picks);
+      picks.selectedBlocks = e.target.value === "__filtered__"
+        ? options.blocks.map((block) => block.id)
+        : e.target.value ? [e.target.value] : [];
+      render();
+      return;
+    }
     if (e.target.id === "budgetRateType") {
       farmBudgetContractState().rateType = e.target.value;
       render();
@@ -13122,6 +13215,9 @@ async function init() {
         selectedActivities: [],
         selectedMaterials: [],
         selectedWorkers: [],
+        areaEstateId: "",
+        areaZoneId: "",
+        areaPlotId: "",
       };
       render();
       return;

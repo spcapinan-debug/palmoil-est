@@ -4528,6 +4528,7 @@ tfoot td {
 .budget-rate-builder,
 .budget-extra-rates,
 .budget-approval-box,
+.budget-create-rate-bar,
 .farm-budget-stat-strip,
 .farm-budget-rate-table,
 .budget-rate-edit-panel {
@@ -4621,6 +4622,47 @@ tfoot td {
   font-size: 12px;
 }
 
+.budget-area-card {
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.budget-area-dropdowns {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+.budget-area-dropdowns label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.budget-area-dropdowns select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #d8dfe8;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.budget-area-dropdowns span {
+  padding: 7px 9px;
+  border: 1px solid #dbe5f2;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--navy);
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+}
+
 .budget-tree-scroll {
   height: 300px;
   overflow: auto;
@@ -4691,6 +4733,28 @@ tfoot td {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
+}
+
+.budget-create-rate-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.budget-create-rate-bar .budget-selection-summary {
+  margin-top: 0;
+}
+
+.budget-create-rate-bar button {
+  min-height: 38px;
+  padding: 0 18px;
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .budget-selection-summary span,
