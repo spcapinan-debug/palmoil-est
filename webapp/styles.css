@@ -919,17 +919,18 @@ input {
 
 .date-input-control input[type="text"] {
   width: 100%;
-  padding-right: 42px;
+  padding-right: 54px;
 }
 
 .calendar-btn {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 0;
+  right: 0;
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 100%;
+  min-height: 38px;
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -952,12 +953,17 @@ input {
 
 .native-date-picker {
   position: absolute;
-  right: 4px;
-  top: 4px;
-  width: 30px;
-  height: 30px;
+  right: 0;
+  top: 0;
+  width: 44px;
+  height: 100%;
+  min-height: 38px;
   opacity: 0;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 3;
+  padding: 0;
+  border: 0;
 }
 
 .date-panel select {
@@ -975,8 +981,9 @@ input {
 
 .date-panel .calendar-btn,
 .date-panel .native-date-picker {
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 100%;
+  min-height: 38px;
 }
 
 #applyBtn {
@@ -7648,15 +7655,15 @@ td.num,
   }
 
   .date-input-control input[type="text"] {
-    padding-right: 46px;
+    padding-right: 54px;
   }
 
   .calendar-btn {
-    top: 4px;
-    right: 4px;
-    width: 30px;
-    min-height: 30px;
-    height: 30px;
+    top: 0;
+    right: 0;
+    width: 44px;
+    min-height: 38px;
+    height: 100%;
     border-radius: 50%;
     background: #f4f1ef;
     color: #203d54;
@@ -10133,6 +10140,31 @@ td.num,
 .date-panel.hidden,
 .global-filter-panel.hidden {
   display: none !important;
+}
+
+@media (max-width: 720px) {
+  .date-panel {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .date-panel label,
+  .date-panel .date-input-control {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .date-panel input[data-date-text] {
+    padding-left: 10px !important;
+    padding-right: 52px !important;
+    font-size: 12px !important;
+  }
+
+  .date-panel .calendar-btn,
+  .date-panel .native-date-picker {
+    width: 44px !important;
+    min-height: 38px !important;
+    height: 100% !important;
+  }
 }
 
 @media (max-width: 1180px) {

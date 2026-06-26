@@ -3104,7 +3104,21 @@ function dateInputValue(value) {
 }
 
 function dateInputAttrs(value = "", extra = "") {
-  return `type="text" inputmode="numeric" placeholder="dd/mm/yyyy" value="${esc(dateInputValue(value))}" ${extra}`.trim();
+  return `type="text" inputmode="numeric" placeholder="dd/mm/yyyy" value="${esc(dateInputValue(value))}" data-date-text ${extra}`.trim();
+}
+
+function renderDateInputControl({ id = "", value = "", extra = "", farmField = "", ariaLabel = "เลือกวันที่" } = {}) {
+  const textAttrs = [
+    id ? `id="${esc(id)}"` : "",
+    farmField ? `data-farm-field="${esc(farmField)}"` : "",
+    dateInputAttrs(value, extra),
+  ].filter(Boolean).join(" ");
+  return `
+    <span class="date-input-control">
+      <input ${textAttrs}>
+      <button class="calendar-btn" type="button" data-inline-picker aria-label="${esc(ariaLabel)}"></button>
+      <input class="native-date-picker inline-native-date-picker" type="date" tabindex="-1" aria-hidden="true" value="${esc(isoDay(value))}">
+    </span>`;
 }
 
 function dateValue(el) {
@@ -3149,6 +3163,40 @@ function syncDatePickerFromText(el) {
   if (el === els.startDate && els.startDatePicker) els.startDatePicker.value = iso;
   if (el === els.endDate && els.endDatePicker) els.endDatePicker.value = iso;
   if (el === els.clearDate && els.clearDatePicker) els.clearDatePicker.value = iso;
+}
+
+function syncNativePickerValue(picker) {
+  if (!picker) return;
+  const control = picker.closest(".date-input-control");
+  const textInput = control?.querySelector("input[data-date-text]");
+  if (textInput) picker.value = dateValue(textInput);
+  if (picker.id === "startDatePicker") picker.value = dateValue(els.startDate);
+  if (picker.id === "endDatePicker") picker.value = dateValue(els.endDate);
+  if (picker.id === "clearDatePicker") picker.value = dateValue(els.clearDate);
+}
+
+function applyNativePickerValue(picker) {
+  if (!picker) return;
+  const control = picker.closest(".date-input-control");
+  const textInput = control?.querySelector("input[data-date-text]");
+  if (textInput) {
+    textInput.value = displayDate(picker.value);
+    textInput.dispatchEvent(new Event("input", { bubbles: true }));
+    textInput.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+}
+
+function openNativeDatePicker(picker) {
+  if (!picker) return;
+  syncNativePickerValue(picker);
+  try {
+    if (picker.showPicker) {
+      picker.showPicker();
+      return;
+    }
+  } catch {}
+  picker.focus();
+  picker.click();
 }
 
 function dayNumber(value) {
@@ -9692,7 +9740,7 @@ function renderFarmInput(field, value = "") {
   if (!Array.isArray(field) && field.type === "date") {
     return `
     <label>${esc(labelText)}
-      <input data-farm-field="${esc(key)}" ${dateInputAttrs(value, required ? "required" : "")}>
+      ${renderDateInputControl({ value, farmField: key, extra: required ? "required" : "", ariaLabel: `เลือก${label}` })}
     </label>`;
   }
   const type = !Array.isArray(field) && field.type === "number" ? "number" : "text";
@@ -11929,10 +11977,10 @@ function renderFarmBudgetBoard() {
             <input id="budgetDataGroup" value="${esc(picks.dataGroup)}" placeholder="กลุ่มข้อมูล">
           </label>
           <label>Start date
-            <input id="budgetContractStart" ${dateInputAttrs(picks.startDate, "")}>
+            ${renderDateInputControl({ id: "budgetContractStart", value: picks.startDate, ariaLabel: "เลือกวันที่เริ่มสัญญา" })}
           </label>
           <label>End date
-            <input id="budgetContractEnd" ${dateInputAttrs(picks.endDate, "")}>
+            ${renderDateInputControl({ id: "budgetContractEnd", value: picks.endDate, ariaLabel: "เลือกวันที่สิ้นสุดสัญญา" })}
           </label>
           <div class="budget-contract-buttons">
             <button type="button" data-budget-contract-search>ค้นหา</button>
@@ -12856,15 +12904,30 @@ async function init() {
   els.clearDate?.addEventListener("input", () => syncDatePickerFromText(els.clearDate));
   for (const btn of document.querySelectorAll(".calendar-btn")) {
     btn.addEventListener("click", () => {
-      const picker = document.querySelector(`#${btn.dataset.picker}`);
-      if (!picker) return;
-      if (picker.id === "startDatePicker") picker.value = dateValue(els.startDate);
-      if (picker.id === "endDatePicker") picker.value = dateValue(els.endDate);
-      if (picker.id === "clearDatePicker") picker.value = dateValue(els.clearDate);
-      if (picker.showPicker) picker.showPicker();
-      else picker.focus();
+      const picker = btn.dataset.picker
+        ? document.querySelector(`#${btn.dataset.picker}`)
+        : btn.closest(".date-input-control")?.querySelector(".native-date-picker");
+      openNativeDatePicker(picker);
     });
   }
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest?.("[data-inline-picker]");
+    if (!btn) return;
+    openNativeDatePicker(btn.closest(".date-input-control")?.querySelector(".native-date-picker"));
+  });
+  document.addEventListener("pointerdown", (e) => {
+    const picker = e.target.closest?.(".native-date-picker");
+    if (picker) syncNativePickerValue(picker);
+  });
+  document.addEventListener("input", (e) => {
+    const input = e.target.closest?.("input[data-date-text]");
+    if (!input) return;
+    const picker = input.closest(".date-input-control")?.querySelector(".native-date-picker");
+    if (picker) picker.value = dateValue(input);
+  });
+  document.addEventListener("change", (e) => {
+    if (e.target.matches?.(".native-date-picker")) applyNativePickerValue(e.target);
+  });
   els.startDatePicker.addEventListener("change", () => {
     setDateValue(els.startDate, els.startDatePicker.value);
     render();
