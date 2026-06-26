@@ -11355,8 +11355,7 @@ function farmBudgetBlockLabel(block) {
   const zone = farmLookup("zones", block.zone_id || plot?.zone_id);
   const code = block.block_code || block.terrain_code || block.area_code || block.id;
   const name = block.block_name || block.area_name || "";
-  const zoneName = block.zone_name || zone?.zone_name;
-  return [code, name && name !== code ? name : "", zoneName].filter(Boolean).join(" · ");
+  return [code, name && name !== code ? name : ""].filter(Boolean).join(" · ");
 }
 
 function farmBudgetActivityLabel(activity) {
@@ -11424,10 +11423,11 @@ function renderFarmBudgetAreaTree() {
       return `
         <details open>
           <summary>${esc(estateName)} <small>${fmt(estateCount)}</small></summary>
+          <div class="budget-area-zone-grid">
           ${[...zoneMap.entries()].map(([zoneName, groupMap]) => {
             const zoneCount = [...groupMap.values()].reduce((count, rows) => count + rows.length, 0);
             return `
-              <details open>
+              <details open class="budget-zone-branch">
                 <summary>${esc(zoneName)} <small>${fmt(zoneCount)}</small></summary>
                 ${[...groupMap.entries()].map(([groupName, groupBlocks]) => `
                   <details open>
@@ -11437,6 +11437,7 @@ function renderFarmBudgetAreaTree() {
                 `).join("")}
               </details>`;
           }).join("")}
+          </div>
         </details>`;
     }).join("");
   }
@@ -11876,12 +11877,8 @@ function renderFarmBudgetBoard() {
         </div>
       </article>
       <article class="budget-contract-options">
-        <label class="budget-switch">
-          <input id="budgetMultiArea" type="checkbox"${picks.multiArea ? " checked" : ""}>
-          <span>เลือกพื้นที่หลายรายการพร้อมกัน</span>
-        </label>
-        <div class="budget-tree-grid">
-          <section class="budget-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetAreaTree()}</div></section>
+        <div class="budget-tree-grid budget-tree-grid-wide-area">
+          <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetAreaTree()}</div></section>
           <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree()}</div></section>
           <section class="budget-tree-card"><h4>วัสดุ</h4><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree()}</div></section>
           <section class="budget-tree-card"><h4>พนักงาน</h4><div class="budget-tree-scroll">${renderFarmBudgetWorkerTree()}</div></section>
@@ -13032,7 +13029,6 @@ async function init() {
       const key = type === "block" ? "selectedBlocks" : type === "activity" ? "selectedActivities" : type === "material" ? "selectedMaterials" : "selectedWorkers";
       const current = new Set(picks[key] || []);
       if (e.target.checked) {
-        if (type === "block" && !picks.multiArea) current.clear();
         current.add(e.target.value);
       } else {
         current.delete(e.target.value);
