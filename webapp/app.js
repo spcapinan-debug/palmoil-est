@@ -37,6 +37,7 @@
   farmDbErrors: {},
   summaryPalmoilAreas: [],
   summaryPalmoilSource: null,
+  blockMapData: null,
   farmBudgetRateData: null,
   farmSyncMessage: "",
   farmSyncStatus: "",
@@ -2722,6 +2723,18 @@ async function loadCultivateMaster() {
     warehouses: Array.isArray(raw.warehouses) ? raw.warehouses : [],
     weighbridges: Array.isArray(raw.weighbridges) ? raw.weighbridges : [],
     rawTables: Array.isArray(raw.rawTables) ? raw.rawTables : [],
+  };
+}
+
+async function loadBlockMapData() {
+  const raw = await fetch(`./data/block_map.json?t=${Date.now()}`, { cache: "no-store" })
+    .then((res) => res.json())
+    .catch(() => ({ type: "FeatureCollection", source: { feature_count: 0 }, bounds: [], features: [] }));
+  state.blockMapData = {
+    type: raw.type || "FeatureCollection",
+    source: raw.source || {},
+    bounds: Array.isArray(raw.bounds) ? raw.bounds : [],
+    features: Array.isArray(raw.features) ? raw.features : [],
   };
 }
 
@@ -12010,6 +12023,98 @@ function renderFarmBudgetBoard() {
     </section>`;
 }
 
+function farmBlockMapKey(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .replace(/\s*-\s*/g, "-")
+    .replace(/-(UPPER|LOWER)$/i, "");
+}
+
+function farmAreaBlockRows() {
+  return farmRowsByKey("areas").filter((row) => String(row.area_level || "block").toLowerCase() === "block");
+}
+
+function farmMapProject(point, bounds, width, height) {
+  const [minLon, minLat, maxLon, maxLat] = bounds;
+  const lonRange = maxLon - minLon || 1;
+  const latRange = maxLat - minLat || 1;
+  const x = ((point[0] - minLon) / lonRange) * width;
+  const y = ((maxLat - point[1]) / latRange) * height;
+  return `${x.toFixed(1)},${y.toFixed(1)}`;
+}
+
+function farmMapBlockColor(row, index) {
+  const zone = String(row?.zone_name || "").toLowerCase();
+  if (zone.includes("upper")) return "#4f83c2";
+  if (zone.includes("lower")) return "#58a875";
+  const palette = ["#d18b4f", "#8e76be", "#5aa6a1", "#c76f79", "#9aa65a"];
+  return palette[index % palette.length];
+}
+
+function renderFarmAreaBlockMap() {
+  const map = state.blockMapData || {};
+  const features = Array.isArray(map.features) ? map.features : [];
+  const bounds = Array.isArray(map.bounds) && map.bounds.length === 4 ? map.bounds : null;
+  const areaRows = farmAreaBlockRows();
+  const areaByCode = new Map(areaRows.map((row) => [farmBlockMapKey(row.area_code || row.area_name), row]));
+  const width = 1000;
+  const height = 680;
+  const matched = [];
+  const unmatched = [];
+  const polygons = features.map((feature, index) => {
+    const code = feature?.properties?.block_code || feature?.properties?.name || "";
+    const area = areaByCode.get(farmBlockMapKey(code));
+    if (area) matched.push(code);
+    else unmatched.push(code);
+    const ring = feature?.geometry?.coordinates?.[0] || [];
+    if (!bounds || ring.length < 3) return "";
+    const points = ring.map((point) => farmMapProject(point, bounds, width, height)).join(" ");
+    const color = farmMapBlockColor(area, index);
+    const selected = area?.id && state.farmDetailId === area.id;
+    const meta = area
+      ? `${area.zone_name || "-"} · ${area.plot_group_code || "-"} · ${fmt(n(area.area_rai))} ไร่ · ${fmt(n(area.tree_count))} ต้น`
+      : "ยังไม่พบในตารางพื้นที่";
+    return `
+      <polygon
+        class="farm-block-polygon${selected ? " selected" : ""}${area ? "" : " unmatched"}"
+        points="${points}"
+        fill="${color}"
+        ${area ? `data-farm-view="${esc(area.id)}"` : ""}
+        tabindex="${area ? "0" : "-1"}"
+        role="${area ? "button" : "img"}"
+        aria-label="${esc(`${code} ${meta}`)}">
+        <title>${esc(`${code} | ${meta}`)}</title>
+      </polygon>`;
+  }).join("");
+  const selectedArea = farmRowsByKey("areas").find((row) => row.id === state.farmDetailId);
+  const selectedCode = selectedArea ? (selectedArea.area_code || selectedArea.area_name || "-") : "-";
+  return `
+    <section class="farm-panel farm-area-map-panel">
+      <div class="section-head">
+        <h3>แผนที่ Block จาก SPC-BLOK</h3>
+        <span>${fmt(features.length)} block จาก KMZ · จับคู่ข้อมูลพื้นที่ ${fmt(matched.length)} block</span>
+      </div>
+      <div class="farm-area-map-layout">
+        <div class="farm-area-map-canvas">
+          ${features.length && bounds ? `
+            <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="แผนที่ Block สวนคีรีรัฐ" preserveAspectRatio="xMidYMid meet">
+              <rect class="farm-map-bg" x="0" y="0" width="${width}" height="${height}" rx="18"></rect>
+              ${polygons}
+            </svg>
+          ` : `<div class="farm-map-empty">ยังไม่มีข้อมูลแผนที่ Block</div>`}
+        </div>
+        <aside class="farm-area-map-side">
+          <article><span>Block ในแผนที่</span><strong>${fmt(features.length)}</strong><small>${esc(map.source?.file || "SPC-BLOK.kmz")}</small></article>
+          <article><span>จับคู่กับข้อมูลพื้นที่</span><strong>${fmt(matched.length)}</strong><small>จากตาราง areas</small></article>
+          <article><span>ยังไม่จับคู่</span><strong>${fmt(unmatched.length)}</strong><small>${esc(unmatched.slice(0, 6).join(", ") || "-")}</small></article>
+          <article><span>เลือกอยู่</span><strong>${esc(selectedCode)}</strong><small>${esc(selectedArea ? `${selectedArea.zone_name || "-"} · ${selectedArea.plot_group_code || "-"}` : "กด Block บนแผนที่เพื่อดูรายละเอียด")}</small></article>
+        </aside>
+      </div>
+    </section>`;
+}
+
 function renderFarmPage() {
   const module = selectedFarmModule();
   const tables = farmTablesForModule(module);
@@ -12046,6 +12151,7 @@ function renderFarmPage() {
         <article><span>Foreign Key</span><strong>${fmt(refCount)}</strong><small>Inactive ${fmt(inactiveCount)} รายการ</small></article>
       </section>`}
       ${state.farmSyncMessage ? `<div class="farm-sync-status ${esc(state.farmSyncStatus)}">${esc(state.farmSyncMessage)}</div>` : ""}
+      ${module.id === "farm-area" ? renderFarmAreaBlockMap() : ""}
       ${isWorkPage ? `${renderFarmWorkBoard()}${renderFarmWorkPlanner()}` : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
@@ -12879,7 +12985,7 @@ async function init() {
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
-  await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadSummaryPalmoilAreas(), loadFarmBudgetRateData(), loadClearOverridesFromServer()]);
+  await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadSummaryPalmoilAreas(), loadBlockMapData(), loadFarmBudgetRateData(), loadClearOverridesFromServer()]);
   setDefaultTransportDateRange();
   setDateValue(els.clearDate, state.payload.source.dateMax);
   loadFarmTablesFromDatabase({ silent: true });

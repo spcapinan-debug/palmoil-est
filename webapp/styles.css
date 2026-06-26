@@ -4920,6 +4920,111 @@ tfoot td {
   grid-column: 1 / -1;
 }
 
+.farm-area-map-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.farm-area-map-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 230px;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.farm-area-map-canvas {
+  min-height: 460px;
+  overflow: hidden;
+  border: 1px solid #dbe2ec;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(42,63,84,.05) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(42,63,84,.05) 1px, transparent 1px),
+    #f8fafc;
+  background-size: 34px 34px;
+}
+
+.farm-area-map-canvas svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 460px;
+}
+
+.farm-map-bg {
+  fill: rgba(255,255,255,.42);
+}
+
+.farm-block-polygon {
+  stroke: rgba(31,45,56,.72);
+  stroke-width: 1.6;
+  fill-opacity: .58;
+  cursor: pointer;
+  transition: fill-opacity .16s ease, stroke-width .16s ease, filter .16s ease;
+}
+
+.farm-block-polygon:hover,
+.farm-block-polygon:focus {
+  fill-opacity: .82;
+  stroke-width: 3;
+  outline: none;
+  filter: drop-shadow(0 4px 8px rgba(31,45,56,.18));
+}
+
+.farm-block-polygon.selected {
+  fill-opacity: .92;
+  stroke: #dc2626;
+  stroke-width: 4;
+}
+
+.farm-block-polygon.unmatched {
+  fill: #cbd5e1;
+  fill-opacity: .35;
+  stroke-dasharray: 5 4;
+  cursor: default;
+}
+
+.farm-area-map-side {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.farm-area-map-side article {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #dbe2ec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.farm-area-map-side span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.farm-area-map-side strong {
+  color: var(--navy);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.farm-area-map-side small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.farm-map-empty {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .farm-toolbar {
   display: grid;
   grid-template-columns: minmax(240px, 1.1fr) minmax(220px, 1fr) 150px 170px auto auto;
@@ -10164,6 +10269,19 @@ td.num,
     width: 44px !important;
     min-height: 38px !important;
     height: 100% !important;
+  }
+
+  .farm-area-map-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .farm-area-map-canvas,
+  .farm-area-map-canvas svg {
+    min-height: 320px !important;
+  }
+
+  .farm-area-map-side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
