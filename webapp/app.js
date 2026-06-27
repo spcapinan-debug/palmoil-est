@@ -4566,9 +4566,10 @@ function closePrintPreview() {
   document.body.classList.remove("preview-open");
 }
 
-function buildStockFromData(scope) {
+function buildStockFromData(scope, options = {}) {
   const movementMap = movementBySourceRow();
-  const useClearAdjustments = globalFiltersAreAll();
+  const useClearAdjustments = options.useClearAdjustments ?? globalFiltersAreAll();
+  const trimBeforeStart = options.trimBeforeStart ?? !useClearAdjustments;
   const clearByDate = useClearAdjustments ? clearMap() : new Map();
   const dayMap = new Map();
   const end = dateValue(els.endDate) || "9999-12-31";
@@ -4583,7 +4584,7 @@ function buildStockFromData(scope) {
   for (const record of state.records) {
     const date = record.weightDate || record.date;
     if (!date || date > end) continue;
-    if (!useClearAdjustments && date < start) continue;
+    if (trimBeforeStart && date < start) continue;
     const movement = movementMap.get(Number(record._srcRow));
     if (!recordMatchesGlobalFilters(record, movement)) continue;
     const rowScope = dataRecordScope(record);
@@ -4654,6 +4655,10 @@ function buildStockFromData(scope) {
   return result;
 }
 
+function buildKpiStockFromData(scope) {
+  return buildStockFromData(scope, { useClearAdjustments: false, trimBeforeStart: true });
+}
+
 function applyScopeOpening(item, scope, clear, previousBalance) {
   const clearSet = scope === "garden" ? clear?.clearPrSet : clear?.clearTkSet;
   const clearValue = scope === "garden" ? n(clear?.clearPr) : n(clear?.clearTk);
@@ -4696,7 +4701,7 @@ function combineScopeDays(date, garden, takuk, clear) {
 function renderStock(scope) {
   const rows = buildStockFromData(scope);
   state.currentRows = rows;
-  renderDashboard(rows);
+  renderDashboard(buildKpiStockFromData(scope));
   els.reportPage.classList.add("stock-report-page");
   const t = totals(rows);
 
@@ -4841,7 +4846,7 @@ function renderDailyReport() {
   const headers = DAILY_HEADERS;
   const rows = dailyRowsFromData().filter((row) => row._date && inRange(row._date) && dailyRowMatches(row));
   state.currentRows = rows;
-  renderDashboard(buildStockFromData(yardScope()));
+  renderDashboard(buildKpiStockFromData(yardScope()));
 
   const totals = rows.reduce((acc, row) => {
     for (const key of ["ปลายราง (RSPO)", "ปลายราง (NON-RSPO)", "ตะกุก (RSPO)", "ตะกุก (NON-RSPO)", "รวม", "น้ำหนักปลายทางโรงงาน", "น้ำหนักเทียบปลายทาง"]) {
@@ -5172,7 +5177,7 @@ function renderSummary() {
       recordMatchesGlobalFilters(r, movement);
   });
   state.currentRows = rows;
-  renderDashboard(buildStockFromData(yardScope()));
+  renderDashboard(buildKpiStockFromData(yardScope()));
   els.reportPage.innerHTML = `
     <div class="report-title">
       <h2>สรุปการรับปาล์มน้ำมัน</h2>
@@ -5751,7 +5756,7 @@ function renderRspo() {
   const detailRows = buildRspoDetailRows();
   const monthly = buildRspoMonthlyByEstate();
   state.currentRows = detailRows;
-  renderDashboard(buildStockFromData(yardScope()));
+  renderDashboard(buildKpiStockFromData(yardScope()));
 
   const summaryTable = `
     <table class="rspo-summary-table">
@@ -6383,7 +6388,7 @@ function dashboardStandardPie(rows, totalValue) {
 }
 
 function renderAdvancedDashboard() {
-  const rows = buildStockFromData(yardScope());
+  const rows = buildKpiStockFromData(yardScope());
   const stats = dashboardStats(rows);
   const records = filteredReportRecords();
   const comparison = buildPeriodComparison(rows);
@@ -6400,7 +6405,7 @@ function renderAdvancedDashboard() {
   const yardRows = yardOptions.map((scope) => ({
     scope,
     label: scope === "takuk" ? "ตะกุก" : "ปลายราง",
-    stats: dashboardStats(buildStockFromData(scope)),
+    stats: dashboardStats(buildKpiStockFromData(scope)),
   }));
 
   state.currentRows = [
@@ -12823,7 +12828,7 @@ function render() {
   if (state.view === "daily") renderDailyReport();
   if (state.view === "summary") renderSummary();
   if (state.view === "clear") {
-    if (!renderExactDashboard(yardScope())) renderDashboard(buildStockFromData(yardScope()));
+    renderDashboard(buildKpiStockFromData(yardScope()));
     renderClear();
   }
   enhanceTables(els.reportPage);
