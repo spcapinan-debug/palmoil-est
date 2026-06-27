@@ -4583,6 +4583,7 @@ function buildStockFromData(scope) {
   for (const record of state.records) {
     const date = record.weightDate || record.date;
     if (!date || date > end) continue;
+    if (!useClearAdjustments && date < start) continue;
     const movement = movementMap.get(Number(record._srcRow));
     if (!recordMatchesGlobalFilters(record, movement)) continue;
     const rowScope = dataRecordScope(record);
@@ -13724,7 +13725,7 @@ async function init() {
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !els.printPreviewModal.classList.contains("hidden")) closePrintPreview();
   });
-  els.csvBtn.addEventListener("click", downloadCsv);
+  els.csvBtn?.addEventListener("click", downloadCsv);
   els.addClearRow.addEventListener("click", addClear);
   els.clearTable.addEventListener("click", async (e) => {
     const btn = e.target.closest("button[data-del]");
