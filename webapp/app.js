@@ -11440,6 +11440,37 @@ function farmBudgetFiscalYear(dateValueText = "") {
   return String(year + 543);
 }
 
+const FARM_BUDGET_RATE_PRESETS = [
+  { value: "labor_per_rai", label: "ค่าแรงต่อไร่", rateType: "labor", calculationMethod: "per_rai", comparisonBasis: "area_rai", unitName: "บาท/ไร่", hint: "ใช้กับงานดูแลพื้นที่ เช่น กำจัดวัชพืช ตัดแต่ง" },
+  { value: "labor_per_tree", label: "ค่าแรงต่อต้น", rateType: "labor", calculationMethod: "per_tree", comparisonBasis: "tree_count", unitName: "บาท/ต้น", hint: "ใช้กับงานที่อิงจำนวนต้น เช่น ใส่ปุ๋ยรายต้น" },
+  { value: "labor_per_ton", label: "ค่าแรงต่อตัน", rateType: "labor", calculationMethod: "per_ton", comparisonBasis: "weight_ton", unitName: "บาท/ตัน", hint: "ใช้กับงานเก็บเกี่ยวหรือขนส่งที่คิดตามผลผลิต" },
+  { value: "labor_per_day", label: "ค่าแรงรายวัน", rateType: "labor", calculationMethod: "per_day", comparisonBasis: "day_count", unitName: "บาท/วัน", hint: "ใช้กับคนงานรายวันหรือทีมทำงานตามวัน" },
+  { value: "labor_per_hour", label: "ค่าแรงรายชั่วโมง", rateType: "labor", calculationMethod: "per_hour", comparisonBasis: "hour_count", unitName: "บาท/ชั่วโมง", hint: "ใช้กับ OT หรือเวลาทำงานจริง" },
+  { value: "contract_fixed", label: "เหมาเป็นงาน", rateType: "contractor", calculationMethod: "fixed", comparisonBasis: "work_order", unitName: "บาท/งาน", hint: "ใช้กับผู้รับเหมาหรือสัญญาเหมา" },
+  { value: "material_per_rai", label: "วัสดุต่อไร่", rateType: "material", calculationMethod: "per_rai", comparisonBasis: "area_rai", unitName: "บาท/ไร่", hint: "คุมงบวัสดุตามพื้นที่" },
+  { value: "material_per_tree", label: "วัสดุต่อต้น", rateType: "material", calculationMethod: "per_tree", comparisonBasis: "tree_count", unitName: "บาท/ต้น", hint: "คุมงบวัสดุจากจำนวนต้น" },
+  { value: "machine_per_hour", label: "รถ/เครื่องจักรต่อชั่วโมง", rateType: "machine", calculationMethod: "per_hour", comparisonBasis: "hour_count", unitName: "บาท/ชั่วโมง", hint: "ใช้กับรถไถ รถบรรทุก หรือเครื่องจักร" },
+  { value: "transport_per_trip", label: "ขนส่งต่อเที่ยว", rateType: "transport", calculationMethod: "per_trip", comparisonBasis: "trip_count", unitName: "บาท/เที่ยว", hint: "ใช้กับงานที่นับจำนวนเที่ยว" },
+];
+
+function farmBudgetPresetFor(picks = farmBudgetContractState()) {
+  return FARM_BUDGET_RATE_PRESETS.find((preset) =>
+    preset.rateType === picks.rateType
+    && preset.calculationMethod === picks.calculationMethod
+    && preset.comparisonBasis === picks.comparisonBasis
+    && preset.unitName === picks.unitName
+  ) || FARM_BUDGET_RATE_PRESETS[0];
+}
+
+function applyFarmBudgetRatePreset(value) {
+  const picks = farmBudgetContractState();
+  const preset = FARM_BUDGET_RATE_PRESETS.find((item) => item.value === value) || FARM_BUDGET_RATE_PRESETS[0];
+  picks.rateType = preset.rateType;
+  picks.calculationMethod = preset.calculationMethod;
+  picks.comparisonBasis = preset.comparisonBasis;
+  picks.unitName = preset.unitName;
+}
+
 function farmBudgetSafeCode(value, fallback = "ALL") {
   return String(value || fallback)
     .trim()
@@ -11886,6 +11917,36 @@ function renderFarmBudgetCreateRateBar() {
     </article>`;
 }
 
+function renderFarmBudgetRateBuilder() {
+  const picks = farmBudgetContractState();
+  const preset = farmBudgetPresetFor(picks);
+  return `
+    <article class="budget-rate-builder">
+      <div class="section-head">
+        <h3>รูปแบบอัตราหลัก</h3>
+        <span>เลือก 1 รูปแบบ ระบบจะกำหนดวิธีคำนวณ ฐานเทียบ และหน่วยให้อัตโนมัติ</span>
+      </div>
+      <div class="budget-rate-compact-grid">
+        <label class="budget-rate-preset-field">รูปแบบอัตรา
+          <select id="budgetRatePreset">
+            ${FARM_BUDGET_RATE_PRESETS.map((item) => `<option value="${esc(item.value)}"${preset.value === item.value ? " selected" : ""}>${esc(item.label)}</option>`).join("")}
+          </select>
+          <small>${esc(preset.hint)}</small>
+        </label>
+        <label class="budget-rate-amount-field">อัตรา
+          <input id="budgetRateAmount" type="number" value="${esc(picks.rateAmount ?? "")}" placeholder="0">
+          <small>${esc(picks.unitName || preset.unitName)}</small>
+        </label>
+        <div class="budget-rate-derived">
+          <span><b>ประเภท</b>${esc(picks.rateType || preset.rateType)}</span>
+          <span><b>วิธีคำนวณ</b>${esc(picks.calculationMethod || preset.calculationMethod)}</span>
+          <span><b>ฐานเทียบ</b>${esc(picks.comparisonBasis || preset.comparisonBasis)}</span>
+          <span><b>หน่วย/อัตราต่อ</b>${esc(picks.unitName || preset.unitName)}</span>
+        </div>
+      </div>
+    </article>`;
+}
+
 const FARM_BUDGET_RATE_EDIT_GROUPS = [
   {
     title: "ข้อมูลเรท",
@@ -12031,6 +12092,7 @@ function renderFarmBudgetBoard() {
           <section class="budget-tree-card"><h4>พนักงาน</h4><div class="budget-tree-scroll">${renderFarmBudgetWorkerTree()}</div></section>
         </div>
       </article>
+      ${renderFarmBudgetRateBuilder()}
       ${renderFarmBudgetExtraRateRows()}
       ${renderFarmBudgetCreateRateBar()}
       ${renderFarmBudgetRateTable(rates)}
@@ -13248,6 +13310,11 @@ async function init() {
       picks.selectedBlocks = e.target.value === "__filtered__"
         ? options.blocks.map((block) => block.id)
         : e.target.value ? [e.target.value] : [];
+      render();
+      return;
+    }
+    if (e.target.id === "budgetRatePreset") {
+      applyFarmBudgetRatePreset(e.target.value);
       render();
       return;
     }

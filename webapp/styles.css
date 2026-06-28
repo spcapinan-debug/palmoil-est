@@ -4726,6 +4726,66 @@ tfoot td {
   grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
 }
 
+.budget-rate-compact-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(150px, .55fr) minmax(360px, 1.3fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.budget-rate-compact-grid label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.budget-rate-compact-grid select,
+.budget-rate-compact-grid input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #d8dfe8;
+  border-radius: 5px;
+  background: #f9fafb;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.budget-rate-compact-grid small {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.budget-rate-derived {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  align-self: end;
+}
+
+.budget-rate-derived span {
+  display: grid;
+  gap: 3px;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: 1px solid #dbe5f2;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.budget-rate-derived b {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 900;
+}
+
 .budget-selection-summary,
 .farm-budget-stat-strip {
   display: flex;
@@ -10255,6 +10315,11 @@ td.num,
 }
 
 @media (max-width: 720px) {
+  .budget-rate-compact-grid,
+  .budget-rate-derived {
+    grid-template-columns: 1fr;
+  }
+
   .date-panel {
     grid-template-columns: minmax(0, 1fr) !important;
   }
