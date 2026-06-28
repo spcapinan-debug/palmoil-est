@@ -4618,6 +4618,10 @@ tfoot td {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.budget-tree-grid-work-order {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
 .budget-tree-card {
   min-width: 0;
   border: 1px solid #cfd8e3;
@@ -5562,7 +5566,7 @@ tfoot td {
 }
 
 .farm-work-budget-selector .budget-tree-scroll {
-  height: 360px;
+  height: 300px;
 }
 
 .farm-plan-selector-note,
@@ -5805,6 +5809,12 @@ tfoot td {
   font-weight: 900;
 }
 
+.farm-plan-resource-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .farm-plan-resource-head button {
   min-height: 28px;
   border: 1px solid #dbe5f2;
@@ -5821,6 +5831,45 @@ tfoot td {
   grid-template-columns: minmax(0, 1.4fr) minmax(82px, .8fr);
   gap: 7px;
   align-items: end;
+}
+
+.farm-plan-resource-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.farm-plan-resource-table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 7px;
+  font-size: 11px;
+}
+
+.farm-plan-resource-table th,
+.farm-plan-resource-table td {
+  border-bottom: 1px solid #edf2f7;
+  padding: 6px 7px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.farm-plan-resource-table th {
+  background: #f3f6fa;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 900;
+}
+
+.farm-plan-resource-table td {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.farm-plan-resource-table .num {
+  text-align: right;
+  white-space: nowrap;
 }
 
 .farm-plan-resource-note {
@@ -10417,8 +10466,16 @@ td.num,
     grid-template-columns: 1fr 1fr;
   }
 
+  .budget-tree-grid-work-order {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .budget-area-tree-card {
     grid-column: span 2;
+  }
+
+  .farm-plan-resource-grid {
+    grid-template-columns: 1fr;
   }
 }
 
