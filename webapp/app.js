@@ -12083,6 +12083,7 @@ function renderFarmBudgetBoard() {
             <button type="button" data-budget-contract-reset>ล้างตัวกรอง</button>
           </div>
         </div>
+        ${renderFarmBudgetRateBuilder()}
       </article>
       <article class="budget-contract-options">
         <div class="budget-tree-grid budget-tree-grid-wide-area">
@@ -12092,7 +12093,6 @@ function renderFarmBudgetBoard() {
           <section class="budget-tree-card"><h4>พนักงาน</h4><div class="budget-tree-scroll">${renderFarmBudgetWorkerTree()}</div></section>
         </div>
       </article>
-      ${renderFarmBudgetRateBuilder()}
       ${renderFarmBudgetExtraRateRows()}
       ${renderFarmBudgetCreateRateBar()}
       ${renderFarmBudgetRateTable(rates)}
