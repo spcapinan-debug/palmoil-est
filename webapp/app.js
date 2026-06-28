@@ -10727,10 +10727,8 @@ function farmBudgetRateCost(rate, blocks) {
 }
 
 function renderFarmWorkPlanner() {
-  const plots = farmRows(farmTableByKey("plots"));
+  const budgetPicks = farmBudgetContractState();
   const blocks = farmRows(farmTableByKey("blocks"));
-  const plotGroups = farmRows(farmTableByKey("plot_groups"));
-  const zones = farmRows(farmTableByKey("zones"));
   const activityGroups = farmRows(farmTableByKey("activity_groups"));
   const activities = farmRows(farmTableByKey("activities"));
   const teams = farmRows(farmTableByKey("teams"));
@@ -10741,17 +10739,26 @@ function renderFarmWorkPlanner() {
   const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
   const budgetRates = farmRows(farmTableByKey("budget_activity_rates"));
   const workOrders = farmWorkOrders().slice().sort((a, b) => farmDateMs(b.startDate) - farmDateMs(a.startDate));
-  const previewActivity = activities[0];
+  const previewActivity = activities.find((row) => row.id === budgetPicks.selectedActivities[0]) || activities[0];
   const previewGroup = activityGroups.find((item) => item.id === previewActivity?.activity_group_id) || activityGroups[0];
-  const previewTeam = teams[0];
-  const previewMembers = teamMembers.filter((item) => item.team_id === previewTeam?.id).slice(0, 8);
-  const selectedBlocks = blocks.slice(0, Math.min(2, blocks.length));
+  const selectedWorkerRefs = budgetPicks.selectedWorkers || [];
+  const selectedTeamIds = selectedWorkerRefs.filter((value) => value.startsWith("team:")).map((value) => value.slice(5));
+  const selectedEmployeeIds = selectedWorkerRefs.filter((value) => value.startsWith("employee:")).map((value) => value.slice(9));
+  const previewTeam = teams.find((row) => selectedTeamIds.includes(row.id)) || teams[0];
+  const previewMembers = selectedEmployeeIds.length
+    ? selectedEmployeeIds.map((id) => ({ employee_id: id, member_role: farmLookup("employees", id)?.worker_type || "" }))
+    : teamMembers.filter((item) => item.team_id === previewTeam?.id).slice(0, 8);
+  const selectedBlocks = budgetPicks.selectedBlocks.length
+    ? blocks.filter((block) => budgetPicks.selectedBlocks.includes(block.id))
+    : blocks.slice(0, Math.min(2, blocks.length));
   const totalRai = selectedBlocks.reduce((sum, row) => sum + n(row.area_rai), 0);
   const totalTrees = selectedBlocks.reduce((sum, row) => sum + n(row.tree_count), 0);
   const selectedBudgetRate = farmBestBudgetRateForPlan(budgetRates, previewActivity, selectedBlocks, []);
   const laborBudgetRate = farmBestBudgetRateForPlan(budgetRates, previewActivity, selectedBlocks, ["labor", "contractor"]);
   const materialBudgetRate = farmBestBudgetRateForPlan(budgetRates, previewActivity, selectedBlocks, ["material"]);
-  const selectedMaterials = materials.slice(0, Math.min(3, materials.length));
+  const selectedMaterials = budgetPicks.selectedMaterials.length
+    ? materials.filter((material) => budgetPicks.selectedMaterials.includes(material.id))
+    : materials.slice(0, Math.min(3, materials.length));
   const selectedVehicles = vehicles.slice(0, Math.min(3, vehicles.length));
   const selectedUsageRate = usageRates.find((row) => row.activity_id === previewActivity?.id) || {
     usage_basis: materialBudgetRate.comparison_basis === "tree_count" ? "per_tree" : materialBudgetRate.comparison_basis === "area_rai" ? "per_rai" : "manual",
@@ -10761,7 +10768,6 @@ function renderFarmWorkPlanner() {
   const calculationBase = selectedUsageRate.usage_basis === "per_tree" ? totalTrees : selectedUsageRate.usage_basis === "per_rai" ? totalRai : selectedBlocks.length;
   const materialQuantity = calculationBase * n(selectedUsageRate.usage_rate || 0);
   const laborEstimate = farmBudgetRateCost(laborBudgetRate, selectedBlocks);
-  const laborRate = laborEstimate.rateAmount;
   const materialRate = n(materialBudgetRate.rate_amount || 0);
   const laborCost = laborEstimate.amount;
   const materialCost = materialQuantity * materialRate;
@@ -10787,35 +10793,7 @@ function renderFarmWorkPlanner() {
       </label>
     </div>`).join("");
   const plotCountText = `${fmt(selectedBlocks.length)} จาก ${fmt(blocks.length)} Block`;
-  const zoneOptions = zones.map((row) => `<option>${esc(row.zone_name || row.zone_code || "")}</option>`).join("");
-  const plotGroupOptions = plotGroups.map((row) => `<option>${esc(row.group_name || row.group_code || "")}</option>`).join("");
-  const areaGroups = zones.map((zone) => {
-    const zoneBlocks = blocks.filter((block) => block.zone_id === zone.id).slice(0, 8);
-    return `
-      <div class="farm-plan-area-group">
-        <strong>${esc(zone.zone_name || zone.zone_code || "ไม่ระบุโซน")} <em>${fmt(zoneBlocks.length)}</em></strong>
-        ${zoneBlocks.map((block, index) => {
-          const plot = plots.find((row) => row.id === block.plot_id) || {};
-          return `
-          <label class="farm-plan-area-row">
-            <input type="checkbox" ${index < 2 ? "checked" : ""}>
-            <span>${esc(block.block_code || "-")}</span>
-            <small>${esc(plot.plot_code || "-")} · ${esc(block.ap_code || block.AP_code || "ไม่มี AP")} · ${fmt(n(block.area_rai))} ไร่ · ${fmt(n(block.tree_count))} ต้น</small>
-          </label>`;
-        }).join("") || `<p>ยังไม่มี Block ในโซนนี้</p>`}
-      </div>`;
-  }).join("");
-  const workerRows = previewMembers.map((member) => {
-    const employee = employees.find((row) => row.id === member.employee_id) || {};
-    return `
-      <label class="farm-plan-worker-row">
-        <input type="checkbox" checked>
-        <span>
-          <strong>${esc(employee.full_name || farmLookupLabel("employees", member.employee_id))}</strong>
-          <small>${esc(member.member_role || employee.worker_type || "-")} · ${esc(employee.payment_type || "-")} · ${employee.daily_wage ? `${moneyNf.format(n(employee.daily_wage))}/วัน` : "-"}</small>
-        </span>
-      </label>`;
-  }).join("");
+  const selectedWorkerCount = selectedWorkerRefs.length || previewMembers.length || (previewTeam ? 1 : 0);
   const latestWorkOptions = workOrders.slice(0, 6).map((row) => `<option>${esc(row.work_order_no || row.id)} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("");
   return `
     <section class="farm-planner-console">
@@ -10836,12 +10814,11 @@ function renderFarmWorkPlanner() {
               <option>อ้างอิงจากงานล่าสุด</option>
             </select>
           </label>
-          <label>กลุ่มกิจกรรม
-            <select>${activityGroups.map((row) => `<option>${esc(row.group_name || row.group_code || "")}</option>`).join("")}</select>
-          </label>
-          <label>กิจกรรม
-            <select>${activities.map((row) => `<option>${esc(row.activity_name || row.activity_code || "")}</option>`).join("")}</select>
-          </label>
+          <div class="farm-plan-picked-work">
+            <span>งานที่เลือกจากรายการด้านล่าง</span>
+            <b>${esc(previewGroup?.group_name || previewGroup?.group_code || "ยังไม่เลือกกลุ่มกิจกรรม")}</b>
+            <strong>${esc(previewActivity?.activity_name || previewActivity?.activity_code || "ยังไม่เลือกกิจกรรม")}</strong>
+          </div>
           <div class="farm-plan-inline">
             <label>วันที่เริ่มงาน<input ${dateInputAttrs("2026-01-15")}></label>
             <label>วันที่สิ้นสุด<input ${dateInputAttrs("2026-01-16")}></label>
@@ -10863,25 +10840,17 @@ function renderFarmWorkPlanner() {
             </select>
           </label>
         </article>
-        <article class="farm-plan-card">
-          <h4>2. พื้นที่และทีม</h4>
-          <div class="farm-plan-area-tools">
-            <label>โซน
-              <select><option>ทุกโซน</option>${zoneOptions}</select>
-            </label>
-            <label>กลุ่มแปลง
-              <select><option>ทุกกลุ่มแปลง</option>${plotGroupOptions}</select>
-            </label>
+        <article class="farm-plan-card farm-plan-selector-card">
+          <h4>2. เลือกข้อมูลที่จะใช้สร้าง Work Order</h4>
+          <div class="farm-plan-selector-note">
+            <span>เลือก Block/กิจกรรม/วัสดุ/ทีมงานได้หลายรายการ ข้อมูลชุดนี้ใช้ร่วมกับอัตรางบประมาณและต้นทุนประมาณการ</span>
+            <b>Block ${fmt(selectedBlocks.length)} · กิจกรรม ${fmt(budgetPicks.selectedActivities.length || (previewActivity ? 1 : 0))} · วัสดุ ${fmt(selectedMaterials.length)} · พนักงาน/ทีม ${fmt(selectedWorkerCount)}</b>
           </div>
-          <div class="farm-plan-area-list">
-            ${areaGroups || `<div class="farm-plan-area-group"><p>ยังไม่มีข้อมูลแปลง</p></div>`}
-          </div>
-          <label>ทีมรับงาน
-            <select>${teams.map((row) => `<option>${esc(row.team_name || row.team_code || "")}</option>`).join("")}</select>
-          </label>
-          <div class="farm-plan-worker-list">
-            <strong>เลือกรายคนในทีม</strong>
-            ${workerRows || `<p>ยังไม่มีสมาชิกทีม</p>`}
+          <div class="budget-tree-grid budget-tree-grid-wide-area farm-work-budget-selector">
+            <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetAreaTree()}</div></section>
+            <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree()}</div></section>
+            <section class="budget-tree-card"><h4>วัสดุ</h4><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree()}</div></section>
+            <section class="budget-tree-card"><h4>พนักงาน</h4><div class="budget-tree-scroll">${renderFarmBudgetWorkerTree()}</div></section>
           </div>
         </article>
         <article class="farm-plan-card">
