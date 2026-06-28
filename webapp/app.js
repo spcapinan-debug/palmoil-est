@@ -4752,7 +4752,7 @@ function renderStock(scope) {
 
   els.reportPage.innerHTML = `${title}
     <div class="table-wrap stock-web-table">
-      <table>
+      <table data-report-kind="stock-report" data-stock-scope="${esc(scope)}">
         <thead>
           <tr>
             <th rowspan="2">วันที่/เดือน</th>
@@ -6752,6 +6752,91 @@ ${clone.outerHTML}
 </body></html>`;
 }
 
+function stockReportExportCss() {
+  return `
+  @page{size:A4 landscape;margin:4mm}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}
+  body{font-family:Tahoma,Arial,sans-serif;color:#000;background:#fff;margin:0}
+  .stock-print{display:block}
+  .stock-print-page{break-after:page;page-break-after:always;padding:0}
+  .stock-print-page:last-child{break-after:auto;page-break-after:auto}
+  .stock-print-head{display:flex;justify-content:space-between;gap:16px;margin-bottom:3px}
+  .stock-print-head h2,.stock-print-head h3,.stock-print-head p{margin:0 0 3px;color:#000;line-height:1.15}
+  .stock-print-head h2{font-size:8px;font-weight:800}
+  .stock-print-head h3,.stock-print-head p,.stock-print-head span{font-size:7.5px;font-weight:800}
+  .stock-print-table{width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;font-size:5.8px;line-height:1.02}
+  .stock-print-garden{font-size:6px}.stock-print-takuk{font-size:6.7px}
+  .stock-print-table th,.stock-print-table td{padding:1px;border:1px solid #1f2937;white-space:normal;text-align:center;vertical-align:middle;font-variant-numeric:tabular-nums}
+  .stock-print-table th{background:#e8eef4;color:#111827;font-weight:800}
+  .stock-print-table tbody td{height:10px}
+  .stock-print-table td{text-align:right}
+  .stock-print-table td:first-child{text-align:center}
+  .stock-print-table td.loss{background:#fff3b0;color:#9a3412}
+  .stock-print-table tfoot td{background:#eaf2ed;color:#111827;font-weight:800}
+  .stock-print-table tfoot td.loss{background:#ffe799;color:#9a3412}
+  .stock-audit-page{display:flex;flex-direction:column;gap:5px}
+  .stock-audit-title{text-align:center}
+  .stock-audit-title h2,.stock-audit-title h3{margin:0 0 2px;color:#000;font-size:8.5px;line-height:1.05}
+  .stock-audit-table{width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;background:#fff;font-size:5.9px;line-height:1.02}
+  .stock-audit-table th,.stock-audit-table td{padding:1px;border:1px solid #111827;white-space:normal;text-align:center;vertical-align:middle;font-variant-numeric:tabular-nums}
+  .stock-audit-table th{background:#e8eef4;color:#111827;font-weight:800}
+  .stock-audit-table td.left{text-align:left}.stock-audit-table td.num{text-align:right}
+  .stock-audit-table .audit-total td,.stock-audit-table .audit-balance td{background:#eef3ea;font-weight:800}
+  .stock-audit-table .audit-loss td,.stock-audit-table .audit-grand-loss td,.stock-audit-table .audit-money td{background:#f4f1b7;font-weight:800}
+  .stock-audit-table .audit-grand-loss td{background:#dce77f}
+  .stock-signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:8px;text-align:center}
+  .stock-signatures strong,.stock-signatures p,.stock-signatures small{display:block;margin:0;color:#000;font-size:7.5px}
+  .stock-signatures span{display:block;height:14px;border-bottom:1px dotted #000}
+  .stock-copy-list{margin-top:4px;color:#000;font-size:7px}
+  .stock-copy-list p{margin:2px 0}
+  @media screen{body{padding:16px;background:#eef2f7}.stock-print-page{background:#fff;max-width:1120px;min-height:760px;margin:0 auto 16px;padding:12px;box-shadow:0 2px 12px rgba(15,23,42,.14)}}`;
+}
+
+function stockReportExportHtml(scope, rows) {
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>${esc(stockPrintTitle(scope))}</title><style>${stockReportExportCss()}</style></head>
+<body>${renderStockPrintPages(scope, rows)}</body></html>`;
+}
+
+function stockReportRowsForExport(scope) {
+  normalizeDateInput(els.startDate);
+  normalizeDateInput(els.endDate);
+  return buildStockFromData(scope);
+}
+
+function stockReportFileName(scope) {
+  const label = scope === "garden" ? "ปลายราง" : scope === "takuk" ? "ตะกุก" : "รวม";
+  const start = displayDate(dateValue(els.startDate)).replaceAll("/", "-");
+  const end = displayDate(dateValue(els.endDate)).replaceAll("/", "-");
+  return slugFileName(`Stock Report ${label} ${start} ${end}`);
+}
+
+function downloadStockReportExcel(scope) {
+  const rows = stockReportRowsForExport(scope);
+  const html = stockReportExportHtml(scope, rows);
+  const blob = new Blob(["\ufeff", html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${stockReportFileName(scope)}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function printStockReportPdf(scope) {
+  const rows = stockReportRowsForExport(scope);
+  const win = window.open("", "_blank", "width=1200,height=800");
+  if (!win) return;
+  win.document.open();
+  win.document.write(stockReportExportHtml(scope, rows));
+  win.document.close();
+  win.document.title = stockReportFileName(scope);
+  win.focus();
+  window.setTimeout(() => win.print(), 350);
+}
+
 function downloadTableExcel(table) {
   const title = tableTitle(table);
   const html = tableExportHtml(table);
@@ -6854,6 +6939,12 @@ function handleEnhancedTableClick(event) {
   if (exportBtn) {
     const table = document.querySelector(`[data-enhanced-table-id="${CSS.escape(exportBtn.dataset.tableId)}"]`);
     if (!table) return;
+    if (table.dataset.reportKind === "stock-report") {
+      const scope = table.dataset.stockScope || yardScope();
+      if (exportBtn.dataset.tableExport === "excel") downloadStockReportExcel(scope);
+      if (exportBtn.dataset.tableExport === "pdf") printStockReportPdf(scope);
+      return;
+    }
     if (exportBtn.dataset.tableExport === "excel") downloadTableExcel(table);
     if (exportBtn.dataset.tableExport === "pdf") printTablePdf(table);
     return;
