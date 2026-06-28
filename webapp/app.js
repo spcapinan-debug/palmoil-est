@@ -13007,11 +13007,9 @@ async function init() {
 
   els.startDate.addEventListener("input", () => {
     syncDatePickerFromText(els.startDate);
-    render();
   });
   els.endDate.addEventListener("input", () => {
     syncDatePickerFromText(els.endDate);
-    render();
   });
   els.startDate.addEventListener("blur", () => {
     normalizeDateInput(els.startDate);
