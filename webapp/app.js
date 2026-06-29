@@ -76,6 +76,8 @@
   farmWorkFilters: { activityGroup: "all", team: "all", zone: "all", plotGroup: "all", status: "all", query: "" },
   farmPlannerTab: "dates",
   farmWorkDetailId: "",
+  farmDispatchWorkOrderId: "",
+  farmDispatchTeamId: "",
   farmTableId: "",
   farmDetailId: "",
   farmEditId: "",
@@ -11139,6 +11141,429 @@ async function createFarmWorkPlanFromSelection() {
   }
 }
 
+function farmDispatchCandidateOrders() {
+  const rows = filteredFarmWorkOrders();
+  const preferred = rows.filter((row) => !["closed", "completed", "rejected"].includes(row.statusMeta.key));
+  return preferred.length ? preferred : rows.length ? rows : farmWorkOrders();
+}
+
+function farmDispatchSelectedOrder() {
+  const rows = farmDispatchCandidateOrders();
+  const selectedId = state.farmDispatchWorkOrderId || state.farmWorkDetailId;
+  const selected = rows.find((row) => row.id === selectedId) || farmWorkOrders().find((row) => row.id === selectedId) || rows[0] || null;
+  if (selected && state.farmDispatchWorkOrderId !== selected.id) state.farmDispatchWorkOrderId = selected.id;
+  return selected;
+}
+
+function farmDispatchWorkerCandidates(order, teamId = "") {
+  const existing = farmRowsByKey("work_order_workers").filter((row) => row.work_order_id === order?.id);
+  if (existing.length) {
+    return existing.map((row) => {
+      const employee = farmLookup("employees", row.employee_id) || {};
+      return {
+        id: row.employee_id,
+        name: farmRecordLabel(farmTableByKey("employees"), employee) || row.employee_id,
+        role: row.role || employee.worker_type || "",
+        checked: true,
+      };
+    }).filter((row) => row.id);
+  }
+  const teamMembers = farmRowsByKey("team_members").filter((row) => row.team_id === (teamId || order?.team_id));
+  if (teamMembers.length) {
+    return teamMembers.map((row) => {
+      const employee = farmLookup("employees", row.employee_id) || {};
+      return {
+        id: row.employee_id,
+        name: farmRecordLabel(farmTableByKey("employees"), employee) || row.employee_id,
+        role: row.member_role || employee.worker_type || "",
+        checked: true,
+      };
+    }).filter((row) => row.id);
+  }
+  return farmRowsByKey("employees").slice(0, 12).map((employee, index) => ({
+    id: employee.id,
+    name: farmRecordLabel(farmTableByKey("employees"), employee),
+    role: employee.worker_type || "",
+    checked: index < 4,
+  }));
+}
+
+function farmDispatchInventoryItemForMaterial(materialId) {
+  const material = farmLookup("materials", materialId) || {};
+  const inventory = farmRowsByKey("inventory_master").find((row) =>
+    row.id === `item-${materialId}`
+    || row.item_code === material.material_code
+    || farmNormalizeKey(row.item_name) === farmNormalizeKey(material.material_name)
+  );
+  return inventory?.id || `item-${materialId}`;
+}
+
+function farmDispatchMaterialCandidates(order) {
+  const existing = farmRowsByKey("work_order_materials").filter((row) => row.work_order_id === order?.id);
+  if (existing.length) {
+    return existing.map((row) => {
+      const material = farmLookup("materials", row.material_id) || {};
+      return {
+        material_id: row.material_id,
+        material_name: farmRecordLabel(farmTableByKey("materials"), material) || row.material_id,
+        planned_quantity: n(row.planned_quantity),
+        issued_quantity: n(row.issued_quantity || row.planned_quantity),
+        unit_id: row.unit_id || material.base_unit_id || "",
+        unit_name: farmLookupLabel("units", row.unit_id || material.base_unit_id),
+      };
+    }).filter((row) => row.material_id);
+  }
+  const planned = farmRowsByKey("planned_work_materials").filter((row) => row.planned_work_item_id === order?.planned_work_item_id);
+  if (planned.length) {
+    return planned.map((row) => {
+      const material = farmLookup("materials", row.material_id) || {};
+      return {
+        material_id: row.material_id,
+        material_name: farmRecordLabel(farmTableByKey("materials"), material) || row.material_id,
+        planned_quantity: n(row.planned_quantity),
+        issued_quantity: n(row.planned_quantity),
+        unit_id: row.unit_id || material.base_unit_id || "",
+        unit_name: farmLookupLabel("units", row.unit_id || material.base_unit_id),
+      };
+    }).filter((row) => row.material_id);
+  }
+  const block = order?.block || farmLookup("blocks", order?.block_id) || {};
+  const usageRows = farmRowsByKey("activity_material_usage_rates").filter((row) => row.activity_id === order?.activity_id);
+  const rows = usageRows.map((row) => {
+    const material = farmLookup("materials", row.material_id) || {};
+    const base = row.usage_basis === "per_tree" ? n(block.tree_count) : row.usage_basis === "per_rai" ? n(block.area_rai) : 1;
+    const qty = base * n(row.usage_rate || 0);
+    return {
+      material_id: row.material_id,
+      material_name: farmRecordLabel(farmTableByKey("materials"), material) || row.material_id,
+      planned_quantity: qty,
+      issued_quantity: qty,
+      unit_id: material.base_unit_id || "",
+      unit_name: row.usage_unit || farmLookupLabel("units", material.base_unit_id),
+    };
+  }).filter((row) => row.material_id);
+  if (rows.length) return rows;
+  const picked = farmBudgetContractState().selectedMaterials || [];
+  const source = picked.length ? farmRowsByKey("materials").filter((row) => picked.includes(row.id)) : farmRowsByKey("materials").slice(0, 3);
+  return source.map((material) => ({
+    material_id: material.id,
+    material_name: farmRecordLabel(farmTableByKey("materials"), material),
+    planned_quantity: 0,
+    issued_quantity: 0,
+    unit_id: material.base_unit_id || "",
+    unit_name: farmLookupLabel("units", material.base_unit_id),
+  }));
+}
+
+function farmDispatchMachineCandidates(order) {
+  const existing = farmRowsByKey("work_order_machines").filter((row) => row.work_order_id === order?.id);
+  if (existing.length) {
+    return existing.map((row) => ({
+      vehicle_id: row.vehicle_id,
+      vehicle_name: farmLookupLabel("vehicles", row.vehicle_id),
+      driver_employee_id: row.driver_employee_id || "",
+      planned_hours: n(row.planned_hours),
+      fuel_plan_liter: n(row.fuel_plan_liter),
+    })).filter((row) => row.vehicle_id);
+  }
+  const picked = farmBudgetContractState().selectedVehicles || [];
+  return farmRowsByKey("vehicles").filter((row) => picked.includes(row.id)).map((row) => ({
+    vehicle_id: row.id,
+    vehicle_name: farmRecordLabel(farmTableByKey("vehicles"), row),
+    driver_employee_id: row.default_driver_id || "",
+    planned_hours: 0,
+    fuel_plan_liter: 0,
+  }));
+}
+
+function renderFarmDispatchPanel() {
+  const orders = farmDispatchCandidateOrders();
+  const order = farmDispatchSelectedOrder();
+  const teams = farmRowsByKey("teams");
+  const activeTeamId = state.farmDispatchTeamId || order?.team_id || "";
+  const workers = farmDispatchWorkerCandidates(order, activeTeamId);
+  const materials = farmDispatchMaterialCandidates(order);
+  const machines = farmDispatchMachineCandidates(order);
+  const team = teams.find((row) => row.id === activeTeamId) || teams[0] || {};
+  const supervisor = farmLookup("employees", team.supervisor_employee_id) || {};
+  const dispatchDate = order?.rescheduled_date || order?.scheduled_date || order?.planned_start_date || farmToday();
+  const orderArea = [order?.plot?.plot_code, order?.block?.block_code || order?.block?.block_name, order?.block?.ap_code || order?.block?.AP_code].filter(Boolean).join(" / ") || "-";
+  return `
+    <section class="farm-dispatch-panel">
+      <div class="section-head">
+        <h3>สั่งงานจากแผน</h3>
+        <span>Estate Manager เลือก Work Order จากแผน ปรับวัน ทีม คนงาน และออกใบเบิกพัสดุให้หัวหน้าทีม</span>
+      </div>
+      <div class="farm-dispatch-grid">
+        <article class="farm-dispatch-card farm-dispatch-main">
+          <h4>ข้อมูลใบสั่งงาน</h4>
+          <div class="farm-dispatch-fields">
+            <label>เลือก Work Order
+              <select id="farmDispatchOrderSelect">
+                ${orders.map((row) => `<option value="${esc(row.id)}"${row.id === order?.id ? " selected" : ""}>${esc(row.work_order_no || row.id)} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("")}
+              </select>
+            </label>
+            <label>วันที่สั่งทำ${renderDateInputControl({ id: "farmDispatchDate", value: dispatchDate, ariaLabel: "เลือกวันที่สั่งงาน" })}</label>
+            <label>ทีม
+              <select id="farmDispatchTeam">
+                ${teams.map((row) => `<option value="${esc(row.id)}"${row.id === (activeTeamId || team.id) ? " selected" : ""}>${esc(farmRecordLabel(farmTableByKey("teams"), row))}</option>`).join("")}
+              </select>
+            </label>
+          </div>
+          <dl class="farm-dispatch-summary">
+            <dt>งาน</dt><dd>${esc(order?.work_order_title || "-")}</dd>
+            <dt>กิจกรรม</dt><dd>${esc(farmLookupLabel("activities", order?.activity_id))}</dd>
+            <dt>พื้นที่</dt><dd>${esc(orderArea)}</dd>
+            <dt>หัวหน้าทีม</dt><dd>${esc(farmRecordLabel(farmTableByKey("employees"), supervisor) || farmLookupLabel("employees", team.supervisor_employee_id))}</dd>
+          </dl>
+        </article>
+        <article class="farm-dispatch-card">
+          <h4>คนงาน / ทีมทำงาน</h4>
+          <div class="farm-dispatch-worker-list">
+            ${workers.map((row) => `
+              <label>
+                <input type="checkbox" data-farm-dispatch-worker value="${esc(row.id)}" ${row.checked ? "checked" : ""}>
+                <span><strong>${esc(row.name)}</strong><small>${esc(row.role || "คนงาน")}</small></span>
+              </label>`).join("") || `<p>ยังไม่มีรายชื่อคนงานในทีมนี้</p>`}
+          </div>
+        </article>
+        <article class="farm-dispatch-card farm-dispatch-materials">
+          <h4>ใบเบิกพัสดุ / ตัดจ่าย</h4>
+          <div class="table-wrap">
+            <table class="mini-table farm-dispatch-table">
+              <thead><tr><th>#</th><th>พัสดุ</th><th>แผน</th><th>เบิกจ่าย</th><th>หน่วย</th></tr></thead>
+              <tbody>
+                ${materials.map((row, index) => `
+                  <tr data-farm-dispatch-material="${esc(row.material_id)}">
+                    <td>${index + 1}</td>
+                    <td>${esc(row.material_name)}</td>
+                    <td class="num">${moneyNf.format(n(row.planned_quantity))}</td>
+                    <td><input type="number" min="0" step="0.01" value="${esc(row.issued_quantity || row.planned_quantity || 0)}" data-farm-dispatch-issue-qty></td>
+                    <td>${esc(row.unit_name || farmLookupLabel("units", row.unit_id))}</td>
+                  </tr>`).join("") || `<tr><td colspan="5">ไม่มีรายการพัสดุสำหรับงานนี้</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+          ${machines.length ? `<div class="farm-dispatch-machine-note">รถ/เครื่องจักร: ${machines.map((row) => esc(row.vehicle_name)).join(" · ")}</div>` : ""}
+        </article>
+        <article class="farm-dispatch-card farm-dispatch-actions">
+          <h4>ส่งงานให้หัวหน้าทีม</h4>
+          <p>เมื่อบันทึก ระบบจะตั้งสถานะใบงานเป็น “ส่งเข้ามือถือ” และสร้างเอกสาร issue สำหรับพัสดุที่ระบุไว้</p>
+          <button type="button" data-farm-dispatch-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกสั่งงาน</button>
+          <button type="button" class="ghost" data-farm-dispatch-print ${!order ? "disabled" : ""}>พิมพ์ใบสั่งงาน / ใบเบิก</button>
+        </article>
+      </div>
+      ${renderFarmDispatchPrintPreview(order, { team, supervisor, workers, materials, machines, dispatchDate, orderArea })}
+    </section>`;
+}
+
+function renderFarmDispatchPrintPreview(order, context = {}) {
+  if (!order) return "";
+  const checkedWorkers = context.workers || [];
+  const materials = context.materials || [];
+  return `
+    <section class="farm-dispatch-print" aria-label="ใบสั่งงานและใบเบิกพัสดุ">
+      <div class="farm-dispatch-print-head">
+        <div>
+          <h3>ใบสั่งงาน / ใบเบิกพัสดุ</h3>
+          <p>ระบบบริหารงานสวนปาล์มคีรีรัฐ</p>
+        </div>
+        <strong>${esc(order.work_order_no || order.id)}</strong>
+      </div>
+      <dl>
+        <dt>วันที่สั่งทำ</dt><dd data-dispatch-print-date>${esc(displayDate(context.dispatchDate) || "-")}</dd>
+        <dt>งาน</dt><dd>${esc(order.work_order_title || "-")}</dd>
+        <dt>กิจกรรม</dt><dd>${esc(farmLookupLabel("activities", order.activity_id))}</dd>
+        <dt>พื้นที่</dt><dd>${esc(context.orderArea || "-")}</dd>
+        <dt>ทีม</dt><dd>${esc(farmRecordLabel(farmTableByKey("teams"), context.team) || "-")}</dd>
+        <dt>หัวหน้าทีม</dt><dd>${esc(farmRecordLabel(farmTableByKey("employees"), context.supervisor) || "-")}</dd>
+      </dl>
+      <h4>รายชื่อคนงาน</h4>
+      <div class="farm-dispatch-print-tags">${checkedWorkers.map((row) => `<span>${esc(row.name)}</span>`).join("") || "<span>-</span>"}</div>
+      <h4>รายการพัสดุเบิกจ่าย</h4>
+      <table>
+        <thead><tr><th>#</th><th>รายการ</th><th>จำนวนเบิก</th><th>หน่วย</th></tr></thead>
+        <tbody>
+          ${materials.map((row, index) => `<tr><td>${index + 1}</td><td>${esc(row.material_name)}</td><td>${moneyNf.format(n(row.issued_quantity || row.planned_quantity))}</td><td>${esc(row.unit_name || farmLookupLabel("units", row.unit_id))}</td></tr>`).join("") || `<tr><td colspan="4">ไม่มีรายการพัสดุ</td></tr>`}
+        </tbody>
+      </table>
+      <div class="farm-dispatch-signatures">
+        <span>ผู้จัดการสั่งงาน</span>
+        <span>ผู้จ่ายพัสดุ</span>
+        <span>หัวหน้าทีมรับงาน</span>
+      </div>
+    </section>`;
+}
+
+async function saveFarmDispatchOrder() {
+  const order = farmDispatchSelectedOrder();
+  if (!order) return;
+  const workOrderTable = farmTableByKey("work_orders");
+  const workerTable = farmTableByKey("work_order_workers");
+  const materialTable = farmTableByKey("work_order_materials");
+  const inventoryDocTable = farmTableByKey("inventory_documents");
+  const inventoryLineTable = farmTableByKey("inventory_document_lines");
+  const date = dateValue(document.querySelector("#farmDispatchDate")) || order.scheduled_date || farmToday();
+  const teamId = document.querySelector("#farmDispatchTeam")?.value || order.team_id || "";
+  const checkedWorkers = Array.from(document.querySelectorAll("[data-farm-dispatch-worker]:checked")).map((input) => input.value).filter(Boolean);
+  const materialRows = Array.from(document.querySelectorAll("[data-farm-dispatch-material]")).map((row, index) => {
+    const materialId = row.dataset.farmDispatchMaterial;
+    const material = farmLookup("materials", materialId) || {};
+    return {
+      material_id: materialId,
+      quantity: n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value),
+      unit_id: material.base_unit_id || "",
+      line_no: index + 1,
+    };
+  }).filter((row) => row.material_id && row.quantity > 0);
+  state.farmSyncBusy = true;
+  state.farmSyncStatus = "";
+  state.farmSyncMessage = "กำลังบันทึกใบสั่งงานและใบเบิกพัสดุ...";
+  render();
+  try {
+    const now = new Date().toISOString();
+    const nextOrder = {
+      ...order,
+      id: order.readonly ? `override-${order.id}` : order.id,
+      moduleId: "farm-work",
+      tableId: "work_orders",
+      _overrideOf: order.readonly ? order.id : order._overrideOf,
+      team_id: teamId,
+      original_scheduled_date: order.original_scheduled_date || order.scheduled_date || order.planned_start_date || "",
+      scheduled_date: date,
+      rescheduled_date: date !== (order.scheduled_date || order.planned_start_date || "") ? date : order.rescheduled_date || "",
+      rescheduled_by_manager_id: "profile-admin",
+      approval_status: "not_required",
+      status: "sent_to_mobile",
+      updatedAt: now,
+    };
+    if (!nextOrder._overrideOf) delete nextOrder._overrideOf;
+    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (row.id === nextOrder.id || row.id === order.id || row._overrideOf === order.id)));
+    state.farmRecords.push(nextOrder);
+    await persistFarmRowToDatabase(workOrderTable, nextOrder);
+
+    for (const employeeId of checkedWorkers) {
+      const employee = farmLookup("employees", employeeId) || {};
+      const row = {
+        id: `dispatch-worker-${order.id}-${employeeId}`.slice(0, 180),
+        moduleId: "farm-work",
+        tableId: "work_order_workers",
+        work_order_id: order.id,
+        employee_id: employeeId,
+        role: employee.worker_type || "worker",
+        planned_hours: "8",
+        rate: employee.daily_wage || employee.hourly_wage_rate || "",
+        updatedAt: now,
+      };
+      state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_order_workers" && item.work_order_id === order.id && item.employee_id === employeeId));
+      state.farmRecords.push(row);
+      await persistFarmRowToDatabase(workerTable, row);
+    }
+
+    let issueDocId = "";
+    if (materialRows.length) {
+      const issueDoc = {
+        id: `issue-${order.id}-${date}`.slice(0, 180),
+        moduleId: "farm-inventory",
+        tableId: "inventory_documents",
+        document_no: `GI-${String(order.work_order_no || order.id).replace(/[^0-9A-Za-z-]/g, "")}-${date.replaceAll("-", "")}`.slice(0, 120),
+        doc_type: "issue",
+        doc_date: date,
+        work_order_id: order.id,
+        approved_by: "profile-admin",
+        status: "issued",
+        note: "สร้างจากหน้าสั่งงาน",
+        updatedAt: now,
+      };
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "inventory_documents" && row.document_no === issueDoc.document_no));
+      state.farmRecords.push(issueDoc);
+      const savedIssue = await persistFarmRowToDatabase(inventoryDocTable, issueDoc);
+      issueDocId = savedIssue.row?.id || issueDoc.id;
+    }
+
+    for (const item of materialRows) {
+      const materialRow = {
+        id: `dispatch-material-${order.id}-${item.material_id}`.slice(0, 180),
+        moduleId: "farm-work",
+        tableId: "work_order_materials",
+        work_order_id: order.id,
+        material_id: item.material_id,
+        planned_quantity: item.quantity,
+        issued_quantity: item.quantity,
+        unit_id: item.unit_id,
+        updatedAt: now,
+      };
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_order_materials" && row.work_order_id === order.id && row.material_id === item.material_id));
+      state.farmRecords.push(materialRow);
+      await persistFarmRowToDatabase(materialTable, materialRow);
+
+      const line = {
+        id: `issue-line-${order.id}-${item.material_id}`.slice(0, 180),
+        moduleId: "farm-inventory",
+        tableId: "inventory_document_lines",
+        document_id: issueDocId,
+        line_no: item.line_no,
+        item_id: farmDispatchInventoryItemForMaterial(item.material_id),
+        quantity: item.quantity,
+        unit_name: farmLookupLabel("units", item.unit_id),
+        work_order_id: order.id,
+        status: "issued",
+        updatedAt: now,
+      };
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "inventory_document_lines" && row.document_id === issueDocId && row.item_id === line.item_id));
+      state.farmRecords.push(line);
+      await persistFarmRowToDatabase(inventoryLineTable, line);
+    }
+
+    saveFarmRecords();
+    state.farmWorkDetailId = order.id;
+    state.farmDispatchWorkOrderId = order.id;
+    state.farmSyncStatus = "success";
+    state.farmSyncMessage = `บันทึกสั่งงานแล้ว: ${esc(order.work_order_no || order.id)} · คนงาน ${fmt(checkedWorkers.length)} คน · พัสดุ ${fmt(materialRows.length)} รายการ`;
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `บันทึกสั่งงานไม่สำเร็จ: ${error.message}`;
+  } finally {
+    state.farmSyncBusy = false;
+    render();
+  }
+}
+
+function printFarmDispatchOrder() {
+  syncFarmDispatchPrintPreviewFromForm();
+  document.body.classList.add("print-farm-dispatch");
+  window.print();
+  window.setTimeout(() => document.body.classList.remove("print-farm-dispatch"), 400);
+}
+
+function syncFarmDispatchPrintPreviewFromForm() {
+  const print = document.querySelector(".farm-dispatch-print");
+  if (!print) return;
+  const dateTarget = print.querySelector("[data-dispatch-print-date]");
+  const date = dateValue(document.querySelector("#farmDispatchDate"));
+  if (dateTarget && date) dateTarget.textContent = displayDate(date);
+  const workerBox = print.querySelector(".farm-dispatch-print-tags");
+  if (workerBox) {
+    const workers = Array.from(document.querySelectorAll("[data-farm-dispatch-worker]:checked")).map((input) => {
+      const label = input.closest("label");
+      return label?.querySelector("strong")?.textContent?.trim() || input.value;
+    }).filter(Boolean);
+    workerBox.innerHTML = workers.length ? workers.map((name) => `<span>${esc(name)}</span>`).join("") : "<span>-</span>";
+  }
+  const body = print.querySelector("table tbody");
+  if (body) {
+    const rows = Array.from(document.querySelectorAll("[data-farm-dispatch-material]")).map((row, index) => {
+      const name = row.children?.[1]?.textContent?.trim() || "-";
+      const qty = n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value);
+      const unit = row.children?.[4]?.textContent?.trim() || "";
+      return { index: index + 1, name, qty, unit };
+    }).filter((row) => row.qty > 0);
+    body.innerHTML = rows.length
+      ? rows.map((row) => `<tr><td>${row.index}</td><td>${esc(row.name)}</td><td>${moneyNf.format(row.qty)}</td><td>${esc(row.unit)}</td></tr>`).join("")
+      : `<tr><td colspan="4">ไม่มีรายการพัสดุ</td></tr>`;
+  }
+}
+
 function renderFarmWorkBoard() {
   const allRows = farmWorkOrders();
   const rows = filteredFarmWorkOrders();
@@ -12774,7 +13199,7 @@ function renderFarmPage() {
       ${state.farmSyncMessage ? `<div class="farm-sync-status ${esc(state.farmSyncStatus)}">${esc(state.farmSyncMessage)}</div>` : ""}
       ${isAreaPage ? `${renderFarmAreaBlockMap()}${renderFarmAreaBoard()}` : ""}
       ${isActivityPage ? renderFarmActivitiesBoard() : ""}
-      ${isWorkPage ? `${renderFarmWorkBoard()}${renderFarmWorkPlanner()}${renderFarmWorkOrderList()}${renderFarmActivityModal()}` : ""}
+      ${isWorkPage ? `${renderFarmWorkBoard()}${renderFarmWorkPlanner()}${renderFarmDispatchPanel()}${renderFarmWorkOrderList()}${renderFarmActivityModal()}` : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
       ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-toolbar">
@@ -13772,6 +14197,18 @@ async function init() {
       render();
       return;
     }
+    if (e.target.id === "farmDispatchOrderSelect") {
+      state.farmDispatchWorkOrderId = e.target.value;
+      state.farmWorkDetailId = e.target.value;
+      state.farmDispatchTeamId = "";
+      render();
+      return;
+    }
+    if (e.target.id === "farmDispatchTeam") {
+      state.farmDispatchTeamId = e.target.value;
+      render();
+      return;
+    }
     if (e.target.id === "farmTableSelect") {
       state.farmTableId = e.target.value;
       state.farmEditId = "";
@@ -14203,6 +14640,14 @@ async function init() {
     }
     if (e.target.closest("[data-farm-create-work-plan]")) {
       createFarmWorkPlanFromSelection();
+      return;
+    }
+    if (e.target.closest("[data-farm-dispatch-save]")) {
+      saveFarmDispatchOrder();
+      return;
+    }
+    if (e.target.closest("[data-farm-dispatch-print]")) {
+      printFarmDispatchOrder();
       return;
     }
     const plannerTab = e.target.closest("[data-farm-planner-tab]");
