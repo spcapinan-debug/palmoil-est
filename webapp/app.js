@@ -10981,8 +10981,8 @@ function renderFarmWorkPlanner() {
                 <option>อ้างอิงจากงานล่าสุด</option>
               </select>
             </label>
-            <label>วันที่เริ่มงาน<input id="farmPlanStartDate" ${dateInputAttrs("2026-01-15")}></label>
-            <label>วันที่สิ้นสุด<input id="farmPlanEndDate" ${dateInputAttrs("2026-01-16")}></label>
+            <label>วันที่เริ่มงาน${renderDateInputControl({ id: "farmPlanStartDate", value: "2026-01-15", ariaLabel: "เลือกวันที่เริ่มงาน" })}</label>
+            <label>วันที่สิ้นสุด${renderDateInputControl({ id: "farmPlanEndDate", value: "2026-01-16", ariaLabel: "เลือกวันที่สิ้นสุดงาน" })}</label>
             <label>รอบซ้ำ
               <select>
                 <option>ไม่ทำซ้ำ</option>
