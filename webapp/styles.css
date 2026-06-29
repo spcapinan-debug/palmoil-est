@@ -5566,7 +5566,22 @@ tfoot td {
 }
 
 .farm-work-budget-selector .budget-tree-scroll {
-  height: 300px;
+  height: 430px;
+}
+
+.farm-work-page .farm-plan-work-card {
+  gap: 8px;
+}
+
+.farm-plan-work-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, .8fr) repeat(3, minmax(120px, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.farm-plan-work-ref {
+  grid-column: 1 / -1;
 }
 
 .farm-plan-selector-note,
@@ -5592,8 +5607,9 @@ tfoot td {
 }
 
 .farm-plan-picked-work {
-  display: grid;
-  align-items: start;
+  display: flex;
+  align-items: center;
+  padding: 6px 9px;
 }
 
 .farm-plan-card label {
@@ -5833,10 +5849,48 @@ tfoot td {
   align-items: end;
 }
 
+.farm-work-page .farm-work-budget-selector .budget-tree-item {
+  display: flex !important;
+  grid-template-columns: none !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-height: 20px;
+}
+
+.farm-work-page .farm-work-budget-selector .budget-tree-item input[type="checkbox"] {
+  flex: 0 0 13px !important;
+  width: 13px !important;
+  height: 13px !important;
+  min-width: 13px !important;
+  min-height: 13px !important;
+}
+
+.farm-work-page .farm-work-budget-selector .budget-tree-item span {
+  display: block;
+  min-width: 0;
+}
+
 .farm-plan-resource-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.farm-plan-resource-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.farm-plan-resource-summary span {
+  border: 1px solid #dbe5f2;
+  border-radius: 7px;
+  padding: 8px;
+  background: #f8fafc;
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
 }
 
 .farm-plan-resource-table {
@@ -10477,6 +10531,11 @@ td.num,
   .farm-plan-resource-grid {
     grid-template-columns: 1fr;
   }
+
+  .farm-plan-work-grid,
+  .farm-plan-resource-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -10507,6 +10566,11 @@ td.num,
   }
 
   .budget-area-zone-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .farm-plan-work-grid,
+  .farm-plan-resource-summary {
     grid-template-columns: 1fr;
   }
 }

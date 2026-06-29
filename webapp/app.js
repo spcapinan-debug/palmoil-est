@@ -10777,20 +10777,6 @@ function renderFarmWorkPlanner() {
   const laborCost = laborEstimate.amount;
   const materialCost = materialQuantity * materialRate;
   const totalCost = laborCost + materialCost;
-  const materialResourceRows = selectedMaterials.map((row, index) => `
-    <tr>
-      <td>${fmt(index + 1)}</td>
-      <td>${esc(farmBudgetMaterialLabel(row) || "-")}</td>
-      <td>${esc(farmLookupLabel("units", row.base_unit_id) || row.unit_name || row.uom || "-")}</td>
-      <td class="num">${index === 0 ? moneyNf.format(materialQuantity) : "-"}</td>
-    </tr>`).join("");
-  const vehicleResourceRows = selectedVehicles.map((row, index) => `
-    <tr>
-      <td>${fmt(index + 1)}</td>
-      <td>${esc(farmBudgetVehicleLabel(row) || "-")}</td>
-      <td>${esc(row.vehicle_type || row.item_type || "-")}</td>
-      <td>${esc(row.status || "-")}</td>
-    </tr>`).join("");
   const plotCountText = `${fmt(selectedBlocks.length)} จาก ${fmt(blocks.length)} Block`;
   const selectedWorkerCount = selectedWorkerRefs.length || previewMembers.length || (previewTeam ? 1 : 0);
   const latestWorkOptions = workOrders.slice(0, 6).map((row) => `<option>${esc(row.work_order_no || row.id)} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("");
@@ -10804,25 +10790,18 @@ function renderFarmWorkPlanner() {
         ${["เลือกงาน", "เลือกพื้นที่และทีม", "กำหนดทรัพยากร", "ตรวจแล้วสร้าง WO"].map((step, index) => `<article class="${index === 0 ? "active" : ""}"><b>${index + 1}</b><span>${esc(step)}</span></article>`).join("")}
       </div>
       <div class="farm-plan-simple">
-        <article class="farm-plan-card">
+        <article class="farm-plan-card farm-plan-work-card">
           <h4>1. งานที่จะทำ</h4>
-          <label>รูปแบบกำหนดการ
-            <select>
-              <option>ทำครั้งเดียว</option>
-              <option>ทำซ้ำตามรอบ</option>
-              <option>อ้างอิงจากงานล่าสุด</option>
-            </select>
-          </label>
-          <div class="farm-plan-picked-work">
-            <span>งานที่เลือกจากรายการด้านล่าง</span>
-            <b>${esc(previewGroup?.group_name || previewGroup?.group_code || "ยังไม่เลือกกลุ่มกิจกรรม")}</b>
-            <strong>${esc(previewActivity?.activity_name || previewActivity?.activity_code || "ยังไม่เลือกกิจกรรม")}</strong>
-          </div>
-          <div class="farm-plan-inline">
+          <div class="farm-plan-work-grid">
+            <label>รูปแบบ
+              <select>
+                <option>ทำครั้งเดียว</option>
+                <option>ทำซ้ำตามรอบ</option>
+                <option>อ้างอิงจากงานล่าสุด</option>
+              </select>
+            </label>
             <label>วันที่เริ่มงาน<input ${dateInputAttrs("2026-01-15")}></label>
             <label>วันที่สิ้นสุด<input ${dateInputAttrs("2026-01-16")}></label>
-          </div>
-          <div class="farm-plan-inline">
             <label>รอบซ้ำ
               <select>
                 <option>ไม่ทำซ้ำ</option>
@@ -10831,13 +10810,18 @@ function renderFarmWorkPlanner() {
                 <option>ทุก 30 วัน</option>
               </select>
             </label>
+            <label class="farm-plan-work-ref">อ้างอิงงานล่าสุด
+              <select>
+                <option>ไม่อ้างอิง</option>
+                ${latestWorkOptions}
+              </select>
+            </label>
           </div>
-          <label>อ้างอิงงานล่าสุด
-            <select>
-              <option>ไม่อ้างอิง</option>
-              ${latestWorkOptions}
-            </select>
-          </label>
+          <div class="farm-plan-picked-work">
+            <span>งานจากรายการเลือก</span>
+            <b>${esc(previewGroup?.group_name || previewGroup?.group_code || "ยังไม่เลือกกลุ่มกิจกรรม")}</b>
+            <strong>${esc(previewActivity?.activity_name || previewActivity?.activity_code || "ยังไม่เลือกกิจกรรม")}</strong>
+          </div>
         </article>
         <article class="farm-plan-card farm-plan-selector-card">
           <h4>2. เลือกข้อมูลที่จะใช้สร้าง Work Order</h4>
@@ -10861,27 +10845,11 @@ function renderFarmWorkPlanner() {
             <label><input type="radio" name="planCalcMode"> ตามผลงานจริงหลังบันทึกงาน</label>
             <label><input type="radio" name="planCalcMode"> ตามอัตราผู้รับเหมา</label>
           </div>
-          <div class="farm-plan-resource-grid">
-          <div class="farm-plan-resource-block">
-            <div class="farm-plan-resource-head">
-              <strong>วัสดุที่เลือก</strong>
-              <span>${fmt(selectedMaterials.length)} รายการ</span>
-            </div>
-            <table class="farm-plan-resource-table">
-              <thead><tr><th>#</th><th>วัสดุ</th><th>หน่วย</th><th>ปริมาณแผน</th></tr></thead>
-              <tbody>${materialResourceRows || `<tr><td colspan="4">ยังไม่ได้เลือกวัสดุ</td></tr>`}</tbody>
-            </table>
-          </div>
-          <div class="farm-plan-resource-block">
-            <div class="farm-plan-resource-head">
-              <strong>รถ/เครื่องจักรที่เลือก</strong>
-              <span>${fmt(selectedVehicles.length)} รายการ</span>
-            </div>
-            <table class="farm-plan-resource-table">
-              <thead><tr><th>#</th><th>รถ/เครื่องจักร</th><th>ประเภท</th><th>สถานะ</th></tr></thead>
-              <tbody>${vehicleResourceRows || `<tr><td colspan="4">ยังไม่ได้เลือกรถ/เครื่องจักร</td></tr>`}</tbody>
-            </table>
-          </div>
+          <div class="farm-plan-resource-summary">
+            <span>วัสดุ ${fmt(selectedMaterials.length)} รายการ</span>
+            <span>รถ/เครื่องจักร ${fmt(selectedVehicles.length)} รายการ</span>
+            <span>Block ${fmt(selectedBlocks.length)} รายการ</span>
+            <span>ทีม/คน ${fmt(selectedWorkerCount)} รายการ</span>
           </div>
           <label>อัตรางบประมาณ
             <select>${budgetRates.map((row) => `<option${row.id === selectedBudgetRate.id ? " selected" : ""}>${esc(row.rate_code || row.budget_rate_code || row.id)} · ${esc(row.activity_name || farmLookupLabel("activities", row.activity_id))} · ${esc(row.terrain_code || row.block_id || "ทุก Block")} · ${esc(row.rate_text || moneyNf.format(n(row.rate_amount)))}/${esc(row.unit_name || "")}</option>`).join("")}</select>
