@@ -4547,6 +4547,14 @@ tfoot td {
   box-shadow: var(--shadow-sm);
 }
 
+.farm-editable-row {
+  cursor: pointer;
+}
+
+.farm-editable-row:hover td {
+  background: #f8fafc;
+}
+
 .budget-contract-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(170px, 1fr)) auto;
@@ -5839,6 +5847,19 @@ tfoot td {
 
 .farm-work-page .farm-plan-selector-card {
   grid-column: 1 / -1;
+  order: 1;
+}
+
+.farm-work-page .farm-plan-work-card {
+  order: 2;
+}
+
+.farm-work-page .farm-plan-method-card {
+  order: 3;
+}
+
+.farm-work-page .farm-plan-summary {
+  order: 4;
 }
 
 .farm-work-budget-selector .budget-tree-scroll {

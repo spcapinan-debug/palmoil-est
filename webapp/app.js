@@ -10056,7 +10056,7 @@ async function saveFarmRow() {
   }
   state.farmRecords.push(row);
   appendFarmVersionLog(table, original, row);
-  if (state.view === "farm-activities" || state.view === "farm-area") state.farmActivityModalTable = "";
+  if (state.farmActivityModalTable) state.farmActivityModalTable = "";
   state.farmEditId = "";
   state.farmDetailId = row.id;
   saveFarmRecords();
@@ -10569,9 +10569,12 @@ async function importFarmCsvToDatabase(file) {
 
 function renderFarmWorkflowNav(module) {
   if (!FARM_OPERATION_WORKFLOW_VIEWS.has(module?.id)) return "";
+  const stages = module.id === "farm-work"
+    ? FARM_WORKFLOW_STAGES.filter((stage) => stage.title !== "อนุมัติ")
+    : FARM_WORKFLOW_STAGES;
   return `
     <section class="farm-flow-nav">
-      ${FARM_WORKFLOW_STAGES.map((stage) => {
+      ${stages.map((stage) => {
         const active = stage.views.includes(module.id);
         const targetView = stage.views[0] || module.id;
         return `
@@ -10960,7 +10963,12 @@ function renderFarmWorkPlanner() {
         <span>เลือกงาน กำหนดรอบซ้ำ เลือกพื้นที่จำนวนมาก แยกรายคน และเห็นต้นทุนก่อนสร้างแผน</span>
       </div>
       <div class="farm-plan-flow">
-        ${["เลือกงาน", "เลือกพื้นที่และทีม", "กำหนดทรัพยากร", "ตรวจแล้วสร้าง WO"].map((step, index) => `<article class="${index === 0 ? "active" : ""}"><b>${index + 1}</b><span>${esc(step)}</span></article>`).join("")}
+        ${[
+          ["02", "เลือกข้อมูลที่จะใช้สร้าง Work Order"],
+          ["01", "งานที่จะทำ"],
+          ["03", "วิธีคำนวณและทรัพยากร"],
+          ["04", "ตรวจแล้วสร้าง"],
+        ].map(([no, step], index) => `<article class="${index === 0 ? "active" : ""}"><b>${esc(no)}</b><span>${esc(step)}</span></article>`).join("")}
       </div>
       <div class="farm-plan-simple">
         <article class="farm-plan-card farm-plan-work-card">
@@ -10973,8 +10981,8 @@ function renderFarmWorkPlanner() {
                 <option>อ้างอิงจากงานล่าสุด</option>
               </select>
             </label>
-            <label>วันที่เริ่มงาน<input ${dateInputAttrs("2026-01-15")}></label>
-            <label>วันที่สิ้นสุด<input ${dateInputAttrs("2026-01-16")}></label>
+            <label>วันที่เริ่มงาน<input id="farmPlanStartDate" ${dateInputAttrs("2026-01-15")}></label>
+            <label>วันที่สิ้นสุด<input id="farmPlanEndDate" ${dateInputAttrs("2026-01-16")}></label>
             <label>รอบซ้ำ
               <select>
                 <option>ไม่ทำซ้ำ</option>
@@ -11010,7 +11018,7 @@ function renderFarmWorkPlanner() {
             <section class="budget-tree-card"><h4>พนักงาน</h4><div class="budget-tree-scroll">${renderFarmBudgetWorkerTree()}</div></section>
           </div>
         </article>
-        <article class="farm-plan-card">
+        <article class="farm-plan-card farm-plan-method-card">
           <h4>3. วิธีคำนวณและทรัพยากร</h4>
           <div class="farm-plan-methods farm-plan-method-grid">
             <label><input type="radio" name="planCalcMode" checked> ตามจำนวนต้นจากข้อมูลแปลง</label>
@@ -11040,7 +11048,7 @@ function renderFarmWorkPlanner() {
             <dt>ทีม</dt><dd>${esc(previewTeam?.team_name || "-")} · ${fmt(previewMembers.length)} คน</dd>
             <dt>ช่วงวัน</dt><dd>2026-01-15 ถึง 2026-01-16</dd>
             <dt>ทรัพยากร</dt><dd>วัสดุ ${fmt(selectedMaterials.length)} รายการ · รถ/เครื่องจักร ${fmt(selectedVehicles.length)} รายการ</dd>
-            <dt>สถานะเริ่มต้น</dt><dd>Draft → รออนุมัติ</dd>
+            <dt>สถานะเริ่มต้น</dt><dd>Draft · ไม่ต้องผ่านขั้นตอนอนุมัติ</dd>
           </dl>
           <div class="farm-plan-cost-preview">
             <strong>ต้นทุนประมาณการก่อนสร้างแผน</strong>
@@ -11056,12 +11064,79 @@ function renderFarmWorkPlanner() {
             </table>
           </div>
           <div class="farm-plan-actions">
-            <button type="button" data-farm-open-work-table="work_orders">สร้างแผน Draft</button>
-            <button type="button" data-farm-open-work-table="approval_logs">ส่งอนุมัติ</button>
+            <button type="button" data-farm-create-work-plan ${state.farmSyncBusy ? "disabled" : ""}>สร้างแผน</button>
           </div>
         </article>
       </div>
     </section>`;
+}
+
+async function createFarmWorkPlanFromSelection() {
+  const table = farmTableByKey("work_orders");
+  const picks = farmBudgetContractState();
+  const blocks = farmRows(farmTableByKey("blocks"));
+  const activities = farmRows(farmTableByKey("activities"));
+  const selectedBlocks = picks.selectedBlocks.length
+    ? blocks.filter((block) => picks.selectedBlocks.includes(block.id))
+    : blocks.slice(0, 1);
+  const selectedActivities = picks.selectedActivities.length
+    ? activities.filter((activity) => picks.selectedActivities.includes(activity.id))
+    : activities.slice(0, 1);
+  const selectedTeamIds = (picks.selectedWorkers || []).filter((value) => value.startsWith("team:")).map((value) => value.slice(5));
+  const teamId = selectedTeamIds[0] || "";
+  const startDate = dateValue(document.querySelector("#farmPlanStartDate")) || farmToday();
+  const endDate = dateValue(document.querySelector("#farmPlanEndDate")) || startDate;
+  if (!table || !selectedBlocks.length || !selectedActivities.length) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาเลือก Block และกิจกรรมก่อนสร้างแผน";
+    render();
+    return;
+  }
+  state.farmSyncBusy = true;
+  state.farmSyncStatus = "";
+  state.farmSyncMessage = "กำลังสร้าง Work Order...";
+  render();
+  const created = [];
+  try {
+    for (const block of selectedBlocks) {
+      for (const activity of selectedActivities) {
+        const stamp = `${Date.now()}-${created.length + 1}`;
+        const row = {
+          id: `farm-work-orders-${stamp}`,
+          moduleId: "farm-work",
+          tableId: "work_orders",
+          work_order_no: `WO-${startDate.replaceAll("-", "")}-${String(created.length + 1).padStart(3, "0")}`,
+          work_order_title: `${activity.activity_name || activity.activity_code || "งาน"} ${block.block_name || block.block_code || block.id}`,
+          plot_id: block.plot_id || "",
+          block_id: block.id,
+          plot_group_id: block.plot_group_id || "",
+          activity_id: activity.id,
+          team_id: teamId,
+          planned_start_date: startDate,
+          planned_end_date: endDate,
+          scheduled_date: startDate,
+          approval_status: "not_required",
+          status: "draft",
+          updatedAt: new Date().toISOString(),
+        };
+        state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && item.id === row.id));
+        state.farmRecords.push(row);
+        const saved = await persistFarmRowToDatabase(table, row);
+        created.push(saved.row?.id || row.id);
+      }
+    }
+    saveFarmRecords();
+    state.farmTableId = "work_orders";
+    state.farmDetailId = created[0] || "";
+    state.farmSyncStatus = "ok";
+    state.farmSyncMessage = `สร้างแผน Work Order แล้ว ${fmt(created.length)} รายการ`;
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `สร้างแผนไม่สำเร็จ: ${error.message}`;
+  } finally {
+    state.farmSyncBusy = false;
+    render();
+  }
 }
 
 function renderFarmWorkBoard() {
@@ -12009,7 +12084,7 @@ function renderFarmBudgetRateTable(rates) {
     <article class="farm-budget-rate-table">
       <div class="section-head">
         <h3>รายการสัญญา / Rate</h3>
-        <span>${fmt(filtered.length)} รายการ · เลือกแถวเพื่อแก้ไขรายละเอียด</span>
+        <span>${fmt(filtered.length)} รายการ · ดับเบิลคลิกแถวเพื่อแก้ไข / ลบ</span>
       </div>
       <div class="table-wrap farm-table-wrap">
         <table class="mini-table farm-table">
@@ -12024,11 +12099,10 @@ function renderFarmBudgetRateTable(rates) {
               <th>มีผลจนถึง</th>
               <th>พื้นที่ / AP</th>
               <th>อัตรา</th>
-              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
-            ${rows.map((row) => `<tr data-farm-row="${esc(row.id)}">
+            ${rows.map((row) => `<tr class="farm-editable-row" data-farm-row="${esc(row.id)}" data-farm-budget-rate-row="${esc(row.id)}" title="ดับเบิลคลิกเพื่อแก้ไข">
               <td>${esc(row.rate_code || row.id)}</td>
               <td>${esc(row.version_no || "1")}</td>
               <td>${esc(row.mapping_rule || row.calculation_method || "-")}</td>
@@ -12038,11 +12112,7 @@ function renderFarmBudgetRateTable(rates) {
               <td>${esc(row.effective_to || "-")}</td>
               <td>${esc([row.terrain_code, row.ap_code].filter(Boolean).join(" / ") || "-")}</td>
               <td>${esc(row.rate_text || `${fmt(n(row.rate_amount))} ${row.unit_name || ""}`)}</td>
-              <td class="farm-actions">
-                <button type="button" data-farm-view="${esc(row.id)}">ดู</button>
-                <button type="button" data-farm-edit="${esc(row.id)}">แก้ไข</button>
-              </td>
-            </tr>`).join("") || `<tr><td colspan="10">No data matching...</td></tr>`}
+            </tr>`).join("") || `<tr><td colspan="9">No data matching...</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -12235,7 +12305,7 @@ function renderFarmBudgetBoard() {
       ${renderFarmBudgetExtraRateRows()}
       ${renderFarmBudgetCreateRateBar()}
       ${renderFarmBudgetRateTable(rates)}
-      ${renderFarmBudgetEditPanel()}
+      ${renderFarmActivityModal()}
     </section>`;
 }
 
@@ -14089,6 +14159,10 @@ async function init() {
       render();
       return;
     }
+    if (e.target.closest("[data-farm-create-work-plan]")) {
+      createFarmWorkPlanFromSelection();
+      return;
+    }
     const plannerTab = e.target.closest("[data-farm-planner-tab]");
     if (plannerTab) {
       state.farmPlannerTab = plannerTab.dataset.farmPlannerTab;
@@ -14176,6 +14250,11 @@ async function init() {
     }
     const farmRow = e.target.closest("[data-farm-row]");
     if (farmRow && !e.target.closest("button")) {
+      if (farmRow.matches("[data-farm-budget-rate-row]")) {
+        state.farmTableId = "budget_activity_rates";
+        state.farmDetailId = farmRow.dataset.farmRow;
+        return;
+      }
       if (state.view === "farm-budget") state.farmTableId = "budget_activity_rates";
       state.farmDetailId = farmRow.dataset.farmRow;
       state.farmEditId = "";
@@ -14363,6 +14442,15 @@ async function init() {
       state.farmTableId = "areas";
       state.farmActivityModalTable = "areas";
       state.farmEditId = areaBlockRow.dataset.farmAreaBlockRow;
+      state.farmDetailId = state.farmEditId;
+      render();
+      return;
+    }
+    const budgetRateRow = e.target.closest("[data-farm-budget-rate-row]");
+    if (budgetRateRow) {
+      state.farmTableId = "budget_activity_rates";
+      state.farmActivityModalTable = "budget_activity_rates";
+      state.farmEditId = budgetRateRow.dataset.farmBudgetRateRow;
       state.farmDetailId = state.farmEditId;
       render();
       return;
