@@ -5860,6 +5860,11 @@ tfoot td {
 
 .farm-work-page .farm-plan-summary {
   order: 4;
+  grid-column: 1 / -1;
+}
+
+.farm-work-page .farm-plan-summary .farm-plan-cost-preview table {
+  table-layout: fixed;
 }
 
 .farm-work-budget-selector .budget-tree-scroll {
@@ -6352,6 +6357,15 @@ tfoot td {
 
 .farm-work-page .farm-work-console {
   padding: 14px;
+}
+
+.farm-work-order-list {
+  display: grid;
+  gap: 10px;
+}
+
+.farm-work-order-list .farm-table-wrap {
+  max-height: 420px;
 }
 
 .farm-work-kpis {

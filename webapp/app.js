@@ -10964,15 +10964,15 @@ function renderFarmWorkPlanner() {
       </div>
       <div class="farm-plan-flow">
         ${[
-          ["02", "เลือกข้อมูลที่จะใช้สร้าง Work Order"],
-          ["01", "งานที่จะทำ"],
+          ["01", "เลือกข้อมูลที่จะใช้สร้าง Work Order"],
+          ["02", "งานที่จะทำ"],
           ["03", "วิธีคำนวณและทรัพยากร"],
           ["04", "ตรวจแล้วสร้าง"],
         ].map(([no, step], index) => `<article class="${index === 0 ? "active" : ""}"><b>${esc(no)}</b><span>${esc(step)}</span></article>`).join("")}
       </div>
       <div class="farm-plan-simple">
         <article class="farm-plan-card farm-plan-work-card">
-          <h4>1. งานที่จะทำ</h4>
+          <h4>2. งานที่จะทำ</h4>
           <div class="farm-plan-work-grid">
             <label>รูปแบบ
               <select>
@@ -11005,7 +11005,7 @@ function renderFarmWorkPlanner() {
           </div>
         </article>
         <article class="farm-plan-card farm-plan-selector-card">
-          <h4>2. เลือกข้อมูลที่จะใช้สร้าง Work Order</h4>
+          <h4>1. เลือกข้อมูลที่จะใช้สร้าง Work Order</h4>
           <div class="farm-plan-selector-note">
             <span>เลือก Block/กิจกรรม/วัสดุ/ทีมงานได้หลายรายการ ข้อมูลชุดนี้ใช้ร่วมกับอัตรางบประมาณและต้นทุนประมาณการ</span>
             <b>Block ${fmt(selectedBlocks.length)} · กิจกรรม ${fmt(budgetPicks.selectedActivities.length || (previewActivity ? 1 : 0))} · วัสดุ ${fmt(selectedMaterials.length)} · รถ/เครื่องจักร ${fmt(selectedVehicles.length)} · พนักงาน/ทีม ${fmt(selectedWorkerCount)}</b>
@@ -11282,6 +11282,48 @@ function renderFarmWorkBoard() {
           </div>
         </div>
         ${renderFarmWorkDetail(selected)}
+      </div>
+    </section>`;
+}
+
+function renderFarmWorkOrderList() {
+  const rows = filteredFarmWorkOrders();
+  return `
+    <section class="farm-panel farm-work-order-list">
+      <div class="section-head">
+        <h3>ตารางรายการ Work Order</h3>
+        <span>${fmt(rows.length)} รายการ · ดับเบิลคลิกแถวเพื่อแก้ไข / ลบ</span>
+      </div>
+      <div class="table-wrap farm-table-wrap">
+        <table class="mini-table farm-table">
+          <thead>
+            <tr>
+              <th>WO</th>
+              <th>งาน</th>
+              <th>พื้นที่</th>
+              <th>กิจกรรม</th>
+              <th>ทีม</th>
+              <th>วันแผน</th>
+              <th>วันทำงาน</th>
+              <th>%</th>
+              <th>สถานะ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr class="farm-editable-row" data-farm-row="${esc(row.id)}" data-farm-work-order-row="${esc(row.id)}" title="ดับเบิลคลิกเพื่อแก้ไข">
+                <td><strong>${esc(row.work_order_no || row.id)}</strong></td>
+                <td>${esc(row.work_order_title || "-")}</td>
+                <td>${esc([row.plot?.plot_code || row.plot_group?.group_code, row.block?.block_code || row.block?.area_code, row.block?.ap_code || row.block?.AP_code].filter(Boolean).join(" / ") || "-")}</td>
+                <td>${esc(row.activity?.activity_name || farmLookupLabel("activities", row.activity_id) || "-")}</td>
+                <td>${esc(row.team?.team_name || farmLookupLabel("teams", row.team_id) || "-")}</td>
+                <td>${esc(`${row.startDate || "-"} ถึง ${row.endDate || "-"}`)}</td>
+                <td>${esc(row.scheduled_date || "-")}</td>
+                <td class="num">${fmt(farmWorkProgress(row))}%</td>
+                <td><span class="status-pill" style="border-color:${esc(row.statusMeta.color)};color:${esc(row.statusMeta.color)}">${esc(row.statusMeta.label)}</span></td>
+              </tr>`).join("") || `<tr><td colspan="9">ไม่พบ Work Order ตามตัวกรอง</td></tr>`}
+          </tbody>
+        </table>
       </div>
     </section>`;
 }
@@ -12732,10 +12774,10 @@ function renderFarmPage() {
       ${state.farmSyncMessage ? `<div class="farm-sync-status ${esc(state.farmSyncStatus)}">${esc(state.farmSyncMessage)}</div>` : ""}
       ${isAreaPage ? `${renderFarmAreaBlockMap()}${renderFarmAreaBoard()}` : ""}
       ${isActivityPage ? renderFarmActivitiesBoard() : ""}
-      ${isWorkPage ? `${renderFarmWorkBoard()}${renderFarmWorkPlanner()}` : ""}
+      ${isWorkPage ? `${renderFarmWorkBoard()}${renderFarmWorkPlanner()}${renderFarmWorkOrderList()}${renderFarmActivityModal()}` : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
-      ${isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-toolbar">
+      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-toolbar">
         <label>ตารางข้อมูล
           <select id="farmTableSelect">
             ${tables.map((item) => `<option value="${esc(item.key)}"${item.key === table.key ? " selected" : ""}>${esc(farmTableDisplayName(item))}</option>`).join("")}
@@ -12761,7 +12803,7 @@ function renderFarmPage() {
       </section>`}
       ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : renderFarmDataEntryGuide(table)}
       ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : renderFarmKeyBindings(table)}
-      ${isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-layout">
+      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-layout">
         <article class="farm-panel">
           <div class="section-head"><h3>${state.farmEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูล"}</h3><span>${esc(table.key)} / * คือข้อมูลจำเป็น</span></div>
           <form class="farm-form">
@@ -12786,7 +12828,7 @@ function renderFarmPage() {
           <div class="farm-table-list">${tables.map((item) => `<span>${esc(item.key)}</span>`).join("")}</div>
         </article>
       </section>`}
-      ${isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-panel">
+      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-panel">
         <div class="section-head"><h3>ตารางรายการ</h3><span>Search / Filter / Add / Edit / Set Inactive / Detail / Export</span></div>
         <div class="table-wrap farm-table-wrap">
           <table class="mini-table farm-table">
@@ -14255,6 +14297,12 @@ async function init() {
         state.farmDetailId = farmRow.dataset.farmRow;
         return;
       }
+      if (farmRow.matches("[data-farm-work-order-row]")) {
+        state.farmTableId = "work_orders";
+        state.farmDetailId = farmRow.dataset.farmRow;
+        state.farmWorkDetailId = farmRow.dataset.farmRow;
+        return;
+      }
       if (state.view === "farm-budget") state.farmTableId = "budget_activity_rates";
       state.farmDetailId = farmRow.dataset.farmRow;
       state.farmEditId = "";
@@ -14452,6 +14500,16 @@ async function init() {
       state.farmActivityModalTable = "budget_activity_rates";
       state.farmEditId = budgetRateRow.dataset.farmBudgetRateRow;
       state.farmDetailId = state.farmEditId;
+      render();
+      return;
+    }
+    const workOrderRow = e.target.closest("[data-farm-work-order-row]");
+    if (workOrderRow) {
+      state.farmTableId = "work_orders";
+      state.farmActivityModalTable = "work_orders";
+      state.farmEditId = workOrderRow.dataset.farmWorkOrderRow;
+      state.farmDetailId = state.farmEditId;
+      state.farmWorkDetailId = state.farmEditId;
       render();
       return;
     }
