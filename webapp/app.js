@@ -44,6 +44,7 @@
   farmSyncBusy: false,
   farmRecords: [],
   farmFilters: { query: "", status: "all", role: "super_admin" },
+  farmActivityModalTable: "",
   farmBudgetContract: {
     query: "",
     contractType: "Role Based Compounded",
@@ -9980,6 +9981,7 @@ async function saveFarmRow() {
   }
   state.farmRecords.push(row);
   appendFarmVersionLog(table, original, row);
+  if (state.view === "farm-activities") state.farmActivityModalTable = "";
   state.farmEditId = "";
   state.farmDetailId = row.id;
   saveFarmRecords();
@@ -10194,6 +10196,45 @@ function editFarmRow(id) {
   render();
   if (state.view === "farm-budget") {
     setTimeout(() => document.querySelector(".budget-rate-edit-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+}
+
+async function moveFarmActivityToGroup(activityId, groupId) {
+  const table = farmTableByKey("activities");
+  const original = farmRows(table).find((row) => row.id === activityId);
+  if (!table || !original) return;
+  if (String(original.activity_group_id || "") === String(groupId || "")) return;
+  const nextRow = {
+    ...original,
+    activity_group_id: groupId || "",
+    tableId: "activities",
+    moduleId: "farm-activities",
+    updatedAt: new Date().toISOString(),
+  };
+  const localRow = original.readonly
+    ? { ...nextRow, id: `override-${activityId}`, _overrideOf: activityId }
+    : nextRow;
+  state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "activities" && (item.id === localRow.id || item.id === activityId || item._overrideOf === activityId)));
+  state.farmRecords.push(localRow);
+  state.farmDetailId = activityId;
+  state.farmEditId = "";
+  state.farmSyncBusy = true;
+  state.farmSyncStatus = "";
+  state.farmSyncMessage = "กำลังบันทึกการย้ายกลุ่มกิจกรรม...";
+  saveFarmRecords();
+  render();
+  try {
+    const saved = await persistFarmRowToDatabase(table, nextRow);
+    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "activities" && (item.id === localRow.id || item._overrideOf === activityId)));
+    state.farmSyncStatus = saved.mode === "farm-master-fallback" ? "warning" : "success";
+    state.farmSyncMessage = saved.warning ? `บันทึกแล้วใน fallback: ${saved.warning}` : "บันทึกการย้ายกลุ่มแล้ว";
+    await loadFarmTablesFromDatabase({ silent: false });
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `บันทึกการย้ายกลุ่มไม่สำเร็จ: ${error.message}`;
+  } finally {
+    state.farmSyncBusy = false;
+    render();
   }
 }
 
@@ -12158,6 +12199,178 @@ function renderFarmAreaBlockMap() {
     </section>`;
 }
 
+function farmActivityGroupLabel(group) {
+  return [group?.group_code, group?.group_name].filter(Boolean).join(" - ") || group?.id || "ไม่ระบุกลุ่ม";
+}
+
+function farmActivityRowLabel(activity) {
+  return [activity?.activity_code, activity?.activity_name].filter(Boolean).join(" - ") || activity?.id || "-";
+}
+
+function renderFarmActivityModal() {
+  const tableKey = state.farmActivityModalTable;
+  const table = farmTableByKey(tableKey);
+  if (!table) return "";
+  const row = state.farmEditId ? farmRows(table).find((item) => item.id === state.farmEditId) || {} : {};
+  const visibleFields = farmVisibleFields(table);
+  return `
+    <div class="farm-activity-modal" role="dialog" aria-modal="true">
+      <div class="farm-activity-modal-card">
+        <div class="farm-activity-modal-head">
+          <div>
+            <h3>${state.farmEditId ? "แก้ไข" : "เพิ่ม"}${esc(table.title)}</h3>
+            <span>${esc(table.key)} · กรอกข้อมูลแล้วกดบันทึก</span>
+          </div>
+          <button type="button" data-farm-activity-modal-close aria-label="ปิด">×</button>
+        </div>
+        <form class="farm-form farm-activity-modal-form">
+          <label class="auto-id-field">id อัตโนมัติ
+            <input type="text" value="${esc(row.id || "สร้างอัตโนมัติ")}" disabled aria-disabled="true">
+          </label>
+          ${visibleFields.map((field) => renderFarmInput(field, row[farmFieldKey(field)] ?? "")).join("")}
+          <div class="farm-form-actions">
+            <button type="button" data-farm-save ${farmCan(state.farmEditId ? "update" : "create") && !state.farmSyncBusy ? "" : "disabled"}>${state.farmSyncBusy ? "กำลังบันทึก..." : "บันทึก"}</button>
+            <button type="button" data-farm-activity-modal-close>ยกเลิก</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+}
+
+function renderFarmActivitiesBoard() {
+  const groupTable = farmTableByKey("activity_groups");
+  const activityTable = farmTableByKey("activities");
+  const wageTable = farmTableByKey("wage_codes");
+  const query = state.farmFilters.query.trim().toLowerCase();
+  const statusOk = (row) => state.farmFilters.status === "all" || String(row.status || "").toLowerCase() === state.farmFilters.status;
+  const textOk = (row) => !query || Object.values(row).join(" ").toLowerCase().includes(query);
+  const groups = farmRows(groupTable)
+    .filter((row) => statusOk(row) && textOk(row))
+    .sort((a, b) => n(a.sort_order) - n(b.sort_order) || String(a.group_code || "").localeCompare(String(b.group_code || ""), "th", { numeric: true }));
+  const activities = farmRows(activityTable)
+    .filter((row) => statusOk(row) && textOk(row))
+    .sort((a, b) => String(a.activity_code || "").localeCompare(String(b.activity_code || ""), "th", { numeric: true }));
+  const allGroups = farmRows(groupTable);
+  const allActivities = farmRows(activityTable);
+  const ungroupedActivities = activities.filter((activity) => !activity.activity_group_id || !allGroups.some((group) => group.id === activity.activity_group_id));
+  const wageLabel = (id) => {
+    const wage = farmRows(wageTable).find((row) => row.id === id);
+    return wage ? [wage.wage_code, wage.wage_name].filter(Boolean).join(" - ") : "-";
+  };
+  const groupRows = groups.map((group) => {
+    const count = allActivities.filter((activity) => activity.activity_group_id === group.id).length;
+    return `
+      <tr data-activity-drop-group="${esc(group.id)}" data-farm-activity-group-row="${esc(group.id)}">
+        <td><strong>${esc(group.group_code || "-")}</strong></td>
+        <td>${esc(group.group_name || "-")}</td>
+        <td class="num">${fmt(count)}</td>
+        <td>${esc(group.status || "-")}</td>
+        <td class="farm-actions">
+          <button type="button" data-farm-activity-edit-table="activity_groups" data-farm-activity-edit="${esc(group.id)}">แก้ไข</button>
+        </td>
+      </tr>`;
+  }).join("");
+  const activityRows = activities.map((activity) => {
+    const group = allGroups.find((item) => item.id === activity.activity_group_id);
+    return `
+      <tr draggable="true" data-activity-drag="${esc(activity.id)}" data-farm-activity-row="${esc(activity.id)}">
+        <td><strong>${esc(activity.activity_code || "-")}</strong></td>
+        <td>${esc(activity.activity_name || "-")}</td>
+        <td>${esc(group ? farmActivityGroupLabel(group) : "ไม่ระบุกลุ่ม")}</td>
+        <td>${esc(wageLabel(activity.wage_code_id))}</td>
+        <td>${esc(activity.default_unit || "-")}</td>
+        <td>${esc(activity.status || "-")}</td>
+        <td class="farm-actions">
+          <button type="button" data-farm-activity-edit-table="activities" data-farm-activity-edit="${esc(activity.id)}">แก้ไข</button>
+        </td>
+      </tr>`;
+  }).join("");
+  const groupedTree = allGroups.map((group) => {
+    const groupActivities = allActivities.filter((activity) => activity.activity_group_id === group.id);
+    return `
+      <section class="farm-activity-tree-group" data-activity-drop-group="${esc(group.id)}">
+        <h4>${esc(farmActivityGroupLabel(group))} <span>${fmt(groupActivities.length)}</span></h4>
+        ${groupActivities.map((activity) => `
+          <button type="button" draggable="true" data-activity-drag="${esc(activity.id)}" data-farm-activity-edit-table="activities" data-farm-activity-edit="${esc(activity.id)}">
+            ${esc(farmActivityRowLabel(activity))}
+          </button>`).join("") || `<p>ลากกิจกรรมมาใส่กลุ่มนี้</p>`}
+      </section>`;
+  }).join("");
+  return `
+    <section class="farm-activity-board">
+      <div class="farm-activity-toolbar">
+        <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหากลุ่มกิจกรรม / กิจกรรม / รหัสค่าแรง"></label>
+        <label>สถานะ
+          <select id="farmStatusFilter">
+            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${status === "all" ? "ทั้งหมด" : esc(status)}</option>`).join("")}
+          </select>
+        </label>
+        <label>Role
+          <select id="farmRoleFilter">
+            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(role)}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+      <div class="farm-activity-split">
+        <article class="farm-panel farm-activity-table-card">
+          <div class="section-head">
+            <h3>ตารางกลุ่มกิจกรรม</h3>
+            <button type="button" data-farm-activity-add="activity_groups">เพิ่มกลุ่ม</button>
+          </div>
+          <div class="table-wrap farm-activity-table-wrap">
+            <table class="mini-table farm-table">
+              <thead><tr><th>รหัส</th><th>ชื่อกลุ่ม</th><th>กิจกรรม</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+              <tbody>${groupRows || `<tr><td colspan="5">ไม่พบกลุ่มกิจกรรม</td></tr>`}</tbody>
+            </table>
+          </div>
+        </article>
+        <article class="farm-panel farm-activity-table-card">
+          <div class="section-head">
+            <h3>ตารางกิจกรรม</h3>
+            <button type="button" data-farm-activity-add="activities">เพิ่มกิจกรรม</button>
+          </div>
+          <div class="table-wrap farm-activity-table-wrap">
+            <table class="mini-table farm-table">
+              <thead><tr><th>รหัส</th><th>กิจกรรม</th><th>กลุ่ม</th><th>รหัสค่าแรง</th><th>หน่วย</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+              <tbody>${activityRows || `<tr><td colspan="7">ไม่พบกิจกรรม</td></tr>`}</tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+      <section class="farm-panel farm-activity-tree-panel">
+        <div class="section-head"><h3>จัดกลุ่มด้วยการลาก</h3><span>ลากแถวกิจกรรมไปวางที่กลุ่มกิจกรรม ระบบจะบันทึกทันที</span></div>
+        <div class="farm-activity-tree">
+          <section class="farm-activity-tree-group ungrouped" data-activity-drop-group="">
+            <h4>ไม่ระบุกลุ่ม <span>${fmt(ungroupedActivities.length)}</span></h4>
+            ${ungroupedActivities.map((activity) => `<button type="button" draggable="true" data-activity-drag="${esc(activity.id)}" data-farm-activity-edit-table="activities" data-farm-activity-edit="${esc(activity.id)}">${esc(farmActivityRowLabel(activity))}</button>`).join("") || `<p>ไม่มีรายการ</p>`}
+          </section>
+          ${groupedTree}
+        </div>
+      </section>
+      <section class="farm-panel">
+        <div class="section-head"><h3>ตารางรายการ</h3><span>ดับเบิลคลิกแถวกิจกรรมเพื่อแก้ไข</span></div>
+        <div class="table-wrap farm-activity-bottom-wrap">
+          <table class="mini-table farm-table">
+            <thead><tr><th>รหัส</th><th>กิจกรรม</th><th>กลุ่มกิจกรรม</th><th>รหัสค่าแรง</th><th>ใช้วัสดุ</th><th>มือถือ</th><th>สถานะ</th></tr></thead>
+            <tbody>${activities.map((activity) => {
+              const group = allGroups.find((item) => item.id === activity.activity_group_id);
+              return `<tr data-farm-activity-row="${esc(activity.id)}" draggable="true" data-activity-drag="${esc(activity.id)}">
+                <td>${esc(activity.activity_code || "-")}</td>
+                <td>${esc(activity.activity_name || "-")}</td>
+                <td>${esc(group ? farmActivityGroupLabel(group) : "ไม่ระบุกลุ่ม")}</td>
+                <td>${esc(wageLabel(activity.wage_code_id))}</td>
+                <td>${String(activity.require_material) === "true" ? "ใช่" : "ไม่ใช่"}</td>
+                <td>${String(activity.allow_mobile_record) === "true" ? "ใช่" : "ไม่ใช่"}</td>
+                <td>${esc(activity.status || "-")}</td>
+              </tr>`;
+            }).join("") || `<tr><td colspan="7">ไม่พบรายการ</td></tr>`}</tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+    ${renderFarmActivityModal()}`;
+}
+
 function renderFarmPage() {
   const module = selectedFarmModule();
   const tables = farmTablesForModule(module);
@@ -12174,6 +12387,7 @@ function renderFarmPage() {
   const isWorkPage = module.id === "farm-work";
   const isHrPage = farmHrModuleActive(module);
   const isBudgetPage = module.id === "farm-budget";
+  const isActivityPage = module.id === "farm-activities";
   return `
     <div class="farm-page${isWorkPage ? " farm-work-page" : ""}">
       <div class="report-title${isWorkPage ? " farm-work-title" : ""}">
@@ -12186,7 +12400,7 @@ function renderFarmPage() {
       ${isBudgetPage ? "" : renderFarmWorkflowNav(module)}
       ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isBudgetPage ? renderFarmBudgetBoard() : ""}
-      ${isWorkPage || isBudgetPage ? "" : `<section class="farm-hero">
+      ${isWorkPage || isBudgetPage || isActivityPage ? "" : `<section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
@@ -12195,10 +12409,11 @@ function renderFarmPage() {
       </section>`}
       ${state.farmSyncMessage ? `<div class="farm-sync-status ${esc(state.farmSyncStatus)}">${esc(state.farmSyncMessage)}</div>` : ""}
       ${module.id === "farm-area" ? renderFarmAreaBlockMap() : ""}
+      ${isActivityPage ? renderFarmActivitiesBoard() : ""}
       ${isWorkPage ? `${renderFarmWorkBoard()}${renderFarmWorkPlanner()}` : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
-      ${isBudgetPage ? "" : `<section class="farm-toolbar">
+      ${isBudgetPage || isActivityPage ? "" : `<section class="farm-toolbar">
         <label>ตารางข้อมูล
           <select id="farmTableSelect">
             ${tables.map((item) => `<option value="${esc(item.key)}"${item.key === table.key ? " selected" : ""}>${esc(farmTableDisplayName(item))}</option>`).join("")}
@@ -12222,9 +12437,9 @@ function renderFarmPage() {
           <input id="farmImportFile" type="file" accept=".csv,text/csv" ${state.farmSyncBusy ? "disabled" : ""}>
         </label>
       </section>`}
-      ${isWorkPage || isBudgetPage ? "" : renderFarmDataEntryGuide(table)}
-      ${isWorkPage || isBudgetPage ? "" : renderFarmKeyBindings(table)}
-      ${isBudgetPage ? "" : `<section class="farm-layout">
+      ${isWorkPage || isBudgetPage || isActivityPage ? "" : renderFarmDataEntryGuide(table)}
+      ${isWorkPage || isBudgetPage || isActivityPage ? "" : renderFarmKeyBindings(table)}
+      ${isBudgetPage || isActivityPage ? "" : `<section class="farm-layout">
         <article class="farm-panel">
           <div class="section-head"><h3>${state.farmEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูล"}</h3><span>${esc(table.key)} / * คือข้อมูลจำเป็น</span></div>
           <form class="farm-form">
@@ -12249,7 +12464,7 @@ function renderFarmPage() {
           <div class="farm-table-list">${tables.map((item) => `<span>${esc(item.key)}</span>`).join("")}</div>
         </article>
       </section>`}
-      ${isBudgetPage ? "" : `<section class="farm-panel">
+      ${isBudgetPage || isActivityPage ? "" : `<section class="farm-panel">
         <div class="section-head"><h3>ตารางรายการ</h3><span>Search / Filter / Add / Edit / Set Inactive / Detail / Export</span></div>
         <div class="table-wrap farm-table-wrap">
           <table class="mini-table farm-table">
@@ -13549,6 +13764,30 @@ async function init() {
       syncFarmBudgetRatesToDatabase();
       return;
     }
+    const activityAdd = e.target.closest("[data-farm-activity-add]");
+    if (activityAdd) {
+      state.farmTableId = activityAdd.dataset.farmActivityAdd;
+      state.farmActivityModalTable = state.farmTableId;
+      state.farmEditId = "";
+      state.farmDetailId = "";
+      render();
+      return;
+    }
+    const activityEdit = e.target.closest("[data-farm-activity-edit]");
+    if (activityEdit) {
+      state.farmTableId = activityEdit.dataset.farmActivityEditTable || "activities";
+      state.farmActivityModalTable = state.farmTableId;
+      state.farmEditId = activityEdit.dataset.farmActivityEdit;
+      state.farmDetailId = state.farmEditId;
+      render();
+      return;
+    }
+    if (e.target.closest("[data-farm-activity-modal-close]")) {
+      state.farmActivityModalTable = "";
+      state.farmEditId = "";
+      render();
+      return;
+    }
     if (e.target.closest("[data-budget-contract-reset]")) {
       state.farmBudgetContract = {
         ...farmBudgetContractState(),
@@ -13843,6 +14082,38 @@ async function init() {
     const btn = e.target.closest("button[data-view]");
     if (!btn) return;
     setView(btn.dataset.view);
+  });
+  els.reportPage.addEventListener("dblclick", (e) => {
+    const activityRow = e.target.closest("[data-farm-activity-row]");
+    if (!activityRow) return;
+    state.farmTableId = "activities";
+    state.farmActivityModalTable = "activities";
+    state.farmEditId = activityRow.dataset.farmActivityRow;
+    state.farmDetailId = state.farmEditId;
+    render();
+  });
+  els.reportPage.addEventListener("dragstart", (e) => {
+    const source = e.target.closest("[data-activity-drag]");
+    if (!source) return;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", source.dataset.activityDrag);
+  });
+  els.reportPage.addEventListener("dragover", (e) => {
+    const dropTarget = e.target.closest("[data-activity-drop-group]");
+    if (!dropTarget) return;
+    e.preventDefault();
+    dropTarget.classList.add("drag-over");
+  });
+  els.reportPage.addEventListener("dragleave", (e) => {
+    e.target.closest("[data-activity-drop-group]")?.classList.remove("drag-over");
+  });
+  els.reportPage.addEventListener("drop", (e) => {
+    const dropTarget = e.target.closest("[data-activity-drop-group]");
+    if (!dropTarget) return;
+    e.preventDefault();
+    dropTarget.classList.remove("drag-over");
+    const activityId = e.dataTransfer.getData("text/plain");
+    if (activityId) moveFarmActivityToGroup(activityId, dropTarget.dataset.activityDropGroup || "");
   });
   els.printBtn.addEventListener("click", openPrintPreview);
   els.refreshTransportBtn?.addEventListener("click", refreshTransportFromQuery);

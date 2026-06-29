@@ -5245,6 +5245,217 @@ tfoot td {
   color: #b91c1c;
 }
 
+.farm-activity-board {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.farm-activity-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(160px, .25fr) minmax(160px, .25fr);
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, .86);
+  box-shadow: var(--shadow-sm);
+}
+
+.farm-activity-toolbar label,
+.farm-activity-modal-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.farm-activity-toolbar input,
+.farm-activity-toolbar select {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 9px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.farm-activity-split {
+  display: grid;
+  grid-template-columns: minmax(320px, .75fr) minmax(480px, 1.25fr);
+  gap: 12px;
+}
+
+.farm-activity-table-card {
+  min-width: 0;
+}
+
+.farm-activity-table-card .section-head,
+.farm-activity-tree-panel .section-head {
+  align-items: center;
+}
+
+.farm-activity-table-card .section-head button,
+.farm-activity-modal-head button {
+  min-height: 32px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 900;
+}
+
+.farm-activity-table-wrap {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.farm-activity-bottom-wrap {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.farm-activity-table-wrap tr[data-activity-drop-group],
+.farm-activity-tree-group {
+  transition: background .12s ease, box-shadow .12s ease;
+}
+
+.farm-activity-table-wrap tr.drag-over td,
+.farm-activity-tree-group.drag-over {
+  background: #ecfdf5 !important;
+  box-shadow: inset 0 0 0 2px rgba(16, 185, 129, .32);
+}
+
+.farm-activity-table-wrap tr[draggable="true"],
+.farm-activity-bottom-wrap tr[draggable="true"] {
+  cursor: grab;
+}
+
+.farm-activity-tree {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.farm-activity-tree-group {
+  min-width: 0;
+  min-height: 120px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  padding: 8px;
+  background: #fbfdff;
+}
+
+.farm-activity-tree-group h4 {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 7px;
+  color: var(--navy);
+  font-size: 12px;
+}
+
+.farm-activity-tree-group h4 span {
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: #eef6ff;
+  color: var(--primary);
+}
+
+.farm-activity-tree-group button {
+  display: block;
+  width: 100%;
+  min-height: 26px;
+  margin: 3px 0;
+  border: 1px solid #edf2f7;
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+}
+
+.farm-activity-tree-group p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.farm-activity-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, .32);
+  backdrop-filter: blur(4px);
+}
+
+.farm-activity-modal-card {
+  width: min(720px, 100%);
+  max-height: min(760px, 92vh);
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, .42);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .24);
+}
+
+.farm-activity-modal-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e5edf7;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.farm-activity-modal-head h3 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 16px;
+}
+
+.farm-activity-modal-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.farm-activity-modal-head button {
+  width: 34px;
+  padding: 0;
+  border-color: #dbe5f2;
+  background: #fff;
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.farm-activity-modal-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+
+.farm-activity-modal-form .farm-form-actions {
+  grid-column: 1 / -1;
+}
+
 .farm-planner-console {
   display: grid;
   gap: 12px;
@@ -10536,6 +10747,15 @@ td.num,
   .farm-plan-resource-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .farm-activity-split,
+  .farm-activity-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .farm-activity-tree {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -10571,6 +10791,11 @@ td.num,
 
   .farm-plan-work-grid,
   .farm-plan-resource-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .farm-activity-tree,
+  .farm-activity-modal-form {
     grid-template-columns: 1fr;
   }
 }
