@@ -2790,6 +2790,18 @@ async function persistFarmRowToDatabase(table, row) {
   return { ...payload, row: saved || payload.row || row };
 }
 
+async function deleteFarmRowFromDatabase(table, id) {
+  const res = await fetch(FARM_TABLES_API, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ table: table.key, id }),
+    cache: "no-store",
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok || payload?.ok === false) throw new Error(payload?.error || `Farm API ${res.status}`);
+  return payload;
+}
+
 async function syncFarmBudgetRatesToDatabase() {
   state.farmSyncBusy = true;
   state.farmSyncStatus = "";
@@ -9745,6 +9757,69 @@ function farmReferenceOptions(tableKey) {
   return farmRows(table).map((row) => ({ value: row.id, label: farmRecordLabel(table, row) }));
 }
 
+function farmReferenceTargetsForDelete(tableKey) {
+  if (tableKey === "areas") return new Set(["areas", "blocks"]);
+  if (tableKey === "blocks") return new Set(["blocks", "areas"]);
+  return new Set([tableKey]);
+}
+
+function farmDeleteCandidateValues(table, row) {
+  return new Set([
+    row.id,
+    row.databaseId,
+    table?.codeField ? row[table.codeField] : "",
+    table?.labelField ? row[table.labelField] : "",
+    row.area_code,
+    row.block_code,
+    row.group_code,
+    row.activity_code,
+    row.plot_code,
+    row.zone_code,
+    row.estate_code,
+    row.person_code,
+    row.employee_code,
+    row.contractor_code,
+  ].map((value) => String(value || "").trim()).filter(Boolean));
+}
+
+function farmDeleteDependencies(table, row) {
+  if (!table || !row?.id) return [];
+  const targets = farmReferenceTargetsForDelete(table.key);
+  const candidates = farmDeleteCandidateValues(table, row);
+  const deps = [];
+  for (const [tableKey, schema] of Object.entries(FARM_TABLE_SCHEMAS)) {
+    for (const field of schema.fields || []) {
+      const ref = farmFieldReferences(field);
+      if (!ref || !targets.has(ref)) continue;
+      const key = farmFieldKey(field);
+      const label = farmFieldLabel(field);
+      const refRows = farmRows({ key: tableKey, ...schema }).filter((item) => {
+        if (tableKey === table.key && item.id === row.id) return false;
+        return candidates.has(String(item[key] || "").trim());
+      });
+      if (!refRows.length) continue;
+      deps.push({
+        tableKey,
+        tableTitle: schema.title || tableKey,
+        fieldKey: key,
+        fieldLabel: label,
+        count: refRows.length,
+        samples: refRows.slice(0, 3).map((item) => farmRecordLabel({ key: tableKey, ...schema }, item) || item.id || "-"),
+      });
+    }
+  }
+  return deps;
+}
+
+function farmDependencyMessage(table, row, deps) {
+  const label = farmRecordLabel(table, row) || row.id;
+  return [
+    `ลบ "${label}" ไม่ได้ เพราะมีข้อมูลอื่นอ้างอิงอยู่`,
+    ...deps.slice(0, 8).map((dep) => `- แก้ที่ ${dep.tableTitle} (${dep.tableKey}) ช่อง ${dep.fieldLabel} (${dep.fieldKey}) จำนวน ${fmt(dep.count)} รายการ: ${dep.samples.join(", ")}`),
+    deps.length > 8 ? `- และอีก ${fmt(deps.length - 8)} จุด` : "",
+  ].filter(Boolean).join("\n");
+}
+
 function renderFarmOptionList(options, value, placeholder = "เลือก") {
   return `<option value="">${esc(placeholder)}</option>${options.map((option) => {
     const optionValue = typeof option === "string" ? option : option.value;
@@ -10267,6 +10342,63 @@ async function setFarmInactive(id) {
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `บันทึกไม่สำเร็จ: ${error.message}`;
+  } finally {
+    state.farmSyncBusy = false;
+    render();
+  }
+}
+
+async function deleteFarmRow(id = state.farmEditId, tableKey = state.farmActivityModalTable || state.farmTableId) {
+  const schema = farmTableByKey(tableKey);
+  if (!schema || !id) return;
+  const table = { key: tableKey, ...schema };
+  const row = farmRows(table).find((item) => item.id === id);
+  if (!row) return;
+  const deps = farmDeleteDependencies(table, row);
+  if (deps.length) {
+    const message = farmDependencyMessage(table, row, deps);
+    state.farmSyncBusy = false;
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = message;
+    window.alert(message);
+    render();
+    return;
+  }
+  const label = farmRecordLabel(table, row) || row.id;
+  if (!window.confirm(`ยืนยันลบ "${label}"?\n\nเมื่อลบแล้วข้อมูลนี้จะไม่แสดงในตาราง และถ้าอยู่ในฐานข้อมูลออนไลน์จะถูกลบออกด้วย`)) return;
+  const deleteMarker = {
+    id: row.id,
+    tableId: table.key,
+    moduleId: table.moduleId,
+    _deleted: true,
+    _overrideOf: row.readonly ? row.id : row._overrideOf,
+    updatedAt: new Date().toISOString(),
+  };
+  const shouldDeleteOnline = !row.readonly || row._farmFallback || row.databaseId;
+  state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === row.id || item._overrideOf === row.id || item.id === `override-${row.id}`)));
+  state.farmRecords.push(deleteMarker);
+  state.farmEditId = "";
+  state.farmDetailId = "";
+  state.farmActivityModalTable = "";
+  saveFarmRecords();
+  state.farmSyncBusy = true;
+  state.farmSyncStatus = "";
+  state.farmSyncMessage = "กำลังลบข้อมูล...";
+  render();
+  try {
+    if (shouldDeleteOnline) await deleteFarmRowFromDatabase(table, row.id);
+    state.farmDbRows = {
+      ...state.farmDbRows,
+      [table.key]: (state.farmDbRows?.[table.key] || []).filter((item) => item.id !== row.id && item.databaseId !== row.databaseId),
+    };
+    state.farmSyncStatus = "success";
+    state.farmSyncMessage = `ลบข้อมูลแล้ว: ${label}`;
+    await loadFarmTablesFromDatabase({ silent: false });
+  } catch (error) {
+    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && item._deleted && (item.id === row.id || item._overrideOf === row.id)));
+    saveFarmRecords();
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `ลบไม่สำเร็จ: ${error.message}`;
   } finally {
     state.farmSyncBusy = false;
     render();
@@ -12376,6 +12508,7 @@ function renderFarmActivityModal() {
           ${visibleFields.map((field) => renderFarmInput(field, row[farmFieldKey(field)] ?? "")).join("")}
           <div class="farm-form-actions">
             <button type="button" data-farm-save ${farmCan(state.farmEditId ? "update" : "create") && !state.farmSyncBusy ? "" : "disabled"}>${state.farmSyncBusy ? "กำลังบันทึก..." : "บันทึก"}</button>
+            ${state.farmEditId ? `<button type="button" class="danger" data-farm-delete-modal ${farmCan("delete") && !state.farmSyncBusy ? "" : "disabled"}>ลบ</button>` : ""}
             <button type="button" data-farm-activity-modal-close>ยกเลิก</button>
           </div>
         </form>
@@ -14002,6 +14135,10 @@ async function init() {
       state.farmEditId = "";
       state.farmDetailId = "";
       render();
+      return;
+    }
+    if (e.target.closest("[data-farm-delete-modal]")) {
+      deleteFarmRow();
       return;
     }
     if (e.target.closest("[data-farm-save]")) {

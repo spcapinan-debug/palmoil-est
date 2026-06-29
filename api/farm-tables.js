@@ -230,6 +230,19 @@ async function saveFallbackRow(table, row, reason = "") {
   return fromFallbackRecord(saved?.[0] || payload);
 }
 
+async function deleteFallbackRow(table, id) {
+  const ids = [`${table}:${id}`, id].filter(Boolean);
+  let deleted = 0;
+  for (const localId of ids) {
+    const rows = await supabaseFetch(`est_master_records?local_id=eq.${encodeURIComponent(localId)}&category=eq.${encodeURIComponent(farmRecordCategory(table))}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=representation" },
+    }).catch(() => []);
+    deleted += Array.isArray(rows) ? rows.length : 0;
+  }
+  return deleted;
+}
+
 const META_KEYS = new Set([
   "moduleId",
   "tableId",
@@ -323,6 +336,15 @@ async function upsertRealTableRow(table, row) {
   return saved?.[0] || dbRow;
 }
 
+async function deleteRealTableRow(table, id) {
+  if (!id) throw new Error("No id");
+  const rows = await supabaseFetch(`${table}?id=eq.${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Prefer: "return=representation" },
+  });
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return json(res, 200, { ok: true });
 
@@ -347,6 +369,33 @@ module.exports = async function handler(req, res) {
           row: fallback,
         });
       }
+    }
+
+    if (req.method === "DELETE") {
+      const body = await readBody(req).catch(() => ({}));
+      const table = validTable(body.table || requestUrl.searchParams.get("table"));
+      if (!table) return json(res, 400, { ok: false, error: "Invalid farm table" });
+      const id = cleanText(body.id || requestUrl.searchParams.get("id"), 220);
+      if (!id) return json(res, 400, { ok: false, error: "No id" });
+      let realDeleted = 0;
+      let realError = null;
+      try {
+        realDeleted = await deleteRealTableRow(table, id);
+      } catch (err) {
+        realError = err;
+      }
+      const fallbackDeleted = await deleteFallbackRow(table, id).catch(() => 0);
+      if (realError && !fallbackDeleted) {
+        return json(res, 500, { ok: false, table, error: realError.message });
+      }
+      return json(res, 200, {
+        ok: true,
+        table,
+        id,
+        mode: realDeleted ? "supabase-real-table" : "farm-master-fallback",
+        deleted: realDeleted + fallbackDeleted,
+        warning: realError ? realError.message : "",
+      });
     }
 
     if (req.method !== "GET") return json(res, 405, { ok: false, error: "Method not allowed" });
