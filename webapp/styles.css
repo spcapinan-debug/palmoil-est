@@ -6702,6 +6702,104 @@ tfoot td {
   text-align: center;
 }
 
+.farm-inventory-issue-page {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: var(--shadow-sm);
+}
+
+.farm-issue-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.farm-issue-kpis article {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.farm-issue-kpis span,
+.farm-issue-kpis small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.farm-issue-kpis strong {
+  color: var(--navy);
+  font-size: 22px;
+}
+
+.farm-issue-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.farm-issue-toolbar button {
+  min-height: 34px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 11px;
+  background: #fff;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.farm-issue-toolbar button:first-child {
+  background: var(--primary);
+  color: #fff;
+}
+
+.farm-issue-table-wrap {
+  max-height: 620px;
+}
+
+.farm-issue-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.farm-issue-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-issue-status.ready {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.farm-issue-status.done {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.farm-issue-status.waiting {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .farm-work-order-list {
   display: grid;
   gap: 10px;
@@ -7945,6 +8043,7 @@ td.num,
   .farm-dispatch-grid,
   .farm-dispatch-fields,
   .farm-dispatch-worker-list,
+  .farm-issue-kpis,
   .farm-work-kpis,
   .farm-work-filters,
   .farm-work-layout,
@@ -8050,6 +8149,7 @@ td.num,
   .farm-dispatch-fields,
   .farm-dispatch-worker-list,
   .farm-dispatch-print dl,
+  .farm-issue-kpis,
   .farm-work-kpis,
   .farm-work-filters,
   .farm-work-layout,

@@ -459,11 +459,11 @@ const FARM_MODULES = [
   },
   {
     id: "farm-work",
-    title: "ระบบทำงาน",
+    title: "วางแผน",
     group: "Operation",
-    accent: "Plan → Work Order → Daily Record",
-    description: "วางแผน สั่งงาน อนุมัติ QR Code Work Order เช็คอิน GPS และบันทึกประจำวันผ่านมือถือ",
-    tables: ["work_plans", "plan_materials", "work_orders", "work_order_resources", "work_order_qr_codes", "work_order_locations", "work_attendance", "work_results"],
+    accent: "Plan → Work Order",
+    description: "สร้างแผนงานและ Work Order จากพื้นที่ กิจกรรม ทีม และอัตรางบประมาณ ก่อนส่งต่อให้ผู้จัดการสั่งงาน",
+    tables: ["work_plans", "plan_materials", "work_orders", "work_order_resources"],
     fields: [
       ["code", "เลขที่งาน", "WO-2569-001"],
       ["name", "ชื่องาน", "ใส่ปุ๋ยแปลง PLT-001"],
@@ -477,6 +477,16 @@ const FARM_MODULES = [
       { code: "PLAN-2569-001", name: "แผนใส่ปุ๋ยไตรมาส 1", plot: "PLT-001", activity: "ใส่ปุ๋ย", team: "ทีมสวน A", scheduledDate: "2026-01-15", status: "planned" },
       { code: "WO-2569-001", name: "ใบสั่งงานตัดปาล์ม", plot: "PLT-001", activity: "ตัดปาล์ม", team: "ทีมตัดปาล์ม A", scheduledDate: "2026-01-20", status: "sent_to_mobile" },
     ],
+  },
+  {
+    id: "farm-dispatch",
+    title: "สั่งงาน",
+    group: "Operation",
+    accent: "Manager Dispatch",
+    description: "หน้าส่วนตัวของผู้จัดการสำหรับหยิบ Work Order จากแผน ปรับวัน ทีม คนงาน และออกใบสั่งงานพร้อมใบเบิกพัสดุ",
+    tables: ["work_orders", "work_order_workers", "work_order_materials", "work_order_machines", "inventory_documents", "inventory_document_lines"],
+    fields: [],
+    seed: [],
   },
   {
     id: "farm-inventory",
@@ -498,6 +508,16 @@ const FARM_MODULES = [
       { code: "MAT-001", name: "ปุ๋ย 25kg", category: "ปุ๋ย", warehouse: "คลังกลาง", quantity: "100", unit: "กระสอบ", status: "active" },
       { code: "FUEL-001", name: "น้ำมันดีเซล", category: "น้ำมัน", warehouse: "ถังน้ำมันหลัก", quantity: "5000", unit: "ลิตร", status: "active" },
     ],
+  },
+  {
+    id: "farm-inventory-issue",
+    title: "จ่ายพัสดุตามใบงาน",
+    group: "Inventory",
+    accent: "Issue Queue",
+    description: "หน้าฝ่ายพัสดุสำหรับเห็นรายการเบิกที่มาจากแผนและใบสั่งงาน เพื่อเตรียมจ่ายและตัดจ่ายในระบบ",
+    tables: ["inventory_documents", "inventory_document_lines", "work_order_materials", "planned_work_materials", "materials", "work_orders"],
+    fields: [],
+    seed: [],
   },
   {
     id: "farm-payroll",
@@ -603,10 +623,10 @@ const FARM_MODULES = [
 
 const FARM_WORKFLOW_STAGES = [
   { no: "01", title: "ข้อมูลหลัก", views: ["farm-area", "farm-activities", "farm-inventory", "farm-budget"], note: "เตรียมพื้นที่ กิจกรรม พัสดุ และอัตรางบประมาณ", role: "Admin / Manager" },
-  { no: "02", title: "วางแผน", views: ["farm-work"], table: "work_plans", note: "กำหนดแผนรายปี แผนรายกิจกรรม และพื้นที่ทำงาน", role: "Estate Manager" },
-  { no: "03", title: "สั่งงาน", views: ["farm-work"], table: "work_orders", note: "สร้างใบสั่งงาน ทีม วัสดุ QR และกำหนดวันทำงาน", role: "Supervisor" },
-  { no: "04", title: "อนุมัติ", views: ["farm-governance"], table: "approval_logs", note: "ตรวจสิทธิ์ ขอบเขตพื้นที่ และลำดับอนุมัติ", role: "Director / Manager" },
-  { no: "05", title: "บันทึกงาน", views: ["farm-work"], table: "work_results", note: "เช็คชื่อ GPS ผลงาน วัสดุใช้จริง และสถานะงาน", role: "Supervisor / Mobile" },
+  { no: "02", title: "วางแผน", views: ["farm-work"], table: "work_plans", note: "กำหนดแผนรายปี แผนรายกิจกรรม และพื้นที่ทำงาน", role: "Director / Planner" },
+  { no: "03", title: "สั่งงาน", views: ["farm-dispatch"], table: "work_orders", note: "ผู้จัดการหยิบแผนมาสั่งงาน ปรับวัน ทีม คนงาน และออกใบสั่งงาน", role: "Estate Manager" },
+  { no: "04", title: "จ่ายพัสดุ", views: ["farm-inventory-issue"], table: "inventory_documents", note: "ฝ่ายพัสดุเห็นรายการเบิกจากแผนและใบสั่งงานเพื่อจ่ายและตัดสต๊อก", role: "Store / Inventory" },
+  { no: "05", title: "บันทึกงาน", views: ["farm-dispatch"], table: "work_results", note: "หัวหน้าทีมรับงานและบันทึกผลจริงจากใบสั่งงาน", role: "Supervisor / Mobile" },
   { no: "06", title: "ค่าแรง / ต้นทุน", views: ["farm-payroll", "farm-budget"], note: "คำนวณค่าแรง รายชั่วโมง OT เงินเพิ่ม เงินหัก และต้นทุน", role: "Accounting" },
   { no: "07", title: "รายงาน", views: ["farm-reports"], note: "สรุปรายงาน ตรวจย้อนหลัง และส่งออก Excel/PDF", role: "Viewer / Auditor" },
 ];
@@ -617,6 +637,8 @@ const FARM_OPERATION_WORKFLOW_VIEWS = new Set([
   "farm-inventory",
   "farm-budget",
   "farm-work",
+  "farm-dispatch",
+  "farm-inventory-issue",
   "farm-reports",
 ]);
 
@@ -11142,7 +11164,7 @@ async function createFarmWorkPlanFromSelection() {
 }
 
 function farmDispatchCandidateOrders() {
-  const rows = filteredFarmWorkOrders();
+  const rows = farmWorkOrders();
   const preferred = rows.filter((row) => !["closed", "completed", "rejected"].includes(row.statusMeta.key));
   return preferred.length ? preferred : rows.length ? rows : farmWorkOrders();
 }
@@ -11564,6 +11586,143 @@ function syncFarmDispatchPrintPreviewFromForm() {
   }
 }
 
+function farmIssueMaterialCandidatesForOrder(order) {
+  const existing = farmRowsByKey("work_order_materials").filter((row) => row.work_order_id === order?.id);
+  if (existing.length) {
+    return existing.map((row) => {
+      const material = farmLookup("materials", row.material_id) || {};
+      return {
+        material_id: row.material_id,
+        material_name: farmRecordLabel(farmTableByKey("materials"), material) || row.material_id,
+        planned_quantity: n(row.planned_quantity),
+        issued_quantity: n(row.issued_quantity),
+        unit_id: row.unit_id || material.base_unit_id || "",
+        unit_name: farmLookupLabel("units", row.unit_id || material.base_unit_id),
+        source: "work_order",
+      };
+    }).filter((row) => row.material_id);
+  }
+  const planned = farmRowsByKey("planned_work_materials").filter((row) => row.planned_work_item_id === order?.planned_work_item_id);
+  if (planned.length) {
+    return planned.map((row) => {
+      const material = farmLookup("materials", row.material_id) || {};
+      return {
+        material_id: row.material_id,
+        material_name: farmRecordLabel(farmTableByKey("materials"), material) || row.material_id,
+        planned_quantity: n(row.planned_quantity),
+        issued_quantity: 0,
+        unit_id: row.unit_id || material.base_unit_id || "",
+        unit_name: farmLookupLabel("units", row.unit_id || material.base_unit_id),
+        source: "planned",
+      };
+    }).filter((row) => row.material_id);
+  }
+  const block = order?.block || farmLookup("blocks", order?.block_id) || {};
+  return farmRowsByKey("activity_material_usage_rates")
+    .filter((row) => row.activity_id === order?.activity_id)
+    .map((row) => {
+      const material = farmLookup("materials", row.material_id) || {};
+      const base = row.usage_basis === "per_tree" ? n(block.tree_count) : row.usage_basis === "per_rai" ? n(block.area_rai) : 1;
+      const qty = base * n(row.usage_rate || 0);
+      return {
+        material_id: row.material_id,
+        material_name: farmRecordLabel(farmTableByKey("materials"), material) || row.material_id,
+        planned_quantity: qty,
+        issued_quantity: 0,
+        unit_id: material.base_unit_id || "",
+        unit_name: row.usage_unit || farmLookupLabel("units", material.base_unit_id),
+        source: "activity_rate",
+      };
+    })
+    .filter((row) => row.material_id);
+}
+
+function farmInventoryIssueRows() {
+  const docs = farmRowsByKey("inventory_documents").filter((row) => String(row.doc_type || "").toLowerCase() === "issue");
+  return farmWorkOrders().flatMap((order) => {
+    const doc = docs.find((row) => row.work_order_id === order.id);
+    const area = [order.plot?.plot_code, order.block?.block_code || order.block?.block_name, order.block?.ap_code || order.block?.AP_code].filter(Boolean).join(" / ") || "-";
+    return farmIssueMaterialCandidatesForOrder(order).map((item) => {
+      const issued = n(item.issued_quantity);
+      const planned = n(item.planned_quantity);
+      const remaining = Math.max(0, planned - issued);
+      return {
+        id: `${order.id}:${item.material_id}`,
+        order,
+        document: doc,
+        area,
+        material: item,
+        planned,
+        issued,
+        remaining,
+        status: doc?.status === "issued" || issued >= planned && planned > 0 ? "issued" : order.statusMeta.key === "sent_to_mobile" ? "ready" : "waiting_dispatch",
+      };
+    });
+  }).sort((a, b) => farmDateMs(a.order.scheduled_date || a.order.startDate) - farmDateMs(b.order.scheduled_date || b.order.startDate)
+    || String(a.order.work_order_no || "").localeCompare(String(b.order.work_order_no || ""), "th"));
+}
+
+function renderFarmInventoryIssueQueue() {
+  const rows = farmInventoryIssueRows();
+  const readyRows = rows.filter((row) => row.status === "ready");
+  const issuedRows = rows.filter((row) => row.status === "issued");
+  const totalPlanned = rows.reduce((sum, row) => sum + row.planned, 0);
+  const totalRemaining = rows.reduce((sum, row) => sum + row.remaining, 0);
+  const statusLabel = (status) => status === "issued" ? "จ่ายแล้ว" : status === "ready" ? "พร้อมจ่าย" : "รอสั่งงาน";
+  const statusClass = (status) => status === "issued" ? "done" : status === "ready" ? "ready" : "waiting";
+  return `
+    <section class="farm-inventory-issue-page">
+      <div class="section-head">
+        <h3>คิวจ่ายพัสดุตามใบงาน</h3>
+        <span>ฝ่ายพัสดุเห็นรายการที่มาจากแผนและใบสั่งงาน โดยไม่ต้องเข้าเมนูวางแผนหรือสั่งงาน</span>
+      </div>
+      <div class="farm-issue-kpis">
+        <article><span>Work Order ที่มีพัสดุ</span><strong>${fmt(new Set(rows.map((row) => row.order.id)).size)}</strong><small>จากแผนและใบสั่งงาน</small></article>
+        <article><span>พร้อมจ่าย</span><strong>${fmt(readyRows.length)}</strong><small>สถานะส่งเข้ามือถือแล้ว</small></article>
+        <article><span>จ่ายแล้ว</span><strong>${fmt(issuedRows.length)}</strong><small>มีเอกสาร issue หรือ issued qty</small></article>
+        <article><span>คงค้าง</span><strong>${moneyNf.format(totalRemaining)}</strong><small>จากแผน ${moneyNf.format(totalPlanned)}</small></article>
+      </div>
+      <div class="farm-issue-toolbar">
+        <button type="button" data-view-jump="farm-dispatch">ไปหน้าสั่งงาน</button>
+        <button type="button" data-farm-open-table="inventory_documents">เปิดเอกสารพัสดุ</button>
+        <button type="button" data-farm-open-table="inventory_document_lines">เปิดรายการตัดจ่าย</button>
+      </div>
+      <div class="table-wrap farm-issue-table-wrap">
+        <table class="mini-table farm-table farm-issue-table">
+          <thead>
+            <tr>
+              <th>วันที่จ่าย</th>
+              <th>WO</th>
+              <th>งาน / พื้นที่</th>
+              <th>พัสดุ</th>
+              <th>แผน</th>
+              <th>จ่ายแล้ว</th>
+              <th>คงจ่าย</th>
+              <th>หน่วย</th>
+              <th>ที่มา</th>
+              <th>สถานะ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td>${esc(displayDate(row.document?.doc_date || row.order.scheduled_date || row.order.startDate) || "-")}</td>
+                <td><strong>${esc(row.order.work_order_no || row.order.id)}</strong><small>${esc(row.document?.document_no || "")}</small></td>
+                <td>${esc(row.order.work_order_title || "-")}<small>${esc(row.area)}</small></td>
+                <td>${esc(row.material.material_name || "-")}</td>
+                <td class="num">${moneyNf.format(row.planned)}</td>
+                <td class="num">${moneyNf.format(row.issued)}</td>
+                <td class="num">${moneyNf.format(row.remaining)}</td>
+                <td>${esc(row.material.unit_name || "-")}</td>
+                <td>${esc(row.material.source === "work_order" ? "ใบสั่งงาน" : row.material.source === "planned" ? "แผนงาน" : "อัตรากิจกรรม")}</td>
+                <td><span class="farm-issue-status ${statusClass(row.status)}">${statusLabel(row.status)}</span></td>
+              </tr>`).join("") || `<tr><td colspan="10">ยังไม่มีรายการพัสดุที่ผูกกับแผนหรือใบสั่งงาน</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
 function renderFarmWorkBoard() {
   const allRows = farmWorkOrders();
   const rows = filteredFarmWorkOrders();
@@ -11712,7 +11871,7 @@ function renderFarmWorkBoard() {
 }
 
 function renderFarmWorkOrderList() {
-  const rows = filteredFarmWorkOrders();
+  const rows = state.view === "farm-dispatch" ? farmWorkOrders() : filteredFarmWorkOrders();
   return `
     <section class="farm-panel farm-work-order-list">
       <div class="section-head">
@@ -13173,23 +13332,34 @@ function renderFarmPage() {
   const dbRowCount = Object.values(state.farmDbRows || {}).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0);
   const dbErrorCount = Object.keys(state.farmDbErrors || {}).length;
   const isWorkPage = module.id === "farm-work";
+  const isDispatchPage = module.id === "farm-dispatch";
+  const isInventoryIssuePage = module.id === "farm-inventory-issue";
+  const isWorkflowPage = isWorkPage || isDispatchPage || isInventoryIssuePage;
   const isHrPage = farmHrModuleActive(module);
   const isBudgetPage = module.id === "farm-budget";
   const isActivityPage = module.id === "farm-activities";
   const isAreaPage = module.id === "farm-area";
+  const pageTitle = isWorkPage ? "วางแผนสร้าง Work Order"
+    : isDispatchPage ? "สั่งงานผู้จัดการ"
+      : isInventoryIssuePage ? "จ่ายพัสดุตามใบงาน"
+        : module.title;
+  const pageDescription = isWorkPage ? "Director / Planner สร้างแผนและ Work Order ก่อนส่งต่อให้ผู้จัดการ"
+    : isDispatchPage ? "Estate Manager หยิบแผนมาสั่งงาน ปรับวัน ทีม คนงาน และออกใบสั่งงานพร้อมใบเบิก"
+      : isInventoryIssuePage ? "ฝ่ายพัสดุเห็นรายการที่ต้องจ่ายจากแผนและใบสั่งงาน เพื่อเตรียมจ่ายและตัดสต๊อก"
+        : module.description;
   return `
-    <div class="farm-page${isWorkPage ? " farm-work-page" : ""}">
-      <div class="report-title${isWorkPage ? " farm-work-title" : ""}">
+    <div class="farm-page${isWorkPage || isDispatchPage ? " farm-work-page" : ""}${isInventoryIssuePage ? " farm-inventory-issue-view" : ""}">
+      <div class="report-title${isWorkPage || isDispatchPage ? " farm-work-title" : ""}">
         <div>
-          <h2>${isWorkPage ? "วางแผน / สั่งงาน / บันทึกงาน" : esc(module.title)}</h2>
-          <p>${isWorkPage ? "Director วางแผน → Estate Manager สั่งงาน → Supervisor บันทึกงาน" : esc(module.description)}</p>
+          <h2>${esc(pageTitle)}</h2>
+          <p>${esc(pageDescription)}</p>
         </div>
         <button type="button" data-farm-db-refresh>Refresh DB</button>
       </div>
       ${isBudgetPage ? "" : renderFarmWorkflowNav(module)}
       ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isBudgetPage ? renderFarmBudgetBoard() : ""}
-      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-hero">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
@@ -13199,10 +13369,12 @@ function renderFarmPage() {
       ${state.farmSyncMessage ? `<div class="farm-sync-status ${esc(state.farmSyncStatus)}">${esc(state.farmSyncMessage)}</div>` : ""}
       ${isAreaPage ? `${renderFarmAreaBlockMap()}${renderFarmAreaBoard()}` : ""}
       ${isActivityPage ? renderFarmActivitiesBoard() : ""}
-      ${isWorkPage ? `${renderFarmWorkBoard()}${renderFarmWorkPlanner()}${renderFarmDispatchPanel()}${renderFarmWorkOrderList()}${renderFarmActivityModal()}` : ""}
+      ${isWorkPage ? `${renderFarmWorkBoard()}${renderFarmWorkPlanner()}` : ""}
+      ${isDispatchPage ? `${renderFarmDispatchPanel()}${renderFarmWorkOrderList()}${renderFarmActivityModal()}` : ""}
+      ${isInventoryIssuePage ? renderFarmInventoryIssueQueue() : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
-      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-toolbar">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-toolbar">
         <label>ตารางข้อมูล
           <select id="farmTableSelect">
             ${tables.map((item) => `<option value="${esc(item.key)}"${item.key === table.key ? " selected" : ""}>${esc(farmTableDisplayName(item))}</option>`).join("")}
@@ -13226,9 +13398,9 @@ function renderFarmPage() {
           <input id="farmImportFile" type="file" accept=".csv,text/csv" ${state.farmSyncBusy ? "disabled" : ""}>
         </label>
       </section>`}
-      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : renderFarmDataEntryGuide(table)}
-      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : renderFarmKeyBindings(table)}
-      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-layout">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage ? "" : renderFarmDataEntryGuide(table)}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage ? "" : renderFarmKeyBindings(table)}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-layout">
         <article class="farm-panel">
           <div class="section-head"><h3>${state.farmEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูล"}</h3><span>${esc(table.key)} / * คือข้อมูลจำเป็น</span></div>
           <form class="farm-form">
@@ -13253,7 +13425,7 @@ function renderFarmPage() {
           <div class="farm-table-list">${tables.map((item) => `<span>${esc(item.key)}</span>`).join("")}</div>
         </article>
       </section>`}
-      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-panel">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-panel">
         <div class="section-head"><h3>ตารางรายการ</h3><span>Search / Filter / Add / Edit / Set Inactive / Detail / Export</span></div>
         <div class="table-wrap farm-table-wrap">
           <table class="mini-table farm-table">
