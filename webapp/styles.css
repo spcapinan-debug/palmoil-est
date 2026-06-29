@@ -6800,6 +6800,141 @@ tfoot td {
   color: #92400e;
 }
 
+.farm-result-page {
+  display: grid;
+  gap: 12px;
+}
+
+.farm-result-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, .9fr) minmax(360px, 1.4fr) minmax(320px, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.farm-result-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: var(--shadow-sm);
+}
+
+.farm-result-card h4 {
+  margin: 0 0 10px;
+  color: var(--navy);
+  font-size: 13px;
+}
+
+.farm-result-card label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-result-card input,
+.farm-result-card select {
+  min-height: 34px;
+  width: 100%;
+  border: 1px solid #cfd7e6;
+  border-radius: 7px;
+  padding: 0 10px;
+  background: #fff;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.farm-result-card .date-input-control input[type="text"] {
+  padding-right: 42px;
+}
+
+.farm-result-card dl {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 12px 0 0;
+  font-size: 12px;
+}
+
+.farm-result-card dt {
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.farm-result-card dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--navy);
+  font-weight: 900;
+}
+
+.farm-result-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.farm-result-fields label:nth-child(2),
+.farm-result-fields label:nth-child(6) {
+  grid-column: span 2;
+}
+
+.farm-result-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.farm-result-kpis span {
+  display: grid;
+  gap: 2px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  padding: 9px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.farm-result-kpis b {
+  color: var(--primary);
+  font-size: 18px;
+}
+
+.farm-result-calc p {
+  margin: 6px 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.farm-result-calc button {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 900;
+}
+
+.farm-result-calc button:disabled {
+  opacity: .55;
+}
+
+.farm-result-tables {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
 .farm-work-order-list {
   display: grid;
   gap: 10px;
@@ -8044,6 +8179,10 @@ td.num,
   .farm-dispatch-fields,
   .farm-dispatch-worker-list,
   .farm-issue-kpis,
+  .farm-result-grid,
+  .farm-result-fields,
+  .farm-result-kpis,
+  .farm-result-tables,
   .farm-work-kpis,
   .farm-work-filters,
   .farm-work-layout,
