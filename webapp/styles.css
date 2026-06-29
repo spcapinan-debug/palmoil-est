@@ -7096,6 +7096,24 @@ tfoot td {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
+}
+
+.farm-work-legend label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin-right: 18px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-work-legend input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #4f83e5;
 }
 
 .farm-work-legend span {
@@ -7512,6 +7530,144 @@ tfoot td {
 .farm-work-group-lane {
   min-height: 34px;
   background: repeating-linear-gradient(135deg, #f8fafc 0, #f8fafc 8px, #eef4fa 8px, #eef4fa 16px);
+}
+
+.farm-work-compact .farm-work-gantt {
+  max-height: 560px;
+  border-radius: 6px;
+}
+
+.farm-work-compact .farm-work-grid-head,
+.farm-work-compact .farm-work-row {
+  grid-template-columns: 430px max-content;
+}
+
+.farm-work-compact .farm-work-left-head,
+.farm-work-compact .farm-work-left {
+  grid-template-columns: 62px minmax(150px, 1fr) 74px 80px 72px;
+  gap: 6px;
+}
+
+.farm-work-compact .farm-work-left-head {
+  min-height: 34px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+
+.farm-work-compact .farm-work-scale {
+  min-height: 34px;
+}
+
+.farm-work-compact .farm-work-months {
+  min-height: 15px;
+}
+
+.farm-work-compact .farm-work-months span {
+  font-size: 9px;
+}
+
+.farm-work-compact .farm-work-days {
+  min-height: 18px;
+}
+
+.farm-work-compact .farm-work-days span {
+  font-size: 9px;
+}
+
+.farm-work-compact .farm-work-days small {
+  display: none;
+}
+
+.farm-work-compact .farm-work-row {
+  min-height: 28px;
+}
+
+.farm-work-compact .farm-work-left {
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+.farm-work-compact .farm-work-left b {
+  font-size: 10px;
+}
+
+.farm-work-compact .farm-work-left strong {
+  display: block;
+  font-size: 10.5px;
+}
+
+.farm-work-compact .farm-work-left strong small {
+  display: none;
+}
+
+.farm-work-compact .farm-work-left span {
+  font-size: 10px;
+}
+
+.farm-work-compact .farm-work-left > i {
+  padding: 2px 5px;
+  font-size: 9px;
+}
+
+.farm-work-compact .farm-work-lane {
+  min-height: 28px;
+  background-size: 24px 100%, 100% 100%;
+}
+
+.farm-work-compact .farm-work-plan-bar,
+.farm-work-compact .farm-work-actual-bar {
+  min-height: 7px;
+  border-radius: 0;
+}
+
+.farm-work-compact .farm-work-plan-bar span,
+.farm-work-compact .farm-work-actual-bar span {
+  height: 0;
+  padding: 0;
+  color: transparent;
+}
+
+.farm-work-compact .farm-work-plan-bar.draft {
+  top: 5px;
+  border-width: 1px;
+}
+
+.farm-work-compact .farm-work-plan-bar.approved {
+  top: 12px;
+  border-width: 1px;
+}
+
+.farm-work-compact .farm-work-actual-bar {
+  top: 20px;
+  border-width: 1px;
+  box-shadow: none;
+}
+
+.farm-work-compact .farm-work-milestone {
+  width: 9px;
+  height: 9px;
+}
+
+.farm-work-compact .farm-work-milestone.approval {
+  top: 4px;
+}
+
+.farm-work-compact .farm-work-milestone.approved {
+  top: 12px;
+}
+
+.farm-work-compact .farm-work-milestone.closed {
+  top: 20px;
+}
+
+.farm-work-compact .farm-work-group-row,
+.farm-work-compact .farm-work-group-lane {
+  min-height: 24px;
+}
+
+.farm-work-compact .farm-work-group-left {
+  padding: 0 8px;
+  font-size: 10px;
 }
 
 .farm-work-empty {
