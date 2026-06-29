@@ -12252,7 +12252,6 @@ function renderFarmActivitiesBoard() {
     .sort((a, b) => String(a.activity_code || "").localeCompare(String(b.activity_code || ""), "th", { numeric: true }));
   const allGroups = farmRows(groupTable);
   const allActivities = farmRows(activityTable);
-  const ungroupedActivities = activities.filter((activity) => !activity.activity_group_id || !allGroups.some((group) => group.id === activity.activity_group_id));
   const wageLabel = (id) => {
     const wage = farmRows(wageTable).find((row) => row.id === id);
     return wage ? [wage.wage_code, wage.wage_name].filter(Boolean).join(" - ") : "-";
@@ -12265,9 +12264,6 @@ function renderFarmActivitiesBoard() {
         <td>${esc(group.group_name || "-")}</td>
         <td class="num">${fmt(count)}</td>
         <td>${esc(group.status || "-")}</td>
-        <td class="farm-actions">
-          <button type="button" data-farm-activity-edit-table="activity_groups" data-farm-activity-edit="${esc(group.id)}">แก้ไข</button>
-        </td>
       </tr>`;
   }).join("");
   const activityRows = activities.map((activity) => {
@@ -12280,21 +12276,7 @@ function renderFarmActivitiesBoard() {
         <td>${esc(wageLabel(activity.wage_code_id))}</td>
         <td>${esc(activity.default_unit || "-")}</td>
         <td>${esc(activity.status || "-")}</td>
-        <td class="farm-actions">
-          <button type="button" data-farm-activity-edit-table="activities" data-farm-activity-edit="${esc(activity.id)}">แก้ไข</button>
-        </td>
       </tr>`;
-  }).join("");
-  const groupedTree = allGroups.map((group) => {
-    const groupActivities = allActivities.filter((activity) => activity.activity_group_id === group.id);
-    return `
-      <section class="farm-activity-tree-group" data-activity-drop-group="${esc(group.id)}">
-        <h4>${esc(farmActivityGroupLabel(group))} <span>${fmt(groupActivities.length)}</span></h4>
-        ${groupActivities.map((activity) => `
-          <button type="button" draggable="true" data-activity-drag="${esc(activity.id)}" data-farm-activity-edit-table="activities" data-farm-activity-edit="${esc(activity.id)}">
-            ${esc(farmActivityRowLabel(activity))}
-          </button>`).join("") || `<p>ลากกิจกรรมมาใส่กลุ่มนี้</p>`}
-      </section>`;
   }).join("");
   return `
     <section class="farm-activity-board">
@@ -12319,8 +12301,8 @@ function renderFarmActivitiesBoard() {
           </div>
           <div class="table-wrap farm-activity-table-wrap">
             <table class="mini-table farm-table">
-              <thead><tr><th>รหัส</th><th>ชื่อกลุ่ม</th><th>กิจกรรม</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
-              <tbody>${groupRows || `<tr><td colspan="5">ไม่พบกลุ่มกิจกรรม</td></tr>`}</tbody>
+              <thead><tr><th>รหัส</th><th>ชื่อกลุ่ม</th><th>กิจกรรม</th><th>สถานะ</th></tr></thead>
+              <tbody>${groupRows || `<tr><td colspan="4">ไม่พบกลุ่มกิจกรรม</td></tr>`}</tbody>
             </table>
           </div>
         </article>
@@ -12331,22 +12313,12 @@ function renderFarmActivitiesBoard() {
           </div>
           <div class="table-wrap farm-activity-table-wrap">
             <table class="mini-table farm-table">
-              <thead><tr><th>รหัส</th><th>กิจกรรม</th><th>กลุ่ม</th><th>รหัสค่าแรง</th><th>หน่วย</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
-              <tbody>${activityRows || `<tr><td colspan="7">ไม่พบกิจกรรม</td></tr>`}</tbody>
+              <thead><tr><th>รหัส</th><th>กิจกรรม</th><th>กลุ่ม</th><th>รหัสค่าแรง</th><th>หน่วย</th><th>สถานะ</th></tr></thead>
+              <tbody>${activityRows || `<tr><td colspan="6">ไม่พบกิจกรรม</td></tr>`}</tbody>
             </table>
           </div>
         </article>
       </div>
-      <section class="farm-panel farm-activity-tree-panel">
-        <div class="section-head"><h3>จัดกลุ่มด้วยการลาก</h3><span>ลากแถวกิจกรรมไปวางที่กลุ่มกิจกรรม ระบบจะบันทึกทันที</span></div>
-        <div class="farm-activity-tree">
-          <section class="farm-activity-tree-group ungrouped" data-activity-drop-group="">
-            <h4>ไม่ระบุกลุ่ม <span>${fmt(ungroupedActivities.length)}</span></h4>
-            ${ungroupedActivities.map((activity) => `<button type="button" draggable="true" data-activity-drag="${esc(activity.id)}" data-farm-activity-edit-table="activities" data-farm-activity-edit="${esc(activity.id)}">${esc(farmActivityRowLabel(activity))}</button>`).join("") || `<p>ไม่มีรายการ</p>`}
-          </section>
-          ${groupedTree}
-        </div>
-      </section>
       <section class="farm-panel">
         <div class="section-head"><h3>ตารางรายการ</h3><span>ดับเบิลคลิกแถวกิจกรรมเพื่อแก้ไข</span></div>
         <div class="table-wrap farm-activity-bottom-wrap">
@@ -14084,6 +14056,15 @@ async function init() {
     setView(btn.dataset.view);
   });
   els.reportPage.addEventListener("dblclick", (e) => {
+    const groupRow = e.target.closest("[data-farm-activity-group-row]");
+    if (groupRow) {
+      state.farmTableId = "activity_groups";
+      state.farmActivityModalTable = "activity_groups";
+      state.farmEditId = groupRow.dataset.farmActivityGroupRow;
+      state.farmDetailId = state.farmEditId;
+      render();
+      return;
+    }
     const activityRow = e.target.closest("[data-farm-activity-row]");
     if (!activityRow) return;
     state.farmTableId = "activities";
