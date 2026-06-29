@@ -10710,6 +10710,102 @@ function farmWorkStatusMeta(order) {
   return { key: status, label: status || "ไม่ระบุ", color: "#64748b", tone: "neutral" };
 }
 
+function farmThaiYearSuffix(dateValue = farmToday()) {
+  const iso = isoDay(dateValue) || farmToday();
+  const year = Number(String(iso).slice(0, 4)) || new Date().getFullYear();
+  return String(year + 543).slice(-2);
+}
+
+function farmShortWorkOrderNo(order = {}) {
+  const sourceNo = String(order.work_order_no || order.orderNo || order.id || "").trim();
+  const date = order.scheduled_date || order.planned_start_date || order.orderDate || farmToday();
+  const yearSuffix = farmThaiYearSuffix(date);
+  const directShort = sourceNo.match(/^W(\d{2})[-/](\d{1,5})$/i);
+  if (directShort) return `W${directShort[1]}-${String(Number(directShort[2]) || directShort[2]).padStart(3, "0")}`;
+  const yearSeq = sourceNo.match(/(?:WO[-/])?(\d{4}|\d{2})(?:[-/]\d{2,8})?[-/](\d{1,5})$/i);
+  if (yearSeq) {
+    const year = yearSeq[1].length === 4 ? String(yearSeq[1]).slice(-2) : yearSeq[1];
+    return `W${year}-${String(Number(yearSeq[2]) || yearSeq[2]).padStart(3, "0")}`;
+  }
+  const tail = sourceNo.match(/(\d{1,5})$/);
+  const seq = tail ? tail[1] : "1";
+  return `W${yearSuffix}-${String(Number(seq) || seq).padStart(3, "0")}`;
+}
+
+function farmNextShortWorkOrderNo(dateValue = farmToday(), offset = 0) {
+  const yearSuffix = farmThaiYearSuffix(dateValue);
+  const used = farmRowsByKey("work_orders").map((row) => farmShortWorkOrderNo(row))
+    .map((value) => value.match(new RegExp(`^W${yearSuffix}-(\\d+)$`, "i"))?.[1])
+    .filter(Boolean)
+    .map((value) => Number(value) || 0);
+  const next = Math.max(0, ...used) + offset + 1;
+  return `W${yearSuffix}-${String(next).padStart(3, "0")}`;
+}
+
+function farmWorkOrderQrPayload(order = {}, action = "open") {
+  return JSON.stringify({
+    app: "kirirat-palm-estate",
+    type: "work_order",
+    action,
+    wo: farmShortWorkOrderNo(order),
+    id: order.id || "",
+    date: order.scheduled_date || order.planned_start_date || "",
+  });
+}
+
+function farmWorkOrderQrUrl(order = {}, action = "open", size = 132) {
+  const payload = farmWorkOrderQrPayload(order, action);
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=1&data=${encodeURIComponent(payload)}`;
+}
+
+function renderFarmQrCard(order, label = "QR Work Order", action = "open") {
+  if (!order) return "";
+  const shortNo = farmShortWorkOrderNo(order);
+  return `
+    <aside class="farm-qr-card">
+      <img src="${esc(farmWorkOrderQrUrl(order, action, 132))}" alt="QR ${esc(shortNo)}" loading="lazy">
+      <div>
+        <span>${esc(label)}</span>
+        <strong>${esc(shortNo)}</strong>
+        <small>${esc(order.work_order_no && order.work_order_no !== shortNo ? `เดิม ${order.work_order_no}` : "สแกนเพื่ออ้างอิงใบงาน")}</small>
+      </div>
+    </aside>`;
+}
+
+function renderFarmQrInline(order, action = "open") {
+  if (!order) return "";
+  const shortNo = farmShortWorkOrderNo(order);
+  return `
+    <span class="farm-qr-inline">
+      <img src="${esc(farmWorkOrderQrUrl(order, action, 58))}" alt="QR ${esc(shortNo)}" loading="lazy">
+      <span><strong>${esc(shortNo)}</strong><small>${esc(order.work_order_no && order.work_order_no !== shortNo ? order.work_order_no : "QR")}</small></span>
+    </span>`;
+}
+
+async function ensureFarmWorkOrderQr(order = {}, action = "open") {
+  const table = farmTableByKey("work_order_qr_codes");
+  if (!table || !order?.id) return null;
+  const shortNo = farmShortWorkOrderNo(order);
+  const token = `${shortNo}:${order.id}:${action}`;
+  const row = {
+    id: `qr-${order.id}`.slice(0, 180),
+    moduleId: "farm-work",
+    tableId: "work_order_qr_codes",
+    work_order_id: order.id,
+    qr_token: token,
+    status: "active",
+    updatedAt: new Date().toISOString(),
+  };
+  state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_order_qr_codes" && item.work_order_id === order.id));
+  state.farmRecords.push(row);
+  try {
+    await persistFarmRowToDatabase(table, row);
+  } catch (error) {
+    state.farmDbErrors = { ...(state.farmDbErrors || {}), work_order_qr_codes: error.message };
+  }
+  return row;
+}
+
 function farmDateMs(value) {
   const iso = isoDay(value);
   return iso ? new Date(`${iso}T00:00:00`).getTime() : 0;
@@ -10763,6 +10859,7 @@ function farmWorkOrders() {
       activityGroup: group,
       team,
       plotGroup,
+      shortNo: farmShortWorkOrderNo(order),
       statusMeta: farmWorkStatusMeta(order),
     };
   }).sort((a, b) => farmDateMs(a.startDate) - farmDateMs(b.startDate));
@@ -10783,7 +10880,7 @@ function filteredFarmWorkOrders() {
   const query = f.query.trim().toLowerCase();
   return farmWorkOrders().filter((row) => {
     const statusKey = row.statusMeta.key;
-    const text = [row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.block?.block_code, row.block?.block_name, row.block?.ap_code || row.block?.AP_code, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
+    const text = [row.shortNo, row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.block?.block_code, row.block?.block_name, row.block?.ap_code || row.block?.AP_code, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
     return (f.activityGroup === "all" || row.activityGroup?.id === f.activityGroup)
       && (f.team === "all" || row.team?.id === f.team)
       && (f.zone === "all" || row.zone?.id === f.zone)
@@ -10992,7 +11089,7 @@ function renderFarmWorkPlanner() {
   const totalCost = laborCost + materialCost;
   const plotCountText = `${fmt(selectedBlocks.length)} จาก ${fmt(blocks.length)} Block`;
   const selectedWorkerCount = selectedWorkerRefs.length || previewMembers.length || (previewTeam ? 1 : 0);
-  const latestWorkOptions = workOrders.slice(0, 6).map((row) => `<option>${esc(row.work_order_no || row.id)} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("");
+  const latestWorkOptions = workOrders.slice(0, 6).map((row) => `<option>${esc(row.shortNo || farmShortWorkOrderNo(row))} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("");
   return `
     <section class="farm-planner-console">
       <div class="section-head">
@@ -11142,7 +11239,7 @@ async function createFarmWorkPlanFromSelection() {
           id: `farm-work-orders-${stamp}`,
           moduleId: "farm-work",
           tableId: "work_orders",
-          work_order_no: `WO-${startDate.replaceAll("-", "")}-${String(created.length + 1).padStart(3, "0")}`,
+          work_order_no: farmNextShortWorkOrderNo(startDate, created.length),
           work_order_title: `${activity.activity_name || activity.activity_code || "งาน"} ${block.block_name || block.block_code || block.id}`,
           plot_id: block.plot_id || "",
           block_id: block.id,
@@ -11159,6 +11256,7 @@ async function createFarmWorkPlanFromSelection() {
         state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && item.id === row.id));
         state.farmRecords.push(row);
         const saved = await persistFarmRowToDatabase(table, row);
+        await ensureFarmWorkOrderQr(row, "plan");
         created.push(saved.row?.id || row.id);
       }
     }
@@ -11335,7 +11433,7 @@ function renderFarmDispatchPanel() {
           <div class="farm-dispatch-fields">
             <label>เลือก Work Order
               <select id="farmDispatchOrderSelect">
-                ${orders.map((row) => `<option value="${esc(row.id)}"${row.id === order?.id ? " selected" : ""}>${esc(row.work_order_no || row.id)} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("")}
+                ${orders.map((row) => `<option value="${esc(row.id)}"${row.id === order?.id ? " selected" : ""}>${esc(row.shortNo || farmShortWorkOrderNo(row))} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("")}
               </select>
             </label>
             <label>วันที่สั่งทำ${renderDateInputControl({ id: "farmDispatchDate", value: dispatchDate, ariaLabel: "เลือกวันที่สั่งงาน" })}</label>
@@ -11383,6 +11481,7 @@ function renderFarmDispatchPanel() {
         </article>
         <article class="farm-dispatch-card farm-dispatch-actions">
           <h4>ส่งงานให้หัวหน้าทีม</h4>
+          ${renderFarmQrCard(order, "QR สำหรับหัวหน้าทีม", "dispatch")}
           <p>เมื่อบันทึก ระบบจะตั้งสถานะใบงานเป็น “ส่งเข้ามือถือ” และสร้างเอกสาร issue สำหรับพัสดุที่ระบุไว้</p>
           <button type="button" data-farm-dispatch-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกสั่งงาน</button>
           <button type="button" class="ghost" data-farm-dispatch-print ${!order ? "disabled" : ""}>พิมพ์ใบสั่งงาน / ใบเบิก</button>
@@ -11396,6 +11495,7 @@ function renderFarmDispatchPrintPreview(order, context = {}) {
   if (!order) return "";
   const checkedWorkers = context.workers || [];
   const materials = context.materials || [];
+  const shortNo = farmShortWorkOrderNo(order);
   return `
     <section class="farm-dispatch-print" aria-label="ใบสั่งงานและใบเบิกพัสดุ">
       <div class="farm-dispatch-print-head">
@@ -11403,7 +11503,10 @@ function renderFarmDispatchPrintPreview(order, context = {}) {
           <h3>ใบสั่งงาน / ใบเบิกพัสดุ</h3>
           <p>ระบบบริหารงานสวนปาล์มคีรีรัฐ</p>
         </div>
-        <strong>${esc(order.work_order_no || order.id)}</strong>
+        <div class="farm-print-qr">
+          <img src="${esc(farmWorkOrderQrUrl(order, "print", 112))}" alt="QR ${esc(shortNo)}">
+          <strong>${esc(shortNo)}</strong>
+        </div>
       </div>
       <dl>
         <dt>วันที่สั่งทำ</dt><dd data-dispatch-print-date>${esc(displayDate(context.dispatchDate) || "-")}</dd>
@@ -11476,6 +11579,7 @@ async function saveFarmDispatchOrder() {
     state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (row.id === nextOrder.id || row.id === order.id || row._overrideOf === order.id)));
     state.farmRecords.push(nextOrder);
     await persistFarmRowToDatabase(workOrderTable, nextOrder);
+    await ensureFarmWorkOrderQr(nextOrder, "dispatch");
 
     for (const employeeId of checkedWorkers) {
       const employee = farmLookup("employees", employeeId) || {};
@@ -11501,7 +11605,7 @@ async function saveFarmDispatchOrder() {
         id: `issue-${order.id}-${date}`.slice(0, 180),
         moduleId: "farm-inventory",
         tableId: "inventory_documents",
-        document_no: `GI-${String(order.work_order_no || order.id).replace(/[^0-9A-Za-z-]/g, "")}-${date.replaceAll("-", "")}`.slice(0, 120),
+        document_no: `GI-${farmShortWorkOrderNo(order).replace(/[^0-9A-Za-z-]/g, "")}-${date.replaceAll("-", "")}`.slice(0, 120),
         doc_type: "issue",
         doc_date: date,
         work_order_id: order.id,
@@ -11554,7 +11658,7 @@ async function saveFarmDispatchOrder() {
     state.farmWorkDetailId = order.id;
     state.farmDispatchWorkOrderId = order.id;
     state.farmSyncStatus = "success";
-    state.farmSyncMessage = `บันทึกสั่งงานแล้ว: ${esc(order.work_order_no || order.id)} · คนงาน ${fmt(checkedWorkers.length)} คน · พัสดุ ${fmt(materialRows.length)} รายการ`;
+    state.farmSyncMessage = `บันทึกสั่งงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · คนงาน ${fmt(checkedWorkers.length)} คน · พัสดุ ${fmt(materialRows.length)} รายการ`;
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `บันทึกสั่งงานไม่สำเร็จ: ${error.message}`;
@@ -11672,7 +11776,7 @@ function farmInventoryIssueRows() {
       };
     });
   }).sort((a, b) => farmDateMs(a.order.scheduled_date || a.order.startDate) - farmDateMs(b.order.scheduled_date || b.order.startDate)
-    || String(a.order.work_order_no || "").localeCompare(String(b.order.work_order_no || ""), "th"));
+    || String(a.order.shortNo || farmShortWorkOrderNo(a.order)).localeCompare(String(b.order.shortNo || farmShortWorkOrderNo(b.order)), "th"));
 }
 
 function renderFarmInventoryIssueQueue() {
@@ -11720,7 +11824,7 @@ function renderFarmInventoryIssueQueue() {
             ${rows.map((row) => `
               <tr>
                 <td>${esc(displayDate(row.document?.doc_date || row.order.scheduled_date || row.order.startDate) || "-")}</td>
-                <td><strong>${esc(row.order.work_order_no || row.order.id)}</strong><small>${esc(row.document?.document_no || "")}</small></td>
+                <td>${renderFarmQrInline(row.order, "issue")}<small>${esc(row.document?.document_no || "")}</small></td>
                 <td>${esc(row.order.work_order_title || "-")}<small>${esc(row.area)}</small></td>
                 <td>${esc(row.material.material_name || "-")}</td>
                 <td class="num">${moneyNf.format(row.planned)}</td>
@@ -11875,9 +11979,10 @@ function renderFarmResultPanel() {
           <h4>1. เลือกใบสั่งงาน</h4>
           <label>Work Order
             <select id="farmResultOrderSelect">
-              ${orders.map((row) => `<option value="${esc(row.id)}"${row.id === order?.id ? " selected" : ""}>${esc(row.work_order_no || row.id)} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("")}
+              ${orders.map((row) => `<option value="${esc(row.id)}"${row.id === order?.id ? " selected" : ""}>${esc(row.shortNo || farmShortWorkOrderNo(row))} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("")}
             </select>
           </label>
+          ${renderFarmQrCard(order, "QR สำหรับบันทึกงาน", "result")}
           <dl>
             <dt>กิจกรรม</dt><dd>${esc(farmLookupLabel("activities", order?.activity_id))}</dd>
             <dt>พื้นที่</dt><dd>${esc(area)}</dd>
@@ -12081,6 +12186,7 @@ async function saveFarmResultEntry() {
     if (!nextOrder._overrideOf) delete nextOrder._overrideOf;
     state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (row.id === nextOrder.id || row.id === order.id || row._overrideOf === order.id)));
     state.farmRecords.push(nextOrder);
+    await ensureFarmWorkOrderQr(nextOrder, "result");
     await persistFarmRowToDatabase(workOrderTable, {
       id: nextOrder.id,
       moduleId: "farm-work",
@@ -12105,7 +12211,7 @@ async function saveFarmResultEntry() {
     state.farmWorkDetailId = order.id;
     state.farmResultWorkOrderId = order.id;
     state.farmSyncStatus = "success";
-    state.farmSyncMessage = `บันทึกงานแล้ว: ${esc(order.work_order_no || order.id)} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงรวม ${moneyNf.format(calc.totalWage)} บาท`;
+    state.farmSyncMessage = `บันทึกงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงรวม ${moneyNf.format(calc.totalWage)} บาท`;
   } catch (error) {
     saveFarmRecords();
     state.farmSyncStatus = "error";
@@ -12140,7 +12246,7 @@ function renderFarmWorkBoard() {
   const closedCount = rows.filter((row) => row.statusMeta.key === "closed").length;
   const timelineRows = rows.slice().sort((a, b) => farmWorkGroupKey(a).localeCompare(farmWorkGroupKey(b), "th")
     || farmDateMs(a.startDate) - farmDateMs(b.startDate)
-    || String(a.work_order_no || a.id).localeCompare(String(b.work_order_no || b.id), "th"));
+    || String(a.shortNo || farmShortWorkOrderNo(a)).localeCompare(String(b.shortNo || farmShortWorkOrderNo(b)), "th"));
   const groupedRows = [];
   let lastGroup = "";
   for (const row of timelineRows) {
@@ -12239,7 +12345,7 @@ function renderFarmWorkBoard() {
               return `
                 <div class="farm-work-row${selected?.id === row.id ? " active" : ""}" data-farm-work-detail="${esc(row.id)}">
                   <button type="button" class="farm-work-left">
-                    <b>${esc(row.work_order_no || row.id)}</b>
+                    <b>${esc(row.shortNo || farmShortWorkOrderNo(row))}</b>
                     <strong>${esc(row.work_order_title || row.activity?.activity_name || "-")}<small>${esc(row.activity?.activity_name || "-")}</small></strong>
                     <span>${esc(areaText)}</span>
                     <span>${esc(row.team?.team_name || "-")}</span>
@@ -12291,7 +12397,7 @@ function renderFarmWorkOrderList() {
           <tbody>
             ${rows.map((row) => `
               <tr class="farm-editable-row" data-farm-row="${esc(row.id)}" data-farm-work-order-row="${esc(row.id)}" title="ดับเบิลคลิกเพื่อแก้ไข">
-                <td><strong>${esc(row.work_order_no || row.id)}</strong></td>
+                <td>${renderFarmQrInline(row, "list")}</td>
                 <td>${esc(row.work_order_title || "-")}</td>
                 <td>${esc([row.plot?.plot_code || row.plot_group?.group_code, row.block?.block_code || row.block?.area_code, row.block?.ap_code || row.block?.AP_code].filter(Boolean).join(" / ") || "-")}</td>
                 <td>${esc(row.activity?.activity_name || farmLookupLabel("activities", row.activity_id) || "-")}</td>
@@ -12312,7 +12418,8 @@ function renderFarmWorkDetail(order) {
   const needsApproval = order.statusMeta.key === "pending_approval";
   const canApprove = needsApproval && farmCan("approve");
   const details = [
-    ["เลขที่ WO", order.work_order_no],
+    ["เลขที่ WO", farmShortWorkOrderNo(order)],
+    ["เลขที่เดิม", order.work_order_no && order.work_order_no !== farmShortWorkOrderNo(order) ? order.work_order_no : "-"],
     ["ชื่องาน", order.work_order_title],
     ["ขั้นตอน", order.statusMeta.label],
     ["สถานะอนุมัติ", order.approval_status || "-"],
@@ -12337,11 +12444,12 @@ function renderFarmWorkDetail(order) {
     <aside class="farm-work-detail-panel">
       <div class="farm-work-detail-head">
         <div>
-          <strong>${esc(order.work_order_no || order.id)}</strong>
+          <strong>${esc(farmShortWorkOrderNo(order))}</strong>
           <span>${esc(order.work_order_title || "-")}</span>
         </div>
         <em style="--status:${esc(order.statusMeta.color)}">${esc(order.statusMeta.label)}</em>
       </div>
+      ${renderFarmQrCard(order, "QR Work Order", "detail")}
       ${order.rescheduled_date ? `<div class="farm-work-shift-note">เลื่อนจาก ${esc(order.original_scheduled_date || "-")} เป็น ${esc(order.rescheduled_date)} โดย ${esc(farmLookupLabel("profiles", order.rescheduled_by_manager_id))}</div>` : ""}
       <dl class="farm-work-detail-list">
         ${details.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value ?? "-")}</dd>`).join("")}
