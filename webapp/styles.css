@@ -5251,6 +5251,12 @@ tfoot td {
   padding: 0 16px 16px;
 }
 
+.farm-area-board {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
 .farm-activity-toolbar {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) minmax(160px, .25fr) minmax(160px, .25fr);
@@ -5287,6 +5293,12 @@ tfoot td {
   gap: 10px;
 }
 
+.farm-area-split {
+  display: grid;
+  grid-template-columns: minmax(360px, .78fr) minmax(560px, 1.22fr);
+  gap: 10px;
+}
+
 .farm-activity-table-card {
   min-width: 0;
 }
@@ -5312,8 +5324,18 @@ tfoot td {
   overflow: auto;
 }
 
+.farm-area-table-wrap {
+  max-height: 520px;
+  overflow: auto;
+}
+
 .farm-activity-bottom-wrap {
   max-height: 320px;
+  overflow: auto;
+}
+
+.farm-area-bottom-wrap {
+  max-height: 340px;
   overflow: auto;
 }
 
@@ -5330,27 +5352,39 @@ tfoot td {
 .farm-activity-bottom-wrap tr[draggable="true"],
 .farm-activity-table-wrap tr[data-farm-activity-group-row],
 .farm-activity-table-wrap tr[data-farm-activity-row],
-.farm-activity-bottom-wrap tr[data-farm-activity-row] {
+.farm-activity-bottom-wrap tr[data-farm-activity-row],
+.farm-area-table-wrap tr[data-farm-area-group-row],
+.farm-area-table-wrap tr[data-farm-area-block-row],
+.farm-area-bottom-wrap tr[data-farm-area-block-row] {
   cursor: grab;
 }
 
 .farm-activity-table-wrap tr[data-farm-activity-group-row]:hover td,
 .farm-activity-table-wrap tr[data-farm-activity-row]:hover td,
-.farm-activity-bottom-wrap tr[data-farm-activity-row]:hover td {
+.farm-activity-bottom-wrap tr[data-farm-activity-row]:hover td,
+.farm-area-table-wrap tr[data-farm-area-group-row]:hover td,
+.farm-area-table-wrap tr[data-farm-area-block-row]:hover td,
+.farm-area-bottom-wrap tr[data-farm-area-block-row]:hover td {
   background: #f8fafc;
 }
 
 .farm-activity-table-wrap .farm-table th,
 .farm-activity-table-wrap .farm-table td,
 .farm-activity-bottom-wrap .farm-table th,
-.farm-activity-bottom-wrap .farm-table td {
+.farm-activity-bottom-wrap .farm-table td,
+.farm-area-table-wrap .farm-table th,
+.farm-area-table-wrap .farm-table td,
+.farm-area-bottom-wrap .farm-table th,
+.farm-area-bottom-wrap .farm-table td {
   padding: 6px 8px;
   font-size: 11px;
   line-height: 1.25;
 }
 
 .farm-activity-table-wrap .farm-table td,
-.farm-activity-bottom-wrap .farm-table td {
+.farm-activity-bottom-wrap .farm-table td,
+.farm-area-table-wrap .farm-table td,
+.farm-area-bottom-wrap .farm-table td {
   white-space: nowrap;
 }
 
@@ -10770,6 +10804,7 @@ td.num,
   }
 
   .farm-activity-split,
+  .farm-area-split,
   .farm-activity-toolbar {
     grid-template-columns: 1fr;
   }

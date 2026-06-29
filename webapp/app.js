@@ -9981,7 +9981,7 @@ async function saveFarmRow() {
   }
   state.farmRecords.push(row);
   appendFarmVersionLog(table, original, row);
-  if (state.view === "farm-activities") state.farmActivityModalTable = "";
+  if (state.view === "farm-activities" || state.view === "farm-area") state.farmActivityModalTable = "";
   state.farmEditId = "";
   state.farmDetailId = row.id;
   saveFarmRecords();
@@ -12199,6 +12199,152 @@ function renderFarmAreaBlockMap() {
     </section>`;
 }
 
+function farmAreaGroupDisplay(group) {
+  return [group?.group_code, group?.group_name].filter(Boolean).join(" - ") || group?.plot_group_code || group?.id || "-";
+}
+
+function farmAreaBlockDisplay(row) {
+  return row?.area_code || row?.area_name || row?.id || "-";
+}
+
+function renderFarmAreaBoard() {
+  const groupTable = farmTableByKey("plot_groups");
+  const areaTable = farmTableByKey("areas");
+  const query = state.farmFilters.query.trim().toLowerCase();
+  const statusOk = (row) => state.farmFilters.status === "all" || String(row.status || "").toLowerCase() === state.farmFilters.status;
+  const textOk = (row) => !query || Object.values(row).join(" ").toLowerCase().includes(query);
+  const areas = farmRows(areaTable)
+    .filter((row) => String(row.area_level || "block").toLowerCase() === "block")
+    .filter((row) => statusOk(row) && textOk(row))
+    .sort((a, b) => String(a.zone_name || "").localeCompare(String(b.zone_name || ""), "th", { numeric: true })
+      || String(a.plot_group_code || "").localeCompare(String(b.plot_group_code || ""), "th", { numeric: true })
+      || String(a.area_code || "").localeCompare(String(b.area_code || ""), "th", { numeric: true }));
+  const allAreas = farmRows(areaTable).filter((row) => String(row.area_level || "block").toLowerCase() === "block");
+  const allGroups = farmRows(groupTable);
+  const groups = allGroups
+    .filter((row) => statusOk(row) && textOk(row))
+    .sort((a, b) => String(a.group_code || "").localeCompare(String(b.group_code || ""), "th", { numeric: true }));
+  const derivedGroups = new Map();
+  for (const area of areas) {
+    const key = String(area.plot_group_code || area.plot_group_id || "ไม่ระบุกลุ่ม").trim() || "ไม่ระบุกลุ่ม";
+    if (!derivedGroups.has(key)) {
+      const match = allGroups.find((group) => [group.id, group.group_code, group.group_name].map(String).includes(key));
+      derivedGroups.set(key, {
+        id: match?.id || "",
+        group_code: match?.group_code || key,
+        group_name: match?.group_name || key,
+        group_type: match?.group_type || area.zone_name || "-",
+        status: match?.status || "active",
+        _derived: !match,
+        count: 0,
+        area: 0,
+        trees: 0,
+      });
+    }
+    const item = derivedGroups.get(key);
+    item.count += 1;
+    item.area += n(area.area_rai);
+    item.trees += n(area.tree_count);
+  }
+  for (const group of groups) {
+    const key = String(group.group_code || group.id || "").trim();
+    if (!key || derivedGroups.has(key)) continue;
+    derivedGroups.set(key, {
+      ...group,
+      count: areas.filter((area) => [area.plot_group_id, area.plot_group_code].map(String).includes(String(group.id)) || String(area.plot_group_code || "") === String(group.group_code || "")).length,
+      area: 0,
+      trees: 0,
+    });
+  }
+  const groupRows = [...derivedGroups.values()].map((group) => `
+    <tr ${group.id ? `data-farm-area-group-row="${esc(group.id)}"` : ""}>
+      <td><strong>${esc(group.group_code || "-")}</strong></td>
+      <td>${esc(group.group_name || "-")}</td>
+      <td>${esc(group.group_type || "-")}</td>
+      <td class="num">${fmt(group.count || 0)}</td>
+      <td class="num">${fmt(group.area || 0)}</td>
+      <td class="num">${fmt(group.trees || 0)}</td>
+      <td>${esc(group.status || "-")}</td>
+    </tr>`).join("");
+  const areaRows = areas.map((area) => `
+    <tr data-farm-area-block-row="${esc(area.id)}">
+      <td><strong>${esc(farmAreaBlockDisplay(area))}</strong></td>
+      <td>${esc(area.zone_name || "-")}</td>
+      <td>${esc(area.plot_group_code || "-")}</td>
+      <td>${esc(area.ap_code || area.AP_code || "-")}</td>
+      <td class="num">${fmt(n(area.area_rai))}</td>
+      <td>${esc(area.planting_year || "-")}</td>
+      <td class="num">${fmt(n(area.tree_count))}</td>
+      <td>${esc(area.rspo_status || "-")}</td>
+      <td>${esc(area.status || "-")}</td>
+    </tr>`).join("");
+  return `
+    <section class="farm-area-board">
+      <div class="farm-activity-toolbar">
+        <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหา Block / Zone / แปลง / AP Code"></label>
+        <label>สถานะ
+          <select id="farmStatusFilter">
+            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${status === "all" ? "ทั้งหมด" : esc(status)}</option>`).join("")}
+          </select>
+        </label>
+        <label>Role
+          <select id="farmRoleFilter">
+            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(role)}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+      <div class="farm-area-split">
+        <article class="farm-panel farm-activity-table-card">
+          <div class="section-head">
+            <h3>ตารางกลุ่มแปลง</h3>
+            <button type="button" data-farm-area-add="plot_groups">เพิ่มกลุ่มแปลง</button>
+          </div>
+          <div class="table-wrap farm-area-table-wrap">
+            <table class="mini-table farm-table">
+              <thead><tr><th>รหัส</th><th>ชื่อกลุ่ม</th><th>ประเภท</th><th>Block</th><th>ไร่</th><th>ต้น</th><th>สถานะ</th></tr></thead>
+              <tbody>${groupRows || `<tr><td colspan="7">ไม่พบกลุ่มแปลง</td></tr>`}</tbody>
+            </table>
+          </div>
+        </article>
+        <article class="farm-panel farm-activity-table-card">
+          <div class="section-head">
+            <h3>ตาราง Block</h3>
+            <button type="button" data-farm-area-add="areas">เพิ่ม Block</button>
+          </div>
+          <div class="table-wrap farm-area-table-wrap">
+            <table class="mini-table farm-table">
+              <thead><tr><th>Block</th><th>Zone</th><th>แปลง</th><th>AP Code</th><th>ไร่</th><th>ปีปลูก</th><th>ต้น</th><th>RSPO</th><th>สถานะ</th></tr></thead>
+              <tbody>${areaRows || `<tr><td colspan="9">ไม่พบข้อมูล Block</td></tr>`}</tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+      <section class="farm-panel">
+        <div class="section-head"><h3>ตารางรายการ Block</h3><span>ดับเบิลคลิกแถวเพื่อแก้ไขข้อมูลพื้นที่</span></div>
+        <div class="table-wrap farm-area-bottom-wrap">
+          <table class="mini-table farm-table">
+            <thead><tr><th>Block</th><th>ชื่อพื้นที่</th><th>Zone</th><th>แปลง</th><th>ฝ่ายค่าแรง</th><th>AP Code</th><th>ไร่</th><th>ปีปลูก</th><th>ต้น</th><th>RSPO</th><th>สถานะ</th></tr></thead>
+            <tbody>${areas.map((area) => `
+              <tr data-farm-area-block-row="${esc(area.id)}">
+                <td><strong>${esc(farmAreaBlockDisplay(area))}</strong></td>
+                <td>${esc(area.area_name || "-")}</td>
+                <td>${esc(area.zone_name || "-")}</td>
+                <td>${esc(area.plot_group_code || "-")}</td>
+                <td>${esc([area.payroll_department_code, area.payroll_code_description].filter(Boolean).join(" - ") || "-")}</td>
+                <td>${esc(area.ap_code || area.AP_code || "-")}</td>
+                <td class="num">${fmt(n(area.area_rai))}</td>
+                <td>${esc(area.planting_year || "-")}</td>
+                <td class="num">${fmt(n(area.tree_count))}</td>
+                <td>${esc(area.rspo_status || "-")}</td>
+                <td>${esc(area.status || "-")}</td>
+              </tr>`).join("") || `<tr><td colspan="11">ไม่พบรายการ</td></tr>`}</tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+    ${renderFarmActivityModal()}`;
+}
+
 function farmActivityGroupLabel(group) {
   return [group?.group_code, group?.group_name].filter(Boolean).join(" - ") || group?.id || "ไม่ระบุกลุ่ม";
 }
@@ -12360,6 +12506,7 @@ function renderFarmPage() {
   const isHrPage = farmHrModuleActive(module);
   const isBudgetPage = module.id === "farm-budget";
   const isActivityPage = module.id === "farm-activities";
+  const isAreaPage = module.id === "farm-area";
   return `
     <div class="farm-page${isWorkPage ? " farm-work-page" : ""}">
       <div class="report-title${isWorkPage ? " farm-work-title" : ""}">
@@ -12372,7 +12519,7 @@ function renderFarmPage() {
       ${isBudgetPage ? "" : renderFarmWorkflowNav(module)}
       ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isBudgetPage ? renderFarmBudgetBoard() : ""}
-      ${isWorkPage || isBudgetPage || isActivityPage ? "" : `<section class="farm-hero">
+      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
@@ -12380,12 +12527,12 @@ function renderFarmPage() {
         <article><span>Foreign Key</span><strong>${fmt(refCount)}</strong><small>Inactive ${fmt(inactiveCount)} รายการ</small></article>
       </section>`}
       ${state.farmSyncMessage ? `<div class="farm-sync-status ${esc(state.farmSyncStatus)}">${esc(state.farmSyncMessage)}</div>` : ""}
-      ${module.id === "farm-area" ? renderFarmAreaBlockMap() : ""}
+      ${isAreaPage ? `${renderFarmAreaBlockMap()}${renderFarmAreaBoard()}` : ""}
       ${isActivityPage ? renderFarmActivitiesBoard() : ""}
       ${isWorkPage ? `${renderFarmWorkBoard()}${renderFarmWorkPlanner()}` : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
-      ${isBudgetPage || isActivityPage ? "" : `<section class="farm-toolbar">
+      ${isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-toolbar">
         <label>ตารางข้อมูล
           <select id="farmTableSelect">
             ${tables.map((item) => `<option value="${esc(item.key)}"${item.key === table.key ? " selected" : ""}>${esc(farmTableDisplayName(item))}</option>`).join("")}
@@ -12409,9 +12556,9 @@ function renderFarmPage() {
           <input id="farmImportFile" type="file" accept=".csv,text/csv" ${state.farmSyncBusy ? "disabled" : ""}>
         </label>
       </section>`}
-      ${isWorkPage || isBudgetPage || isActivityPage ? "" : renderFarmDataEntryGuide(table)}
-      ${isWorkPage || isBudgetPage || isActivityPage ? "" : renderFarmKeyBindings(table)}
-      ${isBudgetPage || isActivityPage ? "" : `<section class="farm-layout">
+      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : renderFarmDataEntryGuide(table)}
+      ${isWorkPage || isBudgetPage || isActivityPage || isAreaPage ? "" : renderFarmKeyBindings(table)}
+      ${isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-layout">
         <article class="farm-panel">
           <div class="section-head"><h3>${state.farmEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูล"}</h3><span>${esc(table.key)} / * คือข้อมูลจำเป็น</span></div>
           <form class="farm-form">
@@ -12436,7 +12583,7 @@ function renderFarmPage() {
           <div class="farm-table-list">${tables.map((item) => `<span>${esc(item.key)}</span>`).join("")}</div>
         </article>
       </section>`}
-      ${isBudgetPage || isActivityPage ? "" : `<section class="farm-panel">
+      ${isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-panel">
         <div class="section-head"><h3>ตารางรายการ</h3><span>Search / Filter / Add / Edit / Set Inactive / Detail / Export</span></div>
         <div class="table-wrap farm-table-wrap">
           <table class="mini-table farm-table">
@@ -13754,6 +13901,15 @@ async function init() {
       render();
       return;
     }
+    const areaAdd = e.target.closest("[data-farm-area-add]");
+    if (areaAdd) {
+      state.farmTableId = areaAdd.dataset.farmAreaAdd;
+      state.farmActivityModalTable = state.farmTableId;
+      state.farmEditId = "";
+      state.farmDetailId = "";
+      render();
+      return;
+    }
     if (e.target.closest("[data-farm-activity-modal-close]")) {
       state.farmActivityModalTable = "";
       state.farmEditId = "";
@@ -14056,6 +14212,24 @@ async function init() {
     setView(btn.dataset.view);
   });
   els.reportPage.addEventListener("dblclick", (e) => {
+    const areaGroupRow = e.target.closest("[data-farm-area-group-row]");
+    if (areaGroupRow) {
+      state.farmTableId = "plot_groups";
+      state.farmActivityModalTable = "plot_groups";
+      state.farmEditId = areaGroupRow.dataset.farmAreaGroupRow;
+      state.farmDetailId = state.farmEditId;
+      render();
+      return;
+    }
+    const areaBlockRow = e.target.closest("[data-farm-area-block-row]");
+    if (areaBlockRow) {
+      state.farmTableId = "areas";
+      state.farmActivityModalTable = "areas";
+      state.farmEditId = areaBlockRow.dataset.farmAreaBlockRow;
+      state.farmDetailId = state.farmEditId;
+      render();
+      return;
+    }
     const groupRow = e.target.closest("[data-farm-activity-group-row]");
     if (groupRow) {
       state.farmTableId = "activity_groups";
