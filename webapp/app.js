@@ -10375,6 +10375,59 @@ async function moveFarmActivityToGroup(activityId, groupId) {
   }
 }
 
+async function addFarmEmployeeToTeam(employeeId, teamId) {
+  const table = farmTableByKey("team_members");
+  const employee = farmLookup("employees", employeeId);
+  const team = farmLookup("teams", teamId);
+  if (!table || !employee || !team) return;
+  const existing = farmRows(table).find((row) => row.team_id === teamId && row.employee_id === employeeId && String(row.is_active) !== "false");
+  if (existing) {
+    state.farmSyncBusy = false;
+    state.farmSyncStatus = "warning";
+    state.farmSyncMessage = `${farmTeamEmployeeLabel(employee)} อยู่ในทีม ${farmTeamLabel(team)} แล้ว`;
+    render();
+    return;
+  }
+  const nowKey = Date.now().toString(36);
+  const row = {
+    id: `team-member-${farmBudgetSafeCode(teamId)}-${farmBudgetSafeCode(employeeId)}-${nowKey}`,
+    moduleId: "farm-hr-teams",
+    tableId: "team_members",
+    team_id: teamId,
+    employee_id: employeeId,
+    member_role: employee.worker_type || employee.position || "สมาชิก",
+    start_date: farmToday(),
+    end_date: "",
+    is_active: "true",
+    updatedAt: new Date().toISOString(),
+  };
+  state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "team_members" && item.team_id === teamId && item.employee_id === employeeId && String(item.is_active) !== "false"));
+  state.farmRecords.push(row);
+  state.farmTableId = "team_members";
+  state.farmDetailId = row.id;
+  state.farmEditId = "";
+  state.farmSyncBusy = true;
+  state.farmSyncStatus = "";
+  state.farmSyncMessage = `กำลังเพิ่ม ${farmTeamEmployeeLabel(employee)} เข้าทีม ${farmTeamLabel(team)}...`;
+  saveFarmRecords();
+  render();
+  try {
+    const saved = await persistFarmRowToDatabase(table, row);
+    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "team_members" && item.id === row.id));
+    state.farmDetailId = saved.row?.id || row.id;
+    state.farmSyncStatus = saved.mode === "farm-master-fallback" ? "warning" : "success";
+    state.farmSyncMessage = saved.warning ? `บันทึกแล้วใน fallback: ${saved.warning}` : `เพิ่มสมาชิกทีมแล้ว: ${farmTeamEmployeeLabel(employee)} -> ${farmTeamLabel(team)}`;
+    saveFarmRecords();
+    await loadFarmTablesFromDatabase({ silent: false });
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `เพิ่มสมาชิกทีมไม่สำเร็จ: ${error.message}`;
+  } finally {
+    state.farmSyncBusy = false;
+    render();
+  }
+}
+
 async function setFarmInactive(id) {
   const module = selectedFarmModule();
   const table = selectedFarmTable(module);
@@ -12922,20 +12975,30 @@ function farmTeamMemberLabel(member) {
   return person.full_name || person.person_name || person.contractor_name || person.employee_code || person.person_code || person.contractor_code || member.employee_id || member.person_id || "-";
 }
 
+function farmTeamEmployeeLabel(employee) {
+  return [employee?.employee_code, employee?.full_name].filter(Boolean).join(" - ") || employee?.id || "-";
+}
+
 function renderFarmTeamsBoard() {
   const teamTable = farmTableByKey("teams");
   const memberTable = farmTableByKey("team_members");
   const skillTable = farmTableByKey("team_activity_skills");
+  const employeeTable = farmTableByKey("employees");
   const query = state.farmFilters.query.trim().toLowerCase();
   const statusOk = (row) => state.farmFilters.status === "all" || String(row.status || "").toLowerCase() === state.farmFilters.status;
   const textOk = (row) => !query || Object.values(row).join(" ").toLowerCase().includes(query);
   const allTeams = farmRows(teamTable);
   const allMembers = farmRows(memberTable);
+  const allEmployees = farmRows(employeeTable);
   const skills = farmRows(skillTable);
   const workOrders = farmRowsByKey("work_orders");
   const teams = allTeams
     .filter((row) => statusOk(row) && textOk(row))
     .sort((a, b) => String(a.team_code || "").localeCompare(String(b.team_code || ""), "th", { numeric: true }));
+  const employees = allEmployees
+    .filter((row) => statusOk(row) && textOk(row))
+    .sort((a, b) => String(a.employee_code || "").localeCompare(String(b.employee_code || ""), "th", { numeric: true })
+      || String(a.full_name || "").localeCompare(String(b.full_name || ""), "th", { numeric: true }));
   const members = allMembers
     .filter((row) => {
       const team = allTeams.find((item) => item.id === row.team_id) || {};
@@ -12949,7 +13012,7 @@ function renderFarmTeamsBoard() {
     const contractor = farmLookup("contractors", team.contractor_id);
     const skillCount = skills.filter((skill) => skill.team_id === team.id).length;
     return `
-      <tr data-farm-team-row="${esc(team.id)}">
+      <tr data-team-drop="${esc(team.id)}" data-farm-team-row="${esc(team.id)}" title="ลากพนักงานมาวางเพื่อเพิ่มเข้าทีม">
         <td><strong>${esc(team.team_code || "-")}</strong></td>
         <td>${esc(team.team_name || "-")}</td>
         <td>${esc(team.team_type || "-")}</td>
@@ -12958,6 +13021,19 @@ function renderFarmTeamsBoard() {
         <td class="num">${fmt(teamMembers.length)}</td>
         <td class="num">${fmt(skillCount)}</td>
         <td>${esc(team.status || "-")}</td>
+      </tr>`;
+  }).join("");
+  const employeeRows = employees.map((employee) => {
+    const memberTeams = allMembers
+      .filter((member) => member.employee_id === employee.id && String(member.is_active) !== "false")
+      .map((member) => allTeams.find((team) => team.id === member.team_id))
+      .filter(Boolean);
+    return `
+      <tr draggable="true" data-team-employee-drag="${esc(employee.id)}" title="ลากไปวางบนทีมทำงาน">
+        <td><strong>${esc(employee.employee_code || "-")}</strong></td>
+        <td>${esc(employee.full_name || "-")}</td>
+        <td>${esc(employee.worker_type || employee.position || "-")}</td>
+        <td>${esc(memberTeams.map((team) => team.team_code || team.team_name).join(", ") || "-")}</td>
       </tr>`;
   }).join("");
   const memberRows = members.map((member) => {
@@ -13020,16 +13096,29 @@ function renderFarmTeamsBoard() {
           </select>
         </label>
       </div>
-      <div class="farm-activity-split">
+      <div class="farm-team-split">
         <article class="farm-panel farm-activity-table-card">
           <div class="section-head">
             <h3>ตารางทีมทำงาน</h3>
+            <span>ลากพนักงานมาวางบนแถวทีม</span>
             <button type="button" data-farm-team-add="teams">เพิ่มทีม</button>
           </div>
           <div class="table-wrap farm-activity-table-wrap">
             <table class="mini-table farm-table">
               <thead><tr><th>รหัส</th><th>ทีม</th><th>ประเภท</th><th>หัวหน้า</th><th>ผู้รับเหมา</th><th>สมาชิก</th><th>ทักษะ</th><th>สถานะ</th></tr></thead>
               <tbody>${teamRows || `<tr><td colspan="8">ไม่พบทีมทำงาน</td></tr>`}</tbody>
+            </table>
+          </div>
+        </article>
+        <article class="farm-panel farm-activity-table-card">
+          <div class="section-head">
+            <h3>พนักงานทั้งหมด</h3>
+            <span>ลากเข้าทีมได้ทันที</span>
+          </div>
+          <div class="table-wrap farm-activity-table-wrap">
+            <table class="mini-table farm-table">
+              <thead><tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th>ทีมปัจจุบัน</th></tr></thead>
+              <tbody>${employeeRows || `<tr><td colspan="4">ไม่พบพนักงาน</td></tr>`}</tbody>
             </table>
           </div>
         </article>
@@ -16134,26 +16223,49 @@ async function init() {
     render();
   });
   els.reportPage.addEventListener("dragstart", (e) => {
+    const employeeSource = e.target.closest("[data-team-employee-drag]");
+    if (employeeSource) {
+      e.dataTransfer.effectAllowed = "copy";
+      e.dataTransfer.setData("application/x-farm-employee", employeeSource.dataset.teamEmployeeDrag);
+      e.dataTransfer.setData("text/plain", employeeSource.dataset.teamEmployeeDrag);
+      return;
+    }
     const source = e.target.closest("[data-activity-drag]");
     if (!source) return;
     e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("application/x-farm-activity", source.dataset.activityDrag);
     e.dataTransfer.setData("text/plain", source.dataset.activityDrag);
   });
   els.reportPage.addEventListener("dragover", (e) => {
+    const teamDropTarget = e.target.closest("[data-team-drop]");
+    if (teamDropTarget) {
+      e.preventDefault();
+      teamDropTarget.classList.add("drag-over");
+      return;
+    }
     const dropTarget = e.target.closest("[data-activity-drop-group]");
     if (!dropTarget) return;
     e.preventDefault();
     dropTarget.classList.add("drag-over");
   });
   els.reportPage.addEventListener("dragleave", (e) => {
+    e.target.closest("[data-team-drop]")?.classList.remove("drag-over");
     e.target.closest("[data-activity-drop-group]")?.classList.remove("drag-over");
   });
   els.reportPage.addEventListener("drop", (e) => {
+    const teamDropTarget = e.target.closest("[data-team-drop]");
+    if (teamDropTarget) {
+      e.preventDefault();
+      teamDropTarget.classList.remove("drag-over");
+      const employeeId = e.dataTransfer.getData("application/x-farm-employee") || e.dataTransfer.getData("text/plain");
+      if (employeeId) addFarmEmployeeToTeam(employeeId, teamDropTarget.dataset.teamDrop || "");
+      return;
+    }
     const dropTarget = e.target.closest("[data-activity-drop-group]");
     if (!dropTarget) return;
     e.preventDefault();
     dropTarget.classList.remove("drag-over");
-    const activityId = e.dataTransfer.getData("text/plain");
+    const activityId = e.dataTransfer.getData("application/x-farm-activity") || e.dataTransfer.getData("text/plain");
     if (activityId) moveFarmActivityToGroup(activityId, dropTarget.dataset.activityDropGroup || "");
   });
   els.printBtn.addEventListener("click", openPrintPreview);
