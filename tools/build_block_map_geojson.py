@@ -47,7 +47,7 @@ def extended_data(placemark: ET.Element) -> dict[str, str]:
     return result
 
 
-def build_geojson(kmz_path: Path) -> dict:
+def extract_features(kmz_path: Path) -> tuple[list[dict], list[float]]:
     with zipfile.ZipFile(kmz_path) as archive:
         kml_name = next(name for name in archive.namelist() if name.lower().endswith(".kml"))
         root = ET.fromstring(archive.read(kml_name))
@@ -69,7 +69,7 @@ def build_geojson(kmz_path: Path) -> dict:
                 bounds[2] = max(bounds[2], lon)
                 bounds[3] = max(bounds[3], lat)
         props = extended_data(placemark)
-        props.update({"block_code": block_code, "name": name})
+        props.update({"block_code": block_code, "name": name, "source_file": str(kmz_path).replace("\\", "/")})
         features.append(
             {
                 "type": "Feature",
@@ -78,11 +78,37 @@ def build_geojson(kmz_path: Path) -> dict:
             }
         )
 
+    return features, bounds if features else []
+
+
+def build_geojson(kmz_paths: list[Path]) -> dict:
+    feature_by_key: dict[str, dict] = {}
+    bounds = [180.0, 90.0, -180.0, -90.0]
+    source_files = []
+    for kmz_path in kmz_paths:
+        source_files.append(str(kmz_path).replace("\\", "/"))
+        features, source_bounds = extract_features(kmz_path)
+        if source_bounds:
+            bounds[0] = min(bounds[0], source_bounds[0])
+            bounds[1] = min(bounds[1], source_bounds[1])
+            bounds[2] = max(bounds[2], source_bounds[2])
+            bounds[3] = max(bounds[3], source_bounds[3])
+        for feature in features:
+            code = feature["properties"]["block_code"]
+            rings = feature["geometry"]["coordinates"]
+            coordinate_count = sum(len(ring) for ring in rings)
+            key = code
+            previous = feature_by_key.get(key)
+            if not previous or coordinate_count > previous["_coordinate_count"]:
+                feature_by_key[key] = {**feature, "_coordinate_count": coordinate_count}
+
+    features = [{key: value for key, value in feature.items() if key != "_coordinate_count"} for feature in feature_by_key.values()]
     features.sort(key=lambda feature: feature["properties"]["block_code"])
     return {
         "type": "FeatureCollection",
         "source": {
-            "file": str(kmz_path).replace("\\", "/"),
+            "file": source_files[0] if len(source_files) == 1 else " + ".join(source_files),
+            "files": source_files,
             "generated_at": datetime.now().replace(microsecond=0).isoformat(),
             "feature_count": len(features),
         },
@@ -92,12 +118,12 @@ def build_geojson(kmz_path: Path) -> dict:
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("Usage: build_block_map_geojson.py <source.kmz> <output.json>", file=sys.stderr)
+    if len(sys.argv) < 3:
+        print("Usage: build_block_map_geojson.py <source.kmz> [source2.kmz ...] <output.json>", file=sys.stderr)
         return 2
-    source = Path(sys.argv[1])
-    output = Path(sys.argv[2])
-    data = build_geojson(source)
+    sources = [Path(arg) for arg in sys.argv[1:-1]]
+    output = Path(sys.argv[-1])
+    data = build_geojson(sources)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     print(f"Wrote {len(data['features'])} block polygons to {output}")

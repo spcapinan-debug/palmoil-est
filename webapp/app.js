@@ -13638,6 +13638,18 @@ function farmBlockMapKey(value) {
     .replace(/-(UPPER|LOWER)$/i, "");
 }
 
+function farmBlockMapKeyVariants(value) {
+  const key = farmBlockMapKey(value);
+  const variants = new Set([key]);
+  if (key.endsWith("-R")) variants.add(key.replace(/-R$/, ""));
+  else variants.add(`${key}-R`);
+  const reversedPlotMatch = key.match(/^([A-Z]+[0-9]+)-(\d{2})-R$/);
+  if (reversedPlotMatch) variants.add(`${reversedPlotMatch[2]}-${reversedPlotMatch[1]}-R`);
+  const normalPlotMatch = key.match(/^(\d{2})-([A-Z]+[0-9]+)-R$/);
+  if (normalPlotMatch) variants.add(`${normalPlotMatch[2]}-${normalPlotMatch[1]}-R`);
+  return [...variants].filter(Boolean);
+}
+
 function farmAreaBlockRows() {
   return farmRowsByKey("areas").filter((row) => String(row.area_level || "block").toLowerCase() === "block");
 }
@@ -13664,14 +13676,19 @@ function renderFarmAreaBlockMap() {
   const features = Array.isArray(map.features) ? map.features : [];
   const bounds = Array.isArray(map.bounds) && map.bounds.length === 4 ? map.bounds : null;
   const areaRows = farmAreaBlockRows();
-  const areaByCode = new Map(areaRows.map((row) => [farmBlockMapKey(row.area_code || row.area_name), row]));
+  const areaByCode = new Map();
+  for (const row of areaRows) {
+    for (const key of farmBlockMapKeyVariants(row.area_code || row.area_name)) {
+      if (!areaByCode.has(key)) areaByCode.set(key, row);
+    }
+  }
   const width = 1000;
   const height = 680;
   const matched = [];
   const unmatched = [];
   const polygons = features.map((feature, index) => {
     const code = feature?.properties?.block_code || feature?.properties?.name || "";
-    const area = areaByCode.get(farmBlockMapKey(code));
+    const area = farmBlockMapKeyVariants(code).map((key) => areaByCode.get(key)).find(Boolean);
     if (area) matched.push(code);
     else unmatched.push(code);
     const ring = feature?.geometry?.coordinates?.[0] || [];
@@ -13696,7 +13713,10 @@ function renderFarmAreaBlockMap() {
   }).join("");
   const selectedArea = farmRowsByKey("areas").find((row) => row.id === state.farmDetailId);
   const selectedFeature = selectedArea
-    ? features.find((feature) => farmBlockMapKey(feature?.properties?.block_code || feature?.properties?.name) === farmBlockMapKey(selectedArea.area_code || selectedArea.area_name))
+    ? features.find((feature) => {
+      const featureKeys = new Set(farmBlockMapKeyVariants(feature?.properties?.block_code || feature?.properties?.name));
+      return farmBlockMapKeyVariants(selectedArea.area_code || selectedArea.area_name).some((key) => featureKeys.has(key));
+    })
     : null;
   const selectedCode = selectedArea ? (selectedArea.area_code || selectedArea.area_name || "-") : "-";
   const selectedBlockName = selectedArea?.area_name || selectedFeature?.properties?.name || selectedCode;
