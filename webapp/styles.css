@@ -7563,27 +7563,27 @@ tfoot td {
 
 .farm-work-compact .farm-work-grid-head,
 .farm-work-compact .farm-work-row {
-  grid-template-columns: 540px max-content;
+  grid-template-columns: 500px max-content;
 }
 
 .farm-work-compact .farm-work-left-head,
 .farm-work-compact .farm-work-left {
-  grid-template-columns: 74px minmax(172px, 1fr) 88px 104px 88px;
-  gap: 7px;
+  grid-template-columns: 68px minmax(150px, 1fr) 76px 94px 76px;
+  gap: 6px;
 }
 
 .farm-work-compact .farm-work-left-head {
-  min-height: 34px;
-  padding: 0 8px;
-  font-size: 10px;
+  min-height: 29px;
+  padding: 0 7px;
+  font-size: 9.5px;
 }
 
 .farm-work-compact .farm-work-scale {
-  min-height: 34px;
+  min-height: 29px;
 }
 
 .farm-work-compact .farm-work-months {
-  min-height: 15px;
+  min-height: 13px;
 }
 
 .farm-work-compact .farm-work-months span {
@@ -7591,7 +7591,7 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-days {
-  min-height: 18px;
+  min-height: 16px;
 }
 
 .farm-work-compact .farm-work-days span {
@@ -7603,21 +7603,21 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-row {
-  min-height: 31px;
+  min-height: 27px;
 }
 
 .farm-work-compact .farm-work-left {
-  min-height: 31px;
-  padding: 3px 9px;
+  min-height: 27px;
+  padding: 2px 7px;
 }
 
 .farm-work-compact .farm-work-left b {
-  font-size: 10px;
+  font-size: 9.5px;
 }
 
 .farm-work-compact .farm-work-left strong {
   display: block;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 900;
 }
 
@@ -7626,24 +7626,24 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-left span {
-  font-size: 10px;
+  font-size: 9.5px;
   color: #23384d;
 }
 
 .farm-work-compact .farm-work-left > i {
-  padding: 2px 6px;
-  font-size: 9px;
+  padding: 1px 5px;
+  font-size: 8.5px;
 }
 
 .farm-work-compact .farm-work-lane {
-  min-height: 31px;
+  min-height: 27px;
   background-size: 24px 100%, 100% 100%;
 }
 
 .farm-work-compact .farm-work-plan-bar,
 .farm-work-compact .farm-work-actual-bar {
-  height: 7px;
-  min-height: 7px;
+  height: 9px;
+  min-height: 9px;
   border-radius: 0;
 }
 
@@ -7655,19 +7655,22 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-plan-bar.draft {
-  top: 4px;
-  border-width: 1px;
+  top: 3px;
+  border-width: 1.5px;
+  background: repeating-linear-gradient(90deg, rgba(45, 121, 184, .22) 0 7px, rgba(45, 121, 184, .07) 7px 12px);
 }
 
 .farm-work-compact .farm-work-plan-bar.approved {
-  top: 12px;
-  border-width: 1px;
+  top: 10px;
+  border-width: 1.5px;
+  background: repeating-linear-gradient(90deg, rgba(203, 77, 55, .25) 0 7px, rgba(203, 77, 55, .08) 7px 12px);
 }
 
 .farm-work-compact .farm-work-actual-bar {
-  top: 21px;
+  top: 18px;
   border-width: 1px;
-  box-shadow: none;
+  background: #c94f3e;
+  box-shadow: 0 1px 0 rgba(120, 29, 24, .35);
 }
 
 .farm-work-compact .farm-work-milestone {
@@ -7678,15 +7681,15 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-milestone.approval {
-  top: 4px;
+  top: 3px;
 }
 
 .farm-work-compact .farm-work-milestone.approved {
-  top: 12px;
+  top: 10px;
 }
 
 .farm-work-compact .farm-work-milestone.closed {
-  top: 20px;
+  top: 18px;
 }
 
 .farm-work-compact .farm-work-group-row,
@@ -11818,4 +11821,42 @@ td.num,
   margin: 0 !important;
   transform: scale(1.2);
   transform-origin: center;
+}
+
+.farm-work-compact .farm-work-row {
+  min-height: 27px !important;
+}
+
+.farm-work-compact .farm-work-left {
+  height: 27px !important;
+  min-height: 0 !important;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+}
+
+.farm-work-compact .farm-work-lane {
+  min-height: 27px !important;
+}
+
+.farm-work-compact .farm-work-plan-bar,
+.farm-work-compact .farm-work-actual-bar {
+  height: 10px !important;
+  min-width: 20px !important;
+  min-height: 10px !important;
+  max-height: 10px !important;
+}
+
+.farm-work-compact .farm-work-plan-bar.draft {
+  top: 2px !important;
+  border-color: #2f7fbc !important;
+}
+
+.farm-work-compact .farm-work-plan-bar.approved {
+  top: 8px !important;
+  border-color: #c84632 !important;
+}
+
+.farm-work-compact .farm-work-actual-bar {
+  top: 15px !important;
+  background: #c84632 !important;
 }

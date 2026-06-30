@@ -12343,7 +12343,7 @@ function renderFarmWorkBoard(options = {}) {
             </div>
           </div>
           <div class="farm-work-rows">
-            ${todayIndex >= 0 ? `<i class="farm-work-today-line" style="left:${(compact ? 540 : 540) + todayIndex * dayWidth + Math.floor(dayWidth / 2)}px"></i>` : ""}
+            ${todayIndex >= 0 ? `<i class="farm-work-today-line" style="left:${(compact ? 500 : 540) + todayIndex * dayWidth + Math.floor(dayWidth / 2)}px"></i>` : ""}
             ${groupedRows.map((item) => {
               if (item.type === "group") {
                 return `
