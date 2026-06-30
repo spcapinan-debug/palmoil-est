@@ -5016,7 +5016,7 @@ tfoot td {
 
 .farm-area-map-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 230px;
+  grid-template-columns: minmax(0, 1fr) 280px;
   gap: 12px;
   align-items: stretch;
 }
@@ -5104,6 +5104,47 @@ tfoot td {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.farm-area-map-selected {
+  border-color: rgba(42, 63, 84, .32) !important;
+  background: #f8fafc !important;
+}
+
+.farm-area-map-detail {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #dbe2ec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.farm-area-map-detail div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(219, 226, 236, .76);
+}
+
+.farm-area-map-detail div:last-child {
+  border-bottom: 0;
+}
+
+.farm-area-map-detail span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.farm-area-map-detail strong {
+  min-width: 0;
+  color: var(--navy);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .farm-map-empty {

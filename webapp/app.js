@@ -13695,11 +13695,23 @@ function renderFarmAreaBlockMap() {
       </polygon>`;
   }).join("");
   const selectedArea = farmRowsByKey("areas").find((row) => row.id === state.farmDetailId);
+  const selectedFeature = selectedArea
+    ? features.find((feature) => farmBlockMapKey(feature?.properties?.block_code || feature?.properties?.name) === farmBlockMapKey(selectedArea.area_code || selectedArea.area_name))
+    : null;
   const selectedCode = selectedArea ? (selectedArea.area_code || selectedArea.area_name || "-") : "-";
+  const selectedBlockName = selectedArea?.area_name || selectedFeature?.properties?.name || selectedCode;
+  const selectedDetails = selectedArea ? [
+    ["โซน", selectedArea.zone_name || "-"],
+    ["แปลง", selectedArea.plot_group_code || selectedArea.plot_group_id || "-"],
+    ["ขนาดพื้นที่", selectedArea.area_rai ? `${fmt(n(selectedArea.area_rai))} ไร่` : "-"],
+    ["จำนวนต้น", selectedArea.tree_count ? `${fmt(n(selectedArea.tree_count))} ต้น` : "-"],
+    ["AP Code", selectedArea.ap_code || "-"],
+    ["RSPO", selectedArea.rspo_status || "-"],
+  ] : [];
   return `
     <section class="farm-panel farm-area-map-panel">
       <div class="section-head">
-        <h3>แผนที่ Block จาก SPC-BLOK</h3>
+        <h3>แผนที่ Block จาก SPC-BLOCK</h3>
         <span>${fmt(features.length)} block จาก KMZ · จับคู่ข้อมูลพื้นที่ ${fmt(matched.length)} block</span>
       </div>
       <div class="farm-area-map-layout">
@@ -13712,10 +13724,19 @@ function renderFarmAreaBlockMap() {
           ` : `<div class="farm-map-empty">ยังไม่มีข้อมูลแผนที่ Block</div>`}
         </div>
         <aside class="farm-area-map-side">
-          <article><span>Block ในแผนที่</span><strong>${fmt(features.length)}</strong><small>${esc(map.source?.file || "SPC-BLOK.kmz")}</small></article>
+          <article><span>Block ในแผนที่</span><strong>${fmt(features.length)}</strong><small>${esc(map.source?.file || "SPC-BLOCK.kmz")}</small></article>
           <article><span>จับคู่กับข้อมูลพื้นที่</span><strong>${fmt(matched.length)}</strong><small>จากตาราง areas</small></article>
           <article><span>ยังไม่จับคู่</span><strong>${fmt(unmatched.length)}</strong><small>${esc(unmatched.slice(0, 6).join(", ") || "-")}</small></article>
-          <article><span>เลือกอยู่</span><strong>${esc(selectedCode)}</strong><small>${esc(selectedArea ? `${selectedArea.zone_name || "-"} · ${selectedArea.plot_group_code || "-"}` : "กด Block บนแผนที่เพื่อดูรายละเอียด")}</small></article>
+          <article class="farm-area-map-selected">
+            <span>Block ที่เลือก</span>
+            <strong>${esc(selectedCode)}</strong>
+            <small>${esc(selectedArea ? selectedBlockName : "กด Block บนแผนที่เพื่อดูรายละเอียด")}</small>
+          </article>
+          ${selectedDetails.length ? `
+            <div class="farm-area-map-detail">
+              ${selectedDetails.map(([label, value]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join("")}
+            </div>
+          ` : ""}
         </aside>
       </div>
     </section>`;
