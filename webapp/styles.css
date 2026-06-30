@@ -12243,3 +12243,74 @@ td.num,
   top: 15px !important;
   background: #c84632 !important;
 }
+
+/* Final table alignment standard:
+   headers centered, text left, numeric values right, dates/actions centered. */
+table th,
+.mini-table th,
+.farm-table th,
+.master-table th,
+.est-table th,
+.daily-report-table th,
+.mill-table th,
+.mill-spc-table th {
+  text-align: center !important;
+  vertical-align: middle;
+}
+
+table td,
+.mini-table td,
+.farm-table td,
+.master-table td,
+.est-table td,
+.daily-report-table td,
+.mill-table td,
+.mill-spc-table td {
+  text-align: left;
+  vertical-align: middle;
+}
+
+td.left,
+th.left,
+td.cell-text,
+.mini-table td.cell-text,
+.farm-table td.cell-text,
+.master-table td.cell-text,
+.est-table td.cell-text {
+  text-align: left !important;
+}
+
+td.num,
+td.cell-num,
+td[data-type="number"],
+.mini-table td.num,
+.mini-table td.cell-num,
+.farm-table td.num,
+.farm-table td.cell-num,
+.master-table td.num,
+.master-table td.cell-num,
+.est-table td.num,
+.est-table td.cell-num,
+.daily-report-table td.num,
+.daily-report-table td.cell-num,
+.mill-table td.num,
+.mill-table td.cell-num,
+.mill-spc-table td.num,
+.mill-spc-table td.cell-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+td.cell-date,
+td.cell-action,
+td:has(> button),
+td:has(> input),
+td:has(> select) {
+  text-align: center !important;
+}
+
+tfoot td,
+.section-label td,
+.est-table tr.is-total td {
+  font-weight: 900;
+}

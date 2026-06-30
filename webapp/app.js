@@ -6815,10 +6815,12 @@ function tableExportHtml(table) {
   h1{font-size:18px;margin:0 0 6px}
   .meta{font-size:12px;color:#4b5563;margin-bottom:10px}
   table{width:100%;border-collapse:collapse;font-size:11px}
-  th,td{border:1px solid #cbd5e1;padding:6px 7px;text-align:center;white-space:nowrap}
-  th{background:#e8edf4;font-weight:800}
-  td.left,th.left{text-align:left}
-  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  th,td{border:1px solid #cbd5e1;padding:6px 7px;white-space:nowrap}
+  th{background:#e8edf4;font-weight:800;text-align:center}
+  td{text-align:left}
+  td.left,td.cell-text{text-align:left}
+  td.num,td.cell-num{text-align:right;font-variant-numeric:tabular-nums}
+  td.cell-date,td.cell-action{text-align:center}
   tfoot td{background:#f8fafc;font-weight:800}
   @media print{body{margin:10mm} table{font-size:9px} th,td{padding:4px}}
 </style></head><body>
@@ -6948,6 +6950,44 @@ function sortableValue(text) {
   return value.toLocaleLowerCase("th-TH");
 }
 
+function isTableNumericText(text) {
+  const value = tableText(text);
+  if (!value || value === "-" || value === "–") return false;
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(value) || /^\d{4}-\d{1,2}-\d{1,2}$/.test(value)) return false;
+  if (/^[A-Z]{1,8}[-_]\d+/i.test(value)) return false;
+  const normalized = value
+    .replace(/[,\s]/g, "")
+    .replace(/^฿/, "")
+    .replace(/%$/, "");
+  return /^-?\d+(\.\d+)?$/.test(normalized);
+}
+
+function isTableDateLikeText(text) {
+  const value = tableText(text);
+  return /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(value)
+    || /^\d{4}-\d{1,2}-\d{1,2}$/.test(value)
+    || /^\d{1,2}:\d{2}(:\d{2})?$/.test(value)
+    || /^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/.test(value);
+}
+
+function alignTableCells(table) {
+  table.querySelectorAll("th").forEach((cell) => {
+    cell.classList.add("cell-head");
+  });
+  table.querySelectorAll("td").forEach((cell) => {
+    cell.classList.remove("cell-text", "cell-num", "cell-date", "cell-action");
+    if (cell.classList.contains("num") || isTableNumericText(cell.textContent)) {
+      cell.classList.add("cell-num");
+    } else if (isTableDateLikeText(cell.textContent)) {
+      cell.classList.add("cell-date");
+    } else if (cell.querySelector("button,input,select,textarea")) {
+      cell.classList.add("cell-action");
+    } else {
+      cell.classList.add("cell-text");
+    }
+  });
+}
+
 function sortTable(table, index, th) {
   const tbody = table.tBodies?.[0];
   if (!tbody) return;
@@ -6976,6 +7016,7 @@ function enhanceTables(root = document) {
     if (!table.dataset.enhancedTableId) {
       table.dataset.enhancedTableId = `tbl-${Date.now()}-${index}-${Math.round(Math.random() * 10000)}`;
     }
+    alignTableCells(table);
     const id = table.dataset.enhancedTableId;
     const wrap = table.closest(".table-wrap");
     const parent = wrap || table.parentElement;
