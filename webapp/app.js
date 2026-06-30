@@ -2976,8 +2976,11 @@ async function refreshTransportFromQuery() {
     const res = await fetchWithTimeout(`${TRANSPORT_REFRESH_API}?t=${Date.now()}`, { method: "POST", cache: "no-store" }, 120000);
     const payload = await res.json();
     if (!res.ok || payload.ok === false) throw new Error(payload.error || "Refresh failed");
-    await loadPayload({ silent: true });
-    await Promise.all([loadMillWeightData(), loadClearOverridesFromServer()]);
+    if (payload.data?.records) applyTransportPayload(payload.data, { silent: true });
+    else await loadPayload({ silent: true });
+    if (payload.mill?.records) applyMillWeightPayload(payload.mill);
+    else await loadMillWeightData();
+    await loadClearOverridesFromServer();
     render();
     const synced = await syncTransportDatabase("refresh_data");
     if (!synced) {
@@ -3619,8 +3622,7 @@ function setSourceRefreshError(error) {
   els.sourceInfo.textContent = `${base}\nrefresh failed: ${message}`;
 }
 
-async function loadPayload({ silent = false } = {}) {
-  const payload = window.__PALM_DATA__ || await fetch(`./data/data.json?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
+function applyTransportPayload(payload, { silent = false } = {}) {
   const signature = payloadSignature(payload);
   if (silent && signature === state.payloadSignature) return false;
   const previousStart = dateValue(els.startDate);
@@ -3638,23 +3640,35 @@ async function loadPayload({ silent = false } = {}) {
     if (!previousEnd) setDateValue(els.endDate, todayIso());
   }
   if (els.clearDate && state.payload.source?.dateMax) setDateValue(els.clearDate, state.payload.source.dateMax);
+  return true;
+}
+
+async function loadPayload({ silent = false } = {}) {
+  const payload = window.__PALM_DATA__ || await fetch(`./data/data.json?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
+  const changed = applyTransportPayload(payload, { silent });
+  if (silent && !changed) return false;
   if (!silent) return true;
   render();
   return true;
 }
 
-async function loadMillWeightData() {
-  const payload = window.__MILL_WEIGHT_DATA__ || await fetch(`${MILL_WEIGHT_DATA_URL}?t=${Date.now()}`, { cache: "no-store" })
-    .then((res) => res.json())
-    .catch(() => ({ source: { rowCount: 0 }, records: [] }));
+function applyMillWeightPayload(payload) {
   state.millPayload = payload;
   state.millRows = (payload.records || []).map((row, index) => ({
     ...row,
     sourceRow: row.sourceRow || index + 2,
     date: isoDay(row.date || row.wpDocDateText),
     docKey: millDocKey(row.docKey || row.wpDocNo),
+    category: row.category || millCategoryFromMill(row),
   }));
   state.millStandardByDocKey = null;
+}
+
+async function loadMillWeightData() {
+  const payload = window.__MILL_WEIGHT_DATA__ || await fetch(`${MILL_WEIGHT_DATA_URL}?t=${Date.now()}`, { cache: "no-store" })
+    .then((res) => res.json())
+    .catch(() => ({ source: { rowCount: 0 }, records: [] }));
+  applyMillWeightPayload(payload);
 }
 
 async function loadEstData() {

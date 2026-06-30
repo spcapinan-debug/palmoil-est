@@ -141,6 +141,8 @@ def run_extract():
             "millRows": mill_source.get("rowCount"),
             "generatedAt": source.get("generatedAt"),
         },
+        "data": data,
+        "mill": mill,
     }
 
 
