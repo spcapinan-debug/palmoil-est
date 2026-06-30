@@ -12266,7 +12266,7 @@ table td,
 .daily-report-table td,
 .mill-table td,
 .mill-spc-table td {
-  text-align: left;
+  text-align: left !important;
   vertical-align: middle;
 }
 

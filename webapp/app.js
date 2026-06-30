@@ -6973,18 +6973,25 @@ function isTableDateLikeText(text) {
 function alignTableCells(table) {
   table.querySelectorAll("th").forEach((cell) => {
     cell.classList.add("cell-head");
+    cell.style.textAlign = "center";
+    cell.style.verticalAlign = "middle";
   });
   table.querySelectorAll("td").forEach((cell) => {
     cell.classList.remove("cell-text", "cell-num", "cell-date", "cell-action");
     if (cell.classList.contains("num") || isTableNumericText(cell.textContent)) {
       cell.classList.add("cell-num");
+      cell.style.textAlign = "right";
     } else if (isTableDateLikeText(cell.textContent)) {
       cell.classList.add("cell-date");
+      cell.style.textAlign = "center";
     } else if (cell.querySelector("button,input,select,textarea")) {
       cell.classList.add("cell-action");
+      cell.style.textAlign = "center";
     } else {
       cell.classList.add("cell-text");
+      cell.style.textAlign = "left";
     }
+    cell.style.verticalAlign = "middle";
   });
 }
 
