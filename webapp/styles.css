@@ -7201,8 +7201,27 @@ tfoot td {
   min-width: 0;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 6px;
+  background: #fffdfb;
+  scrollbar-color: rgba(88, 78, 72, .45) rgba(232, 224, 220, .75);
+  scrollbar-width: thin;
+}
+
+.farm-work-gantt::-webkit-scrollbar,
+.farm-work-timeline::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.farm-work-gantt::-webkit-scrollbar-track,
+.farm-work-timeline::-webkit-scrollbar-track {
+  background: rgba(232, 224, 220, .75);
+}
+
+.farm-work-gantt::-webkit-scrollbar-thumb,
+.farm-work-timeline::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(88, 78, 72, .45);
 }
 
 .farm-work-page .farm-work-gantt {
@@ -7212,7 +7231,7 @@ tfoot td {
 .farm-work-grid-head,
 .farm-work-row {
   display: grid;
-  grid-template-columns: 520px max-content;
+  grid-template-columns: 540px max-content;
   min-width: max-content;
 }
 
@@ -7221,14 +7240,14 @@ tfoot td {
   left: 0;
   z-index: 7;
   display: grid;
-  grid-template-columns: 88px minmax(160px, 1fr) 120px 90px 48px 86px;
-  gap: 8px;
+  grid-template-columns: 72px minmax(160px, 1fr) 86px 96px 86px;
+  gap: 7px;
   align-items: center;
   min-height: 58px;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   padding: 0 12px;
-  background: #f8fafc;
+  background: #fbf4ef;
   color: var(--navy);
   font-size: 11px;
   font-weight: 900;
@@ -7238,7 +7257,7 @@ tfoot td {
   display: grid;
   min-height: 58px;
   border-bottom: 1px solid var(--line);
-  background: #f8fafc;
+  background: #fbf4ef;
 }
 
 .farm-work-months {
@@ -7287,8 +7306,8 @@ tfoot td {
 }
 
 .farm-work-row {
-  min-height: 54px;
-  border-bottom: 1px solid #edf2f7;
+  min-height: 42px;
+  border-bottom: 1px solid rgba(209, 197, 190, .55);
 }
 
 .farm-work-row.active .farm-work-left {
@@ -7301,19 +7320,20 @@ tfoot td {
   left: 0;
   z-index: 5;
   display: grid;
-  grid-template-columns: 88px minmax(160px, 1fr) 120px 90px 48px 86px;
-  gap: 8px;
+  grid-template-columns: 72px minmax(160px, 1fr) 86px 96px 86px;
+  gap: 7px;
   align-items: center;
   border: 0;
   border-right: 1px solid var(--line);
   padding: 7px 12px;
-  background: #fff;
+  background: #fffaf7;
   text-align: left;
 }
 
 .farm-work-left b {
-  color: var(--primary);
+  color: #0f2942;
   font-size: 11px;
+  font-weight: 900;
 }
 
 .farm-work-left strong {
@@ -7365,10 +7385,10 @@ tfoot td {
 
 .farm-work-lane {
   position: relative;
-  min-height: 68px;
+  min-height: 42px;
   background-image:
-    linear-gradient(to right, #edf2f7 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(248, 250, 252, .75), rgba(248, 250, 252, .75));
+    linear-gradient(to right, rgba(226, 218, 213, .8) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 250, 247, .82), rgba(255, 250, 247, .82));
   background-size: 30px 100%, 100% 100%;
 }
 
@@ -7376,7 +7396,8 @@ tfoot td {
 .farm-work-actual-bar {
   position: absolute;
   min-height: 16px;
-  border-radius: 3px;
+  border-radius: 999px;
+  padding: 0;
   font-size: 9px;
   font-weight: 900;
   overflow: hidden;
@@ -7467,6 +7488,9 @@ tfoot td {
   top: 20px;
   width: 12px;
   height: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
   border: 2px solid #fff;
   border-radius: 2px;
   transform: rotate(45deg);
@@ -7501,8 +7525,8 @@ tfoot td {
 }
 
 .farm-work-group-row {
-  min-height: 34px;
-  background: #f8fafc;
+  min-height: 28px;
+  background: #eef3f9;
 }
 
 .farm-work-group-left {
@@ -7515,7 +7539,7 @@ tfoot td {
   gap: 10px;
   border-right: 1px solid var(--line);
   padding: 0 12px;
-  background: #eaf1f8;
+  background: #e8eef7;
   color: var(--navy);
   font-size: 11px;
   font-weight: 900;
@@ -7528,24 +7552,24 @@ tfoot td {
 }
 
 .farm-work-group-lane {
-  min-height: 34px;
-  background: repeating-linear-gradient(135deg, #f8fafc 0, #f8fafc 8px, #eef4fa 8px, #eef4fa 16px);
+  min-height: 28px;
+  background: repeating-linear-gradient(135deg, #f9fbff 0, #f9fbff 8px, #eef4fa 8px, #eef4fa 16px);
 }
 
 .farm-work-compact .farm-work-gantt {
-  max-height: 560px;
+  max-height: 620px;
   border-radius: 6px;
 }
 
 .farm-work-compact .farm-work-grid-head,
 .farm-work-compact .farm-work-row {
-  grid-template-columns: 430px max-content;
+  grid-template-columns: 540px max-content;
 }
 
 .farm-work-compact .farm-work-left-head,
 .farm-work-compact .farm-work-left {
-  grid-template-columns: 62px minmax(150px, 1fr) 74px 80px 72px;
-  gap: 6px;
+  grid-template-columns: 74px minmax(172px, 1fr) 88px 104px 88px;
+  gap: 7px;
 }
 
 .farm-work-compact .farm-work-left-head {
@@ -7579,12 +7603,12 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-row {
-  min-height: 28px;
+  min-height: 31px;
 }
 
 .farm-work-compact .farm-work-left {
-  min-height: 28px;
-  padding: 4px 8px;
+  min-height: 31px;
+  padding: 3px 9px;
 }
 
 .farm-work-compact .farm-work-left b {
@@ -7594,6 +7618,7 @@ tfoot td {
 .farm-work-compact .farm-work-left strong {
   display: block;
   font-size: 10.5px;
+  font-weight: 900;
 }
 
 .farm-work-compact .farm-work-left strong small {
@@ -7602,20 +7627,22 @@ tfoot td {
 
 .farm-work-compact .farm-work-left span {
   font-size: 10px;
+  color: #23384d;
 }
 
 .farm-work-compact .farm-work-left > i {
-  padding: 2px 5px;
+  padding: 2px 6px;
   font-size: 9px;
 }
 
 .farm-work-compact .farm-work-lane {
-  min-height: 28px;
+  min-height: 31px;
   background-size: 24px 100%, 100% 100%;
 }
 
 .farm-work-compact .farm-work-plan-bar,
 .farm-work-compact .farm-work-actual-bar {
+  height: 7px;
   min-height: 7px;
   border-radius: 0;
 }
@@ -7628,7 +7655,7 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-plan-bar.draft {
-  top: 5px;
+  top: 4px;
   border-width: 1px;
 }
 
@@ -7638,7 +7665,7 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-actual-bar {
-  top: 20px;
+  top: 21px;
   border-width: 1px;
   box-shadow: none;
 }
@@ -7646,6 +7673,8 @@ tfoot td {
 .farm-work-compact .farm-work-milestone {
   width: 9px;
   height: 9px;
+  min-width: 0;
+  min-height: 0;
 }
 
 .farm-work-compact .farm-work-milestone.approval {

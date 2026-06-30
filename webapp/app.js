@@ -10936,17 +10936,22 @@ function farmWorkGroupKey(row) {
 }
 
 function farmShortActivityText(row) {
-  const activity = row?.activity?.activity_name || farmLookupLabel("activities", row?.activity_id) || row?.work_order_title || "-";
-  return String(activity)
+  const workTitle = row?.work_order_title || "";
+  const activityName = row?.activity?.activity_name || farmLookupLabel("activities", row?.activity_id) || "";
+  const fallback = activityName && !/^activity[-_]/i.test(activityName) ? activityName : workTitle || activityName || "-";
+  return String(fallback)
+    .replace(/\s*Block\s+[\w-]+/gi, "")
+    .replace(/\s+BLK[-\w]+/gi, "")
     .replace(/^\s*[A-Z]{1,4}\d{0,3}\s*[-:]\s*/i, "")
     .replace(/\s*\([^)]{12,}\)\s*/g, "")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 38) || "-";
+    .slice(0, 30) || "-";
 }
 
 function farmShortBlockText(row) {
-  return row?.block?.block_code || row?.block?.block_name || row?.block?.area_code || row?.plot?.plot_code || "-";
+  const raw = row?.block?.block_code || row?.block?.block_name || row?.block?.area_code || row?.plot?.plot_code || "-";
+  return String(raw).replace(/\s*[-/]\s*(Upper|Lower)\b/gi, "").trim();
 }
 
 function renderFarmPlannerOptionRows(tableKey, rows, titleField, subFields = []) {
@@ -12250,7 +12255,7 @@ function renderFarmWorkBoard(options = {}) {
   const minStart = rows.reduce((min, row) => !min || farmDateMs(row.startDate) < farmDateMs(min) ? row.startDate : min, rows[0]?.startDate || farmToday());
   const maxEnd = rows.reduce((max, row) => farmDateMs(row.endDate) > farmDateMs(max) ? row.endDate : max, rows[0]?.endDate || minStart);
   const timelineStart = farmAddDays(minStart, -2) || farmToday();
-  const maxDays = Math.min(60, Math.max(14, farmDaysBetween(timelineStart, farmAddDays(maxEnd, 3)) + 1));
+  const maxDays = Math.min(90, Math.max(compact ? 60 : 30, farmDaysBetween(timelineStart, farmAddDays(maxEnd, 3)) + 1));
   const days = Array.from({ length: maxDays }, (_, index) => farmAddDays(timelineStart, index));
   const dayWidth = compact ? 24 : 30;
   const timelineWidth = days.length * dayWidth;
@@ -12338,7 +12343,7 @@ function renderFarmWorkBoard(options = {}) {
             </div>
           </div>
           <div class="farm-work-rows">
-            ${todayIndex >= 0 ? `<i class="farm-work-today-line" style="left:${(compact ? 430 : 520) + todayIndex * dayWidth + Math.floor(dayWidth / 2)}px"></i>` : ""}
+            ${todayIndex >= 0 ? `<i class="farm-work-today-line" style="left:${(compact ? 540 : 540) + todayIndex * dayWidth + Math.floor(dayWidth / 2)}px"></i>` : ""}
             ${groupedRows.map((item) => {
               if (item.type === "group") {
                 return `
