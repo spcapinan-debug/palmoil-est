@@ -79,7 +79,8 @@
   farmDispatchWorkOrderId: "",
   farmDispatchTeamId: "",
   farmResultWorkOrderId: "",
-  farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", note: "" },
+  farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", note: "", workerEntries: {} },
+  farmResultRenderTimer: null,
   farmTableId: "",
   farmDetailId: "",
   farmEditId: "",
@@ -11967,7 +11968,35 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
   const workerCount = workers.length || 1;
   const shareQuantity = actualQuantity / workerCount;
   const shareWage = totalWage / workerCount;
-  return { draft, workers, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, workerCount, shareQuantity, shareWage };
+  const entries = draft.workerEntries || {};
+  const workerLines = workers.map((worker) => {
+    const entry = entries[worker.id] || {};
+    const hasCustomQuantity = entry.actualQuantity !== undefined && entry.actualQuantity !== "";
+    const attendanceStatus = entry.status || "present";
+    const lineQuantity = attendanceStatus === "absent" ? 0 : hasCustomQuantity ? n(entry.actualQuantity) : shareQuantity;
+    const lineBasisQuantity = basis === "weight_ton" ? (actualUnit === "ตัน" && hasCustomQuantity ? lineQuantity : lineQuantity / 1000) : lineQuantity;
+    const wageAmount = attendanceStatus === "absent" ? 0 : rateAmount ? lineBasisQuantity * rateAmount : shareWage;
+    const allowance = n(entry.allowance);
+    const deduction = n(entry.deduction);
+    const grossAmount = wageAmount + allowance - deduction;
+    return {
+      ...worker,
+      attendanceStatus,
+      checkIn: entry.checkIn || "08:00",
+      checkOut: entry.checkOut || "17:00",
+      workHours: n(entry.workHours || worker.plannedHours || 8),
+      otHours: n(entry.otHours),
+      actualQuantity: lineQuantity,
+      hasCustomQuantity,
+      allowance,
+      deduction,
+      grossAmount,
+      wageAmount,
+      note: entry.note || "",
+    };
+  });
+  const payrollTotal = workerLines.reduce((sum, row) => sum + row.grossAmount, 0);
+  return { draft, workers, workerLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, payrollTotal, workerCount, shareQuantity, shareWage };
 }
 
 function farmResultPayrollPeriodForDate(date) {
@@ -11987,30 +12016,35 @@ function renderFarmResultPanel() {
   const rateLabel = calc.rate?.id
     ? `${calc.rate.rate_code || calc.rate.id} · ${calc.rate.rate_text || `${moneyNf.format(calc.rateAmount)} ${calc.rate.unit_name || ""}`}`
     : "ยังไม่พบเรทที่ผูกกับกิจกรรม/Block";
+  const firstWorker = calc.workerLines[0];
   return `
     <section class="farm-result-page">
       <div class="section-head">
-        <h3>บันทึกงานจากใบสั่งงาน</h3>
-        <span>Supervisor เลือกใบสั่งงานที่ได้รับ คีย์เลขใบชั่งหรือจำนวนจริง แล้วระบบเฉลี่ยผลงานและค่าแรงตามทีม</span>
+        <h3>บันทึกงานประจำวัน</h3>
+        <span>หัวหน้าทีมบันทึกผลงานจริง รายชื่อคนทำงาน และค่าแรงรายคนจากใบสั่งงานเดียว</span>
       </div>
-      <div class="farm-result-grid">
-        <article class="farm-result-card farm-result-main">
-          <h4>1. เลือกใบสั่งงาน</h4>
-          <label>Work Order
-            <select id="farmResultOrderSelect">
-              ${orders.map((row) => `<option value="${esc(row.id)}"${row.id === order?.id ? " selected" : ""}>${esc(row.shortNo || farmShortWorkOrderNo(row))} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("")}
-            </select>
-          </label>
-          ${renderFarmQrCard(order, "QR สำหรับบันทึกงาน", "result")}
-          <dl>
-            <dt>กิจกรรม</dt><dd>${esc(farmLookupLabel("activities", order?.activity_id))}</dd>
-            <dt>พื้นที่</dt><dd>${esc(area)}</dd>
-            <dt>ทีม</dt><dd>${esc(farmLookupLabel("teams", order?.team_id))}</dd>
-            <dt>สถานะ</dt><dd>${esc(order?.statusMeta?.label || "-")}</dd>
-          </dl>
-        </article>
-        <article class="farm-result-card">
-          <h4>2. บันทึกผลงานจริง</h4>
+      <div class="farm-result-workbar">
+        <label>เลือกใบสั่งงาน
+          <select id="farmResultOrderSelect">
+            ${orders.map((row) => `<option value="${esc(row.id)}"${row.id === order?.id ? " selected" : ""}>${esc(row.shortNo || farmShortWorkOrderNo(row))} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("")}
+          </select>
+        </label>
+        <div>
+          <strong>${esc(order?.shortNo || farmShortWorkOrderNo(order || {}))}</strong>
+          <span>${esc(order?.work_order_title || "-")}</span>
+        </div>
+        ${renderFarmQrInline(order, "result")}
+        <button type="button" data-farm-result-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกงาน</button>
+      </div>
+      <div class="farm-result-summary-strip">
+        <article><span>กิจกรรม</span><strong>${esc(farmLookupLabel("activities", order?.activity_id) || "-")}</strong><small>${esc(area)}</small></article>
+        <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(order?.statusMeta?.label || "-")}</small></article>
+        <article><span>เรทค่าแรง</span><strong>${moneyNf.format(calc.rateAmount)}</strong><small>${esc(calc.basis || "-")}</small></article>
+        <article><span>ค่าแรงรวม</span><strong>${moneyNf.format(calc.payrollTotal || calc.totalWage)}</strong><small>ล็อก snapshot หลังบันทึก</small></article>
+      </div>
+      <div class="farm-result-entry-grid">
+        <article class="farm-result-card farm-result-main-entry">
+          <div class="section-head"><h3>ผลงานรวม</h3><span>ใช้ใบชั่งหรือกรอกจำนวนเอง</span></div>
           <div class="farm-result-fields">
             <label>วันที่บันทึก${renderDateInputControl({ id: "farmResultDate", value: draft.resultDate, ariaLabel: "เลือกวันที่บันทึกงาน" })}</label>
             <label>เลขใบชั่ง
@@ -12032,22 +12066,71 @@ function renderFarmResultPanel() {
             </label>
           </div>
         </article>
-        <article class="farm-result-card farm-result-calc">
-          <h4>3. ตรวจค่าแรงก่อนบันทึก</h4>
-          <div class="farm-result-kpis">
-            <span><b>${fmt(calc.actualQuantity)}</b>ผลงานรวม (${esc(calc.actualUnit)})</span>
-            <span><b>${moneyNf.format(calc.calculationQuantity)}</b>ฐานคำนวณ ${esc(calc.basis)}</span>
-            <span><b>${moneyNf.format(calc.rateAmount)}</b>อัตรา</span>
-            <span><b>${moneyNf.format(calc.totalWage)}</b>ค่าแรงรวม</span>
+        <article class="farm-result-card farm-result-mobile-card">
+          <div class="section-head"><h3>เช็กหน้างาน</h3><span>สำหรับหัวหน้าทีม</span></div>
+          <div class="farm-result-mobile-grid">
+            <span><b>${esc(firstWorker?.checkIn || "08:00")}</b>เริ่มงาน</span>
+            <span><b>${esc(firstWorker?.checkOut || "17:00")}</b>เลิกงาน</span>
+            <span><b>${fmt(calc.ticketKg || calc.actualQuantity)}</b>${calc.ticketKg ? "กก. จากใบชั่ง" : `ผลงาน ${esc(calc.actualUnit)}`}</span>
+            <span><b>${fmt(calc.workerLines.filter((row) => row.attendanceStatus !== "absent").length)}</b>มาทำงาน</span>
           </div>
           <p>${esc(rateLabel)}</p>
-          <p>เฉลี่ย ${fmt(calc.workerCount)} คน: ผลงาน ${moneyNf.format(calc.shareQuantity)} ${esc(calc.actualUnit)} / คน · ค่าแรง ${moneyNf.format(calc.shareWage)} บาท / คน</p>
-          <button type="button" data-farm-result-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกงานและคำนวณค่าแรง</button>
         </article>
       </div>
-      <div class="farm-result-tables">
+      <article class="farm-result-card farm-result-worker-card">
+        <div class="section-head">
+          <h3>บันทึกรายคนในทีม</h3>
+          <span>แก้สถานะ เวลา ผลงาน และเงินเพิ่ม/หัก ก่อนส่งเข้าค่าแรง</span>
+        </div>
+        <div class="farm-result-worker-tools">
+          <span>ค่าเริ่มต้น: เฉลี่ยผลงาน ${moneyNf.format(calc.shareQuantity)} ${esc(calc.actualUnit)} / คน</span>
+          <button type="button" data-farm-result-fill-share>ใส่ค่าเฉลี่ยทุกคน</button>
+          <button type="button" data-farm-result-clear-worker>ล้างแก้ไขรายคน</button>
+        </div>
+        <div class="table-wrap farm-result-worker-wrap">
+          <table class="mini-table farm-table farm-result-worker-table">
+            <thead>
+              <tr>
+                <th>คนงาน</th>
+                <th>สถานะ</th>
+                <th>เวลาเข้า</th>
+                <th>เวลาออก</th>
+                <th>ชม.</th>
+                <th>OT</th>
+                <th>ผลงาน</th>
+                <th>ค่าแรง</th>
+                <th>เพิ่ม</th>
+                <th>หัก</th>
+                <th>สุทธิ</th>
+                <th>หมายเหตุ</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${calc.workerLines.map((row) => `
+                <tr data-farm-result-worker="${esc(row.id)}">
+                  <td><strong>${esc(row.name)}</strong><small>${esc(row.role || row.employee.payment_type || "-")}</small></td>
+                  <td><select data-farm-result-worker-field="status">${["present", "late", "half_day", "absent"].map((status) => `<option value="${status}"${row.attendanceStatus === status ? " selected" : ""}>${status === "present" ? "มาทำงาน" : status === "late" ? "สาย" : status === "half_day" ? "ครึ่งวัน" : "ขาด"}</option>`).join("")}</select></td>
+                  <td><input type="time" value="${esc(row.checkIn)}" data-farm-result-worker-field="checkIn"></td>
+                  <td><input type="time" value="${esc(row.checkOut)}" data-farm-result-worker-field="checkOut"></td>
+                  <td><input type="number" min="0" step="0.5" value="${esc(row.workHours || "")}" data-farm-result-worker-field="workHours"></td>
+                  <td><input type="number" min="0" step="0.5" value="${esc(row.otHours || "")}" data-farm-result-worker-field="otHours"></td>
+                  <td><input type="number" min="0" step="0.01" value="${row.hasCustomQuantity ? esc(row.actualQuantity) : ""}" placeholder="${moneyNf.format(calc.shareQuantity)}" data-farm-result-worker-field="actualQuantity"></td>
+                  <td class="num">${moneyNf.format(row.wageAmount)}</td>
+                  <td><input type="number" min="0" step="0.01" value="${esc(row.allowance || "")}" data-farm-result-worker-field="allowance"></td>
+                  <td><input type="number" min="0" step="0.01" value="${esc(row.deduction || "")}" data-farm-result-worker-field="deduction"></td>
+                  <td class="num strong">${moneyNf.format(row.grossAmount)}</td>
+                  <td><input type="text" value="${esc(row.note)}" data-farm-result-worker-field="note" placeholder="หมายเหตุ"></td>
+                </tr>`).join("") || `<tr><td colspan="12">ยังไม่มีคนงานในใบสั่งงาน ให้ผู้จัดการสั่งงานและเลือกทีมก่อน</td></tr>`}
+            </tbody>
+            <tfoot>
+              <tr><td colspan="6">รวม</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.actualQuantity, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.wageAmount, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.allowance, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.deduction, 0))}</td><td class="num strong">${moneyNf.format(calc.payrollTotal)}</td><td></td></tr>
+            </tfoot>
+          </table>
+        </div>
+      </article>
+      <div class="farm-result-bottom-grid">
         <article class="farm-result-card">
-          <div class="section-head"><h3>ใบชั่งที่จับคู่ได้</h3><span>${fmt(calc.tickets.length)} ใบ · ${fmt(calc.ticketKg)} กก.</span></div>
+          <div class="section-head"><h3>ใบชั่ง / แหล่งผลงาน</h3><span>${fmt(calc.tickets.length)} ใบ · ${fmt(calc.ticketKg)} กก.</span></div>
           <div class="table-wrap">
             <table class="mini-table farm-table">
               <thead><tr><th>วันที่</th><th>เลขใบชั่ง</th><th>ทิศทาง</th><th>ลูกค้า/แปลง</th><th>น้ำหนัก</th></tr></thead>
@@ -12056,19 +12139,21 @@ function renderFarmResultPanel() {
           </div>
         </article>
         <article class="farm-result-card">
-          <div class="section-head"><h3>เฉลี่ยค่าแรงรายคน</h3><span>${fmt(calc.workers.length)} คน</span></div>
-          <div class="table-wrap">
-            <table class="mini-table farm-table">
-              <thead><tr><th>พนักงาน</th><th>หน้าที่</th><th>ประเภทจ่าย</th><th>ผลงานเฉลี่ย</th><th>ค่าแรง</th></tr></thead>
-              <tbody>${calc.workers.map((row) => `<tr><td>${esc(row.name)}</td><td>${esc(row.role || "-")}</td><td>${esc(row.employee.payment_type || "-")}</td><td class="num">${moneyNf.format(calc.shareQuantity)}</td><td class="num">${moneyNf.format(calc.shareWage)}</td></tr>`).join("") || `<tr><td colspan="5">ยังไม่มีคนงานในใบสั่งงาน</td></tr>`}</tbody>
-            </table>
+          <div class="section-head"><h3>ตรวจสอบก่อนปิดงาน</h3><span>ส่งต่อค่าแรงและปิดสถานะงาน</span></div>
+          <div class="farm-result-review-list">
+            <p><strong>ผลงานรวม</strong><span>${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)}</span></p>
+            <p><strong>ฐานคำนวณ</strong><span>${moneyNf.format(calc.calculationQuantity)} · ${esc(calc.basis)}</span></p>
+            <p><strong>ค่าแรงตามเรท</strong><span>${moneyNf.format(calc.totalWage)} บาท</span></p>
+            <p><strong>สุทธิรายคนรวม</strong><span>${moneyNf.format(calc.payrollTotal)} บาท</span></p>
           </div>
+          <button type="button" class="farm-result-primary-save" data-farm-result-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกงานและสร้างค่าแรงรายคน</button>
         </article>
       </div>
     </section>`;
 }
 
 function syncFarmResultDraftFromForm() {
+  const workerEntries = state.farmResultDraft?.workerEntries || {};
   state.farmResultDraft = {
     resultDate: dateValue(document.querySelector("#farmResultDate")) || state.farmResultDraft?.resultDate || farmToday(),
     ticketText: document.querySelector("#farmResultTicketText")?.value.trim() || "",
@@ -12076,15 +12161,52 @@ function syncFarmResultDraftFromForm() {
     actualUnit: document.querySelector("#farmResultUnit")?.value || "",
     qualityScore: document.querySelector("#farmResultQuality")?.value || "",
     note: document.querySelector("#farmResultNote")?.value.trim() || "",
+    workerEntries,
   };
+}
+
+function syncFarmResultWorkerDraftFromTable() {
+  syncFarmResultDraftFromForm();
+  const workerEntries = {};
+  document.querySelectorAll("[data-farm-result-worker]").forEach((row) => {
+    const workerId = row.dataset.farmResultWorker;
+    workerEntries[workerId] = {};
+    row.querySelectorAll("[data-farm-result-worker-field]").forEach((input) => {
+      workerEntries[workerId][input.dataset.farmResultWorkerField] = input.value;
+    });
+  });
+  state.farmResultDraft.workerEntries = workerEntries;
+}
+
+function setFarmResultWorkerShareQuantities() {
+  const order = farmResultSelectedOrder();
+  syncFarmResultDraftFromForm();
+  const calc = farmResultCalculation(order);
+  const entries = { ...(state.farmResultDraft.workerEntries || {}) };
+  calc.workers.forEach((worker) => {
+    entries[worker.id] = {
+      ...(entries[worker.id] || {}),
+      actualQuantity: Math.round(calc.shareQuantity * 1000) / 1000,
+      workHours: entries[worker.id]?.workHours || worker.plannedHours || 8,
+      status: entries[worker.id]?.status || "present",
+    };
+  });
+  state.farmResultDraft.workerEntries = entries;
+  render();
+}
+
+function clearFarmResultWorkerDraft() {
+  syncFarmResultDraftFromForm();
+  state.farmResultDraft.workerEntries = {};
+  render();
 }
 
 async function saveFarmResultEntry() {
   const order = farmResultSelectedOrder();
   if (!order) return;
-  syncFarmResultDraftFromForm();
+  syncFarmResultWorkerDraftFromTable();
   const calc = farmResultCalculation(order);
-  if (!calc.actualQuantity || !calc.workers.length) {
+  if (!calc.actualQuantity || !calc.workerLines.length) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = "กรุณาระบุผลงานจริงหรือเลขใบชั่ง และต้องมีคนงานในใบสั่งงานก่อนบันทึก";
     render();
@@ -12092,6 +12214,7 @@ async function saveFarmResultEntry() {
   }
   const resultTable = farmTableByKey("work_results");
   const payrollLineTable = farmTableByKey("payroll_period_lines");
+  const attendanceTable = farmTableByKey("work_attendance");
   const workOrderTable = farmTableByKey("work_orders");
   const resultDate = calc.draft.resultDate || farmToday();
   const period = farmResultPayrollPeriodForDate(resultDate);
@@ -12143,8 +12266,31 @@ async function saveFarmResultEntry() {
     state.farmRecords.push(fullResultRow);
     await persistFarmRowToDatabase(resultTable, resultDbRow);
 
-    for (const worker of calc.workers) {
+    for (const worker of calc.workerLines) {
       const employee = worker.employee || {};
+      const attendance = {
+        id: `att-${resultId}-${worker.id}`.slice(0, 180),
+        moduleId: "farm-work",
+        tableId: "work_attendance",
+        work_order_id: order.id,
+        employee_id: worker.id,
+        attendance_date: resultDate,
+        check_in_time: worker.checkIn || "",
+        check_out_time: worker.checkOut || "",
+        work_hours: Math.round(n(worker.workHours) * 100) / 100,
+        status: worker.attendanceStatus || "present",
+        updatedAt: now,
+      };
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_attendance" && row.id === attendance.id));
+      state.farmRecords.push({
+        ...attendance,
+        ot_hours: Math.round(n(worker.otHours) * 100) / 100,
+        result_quantity: Math.round(n(worker.actualQuantity) * 1000) / 1000,
+        allowance_amount: Math.round(n(worker.allowance) * 100) / 100,
+        deduction_amount: Math.round(n(worker.deduction) * 100) / 100,
+        note: worker.note || "",
+      });
+      if (attendanceTable) await persistFarmRowToDatabase(attendanceTable, attendance);
       const line = {
         id: `payline-${resultId}-${worker.id}`.slice(0, 180),
         moduleId: "farm-payroll",
@@ -12158,14 +12304,19 @@ async function saveFarmResultEntry() {
         nationality_snapshot: employee.nationality || "",
         payment_type_snapshot: employee.payment_type || "รายวัน",
         rate_snapshot: calc.rateAmount,
-        normal_hours_snapshot: employee.normal_hours_per_day || worker.plannedHours || 8,
+        normal_hours_snapshot: employee.normal_hours_per_day || worker.workHours || 8,
         calculated_at: resultDate,
         is_locked: "true",
-        gross_amount: Math.round(calc.shareWage * 100) / 100,
-        net_amount: Math.round(calc.shareWage * 100) / 100,
+        gross_amount: Math.round(n(worker.grossAmount) * 100) / 100,
+        net_amount: Math.round(n(worker.grossAmount) * 100) / 100,
         status: "calculated",
-        result_quantity_snapshot: Math.round(calc.shareQuantity * 1000) / 1000,
+        result_quantity_snapshot: Math.round(n(worker.actualQuantity) * 1000) / 1000,
         result_unit_snapshot: calc.actualUnit,
+        attendance_status_snapshot: worker.attendanceStatus || "present",
+        base_wage_amount: Math.round(n(worker.wageAmount) * 100) / 100,
+        allowance_amount: Math.round(n(worker.allowance) * 100) / 100,
+        deduction_amount: Math.round(n(worker.deduction) * 100) / 100,
+        note: worker.note || "",
         updatedAt: now,
       };
       state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "payroll_period_lines" && row.id === line.id));
@@ -12189,6 +12340,8 @@ async function saveFarmResultEntry() {
         gross_amount: line.gross_amount,
         net_amount: line.net_amount,
         status: line.status,
+        result_quantity_snapshot: line.result_quantity_snapshot,
+        result_unit_snapshot: line.result_unit_snapshot,
         updatedAt: now,
       });
     }
@@ -12230,7 +12383,7 @@ async function saveFarmResultEntry() {
     state.farmWorkDetailId = order.id;
     state.farmResultWorkOrderId = order.id;
     state.farmSyncStatus = "success";
-    state.farmSyncMessage = `บันทึกงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงรวม ${moneyNf.format(calc.totalWage)} บาท`;
+    state.farmSyncMessage = `บันทึกงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงสุทธิ ${moneyNf.format(calc.payrollTotal)} บาท`;
   } catch (error) {
     saveFarmRecords();
     state.farmSyncStatus = "error";
@@ -14915,12 +15068,17 @@ async function init() {
     if (e.target.id === "farmResultOrderSelect") {
       state.farmResultWorkOrderId = e.target.value;
       state.farmWorkDetailId = e.target.value;
-      state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", note: "" };
+      state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", note: "", workerEntries: {} };
       render();
       return;
     }
     if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultNote"].includes(e.target.id)) {
       syncFarmResultDraftFromForm();
+      render();
+      return;
+    }
+    if (e.target.matches("[data-farm-result-worker-field]")) {
+      syncFarmResultWorkerDraftFromTable();
       render();
       return;
     }
@@ -15196,6 +15354,18 @@ async function init() {
       state.estSearchTimer = setTimeout(render, 200);
       return;
     }
+    if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultNote"].includes(e.target.id)) {
+      syncFarmResultDraftFromForm();
+      clearTimeout(state.farmResultRenderTimer);
+      state.farmResultRenderTimer = setTimeout(render, 180);
+      return;
+    }
+    if (e.target.matches("[data-farm-result-worker-field]")) {
+      syncFarmResultWorkerDraftFromTable();
+      clearTimeout(state.farmResultRenderTimer);
+      state.farmResultRenderTimer = setTimeout(render, 180);
+      return;
+    }
     if (e.target.id === "farmSearch") {
       state.farmFilters.query = e.target.value.trim();
       state.farmDetailId = "";
@@ -15367,6 +15537,14 @@ async function init() {
     }
     if (e.target.closest("[data-farm-result-save]")) {
       saveFarmResultEntry();
+      return;
+    }
+    if (e.target.closest("[data-farm-result-fill-share]")) {
+      setFarmResultWorkerShareQuantities();
+      return;
+    }
+    if (e.target.closest("[data-farm-result-clear-worker]")) {
+      clearFarmResultWorkerDraft();
       return;
     }
     const plannerTab = e.target.closest("[data-farm-planner-tab]");
