@@ -4690,7 +4690,9 @@ tfoot td {
   align-items: center;
   gap: 5px;
   list-style: none;
+  min-height: 17px;
   margin: 1px 0;
+  line-height: 1.2;
 }
 
 .budget-tree-scroll summary.budget-team-summary::-webkit-details-marker {
@@ -4763,16 +4765,17 @@ tfoot td {
 
 .budget-tree-nested {
   display: grid;
-  gap: 3px;
-  margin: 4px 0 8px 20px;
-  padding-left: 10px;
+  gap: 1px;
+  margin: 2px 0 5px 18px;
+  padding-left: 8px;
   border-left: 2px solid #e7edf3;
 }
 
 .budget-tree-nested .budget-tree-item {
-  min-height: 23px;
-  padding: 2px 4px;
+  min-height: 17px;
+  padding: 0 4px;
   margin-left: 0;
+  line-height: 1.2;
 }
 
 .budget-rate-form {
