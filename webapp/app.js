@@ -80,7 +80,7 @@
   farmDispatchWorkOrderId: "",
   farmDispatchTeamId: "",
   farmResultWorkOrderId: "",
-  farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", note: "", workerEntries: {} },
+  farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", workerEntries: {} },
   farmResultRenderTimer: null,
   farmTableId: "",
   farmDetailId: "",
@@ -666,6 +666,51 @@ const FARM_OPERATION_WORKFLOW_VIEWS = new Set([
   "farm-inventory-issue",
   "farm-reports",
 ]);
+
+const FARM_SURVEY_DOCUMENTS = [
+  {
+    id: "survey-opr-002",
+    template_code: "FM-RSPO-OPR-002",
+    template_name: "รายงานตรวจงานถางป่า",
+    file_name: "FM - RSPO - OPR 002  รายงานตรวจงานถางป่า.doc",
+    file_url: "Master Data/Survay/FM - RSPO - OPR 002  รายงานตรวจงานถางป่า.doc",
+    keywords: ["ถาง", "ถางป่า", "clear", "weeding"],
+  },
+  {
+    id: "survey-opr-004",
+    template_code: "FM-RSPO-OPR-004",
+    template_name: "รายงานตรวจงานฉีดยา",
+    file_name: "FM - RSPO - OPR 004 รายงานตรวจงานฉีดยา.doc",
+    file_url: "Master Data/Survay/FM - RSPO - OPR 004 รายงานตรวจงานฉีดยา.doc",
+    keywords: ["ฉีด", "ยา", "พ่น", "spray", "chemical"],
+  },
+  {
+    id: "survey-opr-005",
+    template_code: "FM-RSPO-OPR-005",
+    template_name: "รายงานตรวจงานตัดปาล์ม",
+    file_name: "FM - RSPO - OPR 005 รายงานตรวจงานตัดปาล์ม.doc",
+    file_url: "Master Data/Survay/FM - RSPO - OPR 005 รายงานตรวจงานตัดปาล์ม.doc",
+    activity_id: "activity-harvest",
+    keywords: ["ตัดปาล์ม", "เก็บเกี่ยว", "harvest"],
+  },
+  {
+    id: "survey-opr-006",
+    template_code: "FM-RSPO-OPR-006",
+    template_name: "รายงานตรวจงานใส่ปุ๋ย",
+    file_name: "FM - RSPO - OPR 006 รายงานตรวจงานใส่ปู่ย.doc",
+    file_url: "Master Data/Survay/FM - RSPO - OPR 006 รายงานตรวจงานใส่ปู่ย.doc",
+    activity_id: "activity-fertilizer-0030",
+    keywords: ["ใส่ปุ๋ย", "ปุ๋ย", "fertilizer", "dolomite", "โดโลไมท์"],
+  },
+  {
+    id: "survey-opr-007",
+    template_code: "FM-RSPO-OPR-007",
+    template_name: "รายงานตรวจงานตัดแต่งทางใบ",
+    file_name: "FM - RSPO - OPR 007 รายงานตรวจงงานตัดแต่งทางใบ.doc",
+    file_url: "Master Data/Survay/FM - RSPO - OPR 007 รายงานตรวจงงานตัดแต่งทางใบ.doc",
+    keywords: ["ตัดแต่ง", "ทางใบ", "แต่งทาง", "prune", "frond"],
+  },
+];
 
 const VERSIONED_FARM_TABLES = new Set(["people", "employees", "contractors", "payroll_rates"]);
 
@@ -1572,9 +1617,16 @@ const FARM_TABLE_SCHEMAS = {
       F("template_code", "รหัสแบบประเมิน", { required: true }),
       F("template_name", "ชื่อแบบประเมิน", { required: true }),
       F("activity_id", "กิจกรรม", { references: "activities" }),
+      F("file_name", "ไฟล์รายงาน"),
+      F("file_url", "ตำแหน่งไฟล์"),
+      F("required_for_work_order", "แนบกับ WO อัตโนมัติ", { type: "boolean" }),
       F("status", "สถานะ", { type: "status" }),
     ],
-    seed: [],
+    seed: FARM_SURVEY_DOCUMENTS.map((row) => ({
+      ...row,
+      required_for_work_order: "true",
+      status: "active",
+    })),
   },
   survey_questions: {
     moduleId: "farm-activities",
@@ -9464,6 +9516,17 @@ function mergeAreaRows(currentRows, derivedRows) {
 }
 
 function farmCleanRows(tableId, rows) {
+  if (tableId === "survey_templates") {
+    return mergeCleanRows(rows, FARM_SURVEY_DOCUMENTS.map((row) => ({
+      ...row,
+      tableId,
+      moduleId: "farm-activities",
+      readonly: true,
+      required_for_work_order: "true",
+      status: "active",
+      _source: "Master Data/Survay",
+    })));
+  }
   if (tableId === "areas") {
     const summaryBlocks = (state.summaryPalmoilAreas || []).map((row) => ({
       ...row,
@@ -10813,6 +10876,88 @@ function farmLookupLabel(tableKey, id) {
   return row ? farmRecordLabel(table, row) : (id || "-");
 }
 
+function farmSurveyText(row = {}) {
+  return [row.template_code, row.template_name, row.activity_name, row.activity_code, row.file_name, ...(row.keywords || [])]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function farmSurveyTemplates() {
+  const table = farmTableByKey("survey_templates");
+  const rows = table ? farmRows(table) : [];
+  return rows.length ? rows : FARM_SURVEY_DOCUMENTS.map((row) => ({ ...row, tableId: "survey_templates", moduleId: "farm-activities", status: "active" }));
+}
+
+function farmSurveyForActivity(activityOrId) {
+  const activity = typeof activityOrId === "string" ? farmLookup("activities", activityOrId) : (activityOrId || {});
+  if (!activity?.id) return null;
+  const templates = farmSurveyTemplates().filter((row) => String(row.status || "active").toLowerCase() !== "inactive");
+  const exact = templates.find((row) => row.activity_id === activity.id);
+  if (exact) return exact;
+  const activityText = [activity.activity_code, activity.activity_name, activity.work_type, farmLookupLabel("activity_groups", activity.activity_group_id)]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return templates.find((row) => {
+    const keywords = Array.isArray(row.keywords) ? row.keywords : farmSurveyText(row).split(/\s+/);
+    return keywords.some((keyword) => keyword && activityText.includes(String(keyword).toLowerCase()));
+  }) || null;
+}
+
+function farmSurveyForOrder(order = {}) {
+  return farmSurveyForActivity(order.activity || order.activity_id);
+}
+
+function farmSurveyAttachmentForOrder(order = {}) {
+  const survey = farmSurveyForOrder(order);
+  if (!survey || !order.id) return null;
+  return {
+    id: `att-survey-${order.id}-${survey.id}`.slice(0, 180),
+    moduleId: "farm-general",
+    tableId: "attachments",
+    entity_table: "work_orders",
+    entity_id: order.id,
+    file_name: survey.file_name || survey.template_name,
+    file_url: survey.file_url || "",
+    uploaded_by: "system",
+    status: "auto_attached",
+    survey_template_id: survey.id,
+    survey_template_code: survey.template_code || "",
+    survey_template_name: survey.template_name || "",
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function farmOrderSurveyAttachment(order = {}) {
+  const auto = farmSurveyAttachmentForOrder(order);
+  return farmRowsByKey("attachments").find((row) => row.entity_table === "work_orders" && row.entity_id === order.id && (!auto || row.survey_template_id === auto.survey_template_id || row.file_name === auto.file_name)) || auto;
+}
+
+async function ensureFarmSurveyAttachment(order = {}) {
+  const attachment = farmSurveyAttachmentForOrder(order);
+  const table = farmTableByKey("attachments");
+  if (!attachment || !table) return null;
+  state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "attachments" && row.id === attachment.id));
+  state.farmRecords.push(attachment);
+  try {
+    await persistFarmRowToDatabase(table, {
+      id: attachment.id,
+      moduleId: "farm-general",
+      tableId: "attachments",
+      entity_table: attachment.entity_table,
+      entity_id: attachment.entity_id,
+      file_name: attachment.file_name,
+      file_url: attachment.file_url,
+      uploaded_by: attachment.uploaded_by,
+      status: attachment.status,
+    });
+  } catch (error) {
+    state.farmDbErrors = { ...(state.farmDbErrors || {}), attachments: error.message };
+  }
+  return attachment;
+}
+
 function farmDisplayValue(field, row) {
   const key = farmFieldKey(field);
   const value = row?.[key];
@@ -11227,6 +11372,7 @@ function renderFarmWorkPlanner() {
   const selectedMaterial = selectedMaterials[0]
     || materials.find((row) => row.id === (selectedUsageRate.material_id || materialBudgetRate.material_id || selectedBudgetRate.material_id))
     || {};
+  const previewSurvey = farmSurveyForActivity(previewActivity);
   const calculationBase = selectedUsageRate.usage_basis === "per_tree" ? totalTrees : selectedUsageRate.usage_basis === "per_rai" ? totalRai : selectedBlocks.length;
   const materialQuantity = selectedMaterials.length ? calculationBase * n(selectedUsageRate.usage_rate || 0) : 0;
   const laborEstimate = farmBudgetRateCost(laborBudgetRate, selectedBlocks);
@@ -11329,6 +11475,7 @@ function renderFarmWorkPlanner() {
             <dt>ทีม</dt><dd>${esc(previewTeam?.team_name || "-")} · ${fmt(previewMembers.length)} คน</dd>
             <dt>ช่วงวัน</dt><dd>2026-01-15 ถึง 2026-01-16</dd>
             <dt>ทรัพยากร</dt><dd>วัสดุ ${fmt(selectedMaterials.length)} รายการ · รถ/เครื่องจักร ${fmt(selectedVehicles.length)} รายการ</dd>
+            <dt>แบบตรวจงาน</dt><dd>${previewSurvey ? `${esc(previewSurvey.template_code || "")} · ${esc(previewSurvey.template_name || previewSurvey.file_name || "")}` : "ไม่พบแบบตรวจที่ตรงกับกิจกรรม"}</dd>
             <dt>สถานะเริ่มต้น</dt><dd>Draft · ไม่ต้องผ่านขั้นตอนอนุมัติ</dd>
           </dl>
           <div class="farm-plan-cost-preview">
@@ -11404,6 +11551,7 @@ async function createFarmWorkPlanFromSelection() {
         state.farmRecords.push(row);
         const saved = await persistFarmRowToDatabase(table, row);
         await ensureFarmWorkOrderQr(row, "plan");
+        await ensureFarmSurveyAttachment({ ...row, id: saved.row?.id || row.id, activity });
         created.push(saved.row?.id || row.id);
       }
     }
@@ -12140,6 +12288,8 @@ function renderFarmResultPanel() {
   const calc = farmResultCalculation(order);
   const draft = calc.draft;
   const area = [order?.plot?.plot_code, order?.block?.block_code || order?.block?.block_name, order?.block?.ap_code || order?.block?.AP_code].filter(Boolean).join(" / ") || "-";
+  const survey = farmSurveyForOrder(order);
+  const surveyAttachment = farmOrderSurveyAttachment(order);
   const rateLabel = calc.rate?.id
     ? `${calc.rate.rate_code || calc.rate.id} · ${calc.rate.rate_text || `${moneyNf.format(calc.rateAmount)} ${calc.rate.unit_name || ""}`}`
     : "ยังไม่พบเรทที่ผูกกับกิจกรรม/Block";
@@ -12168,6 +12318,7 @@ function renderFarmResultPanel() {
         <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(order?.statusMeta?.label || "-")}</small></article>
         <article><span>เรทค่าแรง</span><strong>${moneyNf.format(calc.rateAmount)}</strong><small>${esc(calc.basis || "-")}</small></article>
         <article><span>ค่าแรงรวม</span><strong>${moneyNf.format(calc.payrollTotal || calc.totalWage)}</strong><small>ล็อก snapshot หลังบันทึก</small></article>
+        <article><span>แบบตรวจงาน</span><strong>${esc(survey?.template_code || "-")}</strong><small>${esc(surveyAttachment?.file_name || survey?.template_name || "ไม่พบแบบตรวจ")}</small></article>
       </div>
       <div class="farm-result-entry-grid">
         <article class="farm-result-card farm-result-main-entry">
@@ -12187,6 +12338,19 @@ function renderFarmResultPanel() {
             </label>
             <label>คะแนนคุณภาพ
               <input id="farmResultQuality" type="number" min="0" max="100" step="1" value="${esc(draft.qualityScore || "")}" placeholder="0-100">
+            </label>
+            <label>ผลตรวจงาน
+              <select id="farmResultSurveyStatus">
+                ${[
+                  ["pending", "รอตรวจ"],
+                  ["passed", "ผ่าน"],
+                  ["needs_fix", "ต้องแก้ไข"],
+                  ["rejected", "ไม่ผ่าน"],
+                ].map(([value, label]) => `<option value="${esc(value)}"${(draft.surveyStatus || "pending") === value ? " selected" : ""}>${esc(label)}</option>`).join("")}
+              </select>
+            </label>
+            <label>หมายเหตุผลตรวจ
+              <input id="farmResultSurveyNote" type="text" value="${esc(draft.surveyNote || "")}" placeholder="${esc(survey?.template_name || "รายละเอียดตรวจงาน")}">
             </label>
             <label>หมายเหตุ
               <input id="farmResultNote" type="text" value="${esc(draft.note || "")}" placeholder="หมายเหตุการทำงาน">
@@ -12287,6 +12451,8 @@ function syncFarmResultDraftFromForm() {
     actualQuantity: document.querySelector("#farmResultQuantity")?.value || "",
     actualUnit: document.querySelector("#farmResultUnit")?.value || "",
     qualityScore: document.querySelector("#farmResultQuality")?.value || "",
+    surveyStatus: document.querySelector("#farmResultSurveyStatus")?.value || state.farmResultDraft?.surveyStatus || "pending",
+    surveyNote: document.querySelector("#farmResultSurveyNote")?.value.trim() || "",
     note: document.querySelector("#farmResultNote")?.value.trim() || "",
     workerEntries,
   };
@@ -12348,6 +12514,8 @@ async function saveFarmResultEntry() {
   const resultId = `result-${order.id}-${resultDate}`.slice(0, 180);
   const now = new Date().toISOString();
   const ticketText = calc.tickets.map((row) => row.wpDocNo || row.docKey).filter(Boolean).join(", ");
+  const survey = farmSurveyForOrder(order);
+  const surveyAttachment = farmOrderSurveyAttachment(order);
   const fullResultRow = {
     id: resultId,
     moduleId: "farm-result",
@@ -12357,6 +12525,12 @@ async function saveFarmResultEntry() {
     actual_quantity: calc.actualQuantity,
     actual_unit: calc.actualUnit,
     quality_score: calc.draft.qualityScore || "",
+    survey_template_id: survey?.id || "",
+    survey_template_code: survey?.template_code || "",
+    survey_template_name: survey?.template_name || "",
+    survey_file_name: surveyAttachment?.file_name || survey?.file_name || "",
+    survey_status: calc.draft.surveyStatus || "pending",
+    survey_note: calc.draft.surveyNote || "",
     recorded_by: "profile-admin",
     status: "completed",
     source_ticket_numbers: ticketText || calc.draft.ticketText,
@@ -12519,6 +12693,99 @@ async function saveFarmResultEntry() {
     state.farmSyncBusy = false;
     render();
   }
+}
+
+function renderFarmSurveyPerformancePanel() {
+  const results = farmRowsByKey("work_results");
+  const payrollLines = farmRowsByKey("payroll_period_lines");
+  const orders = farmRowsByKey("work_orders");
+  const rows = results.map((result) => {
+    const order = orders.find((item) => item.id === result.work_order_id) || farmLookup("work_orders", result.work_order_id) || {};
+    const team = farmLookup("teams", order.team_id) || {};
+    const activity = farmLookup("activities", order.activity_id) || {};
+    const survey = result.survey_template_code || farmSurveyForOrder(order)?.template_code || "";
+    const quality = n(result.quality_score);
+    const status = result.survey_status || (quality >= 80 ? "passed" : quality ? "needs_fix" : "pending");
+    const wages = payrollLines.filter((line) => line.work_result_id === result.id);
+    return {
+      result,
+      order,
+      team,
+      activity,
+      survey,
+      status,
+      quality,
+      wage: wages.reduce((sum, line) => sum + n(line.net_amount || line.gross_amount), 0),
+      workerCount: wages.length || n(result.worker_count),
+    };
+  }).filter((row) => row.order?.id || row.result?.work_order_id);
+  const passCount = rows.filter((row) => row.status === "passed").length;
+  const needFixCount = rows.filter((row) => ["needs_fix", "rejected"].includes(row.status)).length;
+  const qualityRows = rows.filter((row) => row.quality);
+  const avgQuality = qualityRows.length ? qualityRows.reduce((sum, row) => sum + row.quality, 0) / qualityRows.length : 0;
+  const groupBy = (keyFn) => {
+    const map = new Map();
+    for (const row of rows) {
+      const key = keyFn(row) || "-";
+      if (!map.has(key)) map.set(key, { key, count: 0, pass: 0, qualitySum: 0, qualityCount: 0, wage: 0, workerCount: 0 });
+      const item = map.get(key);
+      item.count += 1;
+      if (row.status === "passed") item.pass += 1;
+      if (row.quality) {
+        item.qualitySum += row.quality;
+        item.qualityCount += 1;
+      }
+      item.wage += row.wage;
+      item.workerCount += row.workerCount;
+    }
+    return [...map.values()].map((item) => ({
+      ...item,
+      avgQuality: item.qualityCount ? item.qualitySum / item.qualityCount : 0,
+      passRate: item.count ? (item.pass / item.count) * 100 : 0,
+    })).sort((a, b) => b.count - a.count || b.passRate - a.passRate);
+  };
+  const byTeam = groupBy((row) => row.team.team_name || row.order.team_id || "ไม่ระบุทีม");
+  const byActivity = groupBy((row) => row.activity.activity_name || row.order.activity_id || "ไม่ระบุกิจกรรม");
+  const byPerson = groupBy((row) => {
+    const line = payrollLines.find((item) => item.work_result_id === row.result.id);
+    return line?.payee_snapshot_name || "ยังไม่แตกค่าแรงรายคน";
+  });
+  const renderAggRows = (items) => items.slice(0, 8).map((item) => `
+    <tr>
+      <td>${esc(item.key)}</td>
+      <td class="num">${fmt(item.count)}</td>
+      <td class="num">${moneyNf.format(item.avgQuality || 0)}</td>
+      <td class="num">${moneyNf.format(item.passRate || 0)}%</td>
+      <td class="num">${fmt(item.workerCount)}</td>
+      <td class="num">${moneyNf.format(item.wage || 0)}</td>
+    </tr>`).join("");
+  return `
+    <section class="farm-result-card farm-survey-performance">
+      <div class="section-head">
+        <h3>วิเคราะห์ประสิทธิภาพจากรายงานตรวจงาน</h3>
+        <span>ผูกจากแบบตรวจงานใน folder Survay, Work Order, บันทึกงาน และค่าแรงรายคน</span>
+      </div>
+      <div class="farm-result-summary-strip">
+        <article><span>งานที่มีผลตรวจ</span><strong>${fmt(rows.length)}</strong><small>จาก Work Result</small></article>
+        <article><span>ผ่านตรวจ</span><strong>${fmt(passCount)}</strong><small>${rows.length ? moneyNf.format((passCount / rows.length) * 100) : "0"}%</small></article>
+        <article><span>ต้องแก้ไข</span><strong>${fmt(needFixCount)}</strong><small>ส่งให้ผู้จัดการรับทราบ</small></article>
+        <article><span>คะแนนเฉลี่ย</span><strong>${moneyNf.format(avgQuality || 0)}</strong><small>ใช้เทียบทีม/คน</small></article>
+      </div>
+      <div class="farm-result-bottom-grid">
+        <article>
+          <div class="section-head"><h3>ตามทีม</h3><span>คุณภาพและค่าแรงรวม</span></div>
+          <div class="table-wrap"><table class="mini-table farm-table"><thead><tr><th>ทีม</th><th>งาน</th><th>คะแนน</th><th>ผ่าน</th><th>คน</th><th>ค่าแรง</th></tr></thead><tbody>${renderAggRows(byTeam) || `<tr><td colspan="6">ยังไม่มีข้อมูลตรวจงาน</td></tr>`}</tbody></table></div>
+        </article>
+        <article>
+          <div class="section-head"><h3>ตามกิจกรรม</h3><span>เห็นงานที่คุณภาพต่ำหรือแก้ซ้ำ</span></div>
+          <div class="table-wrap"><table class="mini-table farm-table"><thead><tr><th>กิจกรรม</th><th>งาน</th><th>คะแนน</th><th>ผ่าน</th><th>คน</th><th>ค่าแรง</th></tr></thead><tbody>${renderAggRows(byActivity) || `<tr><td colspan="6">ยังไม่มีข้อมูลตรวจงาน</td></tr>`}</tbody></table></div>
+        </article>
+        <article>
+          <div class="section-head"><h3>ตามคน</h3><span>ใช้ดูแนวโน้มรายบุคคลหลังแตกค่าแรง</span></div>
+          <div class="table-wrap"><table class="mini-table farm-table"><thead><tr><th>บุคลากร</th><th>งาน</th><th>คะแนน</th><th>ผ่าน</th><th>ครั้ง</th><th>ค่าแรง</th></tr></thead><tbody>${renderAggRows(byPerson) || `<tr><td colspan="6">ยังไม่มีข้อมูลรายคน</td></tr>`}</tbody></table></div>
+        </article>
+      </div>
+    </section>`;
 }
 
 function renderFarmWorkBoard(options = {}) {
@@ -12691,6 +12958,7 @@ function renderFarmWorkOrderList() {
               <th>งาน</th>
               <th>พื้นที่</th>
               <th>กิจกรรม</th>
+              <th>แบบตรวจ</th>
               <th>ทีม</th>
               <th>วันแผน</th>
               <th>วันทำงาน</th>
@@ -12705,12 +12973,13 @@ function renderFarmWorkOrderList() {
                 <td>${esc(row.work_order_title || "-")}</td>
                 <td>${esc([row.plot?.plot_code || row.plot_group?.group_code, row.block?.block_code || row.block?.area_code, row.block?.ap_code || row.block?.AP_code].filter(Boolean).join(" / ") || "-")}</td>
                 <td>${esc(row.activity?.activity_name || farmLookupLabel("activities", row.activity_id) || "-")}</td>
+                <td>${esc(farmOrderSurveyAttachment(row)?.survey_template_code || farmSurveyForOrder(row)?.template_code || "-")}</td>
                 <td>${esc(row.team?.team_name || farmLookupLabel("teams", row.team_id) || "-")}</td>
                 <td>${esc(`${row.startDate || "-"} ถึง ${row.endDate || "-"}`)}</td>
                 <td>${esc(row.scheduled_date || "-")}</td>
                 <td class="num">${fmt(farmWorkProgress(row))}%</td>
                 <td><span class="status-pill" style="border-color:${esc(row.statusMeta.color)};color:${esc(row.statusMeta.color)}">${esc(row.statusMeta.label)}</span></td>
-              </tr>`).join("") || `<tr><td colspan="9">ไม่พบ Work Order ตามตัวกรอง</td></tr>`}
+              </tr>`).join("") || `<tr><td colspan="10">ไม่พบ Work Order ตามตัวกรอง</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -12721,6 +12990,8 @@ function renderFarmWorkDetail(order) {
   if (!order) return `<aside class="farm-work-detail-panel"><strong>ยังไม่มี Work Order</strong><span>เพิ่มใบสั่งงานในตาราง work_orders ก่อน</span></aside>`;
   const needsApproval = order.statusMeta.key === "pending_approval";
   const canApprove = needsApproval && farmCan("approve");
+  const survey = farmSurveyForOrder(order);
+  const surveyAttachment = farmOrderSurveyAttachment(order);
   const details = [
     ["เลขที่ WO", farmShortWorkOrderNo(order)],
     ["เลขที่เดิม", order.work_order_no && order.work_order_no !== farmShortWorkOrderNo(order) ? order.work_order_no : "-"],
@@ -12734,6 +13005,8 @@ function renderFarmWorkDetail(order) {
     ["กลุ่มแปลง", farmLookupLabel("plot_groups", order.plot_group_id)],
     ["กิจกรรม", farmLookupLabel("activities", order.activity_id)],
     ["กลุ่มกิจกรรม", order.activityGroup?.group_name || "-"],
+    ["แบบตรวจงาน", survey ? `${survey.template_code || ""} ${survey.template_name || survey.file_name || ""}` : "-"],
+    ["ไฟล์ตรวจงาน", surveyAttachment?.file_name || "-"],
     ["ทีม/หัวหน้า", farmLookupLabel("teams", order.team_id)],
     ["วันแผน", `${order.startDate || "-"} ถึง ${order.endDate || "-"}`],
     ["วันที่ทำงาน", order.scheduled_date || "-"],
@@ -14471,7 +14744,7 @@ function renderFarmPage() {
       ${isTeamPage ? renderFarmTeamsBoard() : ""}
       ${isWorkPage ? `${renderFarmWorkBoard({ title: "Planner", subtitle: "ตารางแผนงานแบบย่อ แสดง Activity, Block, ทีม และสถานะในแถวเดียว" })}${renderFarmWorkPlanner()}` : ""}
       ${isDispatchPage ? `${renderFarmWorkBoard({ title: "Scheduler", subtitle: "ตารางงานสำหรับผู้จัดการ ใช้ดูแผนก่อนหยิบไปสั่งงาน", showKpis: false })}${renderFarmDispatchPanel()}${renderFarmWorkOrderList()}${renderFarmActivityModal()}` : ""}
-      ${isResultPage ? `${renderFarmResultPanel()}${renderFarmWorkOrderList()}` : ""}
+      ${isResultPage ? `${renderFarmResultPanel()}${renderFarmSurveyPerformancePanel()}${renderFarmWorkOrderList()}` : ""}
       ${isInventoryIssuePage ? renderFarmInventoryIssueQueue() : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
@@ -15485,11 +15758,11 @@ async function init() {
     if (e.target.id === "farmResultOrderSelect") {
       state.farmResultWorkOrderId = e.target.value;
       state.farmWorkDetailId = e.target.value;
-      state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", note: "", workerEntries: {} };
+      state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", workerEntries: {} };
       render();
       return;
     }
-    if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultNote"].includes(e.target.id)) {
+    if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultNote"].includes(e.target.id)) {
       syncFarmResultDraftFromForm();
       render();
       return;
@@ -15794,7 +16067,7 @@ async function init() {
       state.estSearchTimer = setTimeout(render, 200);
       return;
     }
-    if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultNote"].includes(e.target.id)) {
+    if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultNote"].includes(e.target.id)) {
       syncFarmResultDraftFromForm();
       clearTimeout(state.farmResultRenderTimer);
       state.farmResultRenderTimer = setTimeout(render, 180);
