@@ -80,7 +80,7 @@
   farmDispatchWorkOrderId: "",
   farmDispatchTeamId: "",
   farmResultWorkOrderId: "",
-  farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", workerEntries: {} },
+  farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {} },
   farmResultRenderTimer: null,
   farmTableId: "",
   farmDetailId: "",
@@ -710,6 +710,25 @@ const FARM_SURVEY_DOCUMENTS = [
     file_url: "Master Data/Survay/FM - RSPO - OPR 007 รายงานตรวจงงานตัดแต่งทางใบ.doc",
     keywords: ["ตัดแต่ง", "ทางใบ", "แต่งทาง", "prune", "frond"],
   },
+];
+
+const FARM_SURVEY_QUESTIONS = [
+  { id: "sq-opr002-area", template_id: "survey-opr-002", question_code: "AREA_RAI", question_text: "พื้นที่ถางจริง", answer_type: "number", answer_unit: "ไร่", required: "true", sort_order: "1" },
+  { id: "sq-opr002-remain", template_id: "survey-opr-002", question_code: "WEED_REMAIN", question_text: "วัชพืชคงเหลือ", answer_type: "number", answer_unit: "%", required: "true", sort_order: "2" },
+  { id: "sq-opr002-rework", template_id: "survey-opr-002", question_code: "REWORK_RAI", question_text: "พื้นที่ต้องแก้ไข", answer_type: "number", answer_unit: "ไร่", required: "false", sort_order: "3" },
+  { id: "sq-opr004-area", template_id: "survey-opr-004", question_code: "SPRAY_AREA", question_text: "พื้นที่ฉีดพ่นจริง", answer_type: "number", answer_unit: "ไร่", required: "true", sort_order: "1" },
+  { id: "sq-opr004-chemical", template_id: "survey-opr-004", question_code: "CHEMICAL_USED", question_text: "ปริมาณสาร/น้ำยาใช้จริง", answer_type: "number", answer_unit: "ลิตร", required: "false", sort_order: "2" },
+  { id: "sq-opr004-missed", template_id: "survey-opr-004", question_code: "MISSED_AREA", question_text: "พื้นที่ฉีดไม่ทั่วถึง", answer_type: "number", answer_unit: "ไร่", required: "false", sort_order: "3" },
+  { id: "sq-opr005-weight", template_id: "survey-opr-005", question_code: "FFB_WEIGHT", question_text: "น้ำหนักผลผลิตตรวจ", answer_type: "number", answer_unit: "กก.", required: "true", sort_order: "1" },
+  { id: "sq-opr005-unripe", template_id: "survey-opr-005", question_code: "UNRIPE_BUNCH", question_text: "ทะลายดิบ/ไม่ได้เกณฑ์", answer_type: "number", answer_unit: "ทะลาย", required: "false", sort_order: "2" },
+  { id: "sq-opr005-loose", template_id: "survey-opr-005", question_code: "LOOSE_FRUIT", question_text: "ลูกร่วงที่เก็บได้", answer_type: "number", answer_unit: "กก.", required: "false", sort_order: "3" },
+  { id: "sq-opr006-bags", template_id: "survey-opr-006", question_code: "BAGS_USED", question_text: "ปุ๋ยใช้จริง", answer_type: "number", answer_unit: "กระสอบ", required: "true", sort_order: "1" },
+  { id: "sq-opr006-trees", template_id: "survey-opr-006", question_code: "TREES_COVERED", question_text: "จำนวนต้นที่ใส่ครบ", answer_type: "number", answer_unit: "ต้น", required: "true", sort_order: "2" },
+  { id: "sq-opr006-missed", template_id: "survey-opr-006", question_code: "MISSED_TREES", question_text: "จำนวนต้นที่ตกหล่น", answer_type: "number", answer_unit: "ต้น", required: "false", sort_order: "3" },
+  { id: "sq-opr006-rate", template_id: "survey-opr-006", question_code: "DOSAGE_RATE", question_text: "อัตราเฉลี่ยต่อต้น", answer_type: "number", answer_unit: "กก./ต้น", required: "false", sort_order: "4" },
+  { id: "sq-opr007-palms", template_id: "survey-opr-007", question_code: "PALMS_PRUNED", question_text: "จำนวนต้นที่ตัดแต่ง", answer_type: "number", answer_unit: "ต้น", required: "true", sort_order: "1" },
+  { id: "sq-opr007-fronds", template_id: "survey-opr-007", question_code: "FRONDS_CUT", question_text: "จำนวนทางใบที่ตัด", answer_type: "number", answer_unit: "ทางใบ", required: "false", sort_order: "2" },
+  { id: "sq-opr007-damage", template_id: "survey-opr-007", question_code: "DAMAGED_PALMS", question_text: "ต้นเสียหาย/ต้องแก้ไข", answer_type: "number", answer_unit: "ต้น", required: "false", sort_order: "3" },
 ];
 
 const VERSIONED_FARM_TABLES = new Set(["people", "employees", "contractors", "payroll_rates"]);
@@ -1639,10 +1658,11 @@ const FARM_TABLE_SCHEMAS = {
       F("question_code", "รหัสคำถาม", { required: true }),
       F("question_text", "คำถาม", { required: true }),
       F("answer_type", "ชนิดคำตอบ", { options: ["number", "text", "yes_no", "choice"] }),
+      F("answer_unit", "หน่วย"),
       F("required", "จำเป็น", { type: "boolean" }),
       F("sort_order", "ลำดับ", { type: "number" }),
     ],
-    seed: [],
+    seed: FARM_SURVEY_QUESTIONS,
   },
   annual_work_plans: {
     moduleId: "farm-work",
@@ -1711,6 +1731,7 @@ const FARM_TABLE_SCHEMAS = {
       F("block_id", "Block", { references: "blocks", required: true }),
       F("plot_group_id", "กลุ่มแปลง", { references: "plot_groups" }),
       F("activity_id", "กิจกรรม", { references: "activities", required: true }),
+      F("survey_template_id", "แบบตรวจงาน", { references: "survey_templates" }),
       F("team_id", "ทีม", { references: "teams" }),
       F("planned_start_date", "วันที่เริ่มแผน", { type: "date" }),
       F("planned_end_date", "วันที่สิ้นสุดแผน", { type: "date" }),
@@ -1867,6 +1888,10 @@ const FARM_TABLE_SCHEMAS = {
       F("actual_quantity", "ผลงานจริง", { type: "number" }),
       F("actual_unit", "หน่วย"),
       F("quality_score", "คะแนนคุณภาพ", { type: "number" }),
+      F("survey_template_id", "แบบตรวจงาน", { references: "survey_templates" }),
+      F("survey_status", "ผลตรวจ", { options: ["pending", "passed", "needs_fix", "rejected"] }),
+      F("survey_note", "หมายเหตุผลตรวจ"),
+      F("survey_values_json", "ตัวเลขตรวจงาน JSON"),
       F("recorded_by", "ผู้บันทึก", { references: "profiles" }),
       F("status", "สถานะ", { type: "status" }),
     ],
@@ -9527,6 +9552,16 @@ function farmCleanRows(tableId, rows) {
       _source: "Master Data/Survay",
     })));
   }
+  if (tableId === "survey_questions") {
+    return mergeCleanRows(rows, FARM_SURVEY_QUESTIONS.map((row) => ({
+      ...row,
+      tableId,
+      moduleId: "farm-activities",
+      readonly: true,
+      status: "active",
+      _source: "Master Data/Survay",
+    })));
+  }
   if (tableId === "areas") {
     const summaryBlocks = (state.summaryPalmoilAreas || []).map((row) => ({
       ...row,
@@ -10889,6 +10924,16 @@ function farmSurveyTemplates() {
   return rows.length ? rows : FARM_SURVEY_DOCUMENTS.map((row) => ({ ...row, tableId: "survey_templates", moduleId: "farm-activities", status: "active" }));
 }
 
+function farmSurveyQuestions(templateOrId) {
+  const templateId = typeof templateOrId === "string" ? templateOrId : templateOrId?.id;
+  if (!templateId) return [];
+  const table = farmTableByKey("survey_questions");
+  const rows = table ? farmRows(table) : FARM_SURVEY_QUESTIONS;
+  return rows
+    .filter((row) => row.template_id === templateId)
+    .sort((a, b) => n(a.sort_order) - n(b.sort_order) || String(a.question_code || "").localeCompare(String(b.question_code || ""), "th", { numeric: true }));
+}
+
 function farmSurveyForActivity(activityOrId) {
   const activity = typeof activityOrId === "string" ? farmLookup("activities", activityOrId) : (activityOrId || {});
   if (!activity?.id) return null;
@@ -10906,6 +10951,10 @@ function farmSurveyForActivity(activityOrId) {
 }
 
 function farmSurveyForOrder(order = {}) {
+  if (order.survey_template_id) {
+    const byId = farmSurveyTemplates().find((row) => row.id === order.survey_template_id);
+    if (byId) return byId;
+  }
   return farmSurveyForActivity(order.activity || order.activity_id);
 }
 
@@ -11373,6 +11422,7 @@ function renderFarmWorkPlanner() {
     || materials.find((row) => row.id === (selectedUsageRate.material_id || materialBudgetRate.material_id || selectedBudgetRate.material_id))
     || {};
   const previewSurvey = farmSurveyForActivity(previewActivity);
+  const previewSurveyQuestions = farmSurveyQuestions(previewSurvey);
   const calculationBase = selectedUsageRate.usage_basis === "per_tree" ? totalTrees : selectedUsageRate.usage_basis === "per_rai" ? totalRai : selectedBlocks.length;
   const materialQuantity = selectedMaterials.length ? calculationBase * n(selectedUsageRate.usage_rate || 0) : 0;
   const laborEstimate = farmBudgetRateCost(laborBudgetRate, selectedBlocks);
@@ -11475,7 +11525,7 @@ function renderFarmWorkPlanner() {
             <dt>ทีม</dt><dd>${esc(previewTeam?.team_name || "-")} · ${fmt(previewMembers.length)} คน</dd>
             <dt>ช่วงวัน</dt><dd>2026-01-15 ถึง 2026-01-16</dd>
             <dt>ทรัพยากร</dt><dd>วัสดุ ${fmt(selectedMaterials.length)} รายการ · รถ/เครื่องจักร ${fmt(selectedVehicles.length)} รายการ</dd>
-            <dt>แบบตรวจงาน</dt><dd>${previewSurvey ? `${esc(previewSurvey.template_code || "")} · ${esc(previewSurvey.template_name || previewSurvey.file_name || "")}` : "ไม่พบแบบตรวจที่ตรงกับกิจกรรม"}</dd>
+            <dt>แบบตรวจงาน</dt><dd>${previewSurvey ? `${esc(previewSurvey.template_code || "")} · ${esc(previewSurvey.template_name || previewSurvey.file_name || "")} · ${fmt(previewSurveyQuestions.length)} ช่องตัวเลข` : "ไม่พบแบบตรวจที่ตรงกับกิจกรรม"}</dd>
             <dt>สถานะเริ่มต้น</dt><dd>Draft · ไม่ต้องผ่านขั้นตอนอนุมัติ</dd>
           </dl>
           <div class="farm-plan-cost-preview">
@@ -11529,6 +11579,7 @@ async function createFarmWorkPlanFromSelection() {
     for (const block of selectedBlocks) {
       for (const activity of selectedActivities) {
         const stamp = `${Date.now()}-${created.length + 1}`;
+        const survey = farmSurveyForActivity(activity);
         const row = {
           id: `farm-work-orders-${stamp}`,
           moduleId: "farm-work",
@@ -11539,6 +11590,7 @@ async function createFarmWorkPlanFromSelection() {
           block_id: block.id,
           plot_group_id: block.plot_group_id || "",
           activity_id: activity.id,
+          survey_template_id: survey?.id || "",
           team_id: teamId,
           planned_start_date: startDate,
           planned_end_date: endDate,
@@ -12290,6 +12342,7 @@ function renderFarmResultPanel() {
   const area = [order?.plot?.plot_code, order?.block?.block_code || order?.block?.block_name, order?.block?.ap_code || order?.block?.AP_code].filter(Boolean).join(" / ") || "-";
   const survey = farmSurveyForOrder(order);
   const surveyAttachment = farmOrderSurveyAttachment(order);
+  const surveyQuestions = farmSurveyQuestions(survey);
   const rateLabel = calc.rate?.id
     ? `${calc.rate.rate_code || calc.rate.id} · ${calc.rate.rate_text || `${moneyNf.format(calc.rateAmount)} ${calc.rate.unit_name || ""}`}`
     : "ยังไม่พบเรทที่ผูกกับกิจกรรม/Block";
@@ -12355,6 +12408,25 @@ function renderFarmResultPanel() {
             <label>หมายเหตุ
               <input id="farmResultNote" type="text" value="${esc(draft.note || "")}" placeholder="หมายเหตุการทำงาน">
             </label>
+          </div>
+          <div class="farm-survey-answer-box">
+            <div class="section-head">
+              <h3>ตัวเลขตรวจงาน</h3>
+              <span>${survey ? `${esc(survey.template_code || "")} · ${fmt(surveyQuestions.length)} ช่อง` : "ยังไม่พบแบบตรวจตามกิจกรรม"}</span>
+            </div>
+            <div class="farm-survey-answer-grid">
+              ${surveyQuestions.map((question) => `
+                <label>
+                  ${esc(question.question_text || question.question_code)}
+                  <input
+                    data-farm-survey-answer="${esc(question.question_code || question.id)}"
+                    type="${question.answer_type === "number" ? "number" : "text"}"
+                    step="0.01"
+                    value="${esc(draft.surveyAnswers?.[question.question_code || question.id] || "")}"
+                    placeholder="${esc(question.answer_unit || "")}">
+                  <small>${esc(question.answer_unit || "")}${String(question.required) === "true" ? " · จำเป็น" : ""}</small>
+                </label>`).join("") || `<p class="farm-muted">ยังไม่มีช่องตรวจงานสำหรับกิจกรรมนี้</p>`}
+            </div>
           </div>
         </article>
         <article class="farm-result-card farm-result-mobile-card">
@@ -12445,6 +12517,10 @@ function renderFarmResultPanel() {
 
 function syncFarmResultDraftFromForm() {
   const workerEntries = state.farmResultDraft?.workerEntries || {};
+  const surveyAnswers = {};
+  document.querySelectorAll("[data-farm-survey-answer]").forEach((input) => {
+    surveyAnswers[input.dataset.farmSurveyAnswer] = input.value;
+  });
   state.farmResultDraft = {
     resultDate: dateValue(document.querySelector("#farmResultDate")) || state.farmResultDraft?.resultDate || farmToday(),
     ticketText: document.querySelector("#farmResultTicketText")?.value.trim() || "",
@@ -12454,6 +12530,7 @@ function syncFarmResultDraftFromForm() {
     surveyStatus: document.querySelector("#farmResultSurveyStatus")?.value || state.farmResultDraft?.surveyStatus || "pending",
     surveyNote: document.querySelector("#farmResultSurveyNote")?.value.trim() || "",
     note: document.querySelector("#farmResultNote")?.value.trim() || "",
+    surveyAnswers,
     workerEntries,
   };
 }
@@ -12516,6 +12593,16 @@ async function saveFarmResultEntry() {
   const ticketText = calc.tickets.map((row) => row.wpDocNo || row.docKey).filter(Boolean).join(", ");
   const survey = farmSurveyForOrder(order);
   const surveyAttachment = farmOrderSurveyAttachment(order);
+  const surveyQuestions = farmSurveyQuestions(survey);
+  const surveyAnswerRows = surveyQuestions.map((question) => {
+    const key = question.question_code || question.id;
+    return {
+      question_code: key,
+      question_text: question.question_text || key,
+      answer_unit: question.answer_unit || "",
+      value: calc.draft.surveyAnswers?.[key] ?? "",
+    };
+  });
   const fullResultRow = {
     id: resultId,
     moduleId: "farm-result",
@@ -12531,6 +12618,7 @@ async function saveFarmResultEntry() {
     survey_file_name: surveyAttachment?.file_name || survey?.file_name || "",
     survey_status: calc.draft.surveyStatus || "pending",
     survey_note: calc.draft.surveyNote || "",
+    survey_values_json: JSON.stringify(surveyAnswerRows),
     recorded_by: "profile-admin",
     status: "completed",
     source_ticket_numbers: ticketText || calc.draft.ticketText,
@@ -12554,6 +12642,10 @@ async function saveFarmResultEntry() {
     actual_quantity: calc.actualQuantity,
     actual_unit: calc.actualUnit,
     quality_score: calc.draft.qualityScore || "",
+    survey_template_id: survey?.id || "",
+    survey_status: calc.draft.surveyStatus || "pending",
+    survey_note: calc.draft.surveyNote || "",
+    survey_values_json: JSON.stringify(surveyAnswerRows),
     recorded_by: "profile-admin",
     status: "completed",
     updatedAt: now,
@@ -12671,6 +12763,7 @@ async function saveFarmResultEntry() {
       block_id: nextOrder.block_id,
       plot_group_id: nextOrder.plot_group_id,
       activity_id: nextOrder.activity_id,
+      survey_template_id: nextOrder.survey_template_id || farmSurveyForOrder(nextOrder)?.id || "",
       team_id: nextOrder.team_id,
       planned_start_date: nextOrder.planned_start_date,
       planned_end_date: nextOrder.planned_end_date,
@@ -15758,7 +15851,7 @@ async function init() {
     if (e.target.id === "farmResultOrderSelect") {
       state.farmResultWorkOrderId = e.target.value;
       state.farmWorkDetailId = e.target.value;
-      state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", workerEntries: {} };
+      state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {} };
       render();
       return;
     }
@@ -16071,6 +16164,10 @@ async function init() {
       syncFarmResultDraftFromForm();
       clearTimeout(state.farmResultRenderTimer);
       state.farmResultRenderTimer = setTimeout(render, 180);
+      return;
+    }
+    if (e.target.matches?.("[data-farm-survey-answer]")) {
+      syncFarmResultDraftFromForm();
       return;
     }
     if (e.target.matches("[data-farm-result-worker-field]")) {
