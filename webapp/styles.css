@@ -5404,11 +5404,6 @@ tfoot td {
   box-shadow: inset 0 0 0 2px rgba(16, 185, 129, .32);
 }
 
-.farm-activity-table-wrap tr.is-selected td {
-  background: #eaf2f8 !important;
-  box-shadow: inset 3px 0 0 #2f5f83;
-}
-
 .farm-activity-table-wrap tr[draggable="true"],
 .farm-activity-bottom-wrap tr[draggable="true"],
 .farm-activity-table-wrap tr[data-farm-activity-group-row],
@@ -5417,7 +5412,7 @@ tfoot td {
 .farm-activity-table-wrap tr[data-team-drop],
 .farm-activity-table-wrap tr[data-team-employee-drag],
 .farm-activity-table-wrap tr[data-farm-team-member-row],
-.farm-activity-bottom-wrap tr[data-farm-team-row],
+.farm-activity-bottom-wrap tr[data-farm-team-summary-row],
 .farm-activity-bottom-wrap tr[data-farm-team-skill-row],
 .farm-area-table-wrap tr[data-farm-area-group-row],
 .farm-area-table-wrap tr[data-farm-area-block-row],
@@ -5431,7 +5426,7 @@ tfoot td {
 .farm-activity-table-wrap tr[data-team-drop]:hover td,
 .farm-activity-table-wrap tr[data-team-employee-drag]:hover td,
 .farm-activity-table-wrap tr[data-farm-team-member-row]:hover td,
-.farm-activity-bottom-wrap tr[data-farm-team-row]:hover td,
+.farm-activity-bottom-wrap tr[data-farm-team-summary-row]:hover td,
 .farm-activity-bottom-wrap tr[data-farm-team-skill-row]:hover td,
 .farm-area-table-wrap tr[data-farm-area-group-row]:hover td,
 .farm-area-table-wrap tr[data-farm-area-block-row]:hover td,
@@ -5457,6 +5452,25 @@ tfoot td {
 .farm-area-table-wrap .farm-table td,
 .farm-area-bottom-wrap .farm-table td {
   white-space: nowrap;
+}
+
+.farm-activity-table-wrap tr.team-choice-row.is-selected td {
+  background: #eaf2f8 !important;
+  border-left-color: transparent !important;
+  border-right-color: transparent !important;
+}
+
+.farm-activity-table-wrap tr.team-choice-row.is-selected td:first-child {
+  border-left-color: var(--line) !important;
+  box-shadow: inset 3px 0 0 #2f5f83;
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+}
+
+.farm-activity-table-wrap tr.team-choice-row.is-selected td:last-child {
+  border-right-color: var(--line) !important;
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
 }
 
 .farm-activity-tree {

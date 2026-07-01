@@ -13041,6 +13041,7 @@ function renderFarmTeamsBoard() {
   const allMembers = farmRows(memberTable);
   const allEmployees = farmRows(employeeTable);
   const skills = farmRows(skillTable);
+  const workOrders = farmRowsByKey("work_orders");
   const teams = allTeams
     .filter((row) => statusOk(row) && textOk(row))
     .sort((a, b) => String(a.team_code || "").localeCompare(String(b.team_code || ""), "th", { numeric: true }));
@@ -13066,7 +13067,7 @@ function renderFarmTeamsBoard() {
     const contractor = farmLookup("contractors", team.contractor_id);
     const skillCount = skills.filter((skill) => skill.team_id === team.id).length;
     return `
-      <tr class="${team.id === selectedTeamId ? "is-selected" : ""}" data-team-drop="${esc(team.id)}" data-farm-team-row="${esc(team.id)}" title="คลิกเพื่อดูสมาชิกทีม / ลากพนักงานมาวางเพื่อเพิ่มเข้าทีม">
+      <tr class="${team.id === selectedTeamId ? "is-selected team-choice-row" : "team-choice-row"}" data-team-drop="${esc(team.id)}" data-farm-team-row="${esc(team.id)}" title="คลิกเพื่อดูสมาชิกทีม / ลากพนักงานมาวางเพื่อเพิ่มเข้าทีม">
         <td><strong>${esc(team.team_code || "-")}</strong></td>
         <td>${esc(team.team_name || "-")}</td>
         <td>${esc(team.team_type || "-")}</td>
@@ -13102,6 +13103,39 @@ function renderFarmTeamsBoard() {
         <td>${String(member.is_active) === "false" ? "หยุดใช้" : "ใช้งาน"}</td>
       </tr>`;
   }).join("");
+  const summaryRows = allTeams
+    .filter((team) => statusOk(team) && textOk(team))
+    .flatMap((team) => {
+      const teamMembers = allMembers.filter((member) => member.team_id === team.id);
+      const teamSkills = skills.filter((skill) => skill.team_id === team.id);
+      const orderCount = workOrders.filter((order) => order.team_id === team.id).length;
+      if (!teamSkills.length) {
+        return [`
+        <tr data-farm-team-summary-row="${esc(team.id)}">
+          <td><strong>${esc(farmTeamLabel(team))}</strong></td>
+          <td>${esc(team.team_type || "-")}</td>
+          <td>${esc(farmLookupLabel("employees", team.supervisor_employee_id) || "-")}</td>
+          <td class="num">${fmt(teamMembers.length)}</td>
+          <td>${esc(farmLookupLabel("activity_groups", team.default_activity_group_id) || "-")}</td>
+          <td>-</td>
+          <td>-</td>
+          <td class="num">${fmt(orderCount)}</td>
+          <td>${esc(team.status || "-")}</td>
+        </tr>`];
+      }
+      return teamSkills.map((skill) => `
+        <tr data-farm-team-skill-row="${esc(skill.id)}">
+          <td><strong>${esc(farmTeamLabel(team))}</strong></td>
+          <td>${esc(team.team_type || "-")}</td>
+          <td>${esc(farmLookupLabel("employees", team.supervisor_employee_id) || "-")}</td>
+          <td class="num">${fmt(teamMembers.length)}</td>
+          <td>${esc(farmLookupLabel("activities", skill.activity_id) || farmLookupLabel("activity_groups", team.default_activity_group_id) || "-")}</td>
+          <td>${esc(skill.skill_level || "-")}</td>
+          <td>${esc(skill.rate_group || "-")}</td>
+          <td class="num">${fmt(orderCount)}</td>
+          <td>${esc(skill.status || team.status || "-")}</td>
+        </tr>`);
+    }).join("");
   return `
     <section class="farm-activity-board farm-team-board">
       <div class="farm-activity-toolbar">
@@ -13157,6 +13191,19 @@ function renderFarmTeamsBoard() {
           </div>
         </article>
       </div>
+      <section class="farm-panel">
+        <div class="section-head">
+          <h3>ตารางทีมในสวนปาล์ม</h3>
+          <span>ทีมที่ถูกนำไปใช้ต่อในวางแผน สั่งงาน และบันทึกงานผ่าน <code>work_orders.team_id</code></span>
+          <button type="button" data-farm-team-add="team_activity_skills">เพิ่มทักษะกิจกรรม</button>
+        </div>
+        <div class="table-wrap farm-activity-bottom-wrap">
+          <table class="mini-table farm-table">
+            <thead><tr><th>ทีม</th><th>ประเภท</th><th>หัวหน้า</th><th>สมาชิก</th><th>กิจกรรม</th><th>ระดับ</th><th>กลุ่มเรท</th><th>Work Order</th><th>สถานะ</th></tr></thead>
+            <tbody>${summaryRows || `<tr><td colspan="9">ไม่พบรายการทีม</td></tr>`}</tbody>
+          </table>
+        </div>
+      </section>
     </section>
     ${renderFarmActivityModal()}`;
 }
@@ -15798,7 +15845,7 @@ async function init() {
       render();
       return;
     }
-    const teamSelect = e.target.closest("[data-farm-team-row]");
+    const teamSelect = e.target.closest(".team-choice-row[data-farm-team-row]");
     if (teamSelect && !e.target.closest("button")) {
       state.farmSelectedTeamId = teamSelect.dataset.farmTeamRow || "";
       state.farmDetailId = state.farmSelectedTeamId;
