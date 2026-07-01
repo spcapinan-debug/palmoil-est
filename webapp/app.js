@@ -13630,10 +13630,14 @@ function renderFarmBudgetWorkerTree() {
     if (!teamMatches && !members.length) return "";
     const teamValue = `team:${team.id}`;
     const teamChecked = picks.selectedWorkers.includes(teamValue);
+    const teamInputId = farmBudgetCheckId("worker", teamValue);
     return `
       <details open>
-        <summary>${esc(farmBudgetWorkerLabel(team))} <small>${fmt(members.length)} คน</small></summary>
-        ${renderBudgetCheckbox("worker", teamValue, "เลือกทั้งทีม", picks.selectedWorkers, team.team_type || "")}
+        <summary class="budget-team-summary">
+          <input id="${esc(teamInputId)}" type="checkbox" data-budget-pick="worker" value="${esc(teamValue)}"${teamChecked ? " checked" : ""} onclick="event.stopPropagation()">
+          <span>${esc(farmBudgetWorkerLabel(team))}</span>
+          <small>${fmt(members.length)} คน</small>
+        </summary>
         ${teamChecked ? `<div class="budget-tree-nested">
           ${members.map((employee) => renderBudgetTeamMemberCheckbox(team.id, employee, picks.selectedWorkers, employee._memberRole || employee.payment_type || employee.worker_type || "")).join("") || `<div class="budget-tree-empty">ทีมนี้ยังไม่มีสมาชิก</div>`}
         </div>` : ""}

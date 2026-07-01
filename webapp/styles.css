@@ -4685,6 +4685,34 @@ tfoot td {
   font-weight: 700;
 }
 
+.budget-tree-scroll summary.budget-team-summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  list-style: none;
+  margin: 1px 0;
+}
+
+.budget-tree-scroll summary.budget-team-summary::-webkit-details-marker {
+  display: none;
+}
+
+.budget-tree-scroll summary.budget-team-summary input {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  margin: 0;
+  accent-color: #e75f9a;
+}
+
+.budget-tree-scroll summary.budget-team-summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .budget-tree-item {
   display: flex;
   gap: 5px;
