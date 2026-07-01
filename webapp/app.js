@@ -10210,7 +10210,7 @@ async function createFarmBudgetRatesFromSelection() {
   }).filter(Boolean);
   const activities = picks.selectedActivities.map((id) => farmLookup("activities", id)).filter(Boolean);
   const materials = picks.selectedMaterials.map((id) => farmLookup("materials", id)).filter(Boolean);
-  const workers = picks.selectedWorkers.map((value) => {
+  const workers = picks.selectedWorkers.filter((value) => !String(value).startsWith("exclude:")).map((value) => {
     const [kind, id] = String(value).split(":");
     const table = kind === "contractor" ? "contractors" : kind === "team" ? "teams" : "employees";
     const row = farmLookup(table, id);
@@ -11199,7 +11199,7 @@ function renderFarmWorkPlanner() {
   const workOrders = farmWorkOrders().slice().sort((a, b) => farmDateMs(b.startDate) - farmDateMs(a.startDate));
   const previewActivity = activities.find((row) => row.id === budgetPicks.selectedActivities[0]) || activities[0];
   const previewGroup = activityGroups.find((item) => item.id === previewActivity?.activity_group_id) || activityGroups[0];
-  const selectedWorkerRefs = budgetPicks.selectedWorkers || [];
+  const selectedWorkerRefs = (budgetPicks.selectedWorkers || []).filter((value) => !String(value).startsWith("exclude:"));
   const selectedTeamIds = selectedWorkerRefs.filter((value) => value.startsWith("team:")).map((value) => value.slice(5));
   const selectedEmployeeIds = selectedWorkerRefs.filter((value) => value.startsWith("employee:")).map((value) => value.slice(9));
   const previewTeam = teams.find((row) => selectedTeamIds.includes(row.id)) || teams[0];
@@ -13374,6 +13374,29 @@ function renderBudgetCheckbox(type, value, label, checkedList, meta = "") {
     </label>`;
 }
 
+function farmBudgetTeamMemberEmployeeValues(teamId) {
+  const employees = farmRowsByKey("employees");
+  return farmRowsByKey("team_members")
+    .filter((member) => member.team_id === teamId && String(member.is_active) !== "false")
+    .map((member) => employees.find((employee) => employee.id === member.employee_id))
+    .filter(Boolean)
+    .map((employee) => `employee:${employee.id}`);
+}
+
+function renderBudgetTeamMemberCheckbox(teamId, employee, checkedList, meta = "") {
+  const value = `employee:${employee.id}`;
+  const excludeValue = `exclude:${teamId}:${employee.id}`;
+  const teamChecked = checkedList.includes(`team:${teamId}`);
+  const checked = checkedList.includes(value) || (teamChecked && !checkedList.includes(excludeValue));
+  const id = farmBudgetCheckId("worker", `${teamId}_${employee.id}`);
+  return `
+    <label class="budget-tree-item" for="${esc(id)}">
+      <input id="${esc(id)}" type="checkbox" data-budget-pick="worker" data-budget-team-member="${esc(teamId)}" value="${esc(value)}"${checked ? " checked" : ""}>
+      <span>${esc(farmBudgetWorkerLabel(employee))}</span>
+      ${meta ? `<em>${esc(meta)}</em>` : ""}
+    </label>`;
+}
+
 function renderFarmBudgetAreaTree() {
   const picks = farmBudgetContractState();
   const areaBlocks = farmRowsByKey("areas")
@@ -13612,7 +13635,7 @@ function renderFarmBudgetWorkerTree() {
         <summary>${esc(farmBudgetWorkerLabel(team))} <small>${fmt(members.length)} คน</small></summary>
         ${renderBudgetCheckbox("worker", teamValue, "เลือกทั้งทีม", picks.selectedWorkers, team.team_type || "")}
         ${teamChecked ? `<div class="budget-tree-nested">
-          ${members.map((employee) => renderBudgetCheckbox("worker", `employee:${employee.id}`, farmBudgetWorkerLabel(employee), picks.selectedWorkers, employee._memberRole || employee.payment_type || employee.worker_type || "")).join("") || `<div class="budget-tree-empty">ทีมนี้ยังไม่มีสมาชิก</div>`}
+          ${members.map((employee) => renderBudgetTeamMemberCheckbox(team.id, employee, picks.selectedWorkers, employee._memberRole || employee.payment_type || employee.worker_type || "")).join("") || `<div class="budget-tree-empty">ทีมนี้ยังไม่มีสมาชิก</div>`}
         </div>` : ""}
       </details>`;
   }).join("");
@@ -15590,7 +15613,30 @@ async function init() {
             : type === "vehicle" ? "selectedVehicles"
               : "selectedWorkers";
       const current = new Set(picks[key] || []);
-      if (e.target.checked) {
+      if (type === "worker" && String(e.target.value).startsWith("team:")) {
+        const teamId = String(e.target.value).slice(5);
+        const memberValues = farmBudgetTeamMemberEmployeeValues(teamId);
+        if (e.target.checked) {
+          current.add(e.target.value);
+          memberValues.forEach((value) => current.add(value));
+          memberValues.forEach((value) => current.delete(`exclude:${teamId}:${value.slice(9)}`));
+        } else {
+          current.delete(e.target.value);
+          memberValues.forEach((value) => current.delete(value));
+          memberValues.forEach((value) => current.delete(`exclude:${teamId}:${value.slice(9)}`));
+        }
+      } else if (type === "worker" && e.target.dataset.budgetTeamMember) {
+        const teamId = e.target.dataset.budgetTeamMember;
+        const employeeId = String(e.target.value).slice(9);
+        const excludeValue = `exclude:${teamId}:${employeeId}`;
+        if (e.target.checked) {
+          current.add(e.target.value);
+          current.delete(excludeValue);
+        } else {
+          current.delete(e.target.value);
+          if (current.has(`team:${teamId}`)) current.add(excludeValue);
+        }
+      } else if (e.target.checked) {
         current.add(e.target.value);
       } else {
         current.delete(e.target.value);
