@@ -7103,16 +7103,23 @@ tfoot td {
 }
 
 .farm-survey-answer-box {
-  margin-top: 12px;
-  border: 1px solid rgba(207, 215, 230, .9);
-  border-radius: 8px;
-  background: rgba(247, 250, 253, .9);
-  padding: 10px;
+  margin-top: 0;
 }
 
 .farm-survey-answer-box .section-head {
   margin-bottom: 8px;
   padding-bottom: 6px;
+}
+
+.farm-survey-control-grid {
+  display: grid;
+  grid-template-columns: minmax(90px, .45fr) minmax(120px, .55fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.farm-survey-control-grid label:last-child {
+  grid-column: 1 / -1;
 }
 
 .farm-survey-answer-grid {
@@ -8932,6 +8939,8 @@ td.num,
   .farm-result-summary-strip,
   .farm-result-entry-grid,
   .farm-result-fields,
+  .farm-survey-control-grid,
+  .farm-survey-answer-grid,
   .farm-result-kpis,
   .farm-result-tables,
   .farm-result-bottom-grid,
@@ -9046,6 +9055,7 @@ td.num,
   .farm-result-summary-strip,
   .farm-result-entry-grid,
   .farm-result-fields,
+  .farm-survey-control-grid,
   .farm-survey-answer-grid,
   .farm-result-bottom-grid,
   .farm-work-kpis,

@@ -12389,30 +12389,34 @@ function renderFarmResultPanel() {
                 ${["กก.", "ตัน", "กระสอบ", "ไร่", "ต้น", "หน่วย"].map((unit) => `<option value="${esc(unit)}"${unit === calc.actualUnit ? " selected" : ""}>${esc(unit)}</option>`).join("")}
               </select>
             </label>
-            <label>คะแนนคุณภาพ
-              <input id="farmResultQuality" type="number" min="0" max="100" step="1" value="${esc(draft.qualityScore || "")}" placeholder="0-100">
-            </label>
-            <label>ผลตรวจงาน
-              <select id="farmResultSurveyStatus">
-                ${[
-                  ["pending", "รอตรวจ"],
-                  ["passed", "ผ่าน"],
-                  ["needs_fix", "ต้องแก้ไข"],
-                  ["rejected", "ไม่ผ่าน"],
-                ].map(([value, label]) => `<option value="${esc(value)}"${(draft.surveyStatus || "pending") === value ? " selected" : ""}>${esc(label)}</option>`).join("")}
-              </select>
-            </label>
-            <label>หมายเหตุผลตรวจ
-              <input id="farmResultSurveyNote" type="text" value="${esc(draft.surveyNote || "")}" placeholder="${esc(survey?.template_name || "รายละเอียดตรวจงาน")}">
-            </label>
             <label>หมายเหตุ
               <input id="farmResultNote" type="text" value="${esc(draft.note || "")}" placeholder="หมายเหตุการทำงาน">
             </label>
           </div>
+        </article>
+        <article class="farm-result-card farm-result-survey-card">
           <div class="farm-survey-answer-box">
             <div class="section-head">
-              <h3>ตัวเลขตรวจงาน</h3>
-              <span>${survey ? `${esc(survey.template_code || "")} · ${fmt(surveyQuestions.length)} ช่อง` : "ยังไม่พบแบบตรวจตามกิจกรรม"}</span>
+              <h3>ตรวจงาน / Survey</h3>
+              <span>${survey ? `${esc(survey.template_code || "")} · ${esc(survey.template_name || survey.file_name || "")} · ${fmt(surveyQuestions.length)} ช่องตัวเลข` : "ยังไม่พบแบบตรวจตามกิจกรรม"}</span>
+            </div>
+            <div class="farm-survey-control-grid">
+              <label>คะแนนคุณภาพ
+                <input id="farmResultQuality" type="number" min="0" max="100" step="1" value="${esc(draft.qualityScore || "")}" placeholder="0-100">
+              </label>
+              <label>ผลตรวจงาน
+                <select id="farmResultSurveyStatus">
+                  ${[
+                    ["pending", "รอตรวจ"],
+                    ["passed", "ผ่าน"],
+                    ["needs_fix", "ต้องแก้ไข"],
+                    ["rejected", "ไม่ผ่าน"],
+                  ].map(([value, label]) => `<option value="${esc(value)}"${(draft.surveyStatus || "pending") === value ? " selected" : ""}>${esc(label)}</option>`).join("")}
+                </select>
+              </label>
+              <label>หมายเหตุผลตรวจ
+                <input id="farmResultSurveyNote" type="text" value="${esc(draft.surveyNote || "")}" placeholder="${esc(survey?.template_name || "รายละเอียดตรวจงาน")}">
+              </label>
             </div>
             <div class="farm-survey-answer-grid">
               ${surveyQuestions.map((question) => `
@@ -14837,7 +14841,7 @@ function renderFarmPage() {
       ${isTeamPage ? renderFarmTeamsBoard() : ""}
       ${isWorkPage ? `${renderFarmWorkBoard({ title: "Planner", subtitle: "ตารางแผนงานแบบย่อ แสดง Activity, Block, ทีม และสถานะในแถวเดียว" })}${renderFarmWorkPlanner()}` : ""}
       ${isDispatchPage ? `${renderFarmWorkBoard({ title: "Scheduler", subtitle: "ตารางงานสำหรับผู้จัดการ ใช้ดูแผนก่อนหยิบไปสั่งงาน", showKpis: false })}${renderFarmDispatchPanel()}${renderFarmWorkOrderList()}${renderFarmActivityModal()}` : ""}
-      ${isResultPage ? `${renderFarmResultPanel()}${renderFarmSurveyPerformancePanel()}${renderFarmWorkOrderList()}` : ""}
+      ${isResultPage ? `${renderFarmResultPanel()}${renderFarmWorkOrderList()}` : ""}
       ${isInventoryIssuePage ? renderFarmInventoryIssueQueue() : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
