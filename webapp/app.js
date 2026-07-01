@@ -735,6 +735,175 @@ const VERSIONED_FARM_TABLES = new Set(["people", "employees", "contractors", "pa
 
 const FARM_STATUS_OPTIONS = ["all", "active", "draft", "planned", "scheduled", "submitted", "pending_approval", "approved", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed", "rejected", "open", "ready", "inactive"];
 
+const FARM_VALUE_LABELS = {
+  all: "ทั้งหมด",
+  active: "ใช้งาน",
+  inactive: "ปิดใช้งาน",
+  draft: "ร่าง",
+  planned: "วางแผน",
+  scheduled: "กำหนดงาน",
+  submitted: "ส่งตรวจ",
+  pending: "รอดำเนินการ",
+  pending_approval: "รออนุมัติ",
+  approved: "อนุมัติแล้ว",
+  sent_to_mobile: "ส่งเข้ามือถือ",
+  rescheduled: "เลื่อนวัน",
+  in_progress: "กำลังทำงาน",
+  completed: "เสร็จสิ้น",
+  closed: "ปิดงาน",
+  rejected: "ไม่อนุมัติ",
+  open: "เปิดใช้งาน",
+  ready: "พร้อมใช้งาน",
+  present: "มาทำงาน",
+  late: "มาสาย",
+  absent: "ขาดงาน",
+  leave: "ลา",
+  passed: "ผ่าน",
+  failed: "ไม่ผ่าน",
+  expired: "หมดอายุ",
+  warning: "ใกล้ครบกำหนด",
+  renewing: "กำลังต่ออายุ",
+  needs_fix: "ต้องแก้ไข",
+  valid: "ยังใช้ได้",
+  auto_attached: "แนบอัตโนมัติ",
+  not_required: "ไม่ต้องอนุมัติ",
+  super_admin: "ผู้ดูแลระบบสูงสุด",
+  director: "ผู้อำนวยการ",
+  estate_manager: "ผู้จัดการสวน",
+  supervisor: "หัวหน้างาน",
+  store_officer: "เจ้าหน้าที่พัสดุ",
+  fuel_officer: "เจ้าหน้าที่น้ำมัน",
+  accounting: "บัญชี",
+  auditor: "ผู้ตรวจสอบ",
+  viewer: "ผู้ดูข้อมูล",
+  read: "อ่านข้อมูล",
+  write: "เขียน/แก้ไข",
+  create: "สร้างข้อมูล",
+  update: "แก้ไขข้อมูล",
+  delete: "ลบข้อมูล",
+  approve: "อนุมัติ",
+  export: "ส่งออก",
+  employee: "พนักงาน",
+  worker: "คนงาน",
+  driver: "คนขับ",
+  admin: "ธุรการ",
+  contractor: "ผู้รับเหมา",
+  person: "บุคลากร",
+  daily_worker: "คนงานรายวัน",
+  monthly_employee: "พนักงานรายเดือน",
+  machine_operator: "คนขับ/ผู้ควบคุมเครื่องจักร",
+  team: "ทีมงาน",
+  daily: "รายวัน",
+  monthly: "รายเดือน",
+  hourly: "รายชั่วโมง",
+  piece: "รายชิ้น/ผลงาน",
+  pool: "หารรวมทั้งทีม",
+  harvest_contractor: "ผู้รับเหมาเก็บเกี่ยว",
+  material: "วัสดุ",
+  equipment: "อุปกรณ์",
+  vehicle: "รถ/เครื่องจักร",
+  fuel: "น้ำมัน",
+  tank: "ถัง",
+  receipt: "รับเข้า",
+  issue: "เบิกจ่าย",
+  return: "คืน",
+  transfer: "โอนย้าย",
+  adjustment: "ปรับยอด",
+  count: "ตรวจนับ",
+  fuel_requisition: "เบิกน้ำมัน",
+  annual: "รายปี",
+  activity: "รายกิจกรรม",
+  area: "รายพื้นที่",
+  task: "รายงานย่อย",
+  wage: "ค่าแรง",
+  ot: "ล่วงเวลา",
+  deduction: "เงินหัก",
+  allowance: "เงินเพิ่ม",
+  rate: "อัตรา",
+  overtime: "ล่วงเวลา",
+  fixed: "คงที่",
+  percent: "เปอร์เซ็นต์",
+  contract: "สัญญา/เหมา",
+  per_tree: "ต่อต้น",
+  per_rai: "ต่อไร่",
+  per_work_order: "ต่อใบงาน",
+  per_ton: "ต่อตัน",
+  per_bag: "ต่อกระสอบ",
+  per_trip: "ต่อเที่ยว",
+  per_day: "ต่อวัน",
+  per_hour: "ต่อชั่วโมง",
+  per_unit: "ต่อหน่วย",
+  weight_ton: "น้ำหนักตัน",
+  tree_count: "จำนวนต้น",
+  area_rai: "พื้นที่ไร่",
+  bag_count: "จำนวนกระสอบ",
+  trip_count: "จำนวนเที่ยว",
+  day_count: "จำนวนวัน",
+  hour_count: "จำนวนชั่วโมง",
+  manual_qty: "จำนวนที่กรอกเอง",
+  estate: "สวน",
+  zone: "โซน",
+  plot_group: "กลุ่มแปลง",
+  plot: "แปลง",
+  block: "บล็อก",
+  labor: "ค่าแรง",
+  machine: "เครื่องจักร",
+  other: "อื่นๆ",
+  base: "อัตราหลัก",
+  ramp: "แรมป์",
+  harvester: "คนเก็บเกี่ยว",
+  quality_bonus: "เงินเพิ่มคุณภาพ",
+  quality_deduction: "เงินหักคุณภาพ",
+  survey_score: "คะแนนตรวจงาน",
+  staff_house: "บ้านพักพนักงาน",
+  worker_room: "ห้องคนงาน",
+  contractor_room: "ห้องผู้รับเหมา",
+  dormitory: "หอพัก",
+  basic: "พื้นฐาน",
+  standard: "มาตรฐาน",
+  expert: "ชำนาญ",
+  passport: "หนังสือเดินทาง",
+  visa: "วีซ่า",
+  work_permit: "ใบอนุญาตทำงาน",
+  pink_card: "บัตรชมพู",
+  id_card: "บัตรประชาชน",
+  mobile: "มือถือ",
+  manual: "กรอกเอง",
+  work_order: "ใบสั่งงาน",
+  import: "นำเข้า",
+  annual_leave: "ลาพักร้อน",
+  sick_leave: "ลาป่วย",
+  personal_leave: "ลากิจ",
+  absence_adjustment: "ปรับปรุงวันขาด",
+  safety: "ความปลอดภัย",
+  skill: "ทักษะ",
+  compliance: "ข้อกำหนด",
+  text: "ข้อความ",
+  number: "ตัวเลข",
+  yes_no: "ใช่/ไม่ใช่",
+  choice: "ตัวเลือก",
+  check_in: "เข้างาน",
+  check_out: "ออกงาน",
+  actual: "ทำจริง",
+  role_based_compounded: "ตามบทบาทในสัญญา",
+  role_based: "ตามบทบาท",
+  activity_based: "ตามกิจกรรม",
+  material_included: "รวมวัสดุ",
+  machine_included: "รวมเครื่องจักร",
+  done: "เสร็จแล้ว",
+  cultivate_contract: "สัญญาจาก Cultivate",
+  role: "บทบาท",
+};
+
+function farmTranslateValue(value) {
+  if (value === undefined || value === null) return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+  const lower = raw.toLowerCase();
+  const normalized = lower.replace(/[\s-]+/g, "_");
+  return FARM_VALUE_LABELS[raw] || FARM_VALUE_LABELS[lower] || FARM_VALUE_LABELS[normalized] || raw;
+}
+
 const F = (key, label, options = {}) => ({ key, label, ...options });
 
 const FARM_TABLE_SCHEMAS = {
@@ -7699,7 +7868,7 @@ function renderEstPlanPage() {
               <td>${fmt(plan.workers)}</td>
               <td>${fmt(plan.quantity)}</td>
               <td>${moneyNf.format(n(plan.budget))}</td>
-              <td>${esc(plan.status)}</td>
+              <td>${esc(farmTranslateValue(plan.status))}</td>
               <td>${esc(plan.sourceSheet)} #${esc(plan.sourceRow)}</td>
             </tr>`).join("")}</tbody>
           </table>
@@ -7728,9 +7897,9 @@ function renderEstWorkOrderPage() {
           <label>หัวหน้า/ทีม<input id="estOrderSupervisor" type="text"></label>
           <label>สถานะ
             <select id="estOrderStatus">
-              <option value="Scheduled">Scheduled</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Done">Done</option>
+              <option value="Scheduled">${esc(farmTranslateValue("Scheduled"))}</option>
+              <option value="In Progress">${esc(farmTranslateValue("In Progress"))}</option>
+              <option value="Done">${esc(farmTranslateValue("Done"))}</option>
             </select>
           </label>
           <label class="est-form-wide">หมายเหตุ<input id="estOrderNote" type="text"></label>
@@ -7758,7 +7927,7 @@ function renderEstWorkOrderPage() {
               <td>${esc(order.activity)}</td>
               <td>${esc(order.block)}</td>
               <td>${esc(order.supervisor)}</td>
-              <td>${esc(order.status)}</td>
+              <td>${esc(farmTranslateValue(order.status))}</td>
             </tr>`).join("")}</tbody>
           </table>
         </div>
@@ -10032,7 +10201,8 @@ function farmDependencyMessage(table, row, deps) {
 function renderFarmOptionList(options, value, placeholder = "เลือก") {
   return `<option value="">${esc(placeholder)}</option>${options.map((option) => {
     const optionValue = typeof option === "string" ? option : option.value;
-    const label = typeof option === "string" ? option : option.label;
+    const rawLabel = typeof option === "string" ? option : option.label;
+    const label = rawLabel === optionValue ? farmTranslateValue(optionValue) : farmTranslateValue(rawLabel);
     return `<option value="${esc(optionValue)}"${String(value ?? "") === String(optionValue) ? " selected" : ""}>${esc(label)}</option>`;
   }).join("")}`;
 }
@@ -10071,7 +10241,7 @@ function renderFarmInput(field, value = "") {
     return `
       <label>${esc(labelText)}
           <select data-farm-field="${esc(key)}">
-          ${FARM_STATUS_OPTIONS.filter((status) => status !== "all").map((status) => `<option value="${esc(status)}"${String(value || "active") === status ? " selected" : ""}>${esc(status)}</option>`).join("")}
+          ${FARM_STATUS_OPTIONS.filter((status) => status !== "all").map((status) => `<option value="${esc(status)}"${String(value || "active") === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}
         </select>
       </label>`;
   }
@@ -11013,6 +11183,22 @@ function farmDisplayValue(field, row) {
   const references = farmFieldReferences(field);
   if (references) return farmLookupLabel(references, value);
   if (value === undefined || value === null || value === "") return "";
+  const shouldTranslate = !Array.isArray(field) && (
+    Array.isArray(field.options) ||
+    field.type === "status" ||
+    key === "status" ||
+    key.endsWith("_status") ||
+    key.endsWith("_type") ||
+    key.endsWith("_method") ||
+    key.endsWith("_basis") ||
+    key.endsWith("_role") ||
+    key.endsWith("_decision") ||
+    key.endsWith("_source") ||
+    key === "role" ||
+    key === "person_type" ||
+    key === "payment_type"
+  );
+  if (shouldTranslate) return farmTranslateValue(value);
   return value;
 }
 
@@ -13440,12 +13626,12 @@ function renderFarmTeamsBoard() {
       <tr class="${team.id === selectedTeamId ? "is-selected team-choice-row" : "team-choice-row"}" data-team-drop="${esc(team.id)}" data-farm-team-row="${esc(team.id)}" title="คลิกเพื่อดูสมาชิกทีม / ลากพนักงานมาวางเพื่อเพิ่มเข้าทีม">
         <td><strong>${esc(team.team_code || "-")}</strong></td>
         <td>${esc(team.team_name || "-")}</td>
-        <td>${esc(team.team_type || "-")}</td>
+        <td>${esc(farmTranslateValue(team.team_type) || "-")}</td>
         <td>${esc(supervisor ? farmRecordLabel(farmTableByKey("employees"), supervisor) : "-")}</td>
         <td>${esc(contractor ? farmRecordLabel(farmTableByKey("contractors"), contractor) : "-")}</td>
         <td class="num">${fmt(teamMembers.length)}</td>
         <td class="num">${fmt(skillCount)}</td>
-        <td>${esc(team.status || "-")}</td>
+        <td>${esc(farmTranslateValue(team.status) || "-")}</td>
       </tr>`;
   }).join("");
   const employeeRows = employees.map((employee) => {
@@ -13483,27 +13669,27 @@ function renderFarmTeamsBoard() {
         return [`
         <tr data-farm-team-summary-row="${esc(team.id)}">
           <td><strong>${esc(farmTeamLabel(team))}</strong></td>
-          <td>${esc(team.team_type || "-")}</td>
+          <td>${esc(farmTranslateValue(team.team_type) || "-")}</td>
           <td>${esc(farmLookupLabel("employees", team.supervisor_employee_id) || "-")}</td>
           <td class="num">${fmt(teamMembers.length)}</td>
           <td>${esc(farmLookupLabel("activity_groups", team.default_activity_group_id) || "-")}</td>
           <td>-</td>
           <td>-</td>
           <td class="num">${fmt(orderCount)}</td>
-          <td>${esc(team.status || "-")}</td>
+          <td>${esc(farmTranslateValue(team.status) || "-")}</td>
         </tr>`];
       }
       return teamSkills.map((skill) => `
         <tr data-farm-team-skill-row="${esc(skill.id)}">
           <td><strong>${esc(farmTeamLabel(team))}</strong></td>
-          <td>${esc(team.team_type || "-")}</td>
+          <td>${esc(farmTranslateValue(team.team_type) || "-")}</td>
           <td>${esc(farmLookupLabel("employees", team.supervisor_employee_id) || "-")}</td>
           <td class="num">${fmt(teamMembers.length)}</td>
           <td>${esc(farmLookupLabel("activities", skill.activity_id) || farmLookupLabel("activity_groups", team.default_activity_group_id) || "-")}</td>
-          <td>${esc(skill.skill_level || "-")}</td>
-          <td>${esc(skill.rate_group || "-")}</td>
+          <td>${esc(farmTranslateValue(skill.skill_level) || "-")}</td>
+          <td>${esc(farmTranslateValue(skill.rate_group) || "-")}</td>
           <td class="num">${fmt(orderCount)}</td>
-          <td>${esc(skill.status || team.status || "-")}</td>
+          <td>${esc(farmTranslateValue(skill.status || team.status) || "-")}</td>
         </tr>`);
     }).join("");
   return `
@@ -13512,12 +13698,12 @@ function renderFarmTeamsBoard() {
         <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหาทีม หัวหน้า สมาชิก กิจกรรม"></label>
         <label>สถานะ
           <select id="farmStatusFilter">
-            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${status === "all" ? "ทั้งหมด" : esc(status)}</option>`).join("")}
+            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}
           </select>
         </label>
         <label>Role
           <select id="farmRoleFilter">
-            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(role)}</option>`).join("")}
+            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(farmTranslateValue(role))}</option>`).join("")}
           </select>
         </label>
       </div>
@@ -14317,12 +14503,12 @@ function renderFarmBudgetBoard() {
           </label>
           <label>ประเภทสัญญา
             <select id="budgetContractType">
-              ${["Role Based Compounded", "Role Based", "Activity Based", "Material Included", "Machine Included"].map((item) => `<option value="${esc(item)}"${picks.contractType === item ? " selected" : ""}>${esc(item)}</option>`).join("")}
+              ${["Role Based Compounded", "Role Based", "Activity Based", "Material Included", "Machine Included"].map((item) => `<option value="${esc(item)}"${picks.contractType === item ? " selected" : ""}>${esc(farmTranslateValue(item))}</option>`).join("")}
             </select>
           </label>
           <label>สถานะ
             <select id="budgetApprovalStatus">
-              ${["draft", "pending_approval", "approved", "inactive"].map((item) => `<option value="${esc(item)}"${picks.approvalStatus === item ? " selected" : ""}>${item === "approved" ? "อนุมัติ" : esc(item)}</option>`).join("")}
+              ${["draft", "pending_approval", "approved", "inactive"].map((item) => `<option value="${esc(item)}"${picks.approvalStatus === item ? " selected" : ""}>${esc(farmTranslateValue(item))}</option>`).join("")}
             </select>
           </label>
           <label>หมายเลขสัญญาของซัพพลายเออร์
@@ -14557,7 +14743,7 @@ function renderFarmAreaBoard() {
       <td class="num">${fmt(group.count || 0)}</td>
       <td class="num">${fmt(group.area || 0)}</td>
       <td class="num">${fmt(group.trees || 0)}</td>
-      <td>${esc(group.status || "-")}</td>
+      <td>${esc(farmTranslateValue(group.status) || "-")}</td>
     </tr>`).join("");
   const areaRows = areas.map((area) => `
     <tr data-farm-area-block-row="${esc(area.id)}">
@@ -14569,7 +14755,7 @@ function renderFarmAreaBoard() {
       <td>${esc(area.planting_year || "-")}</td>
       <td class="num">${fmt(n(area.tree_count))}</td>
       <td>${esc(area.rspo_status || "-")}</td>
-      <td>${esc(area.status || "-")}</td>
+      <td>${esc(farmTranslateValue(area.status) || "-")}</td>
     </tr>`).join("");
   return `
     <section class="farm-area-board">
@@ -14577,12 +14763,12 @@ function renderFarmAreaBoard() {
         <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหา Block / Zone / แปลง / AP Code"></label>
         <label>สถานะ
           <select id="farmStatusFilter">
-            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${status === "all" ? "ทั้งหมด" : esc(status)}</option>`).join("")}
+            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}
           </select>
         </label>
         <label>Role
           <select id="farmRoleFilter">
-            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(role)}</option>`).join("")}
+            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(farmTranslateValue(role))}</option>`).join("")}
           </select>
         </label>
       </div>
@@ -14629,7 +14815,7 @@ function renderFarmAreaBoard() {
                 <td>${esc(area.planting_year || "-")}</td>
                 <td class="num">${fmt(n(area.tree_count))}</td>
                 <td>${esc(area.rspo_status || "-")}</td>
-                <td>${esc(area.status || "-")}</td>
+                <td>${esc(farmTranslateValue(area.status) || "-")}</td>
               </tr>`).join("") || `<tr><td colspan="11">ไม่พบรายการ</td></tr>`}</tbody>
           </table>
         </div>
@@ -14703,7 +14889,7 @@ function renderFarmActivitiesBoard() {
         <td><strong>${esc(group.group_code || "-")}</strong></td>
         <td>${esc(group.group_name || "-")}</td>
         <td class="num">${fmt(count)}</td>
-        <td>${esc(group.status || "-")}</td>
+        <td>${esc(farmTranslateValue(group.status) || "-")}</td>
       </tr>`;
   }).join("");
   const activityRows = activities.map((activity) => {
@@ -14715,7 +14901,7 @@ function renderFarmActivitiesBoard() {
         <td>${esc(group ? farmActivityGroupLabel(group) : "ไม่ระบุกลุ่ม")}</td>
         <td>${esc(wageLabel(activity.wage_code_id))}</td>
         <td>${esc(activity.default_unit || "-")}</td>
-        <td>${esc(activity.status || "-")}</td>
+        <td>${esc(farmTranslateValue(activity.status) || "-")}</td>
       </tr>`;
   }).join("");
   return `
@@ -14724,12 +14910,12 @@ function renderFarmActivitiesBoard() {
         <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหากลุ่มกิจกรรม / กิจกรรม / รหัสค่าแรง"></label>
         <label>สถานะ
           <select id="farmStatusFilter">
-            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${status === "all" ? "ทั้งหมด" : esc(status)}</option>`).join("")}
+            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}
           </select>
         </label>
         <label>Role
           <select id="farmRoleFilter">
-            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(role)}</option>`).join("")}
+            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(farmTranslateValue(role))}</option>`).join("")}
           </select>
         </label>
       </div>
@@ -14773,7 +14959,7 @@ function renderFarmActivitiesBoard() {
                 <td>${esc(wageLabel(activity.wage_code_id))}</td>
                 <td>${String(activity.require_material) === "true" ? "ใช่" : "ไม่ใช่"}</td>
                 <td>${String(activity.allow_mobile_record) === "true" ? "ใช่" : "ไม่ใช่"}</td>
-                <td>${esc(activity.status || "-")}</td>
+                <td>${esc(farmTranslateValue(activity.status) || "-")}</td>
               </tr>`;
             }).join("") || `<tr><td colspan="7">ไม่พบรายการ</td></tr>`}</tbody>
           </table>
@@ -14854,12 +15040,12 @@ function renderFarmPage() {
         <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหารหัส ชื่อ สถานะ ตาราง"></label>
         <label>สถานะ
           <select id="farmStatusFilter">
-            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${status === "all" ? "ทั้งหมด" : esc(status)}</option>`).join("")}
+            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}
           </select>
         </label>
         <label>Role
           <select id="farmRoleFilter">
-            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(role)}</option>`).join("")}
+            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(farmTranslateValue(role))}</option>`).join("")}
           </select>
         </label>
         <button type="button" data-farm-new ${farmCan("create") ? "" : "disabled"}>Add</button>
