@@ -12444,7 +12444,6 @@ function renderFarmInventoryBoard() {
         <td>${esc(farmLookupLabel("warehouses", item.warehouse_id) || "-")}</td>
         <td class="num">${moneyNf.format(qty)}</td>
         <td>${esc(farmTranslateValue(item.status) || "-")}</td>
-        <td class="row-actions"><button type="button" data-farm-edit="${esc(item.id)}">แก้ไข</button></td>
       </tr>`;
   }).join("");
   const docRows = docs.slice(0, 10).map((doc) => {
@@ -12510,8 +12509,8 @@ function renderFarmInventoryBoard() {
           </div>
           <div class="table-wrap">
             <table class="mini-table farm-table">
-              <thead><tr><th>รหัส</th><th>รายการ</th><th>หน่วย</th><th>คลังหลัก</th><th>คงเหลือ</th><th>สถานะ</th><th></th></tr></thead>
-              <tbody>${itemRows || `<tr><td colspan="7">ยังไม่มีข้อมูลพัสดุ/อุปกรณ์</td></tr>`}</tbody>
+              <thead><tr><th>รหัส</th><th>รายการ</th><th>หน่วย</th><th>คลังหลัก</th><th>คงเหลือ</th><th>สถานะ</th></tr></thead>
+              <tbody>${itemRows || `<tr><td colspan="6">ยังไม่มีข้อมูลพัสดุ/อุปกรณ์</td></tr>`}</tbody>
             </table>
           </div>
         </article>
@@ -16999,6 +16998,7 @@ async function init() {
     const inventoryRow = e.target.closest("[data-farm-inventory-table][data-farm-row]");
     if (inventoryRow) {
       state.farmTableId = inventoryRow.dataset.farmInventoryTable;
+      state.farmActivityModalTable = state.farmTableId;
       state.farmEditId = inventoryRow.dataset.farmRow;
       state.farmDetailId = state.farmEditId;
       render();
