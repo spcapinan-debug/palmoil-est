@@ -7671,7 +7671,7 @@ tfoot td {
 
 .farm-result-summary-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -7694,11 +7694,39 @@ tfoot td {
 
 .farm-result-summary-strip strong {
   color: var(--primary);
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 950;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.farm-result-role-strip {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid #dde5ef;
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.farm-result-role-strip span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid #dbe5f2;
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-result-role-strip b {
+  color: var(--navy);
 }
 
 .farm-result-entry-grid,
@@ -7807,7 +7835,7 @@ tfoot td {
 }
 
 .farm-result-worker-table {
-  min-width: 1080px;
+  min-width: 1160px;
 }
 
 .farm-result-worker-table th {
@@ -7838,6 +7866,29 @@ tfoot td {
   color: var(--muted);
   font-size: 10px;
   font-weight: 800;
+}
+
+.farm-result-role-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #eaf6f2;
+  color: #176d58;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.farm-result-role-pill.driver {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.farm-result-role-pill.contractor {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .farm-result-worker-table input,
@@ -7898,6 +7949,78 @@ tfoot td {
   margin-top: 12px;
   border-radius: 8px;
   font-weight: 950;
+}
+
+.farm-result-resource-grid {
+  display: grid;
+  grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
+  gap: 12px;
+}
+
+.farm-result-resource-wrap {
+  max-height: 360px;
+  border-top: 1px solid #edf1f6;
+}
+
+.farm-result-resource-table {
+  min-width: 860px;
+}
+
+.farm-result-machine-table {
+  min-width: 1240px;
+}
+
+.farm-result-resource-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+}
+
+.farm-result-resource-table td {
+  vertical-align: middle;
+}
+
+.farm-result-resource-table td:first-child {
+  min-width: 190px;
+}
+
+.farm-result-resource-table td:first-child strong,
+.farm-result-resource-table td:first-child small {
+  display: block;
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-result-resource-table td:first-child small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.farm-result-resource-table input {
+  min-height: 28px;
+  border: 1px solid #d4dce8;
+  border-radius: 6px;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.farm-result-resource-table input[type="number"] {
+  min-width: 82px;
+  text-align: right;
+}
+
+.farm-result-resource-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  background: #fff7ed;
+  color: var(--navy);
+  font-weight: 950;
+  border-top: 1px solid #fed7aa;
 }
 
 .farm-work-order-list {
@@ -9343,6 +9466,7 @@ td.num,
   .farm-result-kpis,
   .farm-result-tables,
   .farm-result-bottom-grid,
+  .farm-result-resource-grid,
   .farm-work-kpis,
   .farm-work-filters,
   .farm-work-layout,

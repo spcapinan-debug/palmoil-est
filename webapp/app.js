@@ -82,7 +82,7 @@
   farmInventoryIssueSelection: "",
   farmDispatchTeamId: "",
   farmResultWorkOrderId: "",
-  farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {} },
+  farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {}, materialEntries: {}, machineEntries: {} },
   farmResultRenderTimer: null,
   farmTableId: "",
   farmDetailId: "",
@@ -1968,7 +1968,10 @@ const FARM_TABLE_SCHEMAS = {
       F("material_id", "วัสดุ", { references: "materials", required: true }),
       F("planned_quantity", "ปริมาณแผน", { type: "number" }),
       F("issued_quantity", "จ่ายจริง", { type: "number" }),
+      F("actual_quantity", "ใช้จริง", { type: "number" }),
+      F("waste_quantity", "สูญเสีย/คืน", { type: "number" }),
       F("unit_id", "หน่วย", { references: "units" }),
+      F("note", "หมายเหตุ"),
     ],
     seed: [],
   },
@@ -1983,7 +1986,16 @@ const FARM_TABLE_SCHEMAS = {
       F("vehicle_id", "รถ/เครื่องจักร", { references: "vehicles", required: true }),
       F("driver_employee_id", "พนักงานขับ", { references: "employees" }),
       F("planned_hours", "ชั่วโมงแผน", { type: "number" }),
+      F("actual_hours", "ชั่วโมงจริง", { type: "number" }),
+      F("start_hour_meter", "เลข ชม. เริ่ม", { type: "number" }),
+      F("end_hour_meter", "เลข ชม. จบ", { type: "number" }),
+      F("start_km", "กม. เริ่ม", { type: "number" }),
+      F("end_km", "กม. จบ", { type: "number" }),
       F("fuel_plan_liter", "น้ำมันแผน", { type: "number" }),
+      F("fuel_issue_liter", "น้ำมันเบิก/ใช้", { type: "number" }),
+      F("end_fuel_liter", "น้ำมันคงเหลือ", { type: "number" }),
+      F("fuel_material_id", "ชนิดน้ำมัน", { references: "materials" }),
+      F("note", "หมายเหตุ"),
     ],
     seed: [],
   },
@@ -11918,8 +11930,11 @@ function farmDispatchMaterialCandidates(order) {
         material_name: farmRecordLabel(farmTableByKey("materials"), material) || row.material_id,
         planned_quantity: n(row.planned_quantity),
         issued_quantity: n(row.issued_quantity || row.planned_quantity),
+        actual_quantity: n(row.actual_quantity),
+        waste_quantity: n(row.waste_quantity),
         unit_id: row.unit_id || material.base_unit_id || "",
         unit_name: farmLookupLabel("units", row.unit_id || material.base_unit_id),
+        note: row.note || "",
       };
     }).filter((row) => row.material_id);
   }
@@ -11973,7 +11988,16 @@ function farmDispatchMachineCandidates(order) {
       vehicle_name: farmLookupLabel("vehicles", row.vehicle_id),
       driver_employee_id: row.driver_employee_id || "",
       planned_hours: n(row.planned_hours),
+      actual_hours: n(row.actual_hours),
+      start_hour_meter: row.start_hour_meter || "",
+      end_hour_meter: row.end_hour_meter || "",
+      start_km: row.start_km || "",
+      end_km: row.end_km || "",
       fuel_plan_liter: n(row.fuel_plan_liter),
+      fuel_issue_liter: n(row.fuel_issue_liter),
+      end_fuel_liter: row.end_fuel_liter || "",
+      fuel_material_id: row.fuel_material_id || "",
+      note: row.note || "",
     })).filter((row) => row.vehicle_id);
   }
   const picked = farmBudgetContractState().selectedVehicles || [];
@@ -12872,6 +12896,64 @@ function farmResultWorkers(order) {
   });
 }
 
+function farmResultWorkerRoleGroup(worker = {}) {
+  const text = `${worker.role || ""} ${worker.employee?.worker_type || ""} ${worker.employee?.position || ""}`.toLowerCase();
+  if (text.includes("driver") || text.includes("คนขับ") || text.includes("ขับ")) return "driver";
+  if (text.includes("contractor") || text.includes("ผู้รับเหมา")) return "contractor";
+  return "worker";
+}
+
+function farmResultRoleLabel(group) {
+  if (group === "driver") return "คนขับ";
+  if (group === "contractor") return "ผู้รับเหมา";
+  return "คนงาน";
+}
+
+function farmResultMaterialLines(order) {
+  const draftEntries = state.farmResultDraft?.materialEntries || {};
+  return farmDispatchMaterialCandidates(order).map((row) => {
+    const key = row.material_id;
+    const entry = draftEntries[key] || {};
+    const issued = n(row.issued_quantity || row.planned_quantity);
+    return {
+      ...row,
+      key,
+      actualQuantity: entry.actualQuantity !== undefined && entry.actualQuantity !== "" ? n(entry.actualQuantity) : n(row.actual_quantity) || issued,
+      wasteQuantity: entry.wasteQuantity !== undefined && entry.wasteQuantity !== "" ? n(entry.wasteQuantity) : n(row.waste_quantity),
+      note: entry.note || row.note || "",
+    };
+  });
+}
+
+function farmResultMachineLines(order) {
+  const draftEntries = state.farmResultDraft?.machineEntries || {};
+  return farmDispatchMachineCandidates(order).map((row) => {
+    const key = row.vehicle_id;
+    const entry = draftEntries[key] || {};
+    const vehicle = farmLookup("vehicles", row.vehicle_id) || {};
+    const fuelMaterial = farmRowsByKey("materials").find((item) =>
+      String(item.material_code || item.id).toLowerCase().includes("fuel")
+      || String(item.material_name || "").includes("น้ำมัน")
+    ) || {};
+    return {
+      ...row,
+      key,
+      vehicle,
+      driver_name: row.driver_employee_id ? farmLookupLabel("employees", row.driver_employee_id) : farmLookupLabel("employees", vehicle.default_driver_id),
+      actual_hours: entry.actualHours !== undefined ? entry.actualHours : row.actual_hours || "",
+      start_hour_meter: entry.startHourMeter || row.start_hour_meter || "",
+      end_hour_meter: entry.endHourMeter || row.end_hour_meter || "",
+      start_km: entry.startKm || row.start_km || "",
+      end_km: entry.endKm || row.end_km || "",
+      start_fuel_liter: entry.startFuelLiter || "",
+      end_fuel_liter: entry.endFuelLiter || row.end_fuel_liter || "",
+      fuel_issue_liter: entry.fuelIssueLiter !== undefined ? entry.fuelIssueLiter : row.fuel_issue_liter || row.fuel_plan_liter || "",
+      fuel_material_id: entry.fuelMaterialId || row.fuel_material_id || fuelMaterial.id || "material-diesel",
+      note: entry.note || row.note || "",
+    };
+  });
+}
+
 function farmResultRateForOrder(order) {
   const block = order?.block || farmLookup("blocks", order?.block_id) || {};
   const activity = order?.activity || farmLookup("activities", order?.activity_id) || {};
@@ -12907,6 +12989,8 @@ function farmResultMatchedTickets(text) {
 function farmResultCalculation(order = farmResultSelectedOrder()) {
   const draft = farmResultDraftState(order);
   const workers = farmResultWorkers(order);
+  const materialLines = farmResultMaterialLines(order);
+  const machineLines = farmResultMachineLines(order);
   const tickets = farmResultMatchedTickets(draft.ticketText);
   const ticketKg = tickets.reduce((sum, row) => sum + n(row.wpNetWeight), 0);
   const rate = farmResultRateForOrder(order);
@@ -12951,7 +13035,10 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
     };
   });
   const payrollTotal = workerLines.reduce((sum, row) => sum + row.grossAmount, 0);
-  return { draft, workers, workerLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, payrollTotal, workerCount, shareQuantity, shareWage };
+  const materialActualTotal = materialLines.reduce((sum, row) => sum + n(row.actualQuantity), 0);
+  const fuelIssueTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_issue_liter), 0);
+  const machineHoursTotal = machineLines.reduce((sum, row) => sum + n(row.actual_hours || row.planned_hours), 0);
+  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, payrollTotal, workerCount, shareQuantity, shareWage, materialActualTotal, fuelIssueTotal, machineHoursTotal };
 }
 
 function farmResultPayrollPeriodForDate(date) {
@@ -12975,6 +13062,16 @@ function renderFarmResultPanel() {
     ? `${calc.rate.rate_code || calc.rate.id} · ${calc.rate.rate_text || `${moneyNf.format(calc.rateAmount)} ${calc.rate.unit_name || ""}`}`
     : "ยังไม่พบเรทที่ผูกกับกิจกรรม/Block";
   const firstWorker = calc.workerLines[0];
+  const groupedWorkers = calc.workerLines.reduce((map, row) => {
+    const group = farmResultWorkerRoleGroup(row);
+    if (!map[group]) map[group] = [];
+    map[group].push(row);
+    return map;
+  }, {});
+  const roleTabs = ["driver", "worker", "contractor"]
+    .filter((group) => groupedWorkers[group]?.length)
+    .map((group) => `<span><b>${esc(farmResultRoleLabel(group))}</b>${fmt(groupedWorkers[group].length)} คน</span>`)
+    .join("");
   return `
     <section class="farm-result-page">
       <div class="section-head">
@@ -12999,6 +13096,7 @@ function renderFarmResultPanel() {
         <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(order?.statusMeta?.label || "-")}</small></article>
         <article><span>เรทค่าแรง</span><strong>${moneyNf.format(calc.rateAmount)}</strong><small>${esc(calc.basis || "-")}</small></article>
         <article><span>ค่าแรงรวม</span><strong>${moneyNf.format(calc.payrollTotal || calc.totalWage)}</strong><small>ล็อก snapshot หลังบันทึก</small></article>
+        <article><span>วัสดุ / น้ำมัน</span><strong>${fmt(calc.materialLines.length)} / ${fmt(calc.machineLines.length)}</strong><small>น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร</small></article>
         <article><span>แบบตรวจงาน</span><strong>${esc(survey?.template_code || "-")}</strong><small>${esc(surveyAttachment?.file_name || survey?.template_name || "ไม่พบแบบตรวจ")}</small></article>
       </div>
       <div class="farm-result-entry-grid">
@@ -13072,10 +13170,16 @@ function renderFarmResultPanel() {
           <p>${esc(rateLabel)}</p>
         </article>
       </div>
+      <section class="farm-result-role-strip">
+        ${roleTabs || `<span><b>ทีมงาน</b>${fmt(calc.workerLines.length)} คน</span>`}
+        <span><b>วัสดุ</b>${fmt(calc.materialLines.length)} รายการ</span>
+        <span><b>รถ/เครื่องจักร</b>${fmt(calc.machineLines.length)} รายการ</span>
+        <span><b>น้ำมันใช้จริง</b>${moneyNf.format(calc.fuelIssueTotal)} ลิตร</span>
+      </section>
       <article class="farm-result-card farm-result-worker-card">
         <div class="section-head">
-          <h3>บันทึกรายคนในทีม</h3>
-          <span>แก้สถานะ เวลา ผลงาน และเงินเพิ่ม/หัก ก่อนส่งเข้าค่าแรง</span>
+          <h3>คนขับ / คนงาน</h3>
+          <span>งานเดียวรองรับหลายบทบาท แก้เวลา ผลงาน OT เงินเพิ่ม/หัก แล้วส่งเข้าค่าแรง</span>
         </div>
         <div class="farm-result-worker-tools">
           <span>ค่าเริ่มต้น: เฉลี่ยผลงาน ${moneyNf.format(calc.shareQuantity)} ${esc(calc.actualUnit)} / คน</span>
@@ -13087,6 +13191,7 @@ function renderFarmResultPanel() {
             <thead>
               <tr>
                 <th>คนงาน</th>
+                <th>บทบาท</th>
                 <th>สถานะ</th>
                 <th>เวลาเข้า</th>
                 <th>เวลาออก</th>
@@ -13104,6 +13209,7 @@ function renderFarmResultPanel() {
               ${calc.workerLines.map((row) => `
                 <tr data-farm-result-worker="${esc(row.id)}">
                   <td><strong>${esc(row.name)}</strong><small>${esc(row.role || row.employee.payment_type || "-")}</small></td>
+                  <td><span class="farm-result-role-pill ${esc(farmResultWorkerRoleGroup(row))}">${esc(farmResultRoleLabel(farmResultWorkerRoleGroup(row)))}</span></td>
                   <td><select data-farm-result-worker-field="status">${["present", "late", "half_day", "absent"].map((status) => `<option value="${status}"${row.attendanceStatus === status ? " selected" : ""}>${status === "present" ? "มาทำงาน" : status === "late" ? "สาย" : status === "half_day" ? "ครึ่งวัน" : "ขาด"}</option>`).join("")}</select></td>
                   <td><input type="time" value="${esc(row.checkIn)}" data-farm-result-worker-field="checkIn"></td>
                   <td><input type="time" value="${esc(row.checkOut)}" data-farm-result-worker-field="checkOut"></td>
@@ -13115,14 +13221,66 @@ function renderFarmResultPanel() {
                   <td><input type="number" min="0" step="0.01" value="${esc(row.deduction || "")}" data-farm-result-worker-field="deduction"></td>
                   <td class="num strong">${moneyNf.format(row.grossAmount)}</td>
                   <td><input type="text" value="${esc(row.note)}" data-farm-result-worker-field="note" placeholder="หมายเหตุ"></td>
-                </tr>`).join("") || `<tr><td colspan="12">ยังไม่มีคนงานในใบสั่งงาน ให้ผู้จัดการสั่งงานและเลือกทีมก่อน</td></tr>`}
+                </tr>`).join("") || `<tr><td colspan="13">ยังไม่มีคนงานในใบสั่งงาน ให้ผู้จัดการสั่งงานและเลือกทีมก่อน</td></tr>`}
             </tbody>
             <tfoot>
-              <tr><td colspan="6">รวม</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.actualQuantity, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.wageAmount, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.allowance, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.deduction, 0))}</td><td class="num strong">${moneyNf.format(calc.payrollTotal)}</td><td></td></tr>
+              <tr><td colspan="7">รวม</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.actualQuantity, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.wageAmount, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.allowance, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.deduction, 0))}</td><td class="num strong">${moneyNf.format(calc.payrollTotal)}</td><td></td></tr>
             </tfoot>
           </table>
         </div>
       </article>
+      <div class="farm-result-resource-grid">
+        <article class="farm-result-card farm-result-worker-card">
+          <div class="section-head">
+            <h3>วัสดุที่ใช้จริง</h3>
+            <span>กรอกใช้จริงและสูญเสีย/คืน เพื่อส่งต่อคลังและต้นทุน</span>
+          </div>
+          <div class="table-wrap farm-result-resource-wrap">
+            <table class="mini-table farm-table farm-result-resource-table">
+              <thead><tr><th>วัสดุ</th><th>แผน/จ่าย</th><th>ใช้จริง</th><th>สูญเสีย/คืน</th><th>หน่วย</th><th>หมายเหตุ</th></tr></thead>
+              <tbody>
+                ${calc.materialLines.map((row) => `
+                  <tr data-farm-result-material="${esc(row.key)}">
+                    <td><strong>${esc(row.material_name || row.material_id)}</strong><small>${esc(row.material_id || "")}</small></td>
+                    <td class="num">${moneyNf.format(n(row.planned_quantity))} / ${moneyNf.format(n(row.issued_quantity))}</td>
+                    <td><input type="number" min="0" step="0.01" value="${esc(row.actualQuantity || "")}" data-farm-result-material-field="actualQuantity"></td>
+                    <td><input type="number" min="0" step="0.01" value="${esc(row.wasteQuantity || "")}" data-farm-result-material-field="wasteQuantity"></td>
+                    <td>${esc(row.unit_name || row.unit_id || "-")}</td>
+                    <td><input type="text" value="${esc(row.note || "")}" data-farm-result-material-field="note" placeholder="หมายเหตุ"></td>
+                  </tr>`).join("") || `<tr><td colspan="6">ยังไม่มีวัสดุในใบงาน</td></tr>`}
+              </tbody>
+              <tfoot><tr><td>รวม</td><td></td><td class="num">${moneyNf.format(calc.materialActualTotal)}</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.wasteQuantity), 0))}</td><td colspan="2"></td></tr></tfoot>
+            </table>
+          </div>
+        </article>
+        <article class="farm-result-card farm-result-worker-card">
+          <div class="section-head">
+            <h3>รถ/เครื่องจักร และน้ำมัน</h3>
+            <span>บันทึกชั่วโมง กม. และน้ำมันที่ใช้จริงจากงานนี้</span>
+          </div>
+          <div class="table-wrap farm-result-resource-wrap">
+            <table class="mini-table farm-table farm-result-resource-table farm-result-machine-table">
+              <thead><tr><th>รถ/เครื่องจักร</th><th>คนขับ</th><th>ชม.จริง</th><th>ชม.เริ่ม</th><th>ชม.จบ</th><th>กม.เริ่ม</th><th>กม.จบ</th><th>น้ำมันเบิก</th><th>น้ำมันคงเหลือ</th><th>หมายเหตุ</th></tr></thead>
+              <tbody>
+                ${calc.machineLines.map((row) => `
+                  <tr data-farm-result-machine="${esc(row.key)}">
+                    <td><strong>${esc(row.vehicle_name || row.vehicle_id)}</strong><small>${esc(row.vehicle?.plate_no || row.vehicle_id || "")}</small></td>
+                    <td>${esc(row.driver_name || "-")}</td>
+                    <td><input type="number" min="0" step="0.1" value="${esc(row.actual_hours || "")}" placeholder="${esc(row.planned_hours || "")}" data-farm-result-machine-field="actualHours"></td>
+                    <td><input type="number" min="0" step="0.1" value="${esc(row.start_hour_meter || "")}" data-farm-result-machine-field="startHourMeter"></td>
+                    <td><input type="number" min="0" step="0.1" value="${esc(row.end_hour_meter || "")}" data-farm-result-machine-field="endHourMeter"></td>
+                    <td><input type="number" min="0" step="0.1" value="${esc(row.start_km || "")}" data-farm-result-machine-field="startKm"></td>
+                    <td><input type="number" min="0" step="0.1" value="${esc(row.end_km || "")}" data-farm-result-machine-field="endKm"></td>
+                    <td><input type="number" min="0" step="0.1" value="${esc(row.fuel_issue_liter || "")}" data-farm-result-machine-field="fuelIssueLiter"></td>
+                    <td><input type="number" min="0" step="0.1" value="${esc(row.end_fuel_liter || "")}" data-farm-result-machine-field="endFuelLiter"></td>
+                    <td><input type="text" value="${esc(row.note || "")}" data-farm-result-machine-field="note" placeholder="หมายเหตุ"></td>
+                  </tr>`).join("") || `<tr><td colspan="10">ยังไม่มีรถ/เครื่องจักรในใบงาน</td></tr>`}
+              </tbody>
+              <tfoot><tr><td colspan="2">รวม</td><td class="num">${moneyNf.format(calc.machineHoursTotal)}</td><td colspan="4"></td><td class="num">${moneyNf.format(calc.fuelIssueTotal)}</td><td colspan="2"></td></tr></tfoot>
+            </table>
+          </div>
+        </article>
+      </div>
       <div class="farm-result-bottom-grid">
         <article class="farm-result-card">
           <div class="section-head"><h3>ใบชั่ง / แหล่งผลงาน</h3><span>${fmt(calc.tickets.length)} ใบ · ${fmt(calc.ticketKg)} กก.</span></div>
@@ -13149,6 +13307,8 @@ function renderFarmResultPanel() {
 
 function syncFarmResultDraftFromForm() {
   const workerEntries = state.farmResultDraft?.workerEntries || {};
+  const materialEntries = state.farmResultDraft?.materialEntries || {};
+  const machineEntries = state.farmResultDraft?.machineEntries || {};
   const surveyAnswers = {};
   document.querySelectorAll("[data-farm-survey-answer]").forEach((input) => {
     surveyAnswers[input.dataset.farmSurveyAnswer] = input.value;
@@ -13164,12 +13324,16 @@ function syncFarmResultDraftFromForm() {
     note: document.querySelector("#farmResultNote")?.value.trim() || "",
     surveyAnswers,
     workerEntries,
+    materialEntries,
+    machineEntries,
   };
 }
 
 function syncFarmResultWorkerDraftFromTable() {
   syncFarmResultDraftFromForm();
   const workerEntries = {};
+  const materialEntries = {};
+  const machineEntries = {};
   document.querySelectorAll("[data-farm-result-worker]").forEach((row) => {
     const workerId = row.dataset.farmResultWorker;
     workerEntries[workerId] = {};
@@ -13177,7 +13341,23 @@ function syncFarmResultWorkerDraftFromTable() {
       workerEntries[workerId][input.dataset.farmResultWorkerField] = input.value;
     });
   });
+  document.querySelectorAll("[data-farm-result-material]").forEach((row) => {
+    const materialId = row.dataset.farmResultMaterial;
+    materialEntries[materialId] = {};
+    row.querySelectorAll("[data-farm-result-material-field]").forEach((input) => {
+      materialEntries[materialId][input.dataset.farmResultMaterialField] = input.value;
+    });
+  });
+  document.querySelectorAll("[data-farm-result-machine]").forEach((row) => {
+    const machineId = row.dataset.farmResultMachine;
+    machineEntries[machineId] = {};
+    row.querySelectorAll("[data-farm-result-machine-field]").forEach((input) => {
+      machineEntries[machineId][input.dataset.farmResultMachineField] = input.value;
+    });
+  });
   state.farmResultDraft.workerEntries = workerEntries;
+  state.farmResultDraft.materialEntries = materialEntries;
+  state.farmResultDraft.machineEntries = machineEntries;
 }
 
 function setFarmResultWorkerShareQuantities() {
@@ -13200,6 +13380,8 @@ function setFarmResultWorkerShareQuantities() {
 function clearFarmResultWorkerDraft() {
   syncFarmResultDraftFromForm();
   state.farmResultDraft.workerEntries = {};
+  state.farmResultDraft.materialEntries = {};
+  state.farmResultDraft.machineEntries = {};
   render();
 }
 
@@ -13218,6 +13400,9 @@ async function saveFarmResultEntry() {
   const payrollLineTable = farmTableByKey("payroll_period_lines");
   const attendanceTable = farmTableByKey("work_attendance");
   const workOrderTable = farmTableByKey("work_orders");
+  const materialTable = farmTableByKey("work_order_materials");
+  const machineTable = farmTableByKey("work_order_machines");
+  const costTable = farmTableByKey("cost_entries");
   const resultDate = calc.draft.resultDate || farmToday();
   const period = farmResultPayrollPeriodForDate(resultDate);
   const resultId = `result-${order.id}-${resultDate}`.slice(0, 180);
@@ -13371,6 +13556,123 @@ async function saveFarmResultEntry() {
       });
     }
 
+    for (const material of calc.materialLines) {
+      const materialRow = {
+        id: `result-material-${order.id}-${material.material_id}`.slice(0, 180),
+        moduleId: "farm-work",
+        tableId: "work_order_materials",
+        work_order_id: order.id,
+        material_id: material.material_id,
+        planned_quantity: Math.round(n(material.planned_quantity) * 1000) / 1000,
+        issued_quantity: Math.round(n(material.issued_quantity) * 1000) / 1000,
+        actual_quantity: Math.round(n(material.actualQuantity) * 1000) / 1000,
+        waste_quantity: Math.round(n(material.wasteQuantity) * 1000) / 1000,
+        unit_id: material.unit_id || "",
+        note: material.note || "",
+        updatedAt: now,
+      };
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_order_materials" && row.id === materialRow.id));
+      state.farmRecords.push(materialRow);
+      if (materialTable) await persistFarmRowToDatabase(materialTable, materialRow);
+      const materialCost = {
+        id: `cost-material-${resultId}-${material.material_id}`.slice(0, 180),
+        moduleId: "farm-budget",
+        tableId: "cost_entries",
+        cost_date: resultDate,
+        estate_id: order.estate_id || order.block?.estate_id || "",
+        plot_id: order.plot_id || "",
+        block_id: order.block_id || "",
+        ap_code: order.block?.ap_code || order.block?.AP_code || "",
+        activity_id: order.activity_id || "",
+        work_order_id: order.id,
+        cost_type: "material",
+        amount: 0,
+        status: "recorded",
+        quantity_snapshot: materialRow.actual_quantity,
+        unit_snapshot: material.unit_name || material.unit_id || "",
+        item_snapshot: material.material_name || material.material_id,
+        updatedAt: now,
+      };
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "cost_entries" && row.id === materialCost.id));
+      state.farmRecords.push(materialCost);
+      if (costTable) await persistFarmRowToDatabase(costTable, materialCost);
+    }
+
+    for (const machine of calc.machineLines) {
+      const actualHours = n(machine.actual_hours) || Math.max(0, n(machine.end_hour_meter) - n(machine.start_hour_meter)) || n(machine.planned_hours);
+      const fuelIssue = n(machine.fuel_issue_liter);
+      const machineRow = {
+        id: `result-machine-${order.id}-${machine.vehicle_id}`.slice(0, 180),
+        moduleId: "farm-work",
+        tableId: "work_order_machines",
+        work_order_id: order.id,
+        vehicle_id: machine.vehicle_id,
+        driver_employee_id: machine.driver_employee_id || machine.vehicle?.default_driver_id || "",
+        planned_hours: Math.round(n(machine.planned_hours) * 100) / 100,
+        actual_hours: Math.round(actualHours * 100) / 100,
+        start_hour_meter: machine.start_hour_meter || "",
+        end_hour_meter: machine.end_hour_meter || "",
+        start_km: machine.start_km || "",
+        end_km: machine.end_km || "",
+        fuel_plan_liter: Math.round(n(machine.fuel_plan_liter) * 100) / 100,
+        fuel_issue_liter: Math.round(fuelIssue * 100) / 100,
+        end_fuel_liter: machine.end_fuel_liter || "",
+        fuel_material_id: machine.fuel_material_id || "",
+        note: machine.note || "",
+        updatedAt: now,
+      };
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_order_machines" && row.id === machineRow.id));
+      state.farmRecords.push(machineRow);
+      if (machineTable) await persistFarmRowToDatabase(machineTable, machineRow);
+      const machineCost = {
+        id: `cost-machine-${resultId}-${machine.vehicle_id}`.slice(0, 180),
+        moduleId: "farm-budget",
+        tableId: "cost_entries",
+        cost_date: resultDate,
+        estate_id: order.estate_id || order.block?.estate_id || "",
+        plot_id: order.plot_id || "",
+        block_id: order.block_id || "",
+        ap_code: order.block?.ap_code || order.block?.AP_code || "",
+        activity_id: order.activity_id || "",
+        work_order_id: order.id,
+        cost_type: "machine",
+        amount: 0,
+        status: "recorded",
+        quantity_snapshot: machineRow.actual_hours,
+        unit_snapshot: "ชม.",
+        item_snapshot: machine.vehicle_name || machine.vehicle_id,
+        updatedAt: now,
+      };
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "cost_entries" && row.id === machineCost.id));
+      state.farmRecords.push(machineCost);
+      if (costTable) await persistFarmRowToDatabase(costTable, machineCost);
+      if (fuelIssue) {
+        const fuelCost = {
+          id: `cost-fuel-${resultId}-${machine.vehicle_id}`.slice(0, 180),
+          moduleId: "farm-budget",
+          tableId: "cost_entries",
+          cost_date: resultDate,
+          estate_id: order.estate_id || order.block?.estate_id || "",
+          plot_id: order.plot_id || "",
+          block_id: order.block_id || "",
+          ap_code: order.block?.ap_code || order.block?.AP_code || "",
+          activity_id: order.activity_id || "",
+          work_order_id: order.id,
+          cost_type: "fuel",
+          amount: 0,
+          status: "recorded",
+          quantity_snapshot: machineRow.fuel_issue_liter,
+          unit_snapshot: "ลิตร",
+          item_snapshot: farmLookupLabel("materials", machineRow.fuel_material_id) || "น้ำมัน",
+          vehicle_id: machine.vehicle_id,
+          updatedAt: now,
+        };
+        state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "cost_entries" && row.id === fuelCost.id));
+        state.farmRecords.push(fuelCost);
+        if (costTable) await persistFarmRowToDatabase(costTable, fuelCost);
+      }
+    }
+
     const nextOrder = {
       ...order,
       id: order.readonly ? `override-${order.id}` : order.id,
@@ -13409,7 +13711,7 @@ async function saveFarmResultEntry() {
     state.farmWorkDetailId = order.id;
     state.farmResultWorkOrderId = order.id;
     state.farmSyncStatus = "success";
-    state.farmSyncMessage = `บันทึกงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงสุทธิ ${moneyNf.format(calc.payrollTotal)} บาท`;
+    state.farmSyncMessage = `บันทึกงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงสุทธิ ${moneyNf.format(calc.payrollTotal)} บาท · วัสดุ ${fmt(calc.materialLines.length)} รายการ · น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร`;
   } catch (error) {
     saveFarmRecords();
     state.farmSyncStatus = "error";
@@ -16651,7 +16953,7 @@ async function init() {
     if (e.target.id === "farmResultOrderSelect") {
       state.farmResultWorkOrderId = e.target.value;
       state.farmWorkDetailId = e.target.value;
-      state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {} };
+      state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {}, materialEntries: {}, machineEntries: {} };
       render();
       return;
     }
@@ -16661,6 +16963,11 @@ async function init() {
       return;
     }
     if (e.target.matches("[data-farm-result-worker-field]")) {
+      syncFarmResultWorkerDraftFromTable();
+      render();
+      return;
+    }
+    if (e.target.matches("[data-farm-result-material-field], [data-farm-result-machine-field]")) {
       syncFarmResultWorkerDraftFromTable();
       render();
       return;
@@ -16971,6 +17278,12 @@ async function init() {
       return;
     }
     if (e.target.matches("[data-farm-result-worker-field]")) {
+      syncFarmResultWorkerDraftFromTable();
+      clearTimeout(state.farmResultRenderTimer);
+      state.farmResultRenderTimer = setTimeout(render, 180);
+      return;
+    }
+    if (e.target.matches("[data-farm-result-material-field], [data-farm-result-machine-field]")) {
       syncFarmResultWorkerDraftFromTable();
       clearTimeout(state.farmResultRenderTimer);
       state.farmResultRenderTimer = setTimeout(render, 180);
