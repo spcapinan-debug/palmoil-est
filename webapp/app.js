@@ -35,6 +35,8 @@
   farmDbRows: {},
   farmDbSource: null,
   farmDbErrors: {},
+  farmDbLoading: false,
+  farmDbLoaded: false,
   summaryPalmoilAreas: [],
   summaryPalmoilSource: null,
   blockMapData: null,
@@ -2796,6 +2798,8 @@ function normalizeFarmDbRows(tableKey, rows = []) {
 
 async function loadFarmTablesFromDatabase({ silent = false } = {}) {
   const tableKeys = Object.keys(FARM_TABLE_SCHEMAS);
+  state.farmDbLoading = true;
+  if (isFarmView(state.view)) render();
   try {
     const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(tableKeys.join(","))}&t=${Date.now()}`;
     const payload = await fetch(url, { cache: "no-store" }).then((res) => res.json());
@@ -2805,12 +2809,17 @@ async function loadFarmTablesFromDatabase({ silent = false } = {}) {
     );
     state.farmDbSource = payload.source || null;
     state.farmDbErrors = payload.errors || {};
+    state.farmDbLoaded = true;
+    state.farmDbLoading = false;
     if (silent) render();
     return true;
   } catch (error) {
     state.farmDbRows = {};
     state.farmDbSource = { mode: "fallback-seed", error: error.message };
     state.farmDbErrors = { api: error.message };
+    state.farmDbLoaded = false;
+    state.farmDbLoading = false;
+    if (isFarmView(state.view)) render();
     return false;
   }
 }
@@ -9396,7 +9405,9 @@ function farmRows(table = selectedFarmTable()) {
   const overrides = new Map(state.farmRecords.filter((row) => row.tableId === tableId && row._overrideOf && !row._deleted).map((row) => [row._overrideOf, row]));
   const deleted = new Set(state.farmRecords.filter((row) => row.tableId === tableId && row._deleted).map((row) => row._overrideOf || row.id));
   const databaseRows = Array.isArray(state.farmDbRows?.[tableId]) ? state.farmDbRows[tableId] : [];
-  const baseRows = (databaseRows.length ? databaseRows : farmSeedRows(table))
+  const hasDatabaseTable = Object.prototype.hasOwnProperty.call(state.farmDbRows || {}, tableId);
+  const sourceRows = hasDatabaseTable ? databaseRows : state.farmDbLoaded ? [] : farmSeedRows(table);
+  const baseRows = sourceRows
     .map((row) => overrides.has(row.id) ? { ...row, ...overrides.get(row.id), id: row.id, readonly: false } : row)
     .filter((row) => !deleted.has(row.id));
   const baseIds = new Set(baseRows.map((row) => row.id));
@@ -14417,6 +14428,38 @@ function renderFarmPage() {
   const module = selectedFarmModule();
   const tables = farmTablesForModule(module);
   const table = selectedFarmTable(module);
+  if (state.farmDbLoading && !state.farmDbLoaded) {
+    return `
+      <div class="farm-page">
+        <div class="report-title">
+          <div>
+            <h2>${esc(module.title)}</h2>
+            <p>${esc(module.description || "กำลังโหลดข้อมูลจริงจากฐานข้อมูล")}</p>
+          </div>
+          <button type="button" data-farm-db-refresh disabled>กำลังโหลด DB...</button>
+        </div>
+        <section class="farm-loading-panel">
+          <strong>กำลังโหลดข้อมูลจริงจากฐานข้อมูล</strong>
+          <span>ระบบจะยังไม่แสดงข้อมูลตั้งต้นหรือข้อมูลตัวอย่าง เพื่อป้องกันการเข้าใจผิด</span>
+        </section>
+      </div>`;
+  }
+  if (!state.farmDbLoaded && state.farmDbSource?.error) {
+    return `
+      <div class="farm-page">
+        <div class="report-title">
+          <div>
+            <h2>${esc(module.title)}</h2>
+            <p>${esc(module.description || "โหลดข้อมูลฐานข้อมูลไม่สำเร็จ")}</p>
+          </div>
+          <button type="button" data-farm-db-refresh>Refresh DB</button>
+        </div>
+        <section class="farm-loading-panel error">
+          <strong>โหลดข้อมูลจริงไม่สำเร็จ</strong>
+          <span>${esc(state.farmDbSource.error)}</span>
+        </section>
+      </div>`;
+  }
   const visibleFields = farmVisibleFields(table);
   const rows = filteredFarmRows(table);
   const allRows = farmRows(table);
@@ -15308,6 +15351,7 @@ async function init() {
   await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadSummaryPalmoilAreas(), loadBlockMapData(), loadFarmBudgetRateData(), loadClearOverridesFromServer()]);
   setDefaultTransportDateRange();
   setDateValue(els.clearDate, state.payload.source.dateMax);
+  state.farmDbLoading = true;
   loadFarmTablesFromDatabase({ silent: true });
 
   els.startDate.addEventListener("input", () => {
