@@ -7009,6 +7009,165 @@ tfoot td {
   color: #166534;
 }
 
+.farm-issue-table tr[data-farm-issue-row] {
+  cursor: pointer;
+}
+
+.farm-issue-table tr[data-farm-issue-row]:hover td {
+  background: #f4f8fb;
+}
+
+.farm-issue-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, .34);
+}
+
+.farm-issue-modal-card {
+  width: min(980px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border: 1px solid #d7e2ee;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .2);
+}
+
+.farm-issue-modal-head,
+.farm-issue-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.farm-issue-modal-head h3 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 18px;
+}
+
+.farm-issue-modal-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.farm-issue-modal-head button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--navy);
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.farm-issue-modal-body {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+
+.farm-issue-modal-qr {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.farm-issue-modal-qr dl {
+  display: grid;
+  grid-template-columns: 82px 1fr;
+  gap: 7px 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.farm-issue-modal-qr dt,
+.farm-issue-modal-qr dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+.farm-issue-modal-qr dt {
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.farm-issue-modal-qr dd {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.farm-issue-modal-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.farm-issue-modal-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.farm-issue-modal-form input,
+.farm-issue-modal-form select,
+.farm-issue-modal-form textarea {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+}
+
+.farm-issue-modal-form input:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.farm-issue-modal-note {
+  grid-column: 1 / -1;
+}
+
+.farm-issue-modal-actions {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.farm-issue-modal-actions button {
+  min-height: 38px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 0 16px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.farm-issue-modal-actions .ghost {
+  background: #fff;
+  color: var(--primary);
+}
+
 .farm-inventory-board {
   display: grid;
   gap: 12px;
@@ -9210,6 +9369,9 @@ td.num,
   .farm-dispatch-worker-list,
   .farm-qr-card,
   .farm-dispatch-print dl,
+  .farm-issue-modal-body,
+  .farm-issue-modal-form,
+  .farm-issue-modal-qr dl,
   .farm-issue-kpis,
   .farm-result-workbar,
   .farm-result-summary-strip,
@@ -9309,6 +9471,46 @@ td.num,
 
   body.print-farm-dispatch .farm-dispatch-print table {
     page-break-inside: auto;
+  }
+
+  body.print-farm-issue .sidebar,
+  body.print-farm-issue .content-head,
+  body.print-farm-issue .date-panel,
+  body.print-farm-issue .global-filter-panel,
+  body.print-farm-issue .report-title,
+  body.print-farm-issue .farm-inventory-issue-page > *:not(.farm-issue-modal) {
+    display: none !important;
+  }
+
+  body.print-farm-issue .content,
+  body.print-farm-issue .report-page,
+  body.print-farm-issue .farm-inventory-issue-page {
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body.print-farm-issue .farm-issue-modal {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body.print-farm-issue .farm-issue-modal-card {
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  body.print-farm-issue .farm-issue-modal-actions,
+  body.print-farm-issue .farm-issue-modal-head button {
+    display: none !important;
   }
 
   .sidebar,
