@@ -12308,6 +12308,22 @@ td.num,
   background: #c84632 !important;
 }
 
+.farm-work-page .farm-work-layout {
+  min-height: clamp(430px, 58vh, 760px);
+}
+
+.farm-work-page .farm-work-gantt,
+.farm-work-page.farm-work-compact .farm-work-gantt,
+.farm-work-page .farm-work-compact .farm-work-gantt {
+  height: clamp(430px, 58vh, 760px);
+  max-height: clamp(430px, 58vh, 760px);
+  overflow: auto;
+}
+
+.farm-work-page .farm-work-rows {
+  min-height: calc(clamp(430px, 58vh, 760px) - 30px);
+}
+
 /* Final table alignment standard:
    headers centered, text left, numeric values right, dates/actions centered. */
 table th,
