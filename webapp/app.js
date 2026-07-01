@@ -13336,6 +13336,10 @@ function farmBudgetActivityLabel(activity) {
   return [activity.activity_code, activity.activity_name || activity.name, group?.group_name].filter(Boolean).join(" · ");
 }
 
+function farmBudgetActivityDisplayLabel(activity) {
+  return [activity.activity_code, activity.activity_name || activity.name].filter(Boolean).join(" · ");
+}
+
 function farmBudgetMaterialLabel(material) {
   return [material.material_code, material.material_name || material.item_name || material.name].filter(Boolean).join(" · ");
 }
@@ -13548,9 +13552,9 @@ function renderFarmBudgetActivityTree() {
     return `
       <details open>
         <summary>${esc(group.group_code || group.activity_group_code || "")} ${esc(group.group_name || group.activity_group_name || "")} <small>${fmt(groupActivities.length)}</small></summary>
-        ${groupActivities.map((activity) => renderBudgetCheckbox("activity", activity.id, farmBudgetActivityLabel(activity), picks.selectedActivities, activity.wage_code_id ? farmLookupLabel("wage_codes", activity.wage_code_id) : "")).join("")}
+        ${groupActivities.map((activity) => renderBudgetCheckbox("activity", activity.id, farmBudgetActivityDisplayLabel(activity), picks.selectedActivities, activity.wage_code_id ? farmLookupLabel("wage_codes", activity.wage_code_id) : "")).join("")}
       </details>`;
-  }).join("") || activities.map((activity) => renderBudgetCheckbox("activity", activity.id, farmBudgetActivityLabel(activity), picks.selectedActivities)).join("");
+  }).join("") || activities.map((activity) => renderBudgetCheckbox("activity", activity.id, farmBudgetActivityDisplayLabel(activity), picks.selectedActivities)).join("");
 }
 
 function renderFarmBudgetMaterialTree() {
@@ -13587,22 +13591,40 @@ function renderFarmBudgetVehicleTree() {
 function renderFarmBudgetWorkerTree() {
   const picks = farmBudgetContractState();
   const teams = farmRowsByKey("teams").map((row) => ({ ...row, _budgetType: "team" }));
+  const teamMembers = farmRowsByKey("team_members").filter((row) => String(row.is_active) !== "false");
   const employees = farmRowsByKey("employees").map((row) => ({ ...row, _budgetType: "employee" }));
   const contractors = farmRowsByKey("contractors").map((row) => ({ ...row, _budgetType: "contractor" }));
-  const groups = [
-    { key: "team", title: "ทีมงาน", rows: teams },
-    { key: "employee", title: "พนักงาน / คนงาน", rows: employees },
-    { key: "contractor", title: "ผู้รับเหมา", rows: contractors },
-  ];
-  return groups.map((group) => {
-    const rows = group.rows.filter((row) => farmBudgetMatchesQuery(farmBudgetWorkerLabel(row)));
-    if (!rows.length) return "";
+  const teamSections = teams.map((team) => {
+    const members = teamMembers
+      .filter((member) => member.team_id === team.id)
+      .map((member) => {
+        const employee = employees.find((row) => row.id === member.employee_id);
+        return employee ? { ...employee, _memberRole: member.member_role || employee.worker_type || "" } : null;
+      })
+      .filter(Boolean)
+      .filter((employee) => farmBudgetMatchesQuery(`${farmBudgetWorkerLabel(team)} ${farmBudgetWorkerLabel(employee)} ${employee._memberRole || ""}`));
+    const teamMatches = farmBudgetMatchesQuery(farmBudgetWorkerLabel(team));
+    if (!teamMatches && !members.length) return "";
+    const teamValue = `team:${team.id}`;
+    const teamChecked = picks.selectedWorkers.includes(teamValue);
     return `
       <details open>
-        <summary>${esc(group.title)} <small>${fmt(rows.length)}</small></summary>
-        ${rows.slice(0, 250).map((row) => renderBudgetCheckbox("worker", `${group.key}:${row.id}`, farmBudgetWorkerLabel(row), picks.selectedWorkers, row.payment_type || row.worker_type || row.team_type || "")).join("")}
+        <summary>${esc(farmBudgetWorkerLabel(team))} <small>${fmt(members.length)} คน</small></summary>
+        ${renderBudgetCheckbox("worker", teamValue, "เลือกทั้งทีม", picks.selectedWorkers, team.team_type || "")}
+        ${teamChecked ? `<div class="budget-tree-nested">
+          ${members.map((employee) => renderBudgetCheckbox("worker", `employee:${employee.id}`, farmBudgetWorkerLabel(employee), picks.selectedWorkers, employee._memberRole || employee.payment_type || employee.worker_type || "")).join("") || `<div class="budget-tree-empty">ทีมนี้ยังไม่มีสมาชิก</div>`}
+        </div>` : ""}
       </details>`;
-  }).join("") || `<div class="budget-tree-empty">ยังไม่มีข้อมูลพนักงาน/ทีม</div>`;
+  }).join("");
+  const contractorRows = contractors.filter((row) => farmBudgetMatchesQuery(farmBudgetWorkerLabel(row)));
+  const contractorSection = contractorRows.length ? `
+    <details open>
+      <summary>ผู้รับเหมา <small>${fmt(contractorRows.length)}</small></summary>
+      ${contractorRows.slice(0, 250).map((row) => renderBudgetCheckbox("worker", `contractor:${row.id}`, farmBudgetWorkerLabel(row), picks.selectedWorkers, row.payment_type || row.contractor_type || "")).join("")}
+    </details>` : "";
+  return teamSections || contractorSection
+    ? `${teamSections}${contractorSection}`
+    : `<div class="budget-tree-empty">ยังไม่มีข้อมูลทีมงาน</div>`;
 }
 
 function renderFarmBudgetExtraRateRows() {

@@ -4733,6 +4733,20 @@ tfoot td {
   text-align: center;
 }
 
+.budget-tree-nested {
+  display: grid;
+  gap: 3px;
+  margin: 4px 0 8px 20px;
+  padding-left: 10px;
+  border-left: 2px solid #e7edf3;
+}
+
+.budget-tree-nested .budget-tree-item {
+  min-height: 23px;
+  padding: 2px 4px;
+  margin-left: 0;
+}
+
 .budget-rate-form {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
