@@ -14477,7 +14477,7 @@ function renderFarmPage() {
           <div class="farm-table-list">${tables.map((item) => `<span>${esc(item.key)}</span>`).join("")}</div>
         </article>
       </section>`}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage ? "" : `<section class="farm-panel">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage ? "" : `<section class="farm-panel">
         <div class="section-head"><h3>ตารางรายการ</h3><span>Search / Filter / Add / Edit / Set Inactive / Detail / Export</span></div>
         <div class="table-wrap farm-table-wrap">
           <table class="mini-table farm-table">
