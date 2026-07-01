@@ -7014,10 +7014,8 @@ tfoot td {
   gap: 12px;
 }
 
-.farm-inventory-head,
-.farm-inventory-kpis article,
 .farm-inventory-grid .farm-panel,
-.farm-inventory-form-grid .farm-panel {
+.farm-inventory-board > .farm-panel {
   border: 1px solid var(--line-strong);
   border-radius: 10px;
   background: rgba(255, 255, 255, .92);
@@ -7102,12 +7100,26 @@ tfoot td {
 
 .farm-inventory-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(420px, .85fr);
+  grid-template-columns: minmax(340px, .8fr) minmax(0, 1.2fr);
   gap: 12px;
 }
 
 .farm-inventory-grid .table-wrap {
   max-height: 430px;
+}
+
+.farm-inventory-small-wrap {
+  max-height: 190px !important;
+}
+
+.farm-inventory-doc-wrap {
+  max-height: 360px;
+}
+
+.section-head.compact {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, .2);
 }
 
 .farm-inventory-list .mini-table td,
@@ -7164,7 +7176,6 @@ tfoot td {
 }
 
 @media (max-width: 1180px) {
-  .farm-inventory-kpis,
   .farm-inventory-grid,
   .farm-inventory-form-grid {
     grid-template-columns: 1fr;
