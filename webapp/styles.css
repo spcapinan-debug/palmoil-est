@@ -7009,6 +7009,172 @@ tfoot td {
   color: #166534;
 }
 
+.farm-inventory-board {
+  display: grid;
+  gap: 12px;
+}
+
+.farm-inventory-head,
+.farm-inventory-kpis article,
+.farm-inventory-grid .farm-panel,
+.farm-inventory-form-grid .farm-panel {
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .92);
+  box-shadow: var(--shadow-sm);
+}
+
+.farm-inventory-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+}
+
+.farm-inventory-head h3 {
+  margin: 0 0 3px;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.farm-inventory-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.farm-inventory-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.farm-inventory-actions button,
+.farm-inventory-toolbar button {
+  min-height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  color: var(--navy-2);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.farm-inventory-actions button:last-child,
+.farm-inventory-toolbar button {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.farm-inventory-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.farm-inventory-kpis article {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+}
+
+.farm-inventory-kpis span,
+.farm-inventory-kpis small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.farm-inventory-kpis strong {
+  color: var(--navy);
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.farm-inventory-toolbar {
+  border-radius: 10px;
+}
+
+.farm-inventory-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(420px, .85fr);
+  gap: 12px;
+}
+
+.farm-inventory-grid .table-wrap {
+  max-height: 430px;
+}
+
+.farm-inventory-list .mini-table td,
+.farm-inventory-docs .mini-table td {
+  height: 34px;
+  vertical-align: middle;
+}
+
+.farm-inventory-list .mini-table td small,
+.farm-inventory-docs .mini-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.farm-inventory-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(340px, .75fr);
+  gap: 12px;
+}
+
+.farm-inventory-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.farm-inventory-detail dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.farm-inventory-detail div {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(148, 163, 184, .2);
+}
+
+.farm-inventory-detail dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-inventory-detail dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+@media (max-width: 1180px) {
+  .farm-inventory-kpis,
+  .farm-inventory-grid,
+  .farm-inventory-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .farm-inventory-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .farm-issue-status.done {
   background: #e0f2fe;
   color: #075985;

@@ -12373,6 +12373,161 @@ function renderFarmInventoryIssueQueue() {
     </section>`;
 }
 
+const FARM_INVENTORY_TABLES = [
+  "inventory_master",
+  "warehouses",
+  "inventory_documents",
+  "inventory_document_lines",
+  "stock_balances",
+  "stock_transactions",
+  "material_lots",
+  "units",
+];
+
+function farmInventoryQuantityForItem(itemId) {
+  const balances = farmRowsByKey("stock_balances").filter((row) => row.material_id === itemId || row.item_id === itemId);
+  const explicitBalance = balances.reduce((sum, row) => sum + n(row.quantity_on_hand || row.balance_quantity || row.quantity), 0);
+  if (explicitBalance) return explicitBalance;
+  return farmRowsByKey("inventory_document_lines")
+    .filter((row) => row.item_id === itemId || row.material_id === itemId)
+    .reduce((sum, row) => {
+      const doc = farmLookup("inventory_documents", row.document_id) || {};
+      const type = String(doc.doc_type || row.transaction_type || "").toLowerCase();
+      const qty = n(row.quantity || row.received_quantity || row.issued_quantity);
+      if (["receipt", "return", "adjustment", "count"].includes(type)) return sum + qty;
+      if (["issue", "transfer", "fuel_requisition"].includes(type)) return sum - qty;
+      return sum;
+    }, 0);
+}
+
+function renderFarmInventoryBoard() {
+  if (!FARM_INVENTORY_TABLES.includes(state.farmTableId)) state.farmTableId = "inventory_master";
+  const table = selectedFarmTable();
+  const items = farmRowsByKey("inventory_master");
+  const warehouses = farmRowsByKey("warehouses");
+  const docs = farmRowsByKey("inventory_documents").sort((a, b) => String(b.doc_date || "").localeCompare(String(a.doc_date || "")));
+  const lines = farmRowsByKey("inventory_document_lines");
+  const query = state.farmFilters.query.trim().toLowerCase();
+  const filteredItems = items.filter((item) => {
+    const statusOk = state.farmFilters.status === "all" || String(item.status || "").toLowerCase() === state.farmFilters.status;
+    const queryOk = !query || [item.item_code, item.item_name, item.item_type, item.category_name, item.unit_name, item.plate_no].join(" ").toLowerCase().includes(query);
+    return statusOk && queryOk;
+  });
+  const itemTypeCounts = filteredItems.reduce((map, item) => {
+    const type = String(item.item_type || "material").toLowerCase();
+    map[type] = (map[type] || 0) + 1;
+    return map;
+  }, {});
+  const selected = farmRows(table).find((row) => row.id === state.farmDetailId) || {};
+  const editing = farmRows(table).find((row) => row.id === state.farmEditId) || {};
+  const visibleFields = farmVisibleFields(table);
+  const itemRows = filteredItems.slice(0, 80).map((item) => {
+    const qty = farmInventoryQuantityForItem(item.id);
+    return `
+      <tr class="farm-editable-row" data-farm-row="${esc(item.id)}" data-farm-inventory-table="inventory_master">
+        <td><strong>${esc(item.item_code || "-")}</strong><small>${esc(farmTranslateValue(item.item_type || "material"))}</small></td>
+        <td>${esc(item.item_name || "-")}<small>${esc(item.category_name || "-")}</small></td>
+        <td>${esc(item.unit_name || "-")}</td>
+        <td>${esc(farmLookupLabel("warehouses", item.warehouse_id) || "-")}</td>
+        <td class="num">${moneyNf.format(qty)}</td>
+        <td>${esc(farmTranslateValue(item.status) || "-")}</td>
+        <td class="row-actions"><button type="button" data-farm-edit="${esc(item.id)}">แก้ไข</button></td>
+      </tr>`;
+  }).join("");
+  const docRows = docs.slice(0, 10).map((doc) => {
+    const docLines = lines.filter((line) => line.document_id === doc.id);
+    const totalQty = docLines.reduce((sum, line) => sum + n(line.quantity), 0);
+    return `
+      <tr class="farm-editable-row" data-farm-row="${esc(doc.id)}" data-farm-inventory-table="inventory_documents">
+        <td><strong>${esc(doc.document_no || "-")}</strong><small>${esc(displayDate(doc.doc_date || "") || "-")}</small></td>
+        <td>${esc(farmTranslateValue(doc.doc_type) || "-")}</td>
+        <td>${esc(farmLookupLabel("warehouses", doc.warehouse_id) || "-")}</td>
+        <td>${esc(farmLookupLabel("work_orders", doc.work_order_id) || "-")}</td>
+        <td class="num">${fmt(docLines.length)}</td>
+        <td class="num">${moneyNf.format(totalQty)}</td>
+        <td>${esc(farmTranslateValue(doc.status) || "-")}</td>
+      </tr>`;
+  }).join("");
+  return `
+    <section class="farm-inventory-board">
+      <div class="farm-inventory-head">
+        <div>
+          <h3>พัสดุ / อุปกรณ์</h3>
+          <p>เก็บข้อมูลรายการ คลัง เอกสารรับ-จ่าย-คืน และยอดคงเหลือใน flow เดียวกับการวางแผนและใบสั่งงาน</p>
+        </div>
+        <div class="farm-inventory-actions">
+          <button type="button" data-farm-open-table="inventory_master">รายการพัสดุ</button>
+          <button type="button" data-farm-open-table="inventory_documents">เอกสาร</button>
+          <button type="button" data-farm-open-table="inventory_document_lines">รายการเคลื่อนไหว</button>
+          <button type="button" data-farm-new>เพิ่มข้อมูล</button>
+        </div>
+      </div>
+      <div class="farm-inventory-kpis">
+        <article><span>รายการทั้งหมด</span><strong>${fmt(items.length)}</strong><small>ใช้งาน ${fmt(items.filter((item) => String(item.status || "active").toLowerCase() !== "inactive").length)}</small></article>
+        <article><span>วัสดุ</span><strong>${fmt(itemTypeCounts.material || 0)}</strong><small>ปุ๋ย น้ำมัน อะไหล่ และสิ้นเปลือง</small></article>
+        <article><span>รถ / เครื่องจักร</span><strong>${fmt((itemTypeCounts.vehicle || 0) + (itemTypeCounts.equipment || 0))}</strong><small>ใช้ผูกใน Work Order</small></article>
+        <article><span>คลัง</span><strong>${fmt(warehouses.length)}</strong><small>จุดรับ จ่าย และตรวจนับ</small></article>
+        <article><span>เอกสารล่าสุด</span><strong>${fmt(docs.length)}</strong><small>รับ จ่าย คืน โอน ปรับยอด</small></article>
+      </div>
+      <div class="farm-activity-toolbar farm-inventory-toolbar">
+        <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหารหัส ชื่อ หมวด ทะเบียน คลัง"></label>
+        <label>สถานะ
+          <select id="farmStatusFilter">
+            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}
+          </select>
+        </label>
+        <label>ตารางที่แก้ไข
+          <select id="farmTableSelect">
+            ${FARM_INVENTORY_TABLES.map((key) => {
+              const schema = FARM_TABLE_SCHEMAS[key];
+              return schema ? `<option value="${esc(key)}"${state.farmTableId === key ? " selected" : ""}>${esc(schema.title)}</option>` : "";
+            }).join("")}
+          </select>
+        </label>
+        <button type="button" data-farm-export ${farmCan("export") ? "" : "disabled"}>Export Excel</button>
+      </div>
+      <div class="farm-inventory-grid">
+        <article class="farm-panel farm-inventory-list">
+          <div class="section-head"><h3>รายการพัสดุ / อุปกรณ์</h3><span>ดับเบิลคลิกหรือกดแก้ไขเพื่อเปิดฟอร์ม</span></div>
+          <div class="table-wrap">
+            <table class="mini-table farm-table">
+              <thead><tr><th>รหัส</th><th>รายการ</th><th>หน่วย</th><th>คลังหลัก</th><th>คงเหลือ</th><th>สถานะ</th><th></th></tr></thead>
+              <tbody>${itemRows || `<tr><td colspan="7">ยังไม่มีข้อมูลพัสดุ/อุปกรณ์</td></tr>`}</tbody>
+            </table>
+          </div>
+        </article>
+        <article class="farm-panel farm-inventory-docs">
+          <div class="section-head"><h3>เอกสารเคลื่อนไหวล่าสุด</h3><span>รับเข้า จ่าย คืน โอน ปรับยอด</span></div>
+          <div class="table-wrap">
+            <table class="mini-table farm-table">
+              <thead><tr><th>เอกสาร</th><th>ประเภท</th><th>คลัง</th><th>WO</th><th>บรรทัด</th><th>จำนวน</th><th>สถานะ</th></tr></thead>
+              <tbody>${docRows || `<tr><td colspan="7">ยังไม่มีเอกสารพัสดุ</td></tr>`}</tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+      <div class="farm-inventory-form-grid">
+        <article class="farm-panel">
+          <div class="section-head"><h3>${state.farmEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูล"}</h3><span>${esc(table.title)} / ${esc(table.key)}</span></div>
+          <form class="farm-form farm-inventory-form">
+            <label class="auto-id-field">id อัตโนมัติ
+              <input type="text" value="${esc(editing.id || "สร้างอัตโนมัติ")}" disabled aria-disabled="true">
+            </label>
+            ${visibleFields.map((field) => renderFarmInput(field, editing[farmFieldKey(field)] ?? "")).join("")}
+            <div class="farm-form-actions">
+              <button type="button" data-farm-save ${farmCan(state.farmEditId ? "update" : "create") && !state.farmSyncBusy ? "" : "disabled"}>${state.farmSyncBusy ? "กำลังบันทึก..." : (state.farmEditId ? "บันทึกแก้ไข" : "บันทึกเพิ่ม")}</button>
+              <button type="button" data-farm-clear>ล้างฟอร์ม</button>
+            </div>
+          </form>
+        </article>
+        <article class="farm-panel farm-inventory-detail">
+          <div class="section-head"><h3>รายละเอียดที่เลือก</h3><span>${selected.id ? esc(selected.id) : "เลือกแถวเพื่อดูรายละเอียด"}</span></div>
+          ${selected.id ? `<dl>${visibleFields.map((field) => `<div><dt>${esc(farmFieldLabel(field))}</dt><dd>${esc(farmDisplayValue(field, selected) || "-")}</dd></div>`).join("")}</dl>` : `<p class="muted">ยังไม่ได้เลือกรายการ</p>`}
+        </article>
+      </div>
+    </section>`;
+}
+
 function farmResultCandidateOrders() {
   const rows = farmWorkOrders();
   const allowed = new Set(["sent_to_mobile", "in_progress", "rescheduled", "approved", "completed"]);
@@ -14992,6 +15147,7 @@ function renderFarmPage() {
   const isActivityPage = module.id === "farm-activities";
   const isAreaPage = module.id === "farm-area";
   const isTeamPage = module.id === "farm-hr-teams";
+  const isInventoryPage = module.id === "farm-inventory";
   const pageTitle = isWorkPage ? "วางแผนสร้าง Work Order"
     : isDispatchPage ? "สั่งงานผู้จัดการ"
       : isResultPage ? "บันทึกงานหัวหน้างาน"
@@ -15014,7 +15170,7 @@ function renderFarmPage() {
       ${isBudgetPage ? "" : renderFarmWorkflowNav(module)}
       ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isBudgetPage ? renderFarmBudgetBoard() : ""}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage ? "" : `<section class="farm-hero">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isInventoryPage ? "" : `<section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
@@ -15025,13 +15181,14 @@ function renderFarmPage() {
       ${isAreaPage ? `${renderFarmAreaBlockMap()}${renderFarmAreaBoard()}` : ""}
       ${isActivityPage ? renderFarmActivitiesBoard() : ""}
       ${isTeamPage ? renderFarmTeamsBoard() : ""}
+      ${isInventoryPage ? renderFarmInventoryBoard() : ""}
       ${isWorkPage ? `${renderFarmWorkBoard({ title: "Planner", subtitle: "ตารางแผนงานแบบย่อ แสดง Activity, Block, ทีม และสถานะในแถวเดียว" })}${renderFarmWorkPlanner()}` : ""}
       ${isDispatchPage ? `${renderFarmWorkBoard({ title: "Scheduler", subtitle: "ตารางงานสำหรับผู้จัดการ ใช้ดูแผนก่อนหยิบไปสั่งงาน", showKpis: false })}${renderFarmDispatchPanel()}${renderFarmWorkOrderList()}${renderFarmActivityModal()}` : ""}
       ${isResultPage ? `${renderFarmResultPanel()}${renderFarmWorkOrderList()}` : ""}
       ${isInventoryIssuePage ? renderFarmInventoryIssueQueue() : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage ? "" : `<section class="farm-toolbar">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isInventoryPage ? "" : `<section class="farm-toolbar">
         <label>ตารางข้อมูล
           <select id="farmTableSelect">
             ${tables.map((item) => `<option value="${esc(item.key)}"${item.key === table.key ? " selected" : ""}>${esc(farmTableDisplayName(item))}</option>`).join("")}
@@ -15055,9 +15212,9 @@ function renderFarmPage() {
           <input id="farmImportFile" type="file" accept=".csv,text/csv" ${state.farmSyncBusy ? "disabled" : ""}>
         </label>
       </section>`}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage ? "" : renderFarmDataEntryGuide(table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage ? "" : renderFarmKeyBindings(table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage ? "" : `<section class="farm-layout">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isInventoryPage ? "" : renderFarmDataEntryGuide(table)}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isInventoryPage ? "" : renderFarmKeyBindings(table)}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isInventoryPage ? "" : `<section class="farm-layout">
         <article class="farm-panel">
           <div class="section-head"><h3>${state.farmEditId ? "แก้ไขข้อมูล" : "เพิ่มข้อมูล"}</h3><span>${esc(table.key)} / * คือข้อมูลจำเป็น</span></div>
           <form class="farm-form">
@@ -16642,6 +16799,8 @@ async function init() {
     const farmEdit = e.target.closest("[data-farm-edit]");
     if (farmEdit) {
       if (state.view === "farm-budget") state.farmTableId = "budget_activity_rates";
+      const inventoryRow = farmEdit.closest("[data-farm-inventory-table]");
+      if (inventoryRow) state.farmTableId = inventoryRow.dataset.farmInventoryTable;
       editFarmRow(farmEdit.dataset.farmEdit);
       return;
     }
@@ -16652,6 +16811,13 @@ async function init() {
     }
     const farmRow = e.target.closest("[data-farm-row]");
     if (farmRow && !e.target.closest("button")) {
+      if (farmRow.matches("[data-farm-inventory-table]")) {
+        state.farmTableId = farmRow.dataset.farmInventoryTable;
+        state.farmDetailId = farmRow.dataset.farmRow;
+        state.farmEditId = "";
+        render();
+        return;
+      }
       if (farmRow.matches("[data-farm-budget-rate-row]")) {
         state.farmTableId = "budget_activity_rates";
         state.farmDetailId = farmRow.dataset.farmRow;
@@ -16836,6 +17002,14 @@ async function init() {
     setView(btn.dataset.view);
   });
   els.reportPage.addEventListener("dblclick", (e) => {
+    const inventoryRow = e.target.closest("[data-farm-inventory-table][data-farm-row]");
+    if (inventoryRow) {
+      state.farmTableId = inventoryRow.dataset.farmInventoryTable;
+      state.farmEditId = inventoryRow.dataset.farmRow;
+      state.farmDetailId = state.farmEditId;
+      render();
+      return;
+    }
     const areaGroupRow = e.target.closest("[data-farm-area-group-row]");
     if (areaGroupRow) {
       state.farmTableId = "plot_groups";
