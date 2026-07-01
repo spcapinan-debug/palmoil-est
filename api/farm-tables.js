@@ -47,6 +47,7 @@ const FARM_TABLES = new Set([
   "material_lots",
   "activity_material_usage_rates",
   "survey_templates",
+  "survey_questions",
   "vehicles",
   "annual_work_plans",
   "planned_work_items",
@@ -278,6 +279,8 @@ const TEXT_ID_KEYS_BY_TABLE = {
   budget_activity_rates: new Set(["id", "budget_year_id"]),
   budget_rate_materials: new Set(["id", "budget_rate_id"]),
   budget_rate_roles: new Set(["id", "budget_rate_id"]),
+  survey_templates: new Set(["id", "activity_id"]),
+  survey_questions: new Set(["id", "template_id"]),
 };
 
 const UNIQUE_KEYS = {
@@ -307,6 +310,8 @@ const UNIQUE_KEYS = {
   inventory_documents: "document_no",
   work_plans: "plan_code",
   payroll_rules: "rule_code",
+  survey_templates: "template_code",
+  survey_questions: "question_code",
 };
 
 function sanitizeDbRow(table, row) {

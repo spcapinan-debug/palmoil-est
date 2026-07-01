@@ -467,7 +467,7 @@ const FARM_MODULES = [
     group: "Master Data",
     accent: "Activity + Material Usage + Survey",
     description: "จัดการกลุ่มกิจกรรม กิจกรรม อัตราใช้วัสดุตามกิจกรรม และแบบประเมินประสิทธิภาพ",
-    tables: ["activity_groups", "wage_codes", "activities", "activity_wage_codes", "activity_material_rates", "survey_templates"],
+    tables: ["activity_groups", "wage_codes", "activities", "activity_wage_codes", "activity_material_rates", "survey_templates", "survey_questions"],
     fields: [
       ["code", "รหัสกิจกรรม", "ACT-001"],
       ["name", "กิจกรรม", "ใส่ปุ๋ย"],
@@ -738,6 +738,13 @@ const FARM_SURVEY_QUESTIONS = [
   { id: "sq-opr006-trees", template_id: "survey-opr-006", question_code: "TREES_COVERED", question_text: "จำนวนต้นที่ใส่ครบ", answer_type: "number", answer_unit: "ต้น", required: "true", sort_order: "2" },
   { id: "sq-opr006-missed", template_id: "survey-opr-006", question_code: "MISSED_TREES", question_text: "จำนวนต้นที่ตกหล่น", answer_type: "number", answer_unit: "ต้น", required: "false", sort_order: "3" },
   { id: "sq-opr006-rate", template_id: "survey-opr-006", question_code: "DOSAGE_RATE", question_text: "อัตราเฉลี่ยต่อต้น", answer_type: "number", answer_unit: "กก./ต้น", required: "false", sort_order: "4" },
+  { id: "sq-opr006-spread", template_id: "survey-opr-006", question_code: "FERT_SPREAD", question_text: "ใส่ปุ๋ยกระจายทั่วถึง", answer_type: "choice", answer_unit: "คะแนน", required: "true", sort_order: "10", section_title: "ใส่ปุ๋ยคะแนน 90 คะแนน", score_weight: "10", choices_json: '[{"value":"10","label":"ใส่ปุ๋ยกระจายทั่วถึง"},{"value":"5","label":"กระจายไม่สม่ำเสมอบางจุด"},{"value":"0","label":"กระจายไม่ทั่วถึง"}]' },
+  { id: "sq-opr006-radius", template_id: "survey-opr-006", question_code: "FERT_RADIUS", question_text: "ใส่ปุ๋ยรอบโคนตามระยะ", answer_type: "choice", answer_unit: "คะแนน", required: "true", sort_order: "11", section_title: "ใส่ปุ๋ยคะแนน 90 คะแนน", score_weight: "20", choices_json: '[{"value":"20","label":"ใส่ปุ๋ยรอบโคนถึง 3 เมตร"},{"value":"10","label":"ระยะไม่ครบทุกจุด"},{"value":"0","label":"ใส่ผิดตำแหน่ง"}]' },
+  { id: "sq-opr006-accuracy", template_id: "survey-opr-006", question_code: "FERT_RATE_ACCURACY", question_text: "อัตราการใส่ถูกต้อง", answer_type: "choice", answer_unit: "คะแนน", required: "true", sort_order: "12", section_title: "ใส่ปุ๋ยคะแนน 90 คะแนน", score_weight: "15", choices_json: '[{"value":"15","label":"อัตราการใส่ถูกต้อง"},{"value":"8","label":"อัตราคลาดเคลื่อนเล็กน้อย"},{"value":"0","label":"อัตราไม่ถูกต้อง"}]' },
+  { id: "sq-opr006-coverage", template_id: "survey-opr-006", question_code: "FERT_TREE_COVERAGE", question_text: "ใส่ปุ๋ยครบทุกต้น", answer_type: "choice", answer_unit: "คะแนน", required: "true", sort_order: "13", section_title: "ใส่ปุ๋ยคะแนน 90 คะแนน", score_weight: "55", choices_json: '[{"value":"55","label":"ใส่ปุ๋ยครบทุกต้น"},{"value":"28","label":"ตกหล่นบางต้น"},{"value":"0","label":"ตกหล่นมาก"}]' },
+  { id: "sq-opr006-cleanup", template_id: "survey-opr-006", question_code: "FERT_CLEANUP", question_text: "ความเรียบร้อยหลังงาน", answer_type: "choice", answer_unit: "คะแนน", required: "true", sort_order: "20", section_title: "สรุปงานใส่ปุ๋ยอื่นๆ 10 คะแนน", score_weight: "10", choices_json: '[{"value":"10","label":"ปุ๋ยหกบนถนน/พื้นที่ 100%"},{"value":"5","label":"มีปุ๋ยตกหล่นเล็กน้อย"},{"value":"0","label":"ไม่เรียบร้อย/ต้องแก้ไข"}]' },
+  { id: "sq-opr006-dress", template_id: "survey-opr-006", question_code: "DRESS_WELL", question_text: "คนงานแต่งกายเหมาะสมหรือไม่", answer_type: "yes_no", answer_unit: "Dress Well?", required: "true", sort_order: "30", section_title: "ความพร้อม (Readiness)", score_weight: "0" },
+  { id: "sq-opr006-ppe", template_id: "survey-opr-006", question_code: "PPE_READY", question_text: "การใช้อุปกรณ์ PPE เหมาะสมหรือไม่", answer_type: "yes_no", answer_unit: "PPE?", required: "true", sort_order: "31", section_title: "ความพร้อม (Readiness)", score_weight: "0" },
   { id: "sq-opr007-palms", template_id: "survey-opr-007", question_code: "PALMS_PRUNED", question_text: "จำนวนต้นที่ตัดแต่ง", answer_type: "number", answer_unit: "ต้น", required: "true", sort_order: "1" },
   { id: "sq-opr007-fronds", template_id: "survey-opr-007", question_code: "FRONDS_CUT", question_text: "จำนวนทางใบที่ตัด", answer_type: "number", answer_unit: "ทางใบ", required: "false", sort_order: "2" },
   { id: "sq-opr007-damage", template_id: "survey-opr-007", question_code: "DAMAGED_PALMS", question_text: "ต้นเสียหาย/ต้องแก้ไข", answer_type: "number", answer_unit: "ต้น", required: "false", sort_order: "3" },
@@ -1846,6 +1853,10 @@ const FARM_TABLE_SCHEMAS = {
       F("question_text", "คำถาม", { required: true }),
       F("answer_type", "ชนิดคำตอบ", { options: ["number", "text", "yes_no", "choice"] }),
       F("answer_unit", "หน่วย"),
+      F("section_title", "หัวข้อรายงาน"),
+      F("score_weight", "คะแนนเต็ม", { type: "number" }),
+      F("choices_json", "ตัวเลือก JSON"),
+      F("help_text", "คำอธิบาย"),
       F("required", "จำเป็น", { type: "boolean" }),
       F("sort_order", "ลำดับ", { type: "number" }),
     ],
@@ -11122,17 +11133,91 @@ function farmSurveyText(row = {}) {
 function farmSurveyTemplates() {
   const table = farmTableByKey("survey_templates");
   const rows = table ? farmRows(table) : [];
-  return rows.length ? rows : FARM_SURVEY_DOCUMENTS.map((row) => ({ ...row, tableId: "survey_templates", moduleId: "farm-activities", status: "active" }));
+  const seeded = FARM_SURVEY_DOCUMENTS.map((row) => ({ ...row, tableId: "survey_templates", moduleId: "farm-activities", status: "active" }));
+  const byId = new Map(seeded.map((row) => [row.id, row]));
+  rows.forEach((row) => byId.set(row.id, { ...(byId.get(row.id) || {}), ...row }));
+  return [...byId.values()];
 }
 
 function farmSurveyQuestions(templateOrId) {
   const templateId = typeof templateOrId === "string" ? templateOrId : templateOrId?.id;
   if (!templateId) return [];
   const table = farmTableByKey("survey_questions");
-  const rows = table ? farmRows(table) : FARM_SURVEY_QUESTIONS;
-  return rows
+  const rows = [
+    ...FARM_SURVEY_QUESTIONS,
+    ...(table ? farmRows(table) : []),
+  ];
+  const byKey = new Map();
+  rows
     .filter((row) => row.template_id === templateId)
+    .forEach((row) => byKey.set(row.question_code || row.id, { ...(byKey.get(row.question_code || row.id) || {}), ...row }));
+  return [...byKey.values()]
     .sort((a, b) => n(a.sort_order) - n(b.sort_order) || String(a.question_code || "").localeCompare(String(b.question_code || ""), "th", { numeric: true }));
+}
+
+function farmSurveyQuestionKey(question = {}) {
+  return question.question_code || question.id || "";
+}
+
+function farmSurveyQuestionChoices(question = {}) {
+  if (Array.isArray(question.choices)) return question.choices;
+  const choicePayload = question.choices_json || question.choice_json;
+  if (choicePayload) {
+    try {
+      const parsed = typeof choicePayload === "string" ? JSON.parse(choicePayload) : choicePayload;
+      if (Array.isArray(parsed)) return parsed;
+    } catch (_) {
+      // Bad option JSON should not block recording the work result.
+    }
+  }
+  if (question.answer_type === "yes_no") {
+    return [
+      { value: "yes", label: "ผ่าน / ใช่" },
+      { value: "no", label: "ไม่ผ่าน / ไม่ใช่" },
+    ];
+  }
+  const max = n(question.score_weight);
+  if (question.answer_type === "choice" && max) {
+    return [
+      { value: String(max), label: `ผ่านครบ ${moneyNf.format(max)} คะแนน` },
+      { value: String(Math.round(max / 2)), label: "ผ่านบางส่วน" },
+      { value: "0", label: "ไม่ผ่าน" },
+    ];
+  }
+  return [];
+}
+
+function farmSurveyScoreQuestions(questions = []) {
+  return questions.filter((question) => question.answer_type === "choice" || n(question.score_weight) > 0);
+}
+
+function farmSurveyReadinessQuestions(questions = []) {
+  return questions.filter((question) => question.answer_type === "yes_no" || String(question.section_title || "").toLowerCase().includes("readiness"));
+}
+
+function farmSurveyMeasureQuestions(questions = []) {
+  const scoreKeys = new Set([...farmSurveyScoreQuestions(questions), ...farmSurveyReadinessQuestions(questions)].map(farmSurveyQuestionKey));
+  return questions.filter((question) => !scoreKeys.has(farmSurveyQuestionKey(question)));
+}
+
+function farmSurveyAnswerValue(draft = {}, key = "") {
+  return draft.surveyAnswers?.[key] ?? "";
+}
+
+function farmSurveyScoreTotal(questions = [], draft = {}) {
+  const scoreQuestions = farmSurveyScoreQuestions(questions);
+  const max = scoreQuestions.reduce((sum, question) => sum + n(question.score_weight), 0);
+  const score = scoreQuestions.reduce((sum, question) => sum + n(farmSurveyAnswerValue(draft, farmSurveyQuestionKey(question))), 0);
+  return { score, max, percent: max ? Math.round((score / max) * 100) : 0 };
+}
+
+function farmSurveySectionGroups(questions = []) {
+  return questions.reduce((groups, question) => {
+    const title = question.section_title || "ข้อมูลตรวจงาน";
+    if (!groups[title]) groups[title] = [];
+    groups[title].push(question);
+    return groups;
+  }, {});
 }
 
 function farmSurveyForActivity(activityOrId) {
@@ -13049,6 +13134,171 @@ function farmResultPayrollPeriodForDate(date) {
     || { id: `pay-period-${date.slice(0, 7)}`, period_code: `PAY-${date.slice(0, 7)}`, period_name: `งวดค่าแรง ${date.slice(0, 7)}`, start_date: `${date.slice(0, 7)}-01`, end_date: date, status: "open" };
 }
 
+function renderFarmSurveyChoiceControl(question, draft) {
+  const key = farmSurveyQuestionKey(question);
+  const value = farmSurveyAnswerValue(draft, key);
+  const choices = farmSurveyQuestionChoices(question);
+  if (question.answer_type === "yes_no") {
+    return `
+      <div class="farm-survey-ready-actions" role="radiogroup" aria-label="${esc(question.question_text || key)}">
+        ${choices.map((choice) => {
+          const checked = String(value || "") === String(choice.value);
+          return `<label class="${checked ? "active" : ""}">
+            <input type="radio" name="survey-${esc(key)}" value="${esc(choice.value)}" data-farm-survey-answer="${esc(key)}"${checked ? " checked" : ""}>
+            <span>${esc(choice.value === "yes" ? "✓" : "×")}</span>${esc(choice.label)}
+          </label>`;
+        }).join("")}
+      </div>`;
+  }
+  if (choices.length) {
+    return `<select data-farm-survey-answer="${esc(key)}">
+      <option value="">เลือกผลตรวจ</option>
+      ${choices.map((choice) => `<option value="${esc(choice.value)}"${String(value) === String(choice.value) ? " selected" : ""}>${esc(choice.label)}</option>`).join("")}
+    </select>`;
+  }
+  return `<input data-farm-survey-answer="${esc(key)}" type="text" value="${esc(value)}" placeholder="${esc(question.answer_unit || "")}">`;
+}
+
+function renderFarmSurveyMeasureControl(question, draft) {
+  const key = farmSurveyQuestionKey(question);
+  const value = farmSurveyAnswerValue(draft, key);
+  const type = question.answer_type === "number" ? "number" : "text";
+  return `
+    <label>
+      ${esc(question.question_text || key)}
+      <input data-farm-survey-answer="${esc(key)}" type="${type}" ${type === "number" ? 'step="0.01"' : ""} value="${esc(value)}" placeholder="${esc(question.answer_unit || "")}">
+      <small>${esc(question.answer_unit || "")}${String(question.required) === "true" ? " · จำเป็น" : ""}</small>
+    </label>`;
+}
+
+function renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, draft, resultDate }) {
+  const scoreQuestions = farmSurveyScoreQuestions(surveyQuestions);
+  const measureQuestions = farmSurveyMeasureQuestions(surveyQuestions);
+  const readinessQuestions = farmSurveyReadinessQuestions(surveyQuestions);
+  const score = farmSurveyScoreTotal(surveyQuestions, draft);
+  const scoreValue = draft.qualityScore || (score.max ? String(score.percent) : "");
+  const scoreGroups = farmSurveySectionGroups(scoreQuestions);
+  const metaDate = farmSurveyAnswerValue(draft, "POSTING_DATE") || resultDate || farmToday();
+  return `
+    <article class="farm-result-card farm-result-survey-card">
+      <div class="farm-survey-answer-box">
+        <div class="section-head">
+          <h3>ตรวจงาน / Survey</h3>
+          <span>${survey ? `${esc(survey.template_code || "")} · ${esc(survey.template_name || survey.file_name || "")}` : "ยังไม่พบแบบตรวจตามกิจกรรม"}</span>
+        </div>
+        <div class="farm-survey-report-actions">
+          <div>
+            <strong>${score.max ? `${moneyNf.format(score.score)} / ${moneyNf.format(score.max)} คะแนน` : "รอกรอกผลประเมิน"}</strong>
+            <small>${score.max ? `คิดเป็น ${fmt(score.percent)}%` : esc(surveyAttachment?.file_name || "แนบรายงานตรวจงานจากกิจกรรม")}</small>
+          </div>
+          <button type="button" class="ghost" data-farm-survey-print ${!survey ? "disabled" : ""}>พิมพ์ / PDF รายงาน</button>
+        </div>
+        <div class="farm-survey-meta-grid">
+          <label>External ID
+            <input data-farm-survey-answer="EXTERNAL_ID" type="text" value="${esc(farmSurveyAnswerValue(draft, "EXTERNAL_ID"))}" placeholder="อ้างอิงภายนอก">
+            <small>type the id that is in the uploaded navigation file</small>
+          </label>
+          <label>Posting date
+            ${renderDateInputControl({ value: metaDate, extra: 'data-farm-survey-answer="POSTING_DATE"', ariaLabel: "เลือกวันที่ตรวจงาน" })}
+          </label>
+          <label>คะแนนคุณภาพ
+            <input id="farmResultQuality" type="number" min="0" max="100" step="1" value="${esc(scoreValue)}" placeholder="0-100">
+          </label>
+          <label>ผลตรวจงาน
+            <select id="farmResultSurveyStatus">
+              ${[
+                ["pending", "รอตรวจ"],
+                ["passed", "ผ่าน"],
+                ["needs_fix", "ต้องแก้ไข"],
+                ["rejected", "ไม่ผ่าน"],
+              ].map(([value, label]) => `<option value="${esc(value)}"${(draft.surveyStatus || "pending") === value ? " selected" : ""}>${esc(label)}</option>`).join("")}
+            </select>
+          </label>
+          <label>หมายเหตุผลตรวจ
+            <input id="farmResultSurveyNote" type="text" value="${esc(draft.surveyNote || "")}" placeholder="${esc(survey?.template_name || "รายละเอียดตรวจงาน")}">
+          </label>
+        </div>
+        ${Object.entries(scoreGroups).map(([title, questions]) => `
+          <section class="farm-survey-score-section">
+            <div>
+              <h4>${esc(title)}</h4>
+              <span>Score ${fmt(questions.reduce((sum, row) => sum + n(row.score_weight), 0))}%</span>
+            </div>
+            <div class="farm-survey-score-grid">
+              ${questions.map((question) => `
+                <label>
+                  <span>${esc(question.question_text || farmSurveyQuestionKey(question))}</span>
+                  ${renderFarmSurveyChoiceControl(question, draft)}
+                  <small>Score ${fmt(n(question.score_weight))}${question.answer_unit ? ` · ${esc(question.answer_unit)}` : ""}</small>
+                </label>`).join("")}
+            </div>
+          </section>`).join("")}
+        ${measureQuestions.length ? `
+          <section class="farm-survey-score-section">
+            <div><h4>ข้อมูลปริมาณงาน</h4><span>ใช้ประกอบรายงานตรวจงาน</span></div>
+            <div class="farm-survey-answer-grid">
+              ${measureQuestions.map((question) => renderFarmSurveyMeasureControl(question, draft)).join("")}
+            </div>
+          </section>` : ""}
+        ${readinessQuestions.length ? `
+          <section class="farm-survey-score-section farm-survey-readiness-section">
+            <div><h4>ความพร้อม (Readiness)</h4><span>ความพร้อมทีมและ PPE</span></div>
+            <div class="farm-survey-readiness-grid">
+              ${readinessQuestions.map((question) => `
+                <div class="farm-survey-readiness-item">
+                  <strong>${esc(question.question_text || farmSurveyQuestionKey(question))}</strong>
+                  <small>${esc(question.answer_unit || "")}</small>
+                  ${renderFarmSurveyChoiceControl(question, draft)}
+                </div>`).join("")}
+            </div>
+          </section>` : ""}
+        ${!surveyQuestions.length ? `<p class="farm-muted">ยังไม่มีเกณฑ์ตรวจงานสำหรับกิจกรรมนี้ สามารถเพิ่มได้ที่ ข้อมูลกิจกรรม > คำถามประเมิน</p>` : ""}
+        ${renderFarmSurveyPrintReport({ survey, surveyQuestions, draft, score, resultDate: metaDate })}
+      </div>
+    </article>`;
+}
+
+function renderFarmSurveyPrintReport({ survey, surveyQuestions, draft, score, resultDate }) {
+  if (!survey) return "";
+  const answers = surveyQuestions.map((question) => {
+    const key = farmSurveyQuestionKey(question);
+    const raw = farmSurveyAnswerValue(draft, key);
+    const choice = farmSurveyQuestionChoices(question).find((row) => String(row.value) === String(raw));
+    return { question, key, value: choice?.label || raw || "-" };
+  });
+  return `
+    <section class="farm-survey-print-report" aria-label="รายงานตรวจงาน">
+      <header>
+        <h2>${esc(survey.template_code || "")} ${esc(survey.template_name || survey.file_name || "")}</h2>
+        <p>วันที่ตรวจ: ${esc(displayDate(resultDate) || "-")} · External ID: ${esc(farmSurveyAnswerValue(draft, "EXTERNAL_ID") || "-")}</p>
+        <p>คะแนนรวม: ${score.max ? `${moneyNf.format(score.score)} / ${moneyNf.format(score.max)} (${fmt(score.percent)}%)` : "-"}</p>
+      </header>
+      <table>
+        <thead><tr><th>หัวข้อ</th><th>รายการตรวจ</th><th>ผลตรวจ</th><th>คะแนนเต็ม</th></tr></thead>
+        <tbody>
+          ${answers.map(({ question, value }) => `<tr>
+            <td>${esc(question.section_title || "ข้อมูลตรวจงาน")}</td>
+            <td>${esc(question.question_text || farmSurveyQuestionKey(question))}</td>
+            <td>${esc(value)}</td>
+            <td class="num">${question.score_weight ? fmt(question.score_weight) : esc(question.answer_unit || "-")}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+      <footer>
+        <span>ผู้ตรวจ __________________________</span>
+        <span>ผู้จัดการรับทราบ __________________________</span>
+        <span>ผู้อำนวยการรับทราบ __________________________</span>
+      </footer>
+    </section>`;
+}
+
+function printFarmSurveyReport() {
+  syncFarmResultDraftFromForm();
+  document.body.classList.add("print-farm-survey");
+  window.print();
+  window.setTimeout(() => document.body.classList.remove("print-farm-survey"), 400);
+}
+
 function renderFarmResultPanel() {
   const orders = farmResultCandidateOrders();
   const order = farmResultSelectedOrder();
@@ -13120,45 +13370,7 @@ function renderFarmResultPanel() {
             </label>
           </div>
         </article>
-        <article class="farm-result-card farm-result-survey-card">
-          <div class="farm-survey-answer-box">
-            <div class="section-head">
-              <h3>ตรวจงาน / Survey</h3>
-              <span>${survey ? `${esc(survey.template_code || "")} · ${esc(survey.template_name || survey.file_name || "")} · ${fmt(surveyQuestions.length)} ช่องตัวเลข` : "ยังไม่พบแบบตรวจตามกิจกรรม"}</span>
-            </div>
-            <div class="farm-survey-control-grid">
-              <label>คะแนนคุณภาพ
-                <input id="farmResultQuality" type="number" min="0" max="100" step="1" value="${esc(draft.qualityScore || "")}" placeholder="0-100">
-              </label>
-              <label>ผลตรวจงาน
-                <select id="farmResultSurveyStatus">
-                  ${[
-                    ["pending", "รอตรวจ"],
-                    ["passed", "ผ่าน"],
-                    ["needs_fix", "ต้องแก้ไข"],
-                    ["rejected", "ไม่ผ่าน"],
-                  ].map(([value, label]) => `<option value="${esc(value)}"${(draft.surveyStatus || "pending") === value ? " selected" : ""}>${esc(label)}</option>`).join("")}
-                </select>
-              </label>
-              <label>หมายเหตุผลตรวจ
-                <input id="farmResultSurveyNote" type="text" value="${esc(draft.surveyNote || "")}" placeholder="${esc(survey?.template_name || "รายละเอียดตรวจงาน")}">
-              </label>
-            </div>
-            <div class="farm-survey-answer-grid">
-              ${surveyQuestions.map((question) => `
-                <label>
-                  ${esc(question.question_text || question.question_code)}
-                  <input
-                    data-farm-survey-answer="${esc(question.question_code || question.id)}"
-                    type="${question.answer_type === "number" ? "number" : "text"}"
-                    step="0.01"
-                    value="${esc(draft.surveyAnswers?.[question.question_code || question.id] || "")}"
-                    placeholder="${esc(question.answer_unit || "")}">
-                  <small>${esc(question.answer_unit || "")}${String(question.required) === "true" ? " · จำเป็น" : ""}</small>
-                </label>`).join("") || `<p class="farm-muted">ยังไม่มีช่องตรวจงานสำหรับกิจกรรมนี้</p>`}
-            </div>
-          </div>
-        </article>
+        ${renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, draft, resultDate: draft.resultDate || farmToday() })}
         <article class="farm-result-card farm-result-mobile-card">
           <div class="section-head"><h3>เช็กหน้างาน</h3><span>สำหรับหัวหน้าทีม</span></div>
           <div class="farm-result-mobile-grid">
@@ -13311,6 +13523,7 @@ function syncFarmResultDraftFromForm() {
   const machineEntries = state.farmResultDraft?.machineEntries || {};
   const surveyAnswers = {};
   document.querySelectorAll("[data-farm-survey-answer]").forEach((input) => {
+    if ((input.type === "radio" || input.type === "checkbox") && !input.checked) return;
     surveyAnswers[input.dataset.farmSurveyAnswer] = input.value;
   });
   state.farmResultDraft = {
@@ -13417,9 +13630,14 @@ async function saveFarmResultEntry() {
       question_code: key,
       question_text: question.question_text || key,
       answer_unit: question.answer_unit || "",
+      section_title: question.section_title || "",
+      score_weight: question.score_weight || "",
       value: calc.draft.surveyAnswers?.[key] ?? "",
     };
-  });
+  }).concat([
+    { question_code: "EXTERNAL_ID", question_text: "External ID", answer_unit: "", section_title: "ข้อมูลรายงาน", score_weight: "", value: calc.draft.surveyAnswers?.EXTERNAL_ID || "" },
+    { question_code: "POSTING_DATE", question_text: "Posting date", answer_unit: "", section_title: "ข้อมูลรายงาน", score_weight: "", value: calc.draft.surveyAnswers?.POSTING_DATE || resultDate },
+  ]);
   const fullResultRow = {
     id: resultId,
     moduleId: "farm-result",
@@ -17275,6 +17493,8 @@ async function init() {
     }
     if (e.target.matches?.("[data-farm-survey-answer]")) {
       syncFarmResultDraftFromForm();
+      clearTimeout(state.farmResultRenderTimer);
+      state.farmResultRenderTimer = setTimeout(render, 180);
       return;
     }
     if (e.target.matches("[data-farm-result-worker-field]")) {
@@ -17527,6 +17747,10 @@ async function init() {
     }
     if (e.target.closest("[data-farm-dispatch-print]")) {
       printFarmDispatchOrder();
+      return;
+    }
+    if (e.target.closest("[data-farm-survey-print]")) {
+      printFarmSurveyReport();
       return;
     }
     if (e.target.closest("[data-farm-result-save]")) {
