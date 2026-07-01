@@ -15364,9 +15364,11 @@ function renderFarmActivityModal() {
   if (!table) return "";
   const row = state.farmEditId ? farmRows(table).find((item) => item.id === state.farmEditId) || {} : { ...(state.farmNewDefaults || {}) };
   const visibleFields = farmVisibleFields(table);
+  const wideTables = new Set(["people", "employees", "contractors", "worker_documents", "housing_units", "person_housing_assignments", "housing_utility_charges", "teams", "team_members", "team_activity_skills"]);
+  const modalWideClass = wideTables.has(table.key) || visibleFields.length > 14 ? " is-wide" : "";
   return `
     <div class="farm-activity-modal" role="dialog" aria-modal="true">
-      <div class="farm-activity-modal-card">
+      <div class="farm-activity-modal-card${modalWideClass}">
         <div class="farm-activity-modal-head">
           <div>
             <h3>${state.farmEditId ? "แก้ไข" : "เพิ่ม"}${esc(table.title)}</h3>
@@ -15374,7 +15376,7 @@ function renderFarmActivityModal() {
           </div>
           <button type="button" data-farm-activity-modal-close aria-label="ปิด">×</button>
         </div>
-        <form class="farm-form farm-activity-modal-form">
+        <form class="farm-form farm-activity-modal-form${modalWideClass}">
           <label class="auto-id-field">id อัตโนมัติ
             <input type="text" value="${esc(row.id || "สร้างอัตโนมัติ")}" disabled aria-disabled="true">
           </label>
@@ -15387,6 +15389,108 @@ function renderFarmActivityModal() {
         </form>
       </div>
     </div>`;
+}
+
+function farmPeopleColumns(table) {
+  const map = {
+    people: ["person_code", "full_name", "person_type", "nationality", "payment_type", "department_id", "default_housing_unit_id", "daily_wage", "monthly_salary", "contract_rate", "status"],
+    employees: ["employee_code", "full_name", "worker_type", "nationality", "payment_type", "department_id", "default_housing_unit_id", "daily_wage", "monthly_salary", "contract_rate", "status"],
+    contractors: ["contractor_code", "contractor_name", "contractor_type", "nationality", "payment_type", "default_contract_rate", "phone", "status"],
+    worker_documents: ["holder_name_snapshot", "nationality_snapshot", "payment_type_snapshot", "document_type", "document_no", "expiry_date", "renewal_status", "status"],
+    departments: ["department_code", "department_name", "parent_department_id", "manager_employee_id", "cost_center_code", "status"],
+    housing_units: ["house_code", "house_name", "estate_id", "zone_id", "house_type", "capacity_person", "status"],
+    person_housing_assignments: ["person_id", "housing_unit_id", "start_date", "end_date", "occupant_count", "share_utility_percent", "status"],
+    housing_utility_charges: ["housing_unit_id", "billing_month", "water_amount", "electric_amount", "total_utility_amount", "status"],
+    teams: ["team_code", "team_name", "team_type", "supervisor_employee_id", "contractor_id", "default_activity_group_id", "status"],
+    team_members: ["team_id", "employee_id", "member_role", "start_date", "end_date", "is_active"],
+    team_activity_skills: ["team_id", "activity_id", "skill_level", "rate_group", "status"],
+  };
+  const visible = farmVisibleFields(table);
+  const byKey = new Map(visible.map((field) => [farmFieldKey(field), field]));
+  const keys = (map[table.key] || visible.slice(0, 8).map((field) => farmFieldKey(field))).filter((key) => byKey.has(key));
+  return keys.map((key) => byKey.get(key));
+}
+
+function farmPeopleSummary(table, rows) {
+  const activeCount = rows.filter((row) => String(row.status || "active").toLowerCase() !== "inactive").length;
+  if (table.key === "worker_documents") {
+    const today = new Date(farmToday());
+    const warning = rows.filter((row) => {
+      const expiry = isoDay(row.expiry_date);
+      if (!expiry) return false;
+      const diff = Math.ceil((new Date(expiry) - today) / 86400000);
+      return diff >= 0 && diff <= 90;
+    }).length;
+    const expired = rows.filter((row) => {
+      const expiry = isoDay(row.expiry_date);
+      return expiry && new Date(expiry) < today;
+    }).length;
+    return `ใช้งาน ${fmt(activeCount)} · เตือน 90 วัน ${fmt(warning)} · หมดอายุ ${fmt(expired)}`;
+  }
+  const daily = rows.filter((row) => String(row.payment_type || "").includes("รายวัน")).length;
+  const monthly = rows.filter((row) => String(row.payment_type || "").includes("รายเดือน")).length;
+  const contract = rows.filter((row) => String(row.payment_type || "").includes("รายเหมา") || String(row.person_type || "").includes("contractor")).length;
+  return `ใช้งาน ${fmt(activeCount)} · รายวัน ${fmt(daily)} · รายเดือน ${fmt(monthly)} · รายเหมา ${fmt(contract)}`;
+}
+
+function renderFarmPeopleBoard(table, rows, tables) {
+  const columns = farmPeopleColumns(table);
+  const summary = farmPeopleSummary(table, rows);
+  const numericKeys = new Set(["daily_wage", "monthly_salary", "contract_rate", "default_contract_rate", "normal_hours_per_day", "hourly_wage_rate", "capacity_person", "water_amount", "electric_amount", "total_utility_amount", "occupant_count", "share_utility_percent"]);
+  return `
+    <section class="farm-people-board">
+      <section class="farm-toolbar farm-people-toolbar">
+        <label>ตารางข้อมูล
+          <select id="farmTableSelect">
+            ${tables.map((item) => `<option value="${esc(item.key)}"${item.key === table.key ? " selected" : ""}>${esc(farmTableDisplayName(item))}</option>`).join("")}
+          </select>
+        </label>
+        <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหารหัส ชื่อ แผนก บ้านพัก เอกสาร"></label>
+        <label>สถานะ
+          <select id="farmStatusFilter">
+            ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}
+          </select>
+        </label>
+        <label>Role
+          <select id="farmRoleFilter">
+            ${FARM_ROLES.map((role) => `<option value="${esc(role)}"${state.farmFilters.role === role ? " selected" : ""}>${esc(farmTranslateValue(role))}</option>`).join("")}
+          </select>
+        </label>
+        <button type="button" data-farm-new ${farmCan("create") ? "" : "disabled"}>เพิ่มข้อมูล</button>
+        <button type="button" data-farm-export ${farmCan("export") ? "" : "disabled"}>Export Excel</button>
+        <label class="farm-file-update ${state.farmSyncBusy ? "disabled" : ""}">
+          Update จากไฟล์
+          <input id="farmImportFile" type="file" accept=".csv,text/csv" ${state.farmSyncBusy ? "disabled" : ""}>
+        </label>
+      </section>
+      <section class="farm-panel farm-people-list-panel">
+        <div class="section-head">
+          <div>
+            <h3>ตารางรายการ${esc(table.title)}</h3>
+            <span>${esc(summary)} · ดับเบิลคลิกแถวเพื่อแก้ไขข้อมูลเต็ม</span>
+          </div>
+          <button type="button" data-farm-new ${farmCan("create") ? "" : "disabled"}>เพิ่มรายการ</button>
+        </div>
+        <div class="table-wrap farm-table-wrap farm-people-table-wrap">
+          <table class="mini-table farm-table">
+            <thead>
+              <tr>${columns.map((field) => `<th>${esc(farmFieldLabel(field))}</th>`).join("")}</tr>
+            </thead>
+            <tbody>
+              ${rows.map((row) => `
+                <tr class="farm-editable-row" data-farm-row="${esc(row.id)}" data-farm-people-row="${esc(row.id)}" title="ดับเบิลคลิกเพื่อแก้ไข">
+                  ${columns.map((field) => {
+                    const key = farmFieldKey(field);
+                    const value = farmDisplayValue(field, row) || "-";
+                    return `<td class="${numericKeys.has(key) ? "num" : "cell-text"}">${esc(value)}</td>`;
+                  }).join("")}
+                </tr>`).join("") || `<tr><td colspan="${Math.max(columns.length, 1)}">ไม่พบรายการ</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+    ${renderFarmActivityModal()}`;
 }
 
 function renderFarmActivitiesBoard() {
@@ -15518,6 +15622,7 @@ function renderFarmPage() {
   const isActivityPage = module.id === "farm-activities";
   const isAreaPage = module.id === "farm-area";
   const isTeamPage = module.id === "farm-hr-teams";
+  const isPeoplePage = module.id === "farm-people";
   const isInventoryPage = module.id === "farm-inventory";
   const pageTitle = isWorkPage ? "วางแผนสร้าง Work Order"
     : isDispatchPage ? "สั่งงานผู้จัดการ"
@@ -15541,7 +15646,7 @@ function renderFarmPage() {
       ${isBudgetPage ? "" : renderFarmWorkflowNav(module)}
       ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isBudgetPage ? renderFarmBudgetBoard() : ""}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isInventoryPage ? "" : `<section class="farm-hero">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : `<section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
@@ -15552,6 +15657,7 @@ function renderFarmPage() {
       ${isAreaPage ? `${renderFarmAreaBlockMap()}${renderFarmAreaBoard()}` : ""}
       ${isActivityPage ? renderFarmActivitiesBoard() : ""}
       ${isTeamPage ? renderFarmTeamsBoard() : ""}
+      ${isPeoplePage ? renderFarmPeopleBoard(table, rows, tables) : ""}
       ${isInventoryPage ? renderFarmInventoryBoard() : ""}
       ${isWorkPage ? `${renderFarmWorkBoard({ title: "Planner", subtitle: "ตารางแผนงานแบบย่อ แสดง Activity, Block, ทีม และสถานะในแถวเดียว" })}${renderFarmWorkPlanner()}` : ""}
       ${isDispatchPage ? `${renderFarmWorkBoard({ title: "Scheduler", subtitle: "ตารางงานสำหรับผู้จัดการ ใช้ดูแผนก่อนหยิบไปสั่งงาน", showKpis: false })}${renderFarmDispatchPanel()}${renderFarmWorkOrderList()}${renderFarmActivityModal()}` : ""}
@@ -15559,7 +15665,7 @@ function renderFarmPage() {
       ${isInventoryIssuePage ? renderFarmInventoryIssueQueue() : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isInventoryPage ? "" : `<section class="farm-toolbar">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : `<section class="farm-toolbar">
         <label>ตารางข้อมูล
           <select id="farmTableSelect">
             ${tables.map((item) => `<option value="${esc(item.key)}"${item.key === table.key ? " selected" : ""}>${esc(farmTableDisplayName(item))}</option>`).join("")}
@@ -15583,9 +15689,9 @@ function renderFarmPage() {
           <input id="farmImportFile" type="file" accept=".csv,text/csv" ${state.farmSyncBusy ? "disabled" : ""}>
         </label>
       </section>`}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isInventoryPage ? "" : renderFarmDataEntryGuide(table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isInventoryPage ? "" : renderFarmKeyBindings(table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isInventoryPage ? "" : `<section class="farm-panel">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : renderFarmDataEntryGuide(table)}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : renderFarmKeyBindings(table)}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : `<section class="farm-panel">
         <div class="section-head"><h3>ตารางรายการ</h3><span>กดเพิ่มหรือดับเบิลคลิกแถวเพื่อเปิดหน้าต่างแก้ไข</span></div>
         <div class="table-wrap farm-table-wrap">
           <table class="mini-table farm-table">
@@ -15606,7 +15712,7 @@ function renderFarmPage() {
           </table>
         </div>
       </section>`}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isInventoryPage ? "" : renderFarmActivityModal()}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : renderFarmActivityModal()}
       ${module.id === "farm-reports" ? renderFarmReportMatrix() : ""}
     </div>`;
 }
@@ -17232,6 +17338,11 @@ async function init() {
         state.farmTableId = "work_orders";
         state.farmDetailId = farmRow.dataset.farmRow;
         state.farmWorkDetailId = farmRow.dataset.farmRow;
+        return;
+      }
+      if (farmRow.matches("[data-farm-people-row]")) {
+        state.farmDetailId = farmRow.dataset.farmRow;
+        state.farmEditId = "";
         return;
       }
       if (state.view === "farm-budget") state.farmTableId = "budget_activity_rates";
