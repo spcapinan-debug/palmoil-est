@@ -5339,36 +5339,6 @@ tfoot td {
   color: #b91c1c;
 }
 
-.farm-loading-panel {
-  margin: 0 16px 16px;
-  padding: 18px 20px;
-  border: 1px solid #dbe4ef;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, .82);
-  box-shadow: 0 14px 32px rgba(15, 23, 42, .06);
-  display: grid;
-  gap: 6px;
-}
-
-.farm-loading-panel strong {
-  color: var(--navy);
-  font-size: 14px;
-}
-
-.farm-loading-panel span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.farm-loading-panel.error {
-  border-color: rgba(220, 38, 38, .22);
-  background: rgba(254, 242, 242, .82);
-}
-
-.farm-loading-panel.error strong {
-  color: #b91c1c;
-}
-
 .farm-activity-board {
   display: grid;
   gap: 12px;
