@@ -13997,6 +13997,13 @@ function renderFarmHrBoard(module, table) {
     ["03", "เวลา/ลา/OT", "ลงเวลาและคำขอ เพื่อส่งต่อค่าแรง"],
     ["04", "Snapshot ค่าแรง", "เมื่อปิดงวดแล้วไม่เปลี่ยนตามข้อมูลหลักใหม่"],
   ];
+  const isDashboard = module.id === "farm-hr-dashboard";
+  const isPeoplePage = module.id === "farm-people";
+  const isDocPage = module.id === "farm-people-docs";
+  const showPeopleSummary = isDashboard || isPeoplePage || isDocPage;
+  const showHrFlow = isDashboard || isPeoplePage;
+  const showDocumentSections = isDashboard || isDocPage;
+  const showUsageLinks = isDashboard || isPeoplePage;
   return `
     <section class="hr-oneflow-board">
       <div class="section-head">
@@ -14009,16 +14016,16 @@ function renderFarmHrBoard(module, table) {
           <span>${esc(item[1])}</span>
         </button>`).join("")}
       </div>
-      <div class="hr-segment-grid">
+      ${showPeopleSummary ? `<div class="hr-segment-grid">
         <article><span>รายวัน / คนงาน</span><strong>${fmt(daily.length)}</strong><small>ต่างด้าว ${fmt(daily.filter(farmHrIsForeign).length)} คน · ค่าแรงตั้งต้น ${fmt(dailyCost)}</small></article>
         <article><span>รายเดือน / พนักงาน</span><strong>${fmt(monthly.length)}</strong><small>เงินเดือนตั้งต้น ${fmt(monthlyCost)}</small></article>
         <article><span>รายเหมา / ผู้รับเหมา</span><strong>${fmt(contract.length)}</strong><small>อัตราเหมาตั้งต้น ${fmt(contractRate)}</small></article>
         <article><span>เอกสารต้องเตือน</span><strong>${fmt(warningDocs.length)}</strong><small>แรงงานต่างด้าวทั้งหมด ${fmt(foreignPeople.length)} คน</small></article>
-      </div>
-      <div class="hr-flow-grid">
+      </div>` : ""}
+      ${showHrFlow ? `<div class="hr-flow-grid">
         ${flow.map((item) => `<article><b>${item[0]}</b><strong>${esc(item[1])}</strong><span>${esc(item[2])}</span></article>`).join("")}
-      </div>
-      <div class="hr-document-alert-grid">
+      </div>` : ""}
+      ${showDocumentSections ? `<div class="hr-document-alert-grid">
         <article class="danger"><span>หมดอายุแล้ว</span><strong>${fmt(expiredDocs.length)}</strong><small>ต้องดำเนินการทันที</small></article>
         <article class="warning"><span>เร่งด่วน 7 วัน</span><strong>${fmt(urgentDocs.length)}</strong><small>ควรต่ออายุ / นัดตรวจ</small></article>
         <article><span>ภายใน 30 วัน</span><strong>${fmt(due30Docs.length)}</strong><small>รวม Work Permit และ Medical</small></article>
@@ -14074,7 +14081,7 @@ function renderFarmHrBoard(module, table) {
             </table>
           </div>
         </article>
-        <article class="farm-panel">
+        ${showUsageLinks ? `<article class="farm-panel">
           <div class="section-head"><h3>โครงสร้างที่นำไปใช้ต่อ</h3><span>ไม่รวมงานบริการอาคาร รถส่วนกลาง หรือพัสดุสำนักงาน</span></div>
           <div class="hr-link-list">
             <span><b>Work Order</b> ใช้ทีม, คนงาน, ผู้รับเหมา และทักษะกิจกรรม</span>
@@ -14082,8 +14089,8 @@ function renderFarmHrBoard(module, table) {
             <span><b>Housing</b> ใช้บ้านพักเพื่อกระจายค่าน้ำค่าไฟ</span>
             <span><b>Alert</b> ใช้ expiry_date + alert_days_before เพื่อเตือนต่ออายุเอกสาร</span>
           </div>
-        </article>
-      </div>
+        </article>` : ""}
+      </div>` : ""}
     </section>`;
 }
 
