@@ -44,6 +44,7 @@
   farmSyncBusy: false,
   farmRecords: [],
   farmFilters: { query: "", status: "all", role: "super_admin" },
+  farmNewDefaults: {},
   farmSelectedTeamId: "",
   farmActivityModalTable: "",
   farmBudgetContract: {
@@ -518,7 +519,7 @@ const FARM_MODULES = [
     group: "Inventory",
     accent: "Stock Transactions",
     description: "รับพัสดุ จ่ายพัสดุ คืนพัสดุ โอนย้าย ปรับยอด ตรวจนับ แปลง SKU รถ เครื่องจักร และน้ำมัน",
-    tables: ["inventory_master", "warehouses", "inventory_documents", "inventory_document_lines", "stock_transactions", "stock_balances", "unit_conversions", "material_lots"],
+    tables: ["inventory_master", "warehouses", "inventory_documents", "inventory_document_lines", "stock_transactions", "stock_balances", "unit_conversions", "sku_conversions", "material_lots"],
     fields: [
       ["code", "รหัส", "MAT-001"],
       ["name", "รายการ", "ปุ๋ย 25kg"],
@@ -733,7 +734,7 @@ const FARM_SURVEY_QUESTIONS = [
 
 const VERSIONED_FARM_TABLES = new Set(["people", "employees", "contractors", "payroll_rates"]);
 
-const FARM_STATUS_OPTIONS = ["all", "active", "draft", "planned", "scheduled", "submitted", "pending_approval", "approved", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed", "rejected", "open", "ready", "inactive"];
+const FARM_STATUS_OPTIONS = ["all", "active", "draft", "planned", "scheduled", "submitted", "pending_approval", "approved", "received", "issued", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed", "rejected", "open", "ready", "inactive"];
 
 const FARM_VALUE_LABELS = {
   all: "ทั้งหมด",
@@ -746,6 +747,8 @@ const FARM_VALUE_LABELS = {
   pending: "รอดำเนินการ",
   pending_approval: "รออนุมัติ",
   approved: "อนุมัติแล้ว",
+  received: "รับแล้ว",
+  issued: "จ่ายแล้ว",
   sent_to_mobile: "ส่งเข้ามือถือ",
   rescheduled: "เลื่อนวัน",
   in_progress: "กำลังทำงาน",
@@ -2306,7 +2309,7 @@ const FARM_TABLE_SCHEMAS = {
     codeField: "conversion_rate",
     labelField: "material_id",
     fields: [
-      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("material_id", "รายการพัสดุ", { references: "inventory_master", required: true }),
       F("from_unit_id", "จากหน่วย", { references: "units", required: true }),
       F("to_unit_id", "เป็นหน่วย", { references: "units", required: true }),
       F("conversion_rate", "อัตราแปลง", { type: "number", required: true }),
@@ -10436,6 +10439,7 @@ async function saveFarmRow() {
   state.farmRecords.push(row);
   appendFarmVersionLog(table, original, row);
   if (state.farmActivityModalTable) state.farmActivityModalTable = "";
+  state.farmNewDefaults = {};
   state.farmEditId = "";
   state.farmDetailId = row.id;
   saveFarmRecords();
@@ -12383,18 +12387,46 @@ const FARM_INVENTORY_TABLES = [
   "stock_transactions",
   "material_lots",
   "units",
+  "unit_conversions",
+  "sku_conversions",
 ];
+
+function farmInventoryUnitMatch(unitValue) {
+  const key = farmNormalizeKey(unitValue);
+  if (!key) return null;
+  return farmRowsByKey("units").find((unit) =>
+    [unit.id, unit.unit_code, unit.unit_name, unit.base_unit].some((value) => farmNormalizeKey(value) === key)
+  ) || null;
+}
+
+function farmInventoryUnitFactor(unitValue) {
+  const unit = farmInventoryUnitMatch(unitValue);
+  return n(unit?.conversion_rate) || 1;
+}
+
+function farmInventoryBaseUnitName(unitValue) {
+  const unit = farmInventoryUnitMatch(unitValue);
+  if (!unit) return unitValue || "";
+  const baseUnit = farmInventoryUnitMatch(unit.base_unit);
+  return baseUnit?.unit_name || unit.base_unit || unit.unit_name || unitValue || "";
+}
+
+function farmInventoryLineBaseQuantity(line, item = {}) {
+  const unit = line.unit_name || line.unit || farmLookupLabel("units", line.unit_id) || item.unit_name;
+  return n(line.quantity || line.received_quantity || line.issued_quantity) * farmInventoryUnitFactor(unit);
+}
 
 function farmInventoryQuantityForItem(itemId) {
   const balances = farmRowsByKey("stock_balances").filter((row) => row.material_id === itemId || row.item_id === itemId);
   const explicitBalance = balances.reduce((sum, row) => sum + n(row.quantity_on_hand || row.balance_quantity || row.quantity), 0);
   if (explicitBalance) return explicitBalance;
+  const item = farmLookup("inventory_master", itemId) || {};
   return farmRowsByKey("inventory_document_lines")
     .filter((row) => row.item_id === itemId || row.material_id === itemId)
     .reduce((sum, row) => {
       const doc = farmLookup("inventory_documents", row.document_id) || {};
       const type = String(doc.doc_type || row.transaction_type || "").toLowerCase();
-      const qty = n(row.quantity || row.received_quantity || row.issued_quantity);
+      const qty = farmInventoryLineBaseQuantity(row, item);
       if (["receipt", "return", "adjustment", "count"].includes(type)) return sum + qty;
       if (["issue", "transfer", "fuel_requisition"].includes(type)) return sum - qty;
       return sum;
@@ -12408,6 +12440,8 @@ function renderFarmInventoryBoard() {
   const docs = farmRowsByKey("inventory_documents").sort((a, b) => String(b.doc_date || "").localeCompare(String(a.doc_date || "")));
   const lines = farmRowsByKey("inventory_document_lines");
   const categories = farmRowsByKey("material_categories");
+  const conversions = farmRowsByKey("unit_conversions");
+  const skuConversions = farmRowsByKey("sku_conversions");
   const query = state.farmFilters.query.trim().toLowerCase();
   const filteredItems = items.filter((item) => {
     const statusOk = state.farmFilters.status === "all" || String(item.status || "").toLowerCase() === state.farmFilters.status;
@@ -12442,7 +12476,7 @@ function renderFarmInventoryBoard() {
         <td>${esc(item.item_name || "-")}<small>${esc(item.category_name || "-")}</small></td>
         <td>${esc(item.unit_name || "-")}</td>
         <td>${esc(farmLookupLabel("warehouses", item.warehouse_id) || "-")}</td>
-        <td class="num">${moneyNf.format(qty)}</td>
+        <td class="num">${moneyNf.format(qty)}<small>${esc(farmInventoryBaseUnitName(item.unit_name) || item.unit_name || "-")}</small></td>
         <td>${esc(farmTranslateValue(item.status) || "-")}</td>
       </tr>`;
   }).join("");
@@ -12460,8 +12494,23 @@ function renderFarmInventoryBoard() {
         <td>${esc(farmTranslateValue(doc.status) || "-")}</td>
       </tr>`;
   }).join("");
+  const conversionRows = [...conversions.map((row) => ({ ...row, mode: "unit" })), ...skuConversions.map((row) => ({ ...row, mode: "sku" }))].slice(0, 12).map((row) => `
+    <tr data-farm-inventory-table="${row.mode === "sku" ? "sku_conversions" : "unit_conversions"}" data-farm-row="${esc(row.id)}">
+      <td><strong>${esc(row.mode === "sku" ? "SKU" : "หน่วย")}</strong></td>
+      <td>${esc(row.mode === "sku" ? farmLookupLabel("inventory_master", row.material_id) || farmLookupLabel("materials", row.material_id) || "-" : "-")}</td>
+      <td>${esc(farmLookupLabel("units", row.from_unit_id) || row.from_unit_id || "-")}</td>
+      <td>${esc(farmLookupLabel("units", row.to_unit_id) || row.to_unit_id || "-")}</td>
+      <td class="num">${moneyNf.format(n(row.conversion_rate))}</td>
+      <td>${esc(farmTranslateValue(row.status) || "-")}</td>
+    </tr>`).join("");
   return `
     <section class="farm-inventory-board">
+      <div class="farm-inventory-flow">
+        <button type="button" data-farm-inventory-quick="receipt">รับเข้า</button>
+        <button type="button" data-farm-inventory-quick="issue">เบิกจ่าย</button>
+        <button type="button" data-farm-inventory-add="unit_conversions">แปลงหน่วย</button>
+        <button type="button" data-farm-inventory-add="sku_conversions">แปลง SKU</button>
+      </div>
       <div class="farm-activity-toolbar farm-inventory-toolbar">
         <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหารหัส ชื่อ หมวด ทะเบียน คลัง"></label>
         <label>สถานะ
@@ -12527,6 +12576,18 @@ function renderFarmInventoryBoard() {
           <table class="mini-table farm-table">
             <thead><tr><th>เอกสาร</th><th>ประเภท</th><th>คลัง</th><th>WO</th><th>บรรทัด</th><th>จำนวน</th><th>สถานะ</th></tr></thead>
             <tbody>${docRows || `<tr><td colspan="7">ยังไม่มีเอกสารพัสดุ</td></tr>`}</tbody>
+          </table>
+        </div>
+      </section>
+      <section class="farm-panel">
+        <div class="section-head">
+          <h3>ตารางแปลงหน่วย / SKU</h3>
+          <span>ตัวอย่าง: รับปุ๋ยเป็นกระสอบ แต่ใช้งานเป็นกิโล ตั้ง 1 กระสอบ = 25 กิโลกรัม</span>
+        </div>
+        <div class="table-wrap farm-inventory-conversion-wrap">
+          <table class="mini-table farm-table">
+            <thead><tr><th>ชนิด</th><th>วัสดุ</th><th>จากหน่วย</th><th>เป็นหน่วย</th><th>อัตรา</th><th>สถานะ</th></tr></thead>
+            <tbody>${conversionRows || `<tr><td colspan="6">ยังไม่มีข้อมูลแปลงหน่วยหรือ SKU</td></tr>`}</tbody>
           </table>
         </div>
       </section>
@@ -14997,7 +15058,7 @@ function renderFarmActivityModal() {
   const tableKey = state.farmActivityModalTable;
   const table = farmTableByKey(tableKey);
   if (!table) return "";
-  const row = state.farmEditId ? farmRows(table).find((item) => item.id === state.farmEditId) || {} : {};
+  const row = state.farmEditId ? farmRows(table).find((item) => item.id === state.farmEditId) || {} : { ...(state.farmNewDefaults || {}) };
   const visibleFields = farmVisibleFields(table);
   return `
     <div class="farm-activity-modal" role="dialog" aria-modal="true">
@@ -16636,6 +16697,23 @@ async function init() {
     if (inventoryAdd) {
       state.farmTableId = inventoryAdd.dataset.farmInventoryAdd;
       state.farmActivityModalTable = state.farmTableId;
+      state.farmNewDefaults = {};
+      state.farmEditId = "";
+      state.farmDetailId = "";
+      render();
+      return;
+    }
+    const inventoryQuick = e.target.closest("[data-farm-inventory-quick]");
+    if (inventoryQuick) {
+      const type = inventoryQuick.dataset.farmInventoryQuick;
+      state.farmTableId = "inventory_documents";
+      state.farmActivityModalTable = "inventory_documents";
+      state.farmNewDefaults = {
+        document_no: `${type === "receipt" ? "GR" : "GI"}-${farmThaiYearSuffix(farmToday())}-${Date.now().toString().slice(-5)}`,
+        doc_type: type === "receipt" ? "receipt" : "issue",
+        doc_date: farmToday(),
+        status: type === "receipt" ? "received" : "issued",
+      };
       state.farmEditId = "";
       state.farmDetailId = "";
       render();
@@ -16643,6 +16721,7 @@ async function init() {
     }
     if (e.target.closest("[data-farm-activity-modal-close]")) {
       state.farmActivityModalTable = "";
+      state.farmNewDefaults = {};
       state.farmEditId = "";
       render();
       return;
@@ -16757,6 +16836,7 @@ async function init() {
     }
     if (e.target.closest("[data-farm-new]")) {
       state.farmActivityModalTable = state.farmTableId;
+      state.farmNewDefaults = {};
       state.farmEditId = "";
       state.farmDetailId = "";
       render();

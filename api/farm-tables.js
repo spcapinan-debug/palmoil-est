@@ -37,6 +37,7 @@ const FARM_TABLES = new Set([
   "material_categories",
   "units",
   "unit_conversions",
+  "sku_conversions",
   "materials",
   "material_lots",
   "activity_material_usage_rates",
