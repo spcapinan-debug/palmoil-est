@@ -44,6 +44,7 @@
   farmSyncBusy: false,
   farmRecords: [],
   farmFilters: { query: "", status: "all", role: "super_admin" },
+  farmSelectedTeamId: "",
   farmActivityModalTable: "",
   farmBudgetContract: {
     query: "",
@@ -10452,6 +10453,7 @@ async function addFarmEmployeeToTeam(employeeId, teamId) {
   state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "team_members" && item.team_id === teamId && item.employee_id === employeeId && String(item.is_active) !== "false"));
   state.farmRecords.push(row);
   state.farmTableId = "team_members";
+  state.farmSelectedTeamId = teamId;
   state.farmDetailId = row.id;
   state.farmEditId = "";
   state.farmSyncBusy = true;
@@ -13039,10 +13041,13 @@ function renderFarmTeamsBoard() {
   const allMembers = farmRows(memberTable);
   const allEmployees = farmRows(employeeTable);
   const skills = farmRows(skillTable);
-  const workOrders = farmRowsByKey("work_orders");
   const teams = allTeams
     .filter((row) => statusOk(row) && textOk(row))
     .sort((a, b) => String(a.team_code || "").localeCompare(String(b.team_code || ""), "th", { numeric: true }));
+  const selectedTeamId = teams.some((team) => team.id === state.farmSelectedTeamId)
+    ? state.farmSelectedTeamId
+    : (teams[0]?.id || "");
+  const selectedTeam = allTeams.find((team) => team.id === selectedTeamId);
   const employees = allEmployees
     .filter((row) => statusOk(row) && textOk(row))
     .sort((a, b) => String(a.employee_code || "").localeCompare(String(b.employee_code || ""), "th", { numeric: true })
@@ -13050,7 +13055,8 @@ function renderFarmTeamsBoard() {
   const members = allMembers
     .filter((row) => {
       const team = allTeams.find((item) => item.id === row.team_id) || {};
-      return statusOk(row) && (textOk(row) || textOk(team) || farmTeamMemberLabel(row).toLowerCase().includes(query));
+      const selectedOk = !selectedTeamId || row.team_id === selectedTeamId;
+      return selectedOk && statusOk(row) && (textOk(row) || textOk(team) || farmTeamMemberLabel(row).toLowerCase().includes(query));
     })
     .sort((a, b) => String(a.team_id || "").localeCompare(String(b.team_id || ""), "th", { numeric: true })
       || String(a.member_role || "").localeCompare(String(b.member_role || ""), "th", { numeric: true }));
@@ -13060,7 +13066,7 @@ function renderFarmTeamsBoard() {
     const contractor = farmLookup("contractors", team.contractor_id);
     const skillCount = skills.filter((skill) => skill.team_id === team.id).length;
     return `
-      <tr data-team-drop="${esc(team.id)}" data-farm-team-row="${esc(team.id)}" title="ลากพนักงานมาวางเพื่อเพิ่มเข้าทีม">
+      <tr class="${team.id === selectedTeamId ? "is-selected" : ""}" data-team-drop="${esc(team.id)}" data-farm-team-row="${esc(team.id)}" title="คลิกเพื่อดูสมาชิกทีม / ลากพนักงานมาวางเพื่อเพิ่มเข้าทีม">
         <td><strong>${esc(team.team_code || "-")}</strong></td>
         <td>${esc(team.team_name || "-")}</td>
         <td>${esc(team.team_type || "-")}</td>
@@ -13096,39 +13102,6 @@ function renderFarmTeamsBoard() {
         <td>${String(member.is_active) === "false" ? "หยุดใช้" : "ใช้งาน"}</td>
       </tr>`;
   }).join("");
-  const summaryRows = allTeams
-    .filter((team) => statusOk(team) && textOk(team))
-    .flatMap((team) => {
-      const teamMembers = allMembers.filter((member) => member.team_id === team.id);
-      const teamSkills = skills.filter((skill) => skill.team_id === team.id);
-      const orderCount = workOrders.filter((order) => order.team_id === team.id).length;
-      if (!teamSkills.length) {
-        return [`
-        <tr data-farm-team-row="${esc(team.id)}">
-          <td><strong>${esc(farmTeamLabel(team))}</strong></td>
-          <td>${esc(team.team_type || "-")}</td>
-          <td>${esc(farmLookupLabel("employees", team.supervisor_employee_id) || "-")}</td>
-          <td class="num">${fmt(teamMembers.length)}</td>
-          <td>${esc(farmLookupLabel("activity_groups", team.default_activity_group_id) || "-")}</td>
-          <td>-</td>
-          <td>-</td>
-          <td class="num">${fmt(orderCount)}</td>
-          <td>${esc(team.status || "-")}</td>
-        </tr>`];
-      }
-      return teamSkills.map((skill) => `
-        <tr data-farm-team-skill-row="${esc(skill.id)}">
-          <td><strong>${esc(farmTeamLabel(team))}</strong></td>
-          <td>${esc(team.team_type || "-")}</td>
-          <td>${esc(farmLookupLabel("employees", team.supervisor_employee_id) || "-")}</td>
-          <td class="num">${fmt(teamMembers.length)}</td>
-          <td>${esc(farmLookupLabel("activities", skill.activity_id) || farmLookupLabel("activity_groups", team.default_activity_group_id) || "-")}</td>
-          <td>${esc(skill.skill_level || "-")}</td>
-          <td>${esc(skill.rate_group || "-")}</td>
-          <td class="num">${fmt(orderCount)}</td>
-          <td>${esc(skill.status || team.status || "-")}</td>
-        </tr>`);
-    }).join("");
   return `
     <section class="farm-activity-board farm-team-board">
       <div class="farm-activity-toolbar">
@@ -13173,6 +13146,7 @@ function renderFarmTeamsBoard() {
         <article class="farm-panel farm-activity-table-card">
           <div class="section-head">
             <h3>ตารางสมาชิกทีม</h3>
+            <span>${selectedTeam ? `ทีมที่เลือก: ${esc(farmTeamLabel(selectedTeam))}` : "เลือกทีมจากตารางทีมทำงาน"}</span>
             <button type="button" data-farm-team-add="team_members">เพิ่มสมาชิก</button>
           </div>
           <div class="table-wrap farm-activity-table-wrap">
@@ -13183,19 +13157,6 @@ function renderFarmTeamsBoard() {
           </div>
         </article>
       </div>
-      <section class="farm-panel">
-        <div class="section-head">
-          <h3>ทีมที่ส่งต่อไปใช้งานสวนปาล์ม</h3>
-          <span>ดับเบิลคลิกแถวเพื่อแก้ไขทีม หรือทักษะกิจกรรม ใช้ต่อในวางแผน/สั่งงานผ่าน <code>work_orders.team_id</code></span>
-          <button type="button" data-farm-team-add="team_activity_skills">เพิ่มทักษะกิจกรรม</button>
-        </div>
-        <div class="table-wrap farm-activity-bottom-wrap">
-          <table class="mini-table farm-table">
-            <thead><tr><th>ทีม</th><th>ประเภท</th><th>หัวหน้า</th><th>สมาชิก</th><th>กิจกรรม</th><th>ระดับ</th><th>กลุ่มเรท</th><th>Work Order</th><th>สถานะ</th></tr></thead>
-            <tbody>${summaryRows || `<tr><td colspan="9">ไม่พบรายการทีม</td></tr>`}</tbody>
-          </table>
-        </div>
-      </section>
     </section>
     ${renderFarmActivityModal()}`;
 }
@@ -15834,6 +15795,13 @@ async function init() {
       state.farmActivityModalTable = state.farmTableId;
       state.farmEditId = "";
       state.farmDetailId = "";
+      render();
+      return;
+    }
+    const teamSelect = e.target.closest("[data-farm-team-row]");
+    if (teamSelect && !e.target.closest("button")) {
+      state.farmSelectedTeamId = teamSelect.dataset.farmTeamRow || "";
+      state.farmDetailId = state.farmSelectedTeamId;
       render();
       return;
     }
