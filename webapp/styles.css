@@ -12419,14 +12419,16 @@ td.num,
   }
 
   .hr-segment-grid,
-  .hr-flow-grid {
+  .hr-flow-grid,
+  .hr-document-alert-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
   }
 
   .hr-segment-grid article,
-  .hr-flow-grid article {
+  .hr-flow-grid article,
+  .hr-document-alert-grid article {
     position: relative;
     min-width: 0;
     padding: 14px 16px;
@@ -12438,13 +12440,16 @@ td.num,
 
   .hr-segment-grid span,
   .hr-segment-grid small,
-  .hr-flow-grid span {
+  .hr-flow-grid span,
+  .hr-document-alert-grid span,
+  .hr-document-alert-grid small {
     display: block;
     color: #73879c;
     font-size: 11px;
   }
 
-  .hr-segment-grid strong {
+  .hr-segment-grid strong,
+  .hr-document-alert-grid strong {
     display: block;
     margin: 5px 0;
     color: #2a3f54;
@@ -12477,6 +12482,55 @@ td.num,
     gap: 14px;
   }
 
+  .hr-document-alert-grid article.danger strong {
+    color: #dc2626;
+  }
+
+  .hr-document-alert-grid article.warning strong {
+    color: #d97706;
+  }
+
+  .hr-document-center .section-head button {
+    min-height: 32px;
+    border: 1px solid #2a3f54;
+    border-radius: 7px;
+    padding: 0 11px;
+    background: #fff;
+    color: #2a3f54;
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .hr-renewal-steps {
+    display: grid;
+    gap: 8px;
+  }
+
+  .hr-renewal-steps span {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid rgba(42,63,84,.1);
+    border-radius: 8px;
+    color: #2a3f54;
+    font-size: 12px;
+    font-weight: 700;
+    background: #fff;
+  }
+
+  .hr-renewal-steps b {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 22px;
+    border-radius: 7px;
+    background: rgba(42,63,84,.08);
+    color: #2a3f54;
+    font-size: 11px;
+  }
+
   .mini-table td small {
     display: block;
     margin-top: 2px;
@@ -12492,6 +12546,16 @@ td.num,
   .status-pill.danger {
     background: rgba(239,68,68,.12);
     color: #991b1b;
+  }
+
+  .status-pill.ok {
+    background: rgba(16,185,129,.14);
+    color: #047857;
+  }
+
+  .status-pill.muted {
+    background: rgba(100,116,139,.12);
+    color: #475569;
   }
 
   .hr-link-list {
@@ -12517,6 +12581,7 @@ td.num,
     .hr-area-grid,
     .hr-segment-grid,
     .hr-flow-grid,
+    .hr-document-alert-grid,
     .hr-two-col {
       grid-template-columns: 1fr 1fr;
     }
@@ -12526,6 +12591,7 @@ td.num,
     .hr-area-grid,
     .hr-segment-grid,
     .hr-flow-grid,
+    .hr-document-alert-grid,
     .hr-two-col {
       grid-template-columns: 1fr;
     }

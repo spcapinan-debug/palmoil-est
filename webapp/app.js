@@ -392,6 +392,16 @@ const FARM_MODULES = [
     seed: [],
   },
   {
+    id: "farm-people-docs",
+    title: "เอกสารต่างด้าว",
+    group: "งานบริหารบุคคล",
+    accent: "Foreign Worker Documents",
+    description: "จัดเก็บและติดตาม Passport, Visa, Work Permit, ตรวจสุขภาพ และเอกสารแรงงานต่างด้าว พร้อมแจ้งเตือนก่อนหมดอายุ",
+    tables: ["worker_documents", "employees", "contractors", "departments"],
+    fields: [],
+    seed: [],
+  },
+  {
     id: "farm-hr-org",
     title: "โครงสร้างองค์กร",
     group: "งานบริหารบุคคล",
@@ -869,8 +879,11 @@ const FARM_VALUE_LABELS = {
   passport: "หนังสือเดินทาง",
   visa: "วีซ่า",
   work_permit: "ใบอนุญาตทำงาน",
+  medical: "ตรวจสุขภาพ",
+  health_check: "ตรวจสุขภาพ",
   pink_card: "บัตรชมพู",
   id_card: "บัตรประชาชน",
+  unknown: "ไม่ทราบสถานะ",
   mobile: "มือถือ",
   manual: "กรอกเอง",
   work_order: "ใบสั่งงาน",
@@ -1546,7 +1559,7 @@ const FARM_TABLE_SCHEMAS = {
       F("holder_name_snapshot", "ชื่อผู้ถือเอกสาร"),
       F("nationality_snapshot", "สัญชาติ"),
       F("payment_type_snapshot", "ประเภทการจ่าย", { options: ["รายวัน", "รายเดือน", "รายเหมา"] }),
-      F("document_type", "ประเภทเอกสาร", { options: ["passport", "visa", "work_permit", "pink_card", "contract", "id_card", "other"], required: true }),
+      F("document_type", "ประเภทเอกสาร", { options: ["passport", "visa", "work_permit", "medical", "pink_card", "contract", "id_card", "other"], required: true }),
       F("document_no", "เลขที่เอกสาร", { required: true }),
       F("issue_date", "วันที่ออก", { type: "date" }),
       F("expiry_date", "วันหมดอายุ", { type: "date", required: true }),
@@ -1561,6 +1574,7 @@ const FARM_TABLE_SCHEMAS = {
     seed: [
       { id: "doc-emp-002-passport", employee_id: "emp-002", holder_name_snapshot: "คนงานตัวอย่าง", nationality_snapshot: "เมียนมา", payment_type_snapshot: "รายวัน", document_type: "passport", document_no: "PP-MMR-001", issue_date: "2024-07-01", expiry_date: "2026-07-10", alert_days_before: "45", renewal_status: "warning", status: "active", note: "ตัวอย่างเอกสารแรงงานต่างด้าว" },
       { id: "doc-emp-002-workpermit", employee_id: "emp-002", holder_name_snapshot: "คนงานตัวอย่าง", nationality_snapshot: "เมียนมา", payment_type_snapshot: "รายวัน", document_type: "work_permit", document_no: "WP-001", issue_date: "2025-01-01", expiry_date: "2026-09-30", alert_days_before: "60", renewal_status: "valid", status: "active" },
+      { id: "doc-emp-002-medical", employee_id: "emp-002", holder_name_snapshot: "คนงานตัวอย่าง", nationality_snapshot: "เมียนมา", payment_type_snapshot: "รายวัน", document_type: "medical", document_no: "MED-001", issue_date: "2026-01-15", expiry_date: "2026-08-15", alert_days_before: "30", renewal_status: "valid", status: "active" },
     ],
   },
   attendance_records: {
@@ -13902,6 +13916,40 @@ function farmHrDocumentRows() {
   });
 }
 
+function farmHrDocumentTypeLabel(type) {
+  return farmTranslateValue(type || "other") || type || "-";
+}
+
+function farmHrDocumentAlertLabel(row) {
+  if (row.daysLeft === null) return "ไม่ระบุวันหมดอายุ";
+  if (row.daysLeft < 0) return `หมดอายุแล้ว ${fmt(Math.abs(row.daysLeft))} วัน`;
+  if (row.daysLeft <= 7) return `เร่งด่วน ${fmt(row.daysLeft)} วัน`;
+  if (row.daysLeft <= 30) return `ภายใน 30 วัน`;
+  if (row.daysLeft <= 60) return `ภายใน 60 วัน`;
+  if (row.daysLeft <= 90) return `ภายใน 90 วัน`;
+  return `เหลือ ${fmt(row.daysLeft)} วัน`;
+}
+
+function farmHrDocumentAlertClass(row) {
+  if (row.daysLeft === null) return "muted";
+  if (row.daysLeft < 0) return "danger";
+  if (row.daysLeft <= 30) return "warning";
+  return "ok";
+}
+
+function farmHrDocumentFocusRows(docs) {
+  const order = { passport: 1, visa: 2, work_permit: 3, medical: 4, pink_card: 5 };
+  return Object.values(docs.reduce((acc, row) => {
+    const key = row.document_type || "other";
+    if (!acc[key]) acc[key] = { type: key, total: 0, expired: 0, due30: 0, due90: 0 };
+    acc[key].total += 1;
+    if (row.daysLeft !== null && row.daysLeft < 0) acc[key].expired += 1;
+    if (row.daysLeft !== null && row.daysLeft >= 0 && row.daysLeft <= 30) acc[key].due30 += 1;
+    if (row.daysLeft !== null && row.daysLeft >= 0 && row.daysLeft <= 90) acc[key].due90 += 1;
+    return acc;
+  }, {})).sort((a, b) => (order[a.type] || 99) - (order[b.type] || 99) || String(a.type).localeCompare(String(b.type), "th"));
+}
+
 function renderFarmHrBoard(module, table) {
   const people = farmHrPersonRows();
   const daily = people.filter((row) => row.paymentType === "รายวัน");
@@ -13912,6 +13960,11 @@ function renderFarmHrBoard(module, table) {
   const warningDocs = docs
     .filter((row) => row.daysLeft !== null && row.daysLeft <= row.alertDays)
     .sort((a, b) => (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999));
+  const expiredDocs = docs.filter((row) => row.daysLeft !== null && row.daysLeft < 0);
+  const urgentDocs = docs.filter((row) => row.daysLeft !== null && row.daysLeft >= 0 && row.daysLeft <= 7);
+  const due30Docs = docs.filter((row) => row.daysLeft !== null && row.daysLeft >= 0 && row.daysLeft <= 30);
+  const due90Docs = docs.filter((row) => row.daysLeft !== null && row.daysLeft >= 0 && row.daysLeft <= 90);
+  const docFocusRows = farmHrDocumentFocusRows(docs);
   const dailyCost = daily.reduce((sum, row) => sum + row.dailyWage, 0);
   const monthlyCost = monthly.reduce((sum, row) => sum + row.monthlySalary, 0);
   const contractRate = contract.reduce((sum, row) => sum + row.contractRate, 0);
@@ -13932,6 +13985,7 @@ function renderFarmHrBoard(module, table) {
   const hrAreas = [
     ["Dashboard HR", "ภาพรวมกำลังคน เอกสารเตือน เวลา ลา/OT และค่าแรง", "farm-hr-dashboard"],
     ["ข้อมูลบุคลากร", "พนักงานรายเดือน คนงานรายวัน ผู้รับเหมา บ้านพัก และเอกสารต่างด้าว", "farm-people"],
+    ["เอกสารต่างด้าว", "Passport, Visa, Work Permit, ตรวจสุขภาพ และเตือนหมดอายุ", "farm-people-docs"],
     ["ทีมทำงาน", "ทีม หัวหน้า สมาชิก ทักษะกิจกรรม และการใช้งานใน Work Order", "farm-hr-teams"],
     ["Work & Time", "ลงเวลา กะงาน ลา OT และข้อมูลทำงานจริง", "farm-hr-time"],
     ["Compensation", "งวดเงินเดือน ค่าแรง เงินเพิ่ม/หัก และ snapshot ปิดงวด", "farm-hr-payroll"],
@@ -13964,6 +14018,43 @@ function renderFarmHrBoard(module, table) {
       <div class="hr-flow-grid">
         ${flow.map((item) => `<article><b>${item[0]}</b><strong>${esc(item[1])}</strong><span>${esc(item[2])}</span></article>`).join("")}
       </div>
+      <div class="hr-document-alert-grid">
+        <article class="danger"><span>หมดอายุแล้ว</span><strong>${fmt(expiredDocs.length)}</strong><small>ต้องดำเนินการทันที</small></article>
+        <article class="warning"><span>เร่งด่วน 7 วัน</span><strong>${fmt(urgentDocs.length)}</strong><small>ควรต่ออายุ / นัดตรวจ</small></article>
+        <article><span>ภายใน 30 วัน</span><strong>${fmt(due30Docs.length)}</strong><small>รวม Work Permit และ Medical</small></article>
+        <article><span>ภายใน 90 วัน</span><strong>${fmt(due90Docs.length)}</strong><small>ใช้วางแผนล่วงหน้า</small></article>
+      </div>
+      <div class="hr-two-col hr-document-center">
+        <article class="farm-panel">
+          <div class="section-head">
+            <h3>สรุปเอกสารตามชนิด</h3>
+            <button type="button" data-farm-hr-doc-new>เพิ่มเอกสาร</button>
+          </div>
+          <div class="table-wrap">
+            <table class="mini-table">
+              <thead><tr><th>เอกสาร</th><th>ทั้งหมด</th><th>หมดอายุ</th><th>30 วัน</th><th>90 วัน</th></tr></thead>
+              <tbody>
+                ${docFocusRows.map((row) => `<tr>
+                  <td>${esc(farmHrDocumentTypeLabel(row.type))}</td>
+                  <td class="num">${fmt(row.total)}</td>
+                  <td class="num">${fmt(row.expired)}</td>
+                  <td class="num">${fmt(row.due30)}</td>
+                  <td class="num">${fmt(row.due90)}</td>
+                </tr>`).join("") || `<tr><td colspan="5">ยังไม่มีข้อมูลเอกสาร</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article class="farm-panel">
+          <div class="section-head"><h3>ลำดับดำเนินการต่ออายุ</h3><span>อ้างอิงแนวคิด FWMS</span></div>
+          <div class="hr-renewal-steps">
+            <span><b>1</b> ตรวจรายชื่อแรงงานต่างด้าวและชนิดเอกสาร</span>
+            <span><b>2</b> ดูวันหมดอายุและระดับเตือน 7/30/60/90 วัน</span>
+            <span><b>3</b> มอบหมายผู้รับผิดชอบและเปลี่ยนสถานะเป็นกำลังต่ออายุ</span>
+            <span><b>4</b> แนบไฟล์ใหม่และบันทึกวันหมดอายุใหม่</span>
+          </div>
+        </article>
+      </div>
       <div class="hr-two-col">
         <article class="farm-panel">
           <div class="section-head"><h3>เตือนเอกสารแรงงานต่างด้าว</h3><span>เรียงตามวันหมดอายุ</span></div>
@@ -13974,10 +14065,10 @@ function renderFarmHrBoard(module, table) {
                 ${warningDocs.slice(0, 8).map((row) => `<tr>
                   <td>${esc(row.holderName)}</td>
                   <td>${esc(row.nationalityText)}</td>
-                  <td>${esc(row.document_type)}<small>${esc(row.document_no || "")}</small></td>
+                  <td>${esc(farmHrDocumentTypeLabel(row.document_type))}<small>${esc(row.document_no || "")}</small></td>
                   <td>${esc(row.expiry_date || "-")}</td>
-                  <td>${row.daysLeft === null ? "-" : `${fmt(row.daysLeft)} วัน`}</td>
-                  <td><span class="status-pill ${row.daysLeft < 0 ? "danger" : "warning"}">${row.daysLeft < 0 ? "หมดอายุ" : "ใกล้หมดอายุ"}</span></td>
+                  <td>${esc(farmHrDocumentAlertLabel(row))}</td>
+                  <td><span class="status-pill ${farmHrDocumentAlertClass(row)}">${esc(farmTranslateValue(row.alertStatus) || "-")}</span></td>
                 </tr>`).join("") || `<tr><td colspan="6">ยังไม่มีเอกสารที่ต้องเตือน</td></tr>`}
               </tbody>
             </table>
@@ -16887,6 +16978,21 @@ async function init() {
     if (teamSelect && !e.target.closest("button")) {
       state.farmSelectedTeamId = teamSelect.dataset.farmTeamRow || "";
       state.farmDetailId = state.farmSelectedTeamId;
+      render();
+      return;
+    }
+    if (e.target.closest("[data-farm-hr-doc-new]")) {
+      state.farmTableId = "worker_documents";
+      state.farmActivityModalTable = "worker_documents";
+      state.farmNewDefaults = {
+        document_type: "work_permit",
+        issue_date: farmToday(),
+        alert_days_before: "30",
+        renewal_status: "valid",
+        status: "active",
+      };
+      state.farmEditId = "";
+      state.farmDetailId = "";
       render();
       return;
     }
