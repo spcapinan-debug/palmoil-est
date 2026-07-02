@@ -3082,23 +3082,64 @@ function normalizeFarmDbRows(tableKey, rows = []) {
   });
 }
 
-async function loadFarmTablesFromDatabase({ silent = false } = {}) {
-  const tableKeys = Object.keys(FARM_TABLE_SCHEMAS);
+function farmDatabaseTablesForView(view = state.view) {
+  if (!isFarmView(view)) return [];
+  const module = farmModuleMap()[view] || null;
+  const tableSet = new Set(module?.tables || []);
+  if (view === "farm-inventory") {
+    [
+      "inventory_master",
+      "material_categories",
+      "materials",
+      "units",
+      "warehouses",
+      "vehicles",
+      "inventory_documents",
+      "inventory_document_lines",
+      "stock_transactions",
+      "stock_balances",
+      "unit_conversions",
+      "sku_conversions",
+      "material_lots",
+    ].forEach((key) => tableSet.add(key));
+  }
+  if (view === "farm-inventory-issue") {
+    [
+      "inventory_master",
+      "materials",
+      "units",
+      "warehouses",
+      "inventory_documents",
+      "inventory_document_lines",
+      "work_orders",
+      "work_order_materials",
+      "planned_work_materials",
+    ].forEach((key) => tableSet.add(key));
+  }
+  return [...tableSet].filter((key) => FARM_TABLE_SCHEMAS[key]);
+}
+
+async function loadFarmTablesFromDatabase({ silent = false, tables = null } = {}) {
+  const tableKeys = (Array.isArray(tables) && tables.length ? [...new Set(tables)] : Object.keys(FARM_TABLE_SCHEMAS))
+    .filter((key) => FARM_TABLE_SCHEMAS[key]);
+  if (!tableKeys.length) return false;
+  const isPartial = tableKeys.length !== Object.keys(FARM_TABLE_SCHEMAS).length;
   try {
     const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(tableKeys.join(","))}&t=${Date.now()}`;
     const payload = await fetch(url, { cache: "no-store" }).then((res) => res.json());
     if (!payload || !payload.tables) throw new Error(payload?.error || "No farm table payload");
-    state.farmDbRows = Object.fromEntries(
+    const nextRows = Object.fromEntries(
       Object.entries(payload.tables).map(([tableKey, rows]) => [tableKey, normalizeFarmDbRows(tableKey, Array.isArray(rows) ? rows : [])])
     );
+    state.farmDbRows = isPartial ? { ...(state.farmDbRows || {}), ...nextRows } : nextRows;
     state.farmDbSource = payload.source || null;
-    state.farmDbErrors = payload.errors || {};
+    state.farmDbErrors = isPartial ? { ...(state.farmDbErrors || {}), ...(payload.errors || {}) } : (payload.errors || {});
     if (silent) render();
     return true;
   } catch (error) {
-    state.farmDbRows = {};
+    if (!isPartial) state.farmDbRows = {};
     state.farmDbSource = { mode: "fallback-seed", error: error.message };
-    state.farmDbErrors = { api: error.message };
+    state.farmDbErrors = { ...(state.farmDbErrors || {}), api: error.message };
     return false;
   }
 }
@@ -17039,6 +17080,8 @@ function setView(view) {
   ensureFarmViewState(view);
   for (const btn of els.tabs.querySelectorAll("button")) btn.classList.toggle("active", btn.dataset.view === view);
   render();
+  const viewTables = farmDatabaseTablesForView(view);
+  if (viewTables.length) loadFarmTablesFromDatabase({ silent: true, tables: viewTables });
 }
 
 function ensureFarmViewState(view = state.view) {
@@ -17111,6 +17154,8 @@ async function init() {
   await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadSummaryPalmoilAreas(), loadBlockMapData(), loadFarmBudgetRateData(), loadClearOverridesFromServer()]);
   setDefaultTransportDateRange();
   setDateValue(els.clearDate, state.payload.source.dateMax);
+  const priorityFarmTables = farmDatabaseTablesForView(state.view);
+  if (priorityFarmTables.length) await loadFarmTablesFromDatabase({ silent: false, tables: priorityFarmTables });
   loadFarmTablesFromDatabase({ silent: true });
 
   els.startDate.addEventListener("input", () => {
@@ -17703,7 +17748,8 @@ async function init() {
       return;
     }
     if (e.target.closest("[data-farm-db-refresh]")) {
-      loadFarmTablesFromDatabase({ silent: true });
+      const viewTables = farmDatabaseTablesForView(state.view);
+      loadFarmTablesFromDatabase({ silent: true, tables: viewTables.length ? viewTables : null });
       return;
     }
     if (e.target.closest("[data-farm-budget-sync]")) {
