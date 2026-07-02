@@ -195,8 +195,12 @@ function fallbackLocalId(table, row) {
     row.team_code,
     row.activity_code,
     row.group_code,
+    row.category_code,
+    row.unit_code,
     row.material_code,
+    row.item_code,
     row.vehicle_code,
+    row.document_no,
     row.work_order_no,
   ].filter(Boolean);
   return cleanText(`${table}:${candidates[0] || Date.now()}`, 180);
@@ -235,6 +239,30 @@ async function saveFallbackRow(table, row, reason = "") {
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
   });
   return fromFallbackRecord(saved?.[0] || payload);
+}
+
+async function saveFallbackRows(table, rows, reason = "") {
+  const payloadRows = rows.map((row) => {
+    const localId = fallbackLocalId(table, row);
+    return {
+      local_id: localId,
+      category: farmRecordCategory(table),
+      target_table: table,
+      payload: { ...row, id: row.id || localId },
+      note: reason || null,
+      updated_at: new Date().toISOString(),
+    };
+  });
+  const savedRows = [];
+  for (const part of chunkRows(payloadRows, 300)) {
+    const saved = await supabaseFetch("est_master_records?on_conflict=local_id", {
+      method: "POST",
+      body: JSON.stringify(part),
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    });
+    savedRows.push(...(Array.isArray(saved) ? saved.map(fromFallbackRecord) : []));
+  }
+  return savedRows;
 }
 
 async function deleteFallbackRow(table, id) {
@@ -350,20 +378,40 @@ async function upsertRealTableRow(table, row) {
   return saved?.[0] || dbRow;
 }
 
-async function upsertFarmTableRows(table, rows, reason = "") {
+function chunkRows(rows, size = 300) {
+  const out = [];
+  for (let index = 0; index < rows.length; index += size) out.push(rows.slice(index, index + size));
+  return out;
+}
+
+async function upsertRealTableRows(table, rows) {
+  const uniqueKey = UNIQUE_KEYS[table];
+  const dbRows = rows.map((row) => {
+    const dbRow = sanitizeDbRow(table, row);
+    if (!dbRow.id) dbRow.id = newUuid();
+    return dbRow;
+  }).filter((row) => Object.keys(row).length);
+  if (!dbRows.length) throw new Error("No writable columns");
+  const conflictKey = uniqueKey && dbRows.every((row) => row[uniqueKey]) ? uniqueKey : "id";
   const savedRows = [];
-  const warnings = [];
-  for (const row of rows) {
-    try {
-      const saved = await upsertRealTableRow(table, row);
-      savedRows.push(saved);
-    } catch (err) {
-      const fallback = await saveFallbackRow(table, row, err.message || reason);
-      warnings.push(err.message);
-      savedRows.push(fallback);
-    }
+  for (const part of chunkRows(dbRows)) {
+    const saved = await supabaseFetch(`${table}?on_conflict=${encodeURIComponent(conflictKey)}`, {
+      method: "POST",
+      body: JSON.stringify(part),
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    });
+    savedRows.push(...(Array.isArray(saved) ? saved : []));
   }
-  return { rows: savedRows, warnings };
+  return savedRows;
+}
+
+async function upsertFarmTableRows(table, rows, reason = "") {
+  try {
+    return { rows: await upsertRealTableRows(table, rows), warnings: [] };
+  } catch (err) {
+    const fallbackRows = await saveFallbackRows(table, rows, err.message || reason);
+    return { rows: fallbackRows, warnings: [err.message] };
+  }
 }
 
 async function deleteRealTableRow(table, id) {
