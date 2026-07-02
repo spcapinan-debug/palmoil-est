@@ -26,6 +26,11 @@ function stableId(prefix, value) {
   return `${prefix}-${clean(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || shortHash(value).toLowerCase()}`;
 }
 
+function stableUuid(value) {
+  const hex = crypto.createHash("sha1").update(String(value)).digest("hex").slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 const GROUP_NAMES = {
   B: "หมวดวัสดุก่อสร้าง/ทั่วไป",
   C: "หมวดสารเคมี",
@@ -300,7 +305,9 @@ async function main() {
   const categoryByCode = byField(phase1.material_categories, "category_code");
   const unitByCode = byField(phase1.units, "unit_code");
   const materials = plan.materials.map(({ category_code_ref, unit_code_ref, ...row }) => ({
-    ...row,
+    material_code: row.material_code,
+    material_name: row.material_name,
+    status: row.status,
     category_id: categoryByCode.get(category_code_ref)?.id || "",
     base_unit_id: unitByCode.get(unit_code_ref)?.id || "",
   }));
@@ -316,13 +323,21 @@ async function main() {
   const itemByCode = byField(phase2.inventory_master, "item_code");
   const unitByName = byField(phase2.units, "unit_name");
   const kgUnit = unitByName.get("กก.") || unitByName.get("กิโลกรัม");
-  const conversionRows = bagConversions.map(({ row, kg }) => ({
-    material_id: itemByCode.get(row.material_code)?.id || "",
-    from_unit_id: unitByName.get("กระสอบ")?.id || "",
-    to_unit_id: kgUnit?.id || "",
-    conversion_rate: kg,
-    status: "active",
-  })).filter((row) => row.material_id && row.from_unit_id && row.to_unit_id);
+  const conversionMap = new Map();
+  for (const { row, kg } of bagConversions) {
+    const payload = {
+      id: stableUuid(`sku:${row.material_code}:bag:${kg}`),
+      material_id: itemByCode.get(row.material_code)?.id || "",
+      from_unit_id: unitByName.get("กระสอบ")?.id || "",
+      to_unit_id: kgUnit?.id || "",
+      conversion_rate: kg,
+      status: "active",
+    };
+    if (payload.material_id && payload.from_unit_id && payload.to_unit_id) {
+      conversionMap.set(payload.id, payload);
+    }
+  }
+  const conversionRows = [...conversionMap.values()];
   console.log("Importing SKU conversions...");
   console.log(await apiPost("sku_conversions", conversionRows, "import ItemCode bag to kg conversions"));
 

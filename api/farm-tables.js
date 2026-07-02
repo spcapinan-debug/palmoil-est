@@ -140,6 +140,20 @@ async function supabaseFetch(path, options = {}) {
   return data;
 }
 
+async function supabaseFetchAll(path, limit = 50000) {
+  const pageSize = 1000;
+  const rows = [];
+  for (let offset = 0; rows.length < limit; offset += pageSize) {
+    const take = Math.min(pageSize, limit - rows.length);
+    const separator = path.includes("?") ? "&" : "?";
+    const page = await supabaseFetch(`${path}${separator}limit=${take}&offset=${offset}`);
+    if (!Array.isArray(page) || !page.length) break;
+    rows.push(...page);
+    if (page.length < take) break;
+  }
+  return rows;
+}
+
 function validTables(value) {
   const requested = String(value || "")
     .split(",")
@@ -219,7 +233,7 @@ function fromFallbackRecord(row) {
 
 async function loadFallbackRows(table) {
   const category = encodeURIComponent(farmRecordCategory(table));
-  const rows = await supabaseFetch(`est_master_records?category=eq.${category}&target_table=eq.${encodeURIComponent(table)}&order=updated_at.desc&limit=50000`);
+  const rows = await supabaseFetchAll(`est_master_records?category=eq.${category}&target_table=eq.${encodeURIComponent(table)}&order=updated_at.desc`, 50000);
   return Array.isArray(rows) ? rows.map(fromFallbackRecord) : [];
 }
 
@@ -393,8 +407,10 @@ async function upsertRealTableRows(table, rows) {
   }).filter((row) => Object.keys(row).length);
   if (!dbRows.length) throw new Error("No writable columns");
   const conflictKey = uniqueKey && dbRows.every((row) => row[uniqueKey]) ? uniqueKey : "id";
+  const allKeys = [...new Set(dbRows.flatMap((row) => Object.keys(row)))];
+  const normalizedRows = dbRows.map((row) => Object.fromEntries(allKeys.map((key) => [key, Object.prototype.hasOwnProperty.call(row, key) ? row[key] : null])));
   const savedRows = [];
-  for (const part of chunkRows(dbRows)) {
+  for (const part of chunkRows(normalizedRows)) {
     const saved = await supabaseFetch(`${table}?on_conflict=${encodeURIComponent(conflictKey)}`, {
       method: "POST",
       body: JSON.stringify(part),
@@ -512,7 +528,7 @@ module.exports = async function handler(req, res) {
       let realError = null;
       let fallbackRows = [];
       try {
-        realRows = await supabaseFetch(`${table}?select=*&limit=${limit}`);
+        realRows = await supabaseFetchAll(`${table}?select=*`, limit);
       } catch (err) {
         realError = err;
       }
