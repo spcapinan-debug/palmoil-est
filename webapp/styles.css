@@ -4555,6 +4555,11 @@ tfoot td {
   background: #f8fafc;
 }
 
+.farm-editable-row.is-selected td {
+  background: #eef7f4;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .budget-contract-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(170px, 1fr)) auto;
@@ -4866,6 +4871,12 @@ tfoot td {
   gap: 12px;
   align-items: center;
   justify-content: space-between;
+}
+
+.budget-create-rate-bar > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .budget-create-rate-bar .budget-selection-summary {
