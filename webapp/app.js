@@ -15330,21 +15330,6 @@ function farmBudgetIsVirtualValue(value) {
   return String(value || "").startsWith("rate-");
 }
 
-function farmBudgetSelectedVirtualItems(type, selected = []) {
-  const prefix = `rate-${type}:`;
-  return [...new Set((selected || []).filter((value) => String(value).startsWith(prefix)).map((value) => String(value)))];
-}
-
-function renderFarmBudgetSelectedVirtualSection(type, title, selected = []) {
-  const rows = farmBudgetSelectedVirtualItems(type, selected);
-  if (!rows.length) return "";
-  return `
-    <details open class="budget-selected-virtual">
-      <summary>${esc(title)} <small>${fmt(rows.length)}</small></summary>
-      ${rows.map((value) => renderBudgetCheckbox(type === "area" ? "block" : type, value, farmBudgetVirtualLabel(value), selected)).join("")}
-    </details>`;
-}
-
 function farmBudgetParseNoteJson(row = {}) {
   const raw = String(row.note || "").trim();
   if (!raw || !raw.startsWith("{")) return {};
@@ -15587,8 +15572,7 @@ function renderFarmBudgetAreaTree() {
   const estates = farmRowsByKey("estates");
   const zones = farmRowsByKey("zones");
   const plots = farmRowsByKey("plots");
-  const virtualSection = renderFarmBudgetSelectedVirtualSection("area", "พื้นที่จาก Rate ที่เลือก", picks.selectedBlocks);
-  if (!blocks.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูล Block</div>${virtualSection}`;
+  if (!blocks.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูล Block</div>`;
   if (areaBlocks.length) {
     const estateMap = new Map();
     for (const block of areaBlocks) {
@@ -15623,9 +15607,9 @@ function renderFarmBudgetAreaTree() {
           }).join("")}
           </div>
         </details>`;
-    }).join("") + virtualSection;
+    }).join("");
   }
-  return (estates.map((estate) => {
+  return estates.map((estate) => {
     const estateZones = zones.filter((zone) => zone.estate_id === estate.id);
     const estateBlocks = blocks.filter((block) => block.estate_id === estate.id || estateZones.some((zone) => zone.id === block.zone_id));
     if (!estateBlocks.length) return "";
@@ -15653,7 +15637,7 @@ function renderFarmBudgetAreaTree() {
         }).join("")}
         ${estateBlocks.filter((block) => !block.zone_id).map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่`)).join("")}
       </details>`;
-  }).join("") || blocks.map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่`)).join("")) + virtualSection;
+  }).join("") || blocks.map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่`)).join("");
 }
 
 function farmBudgetAreaOptions(picks = farmBudgetContractState()) {
@@ -15732,8 +15716,7 @@ function renderFarmBudgetActivityTree() {
   const picks = farmBudgetContractState();
   const groups = farmRowsByKey("activity_groups");
   const activities = farmRowsByKey("activities").filter((activity) => farmBudgetMatchesQuery(farmBudgetActivityLabel(activity)));
-  const virtualSection = renderFarmBudgetSelectedVirtualSection("activity", "กิจกรรมจาก Rate ที่เลือก", picks.selectedActivities);
-  if (!activities.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลกิจกรรม</div>${virtualSection}`;
+  if (!activities.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลกิจกรรม</div>`;
   const knownGroupIds = new Set(groups.map((group) => group.id));
   const inferredGroups = new Map();
   for (const activity of activities) {
@@ -15743,7 +15726,7 @@ function renderFarmBudgetActivityTree() {
     if (!inferredGroups.has(key)) inferredGroups.set(key, { id: key, group_code: "", group_name: label, inferred: true });
   }
   const allGroups = [...groups, ...inferredGroups.values()];
-  return (allGroups.map((group) => {
+  return allGroups.map((group) => {
     const groupActivities = activities.filter((activity) => {
       if (activity.activity_group_id && activity.activity_group_id === group.id) return true;
       if (group.inferred) {
@@ -15758,16 +15741,15 @@ function renderFarmBudgetActivityTree() {
         <summary>${esc(group.group_code || group.activity_group_code || "")} ${esc(group.group_name || group.activity_group_name || "")} <small>${fmt(groupActivities.length)}</small></summary>
         ${groupActivities.map((activity) => renderBudgetCheckbox("activity", activity.id, farmBudgetActivityDisplayLabel(activity), picks.selectedActivities, activity.wage_code_id ? farmLookupLabel("wage_codes", activity.wage_code_id) : "")).join("")}
       </details>`;
-  }).join("") || activities.map((activity) => renderBudgetCheckbox("activity", activity.id, farmBudgetActivityDisplayLabel(activity), picks.selectedActivities)).join("")) + virtualSection;
+  }).join("") || activities.map((activity) => renderBudgetCheckbox("activity", activity.id, farmBudgetActivityDisplayLabel(activity), picks.selectedActivities)).join("");
 }
 
 function renderFarmBudgetMaterialTree() {
   const picks = farmBudgetContractState();
   const categories = farmRowsByKey("material_categories");
   const materials = farmRowsByKey("materials").filter((material) => farmBudgetMatchesQuery(farmBudgetMaterialLabel(material)));
-  const virtualSection = renderFarmBudgetSelectedVirtualSection("material", "วัสดุจาก Rate ที่เลือก", picks.selectedMaterials);
-  if (!materials.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลวัสดุ</div>${virtualSection}`;
-  return (categories.map((category) => {
+  if (!materials.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลวัสดุ</div>`;
+  return categories.map((category) => {
     const categoryMaterials = materials.filter((material) => material.category_id === category.id);
     if (!categoryMaterials.length) return "";
     return `
@@ -15775,7 +15757,7 @@ function renderFarmBudgetMaterialTree() {
         <summary>${esc(category.category_code || "")} ${esc(category.category_name || "")} <small>${fmt(categoryMaterials.length)}</small></summary>
         ${categoryMaterials.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials, farmLookupLabel("units", material.base_unit_id))).join("")}
       </details>`;
-  }).join("") || materials.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials)).join("")) + virtualSection;
+  }).join("") || materials.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials)).join("");
 }
 
 function renderFarmBudgetVehicleTree() {
@@ -15831,10 +15813,9 @@ function renderFarmBudgetWorkerTree() {
       <summary>ผู้รับเหมา <small>${fmt(contractorRows.length)}</small></summary>
       ${contractorRows.slice(0, 250).map((row) => renderBudgetCheckbox("worker", `contractor:${row.id}`, farmBudgetWorkerLabel(row), picks.selectedWorkers, row.payment_type || row.contractor_type || "")).join("")}
     </details>` : "";
-  const virtualSection = renderFarmBudgetSelectedVirtualSection("worker", "กลุ่มคนงานจาก Rate ที่เลือก", picks.selectedWorkers);
   return teamSections || contractorSection
-    ? `${teamSections}${contractorSection}${virtualSection}`
-    : `<div class="budget-tree-empty">ยังไม่มีข้อมูลทีมงาน</div>${virtualSection}`;
+    ? `${teamSections}${contractorSection}`
+    : `<div class="budget-tree-empty">ยังไม่มีข้อมูลทีมงาน</div>`;
 }
 
 function renderFarmBudgetExtraRateRows() {
@@ -16101,6 +16082,7 @@ function renderFarmBudgetEditPanel() {
         </div>
         <div class="farm-form-actions budget-rate-edit-actions">
           <button type="button" data-farm-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกแก้ไข Rate</button>
+          <button type="button" class="danger" data-farm-delete-modal ${farmCan("delete") && !state.farmSyncBusy ? "" : "disabled"}>ลบ Rate</button>
           <button type="button" data-farm-clear>ปิดฟอร์ม</button>
         </div>
       </form>
@@ -16172,6 +16154,7 @@ function renderFarmBudgetBoard() {
       ${renderFarmBudgetExtraRateRows()}
       ${renderFarmBudgetCreateRateBar()}
       ${renderFarmBudgetRateTable(rates)}
+      ${renderFarmBudgetEditPanel()}
       ${renderFarmActivityModal()}
     </section>`;
 }
@@ -18694,9 +18677,7 @@ async function init() {
     if (budgetRateRow) {
       state.farmTableId = "budget_activity_rates";
       state.farmActivityModalTable = "budget_activity_rates";
-      state.farmEditId = budgetRateRow.dataset.farmBudgetRateRow;
-      state.farmDetailId = state.farmEditId;
-      render();
+      editFarmRow(budgetRateRow.dataset.farmBudgetRateRow);
       return;
     }
     const workOrderRow = e.target.closest("[data-farm-work-order-row]");
