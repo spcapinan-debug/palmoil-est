@@ -71,6 +71,29 @@ create table if not exists public.budget_rate_materials (
   updated_at timestamptz default now()
 );
 
+create table if not exists public.budget_rate_blocks (
+  id text primary key,
+  budget_rate_id text not null references public.budget_activity_rates(id) on delete cascade,
+  block_id uuid references public.blocks(id) on delete set null,
+  terrain_code text not null,
+  block_name text,
+  estate_name text,
+  zone_name text,
+  plot_group_code text,
+  ap_code text,
+  rspo_status text,
+  area_rai numeric,
+  tree_count numeric,
+  status text default 'active',
+  note text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists idx_budget_rate_blocks_rate on public.budget_rate_blocks(budget_rate_id);
+create index if not exists idx_budget_rate_blocks_block on public.budget_rate_blocks(block_id);
+create index if not exists idx_budget_rate_blocks_terrain on public.budget_rate_blocks(terrain_code);
+
 create table if not exists public.budget_rate_roles (
   id text primary key,
   budget_rate_id text references public.budget_activity_rates(id) on delete cascade,
@@ -108,6 +131,9 @@ create index if not exists idx_budget_activity_rates_block_id on public.budget_a
 create index if not exists idx_budget_activity_rates_activity on public.budget_activity_rates(activity_group_name, activity_name);
 create index if not exists idx_budget_activity_rates_terrain on public.budget_activity_rates(terrain_code);
 create index if not exists idx_budget_activity_rates_ap on public.budget_activity_rates(ap_code);
+create index if not exists idx_budget_rate_blocks_rate on public.budget_rate_blocks(budget_rate_id);
+create index if not exists idx_budget_rate_blocks_block on public.budget_rate_blocks(block_id);
+create index if not exists idx_budget_rate_blocks_terrain on public.budget_rate_blocks(terrain_code);
 create index if not exists idx_budget_rate_materials_rate on public.budget_rate_materials(budget_rate_id);
 create index if not exists idx_budget_rate_roles_rate on public.budget_rate_roles(budget_rate_id);
 create index if not exists idx_budget_rate_roles_line_type on public.budget_rate_roles(line_type, rate_category);
@@ -115,39 +141,44 @@ create index if not exists idx_budget_rate_roles_line_type on public.budget_rate
 comment on table public.budget_activity_rates is
   'Full budget/rate table. Source and mapping columns are retained for import traceability; the app edit form uses the compact public.budget_activity_rate_editor view field set.';
 
-create or replace view public.budget_activity_rate_editor as
+drop view if exists public.budget_activity_rate_editor;
+
+create or replace view public.budget_activity_rate_editor
+with (security_invoker = true)
+as
 select
-  id,
-  fiscal_year,
-  rate_code,
-  activity_group_name,
-  activity_code,
-  activity_name,
-  rate_type,
-  calculation_method,
-  comparison_basis,
-  unit_name,
-  rate_amount,
-  rate_text,
-  estate_name,
-  zone_name,
-  plot_group_code,
-  terrain_code,
-  ap_code,
-  area_rai,
-  tree_count,
-  effective_from,
-  effective_to,
-  approval_status,
-  status,
-  note,
-  updated_at
-from public.budget_activity_rates;
+  r.id,
+  r.fiscal_year,
+  r.rate_code,
+  r.activity_group_name,
+  r.activity_code,
+  r.activity_name,
+  r.rate_type,
+  r.calculation_method,
+  r.comparison_basis,
+  r.unit_name,
+  r.rate_amount,
+  r.rate_text,
+  r.area_scope_type,
+  count(distinct b.id) as block_count,
+  string_agg(distinct b.terrain_code, ', ' order by b.terrain_code) as terrain_codes,
+  coalesce(sum(b.area_rai), r.area_rai) as area_rai,
+  coalesce(sum(b.tree_count), r.tree_count) as tree_count,
+  r.effective_from,
+  r.effective_to,
+  r.approval_status,
+  r.status,
+  r.note,
+  r.updated_at
+from public.budget_activity_rates r
+left join public.budget_rate_blocks b on b.budget_rate_id = r.id
+group by r.id;
 
 comment on view public.budget_activity_rate_editor is
   'Compact field set for editing budget/rate records in the web app without exposing import/source/system columns.';
 
 alter table public.budget_years enable row level security;
 alter table public.budget_activity_rates enable row level security;
+alter table public.budget_rate_blocks enable row level security;
 alter table public.budget_rate_materials enable row level security;
 alter table public.budget_rate_roles enable row level security;

@@ -4,6 +4,7 @@ const path = require("path");
 const SYNC_TABLES = [
   "budget_years",
   "budget_activity_rates",
+  "budget_rate_blocks",
   "budget_rate_materials",
   "budget_rate_roles",
 ];
@@ -11,6 +12,7 @@ const SYNC_TABLES = [
 const CONFLICT_KEYS = {
   budget_years: "fiscal_year",
   budget_activity_rates: "rate_code",
+  budget_rate_blocks: "id",
   budget_rate_materials: "id",
   budget_rate_roles: "id",
 };
