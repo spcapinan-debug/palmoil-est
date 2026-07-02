@@ -4883,6 +4883,13 @@ tfoot td {
   margin-top: 0;
 }
 
+.budget-rate-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+
 .budget-create-rate-bar button {
   min-height: 38px;
   padding: 0 18px;
@@ -4892,6 +4899,11 @@ tfoot td {
   color: #fff;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.budget-create-rate-bar button.secondary {
+  background: #fff;
+  color: var(--primary);
 }
 
 .budget-selection-summary span,

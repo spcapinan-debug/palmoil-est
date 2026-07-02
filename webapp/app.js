@@ -10717,16 +10717,7 @@ async function createFarmBudgetRatesFromSelection() {
           is_current: "true",
           approval_status: picks.approvalStatus || "approved",
           status: "active",
-          note: [
-            picks.contractName ? `สัญญา ${picks.contractName}` : "",
-            picks.externalContractNo ? `เลขภายใน ${picks.externalContractNo}` : "",
-            picks.supplierContractNo ? `เลขซัพพลายเออร์ ${picks.supplierContractNo}` : "",
-            picks.dataGroup ? `กลุ่มข้อมูล ${picks.dataGroup}` : "",
-            picks.approvalScope ? `approval_scope=${picks.approvalScope}` : "",
-            picks.approvalMode ? `approval_mode=${picks.approvalMode}` : "",
-            materials.length ? `วัสดุ ${materials.map(farmBudgetMaterialLabel).join(", ")}` : "",
-            workers.length ? `กลุ่มคนงาน ${workers.map((item) => farmBudgetWorkerLabel({ ...item.row, _budgetType: item.kind })).join(", ")}` : "",
-          ].filter(Boolean).join(" | "),
+          note: farmBudgetBuildRateNote(picks, { materials, workers }),
           updatedAt: new Date().toISOString(),
         };
         const savedRate = await persistFarmRowToDatabase(rateTable, rateRow);
@@ -10854,15 +10845,11 @@ async function saveFarmBudgetSelectedRateFromSelection() {
   const rateAmount = n(picks.rateAmount || 0);
   const fallbackActivityName = farmBudgetVirtualLabel(firstVirtualActivity) || original.activity_name || "";
   const fallbackRateCode = `BR${farmBudgetFiscalYear(picks.startDate || original.effective_from || farmToday())}-${farmBudgetSafeCode(block?.block_code || block?.id || original.terrain_code || "area")}-${farmBudgetSafeCode(activity?.activity_code || activity?.id || fallbackActivityName || "activity")}`;
-  const generatedNote = [
-    picks.contractName ? `สัญญา ${picks.contractName}` : "",
-    picks.externalContractNo ? `เลขภายใน ${picks.externalContractNo}` : "",
-    picks.supplierContractNo ? `เลขซัพพลายเออร์ ${picks.supplierContractNo}` : "",
-    materials.length ? `วัสดุ ${materials.map(farmBudgetMaterialLabel).join(", ")}` : "",
-    workers.length ? `กลุ่มคนงาน ${workers.map((item) => farmBudgetWorkerLabel({ ...item.row, _budgetType: item.kind })).join(", ")}` : "",
-  ].filter(Boolean).join(" | ");
+  const generatedNote = farmBudgetBuildRateNote(picks, { originalNote: original.note, materials, workers });
   const preserveStructuredNote = String(original.note || "").trim().startsWith("{");
-  const preserveContractShape = preserveStructuredNote || original.rate_type === "contract" || original.area_scope_type === "contract";
+  const originalMeta = farmBudgetParseNoteJson(original);
+  const isImportedContractShape = originalMeta.source === "cultivate_contract" || original.rate_type === "contract" || original.area_scope_type === "contract";
+  const preserveContractShape = preserveStructuredNote && isImportedContractShape;
   const rateRow = {
     ...original,
     moduleId: "farm-budget",
@@ -10896,7 +10883,7 @@ async function saveFarmBudgetSelectedRateFromSelection() {
     is_current: "true",
     approval_status: picks.approvalStatus || "approved",
     status: original.status || "active",
-    note: preserveStructuredNote ? original.note : (generatedNote || original.note || ""),
+    note: generatedNote || original.note || "",
     updatedAt: new Date().toISOString(),
   };
   state.farmSyncBusy = true;
@@ -10906,6 +10893,7 @@ async function saveFarmBudgetSelectedRateFromSelection() {
   try {
     const savedRate = await persistFarmRowToDatabase(rateTable, rateRow);
     const savedRateId = savedRate.row?.id || rateRow.id;
+    await deleteFarmBudgetRelationsForRate(original, savedRateId, materialTable, roleTable);
     let sequence = 1;
     for (const material of materials) {
       await persistFarmRowToDatabase(materialTable, {
@@ -15340,6 +15328,47 @@ function farmBudgetParseNoteJson(row = {}) {
   }
 }
 
+function farmBudgetHumanNoteValue(note = "", prefix = "") {
+  const wanted = String(prefix || "");
+  return String(note || "")
+    .split(" | ")
+    .find((part) => part.startsWith(wanted))
+    ?.replace(wanted, "")
+    .trim() || "";
+}
+
+function farmBudgetSelectionFromMeta(meta = {}, key = "", fallback = []) {
+  return Array.isArray(meta[key]) ? farmBudgetUnique(meta[key]) : farmBudgetUnique(fallback);
+}
+
+function farmBudgetBuildRateNote(picks = {}, { originalNote = "", materials = [], workers = [] } = {}) {
+  let existing = {};
+  const raw = String(originalNote || "").trim();
+  if (raw.startsWith("{")) {
+    try {
+      existing = JSON.parse(raw);
+    } catch {
+      existing = {};
+    }
+  }
+  return JSON.stringify({
+    ...existing,
+    contractName: picks.contractName || farmBudgetHumanNoteValue(originalNote, "สัญญา "),
+    externalContractNo: picks.externalContractNo || farmBudgetHumanNoteValue(originalNote, "เลขภายใน "),
+    supplierContractNo: picks.supplierContractNo || farmBudgetHumanNoteValue(originalNote, "เลขซัพพลายเออร์ "),
+    dataGroup: picks.dataGroup || farmBudgetHumanNoteValue(originalNote, "กลุ่มข้อมูล "),
+    approvalScope: picks.approvalScope || existing.approvalScope || "",
+    approvalMode: picks.approvalMode || existing.approvalMode || "",
+    selectedBlocks: farmBudgetUnique(picks.selectedBlocks || []),
+    selectedActivities: farmBudgetUnique(picks.selectedActivities || []),
+    selectedMaterials: farmBudgetUnique(picks.selectedMaterials || []),
+    selectedVehicles: farmBudgetUnique(picks.selectedVehicles || []),
+    selectedWorkers: farmBudgetUnique(picks.selectedWorkers || []),
+    materials: materials.map(farmBudgetMaterialLabel),
+    workers: workers.map((item) => farmBudgetWorkerLabel({ ...item.row, _budgetType: item.kind })),
+  });
+}
+
 function farmBudgetFindAreaOrBlockId(label) {
   const key = farmBlockMapKey(label);
   if (!key) return "";
@@ -15402,6 +15431,22 @@ function farmBudgetRateRelations(tableKey, rate = {}) {
   return farmRowsByKey(tableKey).filter((row) => rateIds.has(String(row.budget_rate_id || "")));
 }
 
+async function deleteFarmBudgetRelationsForRate(rate = {}, savedRateId = "", materialTable, roleTable) {
+  const rateIds = new Set([rate.id, rate._overrideOf, rate.databaseId, savedRateId].filter(Boolean).map(String));
+  if (!rateIds.size) return;
+  const rowsToDelete = [
+    ...farmRowsByKey("budget_rate_materials").map((row) => ({ table: materialTable, row })),
+    ...farmRowsByKey("budget_rate_roles").map((row) => ({ table: roleTable, row })),
+  ].filter((item) => item.table && item.row?.id && rateIds.has(String(item.row.budget_rate_id || "")));
+  for (const item of rowsToDelete) {
+    await deleteFarmRowFromDatabase(item.table, item.row.id);
+  }
+  state.farmDbRows = state.farmDbRows || {};
+  state.farmDbRows.budget_rate_materials = (state.farmDbRows.budget_rate_materials || []).filter((row) => !rateIds.has(String(row.budget_rate_id || "")));
+  state.farmDbRows.budget_rate_roles = (state.farmDbRows.budget_rate_roles || []).filter((row) => !rateIds.has(String(row.budget_rate_id || "")));
+  state.farmRecords = state.farmRecords.filter((row) => !["budget_rate_materials", "budget_rate_roles"].includes(row.tableId) || !rateIds.has(String(row.budget_rate_id || "")));
+}
+
 function farmBudgetRoleToExtraRate(row = {}) {
   return {
     id: row.id || `extra-${Date.now().toString(36)}`,
@@ -15432,7 +15477,7 @@ function applyFarmBudgetRateToBuilder(rateId) {
   const terrainLabels = Array.isArray(noteMeta.terrains) && noteMeta.terrains.length
     ? noteMeta.terrains
     : farmBudgetSplitContractList(rate.terrain_code || rate.block_code || rate.area_code);
-  const selectedBlocks = farmBudgetUnique([
+  const fallbackBlocks = farmBudgetUnique([
     blockId,
     ...terrainLabels.map(farmBudgetMapAreaSelection),
   ]);
@@ -15441,12 +15486,14 @@ function applyFarmBudgetRateToBuilder(rateId) {
     ...farmBudgetSplitContractList(rate.activity_code),
     rate.activity_name,
   ].filter(Boolean);
-  const selectedActivities = farmBudgetUnique([
+  const fallbackActivities = farmBudgetUnique([
     directActivityId,
     ...activityLabels.map(farmBudgetMapActivitySelection),
   ]);
-  const selectedMaterials = farmBudgetUnique(materialRows.map(farmBudgetMapMaterialSelection));
-  const selectedWorkers = farmBudgetUnique(roleRows.map(farmBudgetMapWorkerSelection));
+  const selectedBlocks = farmBudgetSelectionFromMeta(noteMeta, "selectedBlocks", fallbackBlocks);
+  const selectedActivities = farmBudgetSelectionFromMeta(noteMeta, "selectedActivities", fallbackActivities);
+  const selectedMaterials = farmBudgetSelectionFromMeta(noteMeta, "selectedMaterials", materialRows.map(farmBudgetMapMaterialSelection));
+  const selectedWorkers = farmBudgetSelectionFromMeta(noteMeta, "selectedWorkers", roleRows.map(farmBudgetMapWorkerSelection));
   const extraRates = roleRows
     .filter((row) => !row.team_id || row.line_type !== "wage" || row.rate_category !== "base")
     .map(farmBudgetRoleToExtraRate);
@@ -15459,15 +15506,18 @@ function applyFarmBudgetRateToBuilder(rateId) {
     selectedActivities,
     selectedMaterials,
     selectedWorkers,
-    contractName: String(rate.note || "").split(" | ").find((part) => part.startsWith("สัญญา "))?.replace("สัญญา ", "") || rate.activity_name || "",
+    contractName: noteMeta.contractName || farmBudgetHumanNoteValue(rate.note, "สัญญา ") || rate.activity_name || "",
     approvalStatus: rate.approval_status || "approved",
     rateType: rate.rate_type || picks.rateType || "labor",
     calculationMethod: rate.calculation_method || picks.calculationMethod || "per_rai",
     comparisonBasis: rate.comparison_basis || picks.comparisonBasis || "area_rai",
     unitName: rate.unit_name || picks.unitName || "",
     rateAmount: rate.rate_amount ?? "",
-    externalContractNo: rate.rate_code || "",
-    dataGroup: rate.fiscal_year || "",
+    externalContractNo: noteMeta.externalContractNo || rate.rate_code || "",
+    supplierContractNo: noteMeta.supplierContractNo || "",
+    dataGroup: noteMeta.dataGroup || rate.fiscal_year || "",
+    approvalScope: noteMeta.approvalScope || picks.approvalScope,
+    approvalMode: noteMeta.approvalMode || picks.approvalMode,
     extraRates: extraRates.length ? extraRates : picks.extraRates,
   });
   const firstRealBlockId = selectedBlocks.find((value) => !farmBudgetIsVirtualValue(value));
@@ -15969,8 +16019,11 @@ function renderFarmBudgetCreateRateBar() {
     : null;
   return `
     <article class="budget-create-rate-bar">
-      ${editing ? `<span>กำลังแก้ไข ${esc(editing.rate_code || editing.id)}</span>` : ""}
-      <button type="button" data-budget-rate-create ${state.farmSyncBusy ? "disabled" : ""}>${editing ? "บันทึกแก้ไข Rate" : "สร้าง Rate"}</button>
+      <span>${editing ? `กำลังแก้ไข ${esc(editing.rate_code || editing.id)}` : "เลือกพื้นที่ กิจกรรม และรูปแบบอัตรา แล้วสร้าง Rate"}</span>
+      <div class="budget-rate-actions">
+        <button type="button" data-budget-rate-create ${state.farmSyncBusy ? "disabled" : ""}>${editing ? "บันทึกแก้ไข Rate" : "สร้าง Rate"}</button>
+        ${editing ? `<button type="button" class="secondary" data-budget-rate-new ${state.farmSyncBusy ? "disabled" : ""}>สร้าง Rate ใหม่</button>` : ""}
+      </div>
     </article>`;
 }
 
@@ -16450,10 +16503,12 @@ function renderFarmActivityModal() {
   const table = farmTableByKey(tableKey);
   if (!table) return "";
   const row = state.farmEditId ? farmRows(table).find((item) => item.id === state.farmEditId) || {} : { ...(state.farmNewDefaults || {}) };
-  const visibleFields = farmVisibleFields(table);
+  const isBudgetRateModal = table.key === "budget_activity_rates";
+  const budgetModalHiddenFields = new Set(["budget_year_id", "calculation_method", "comparison_basis"]);
+  let visibleFields = farmVisibleFields(table);
+  if (isBudgetRateModal) visibleFields = visibleFields.filter((field) => !budgetModalHiddenFields.has(farmFieldKey(field)));
   const wideTables = new Set(["people", "employees", "contractors", "worker_documents", "housing_units", "person_housing_assignments", "housing_utility_charges", "teams", "team_members", "team_activity_skills"]);
   const fullTables = new Set(["inventory_master", "materials", "vehicles", "material_categories", "warehouses", "inventory_documents", "inventory_document_lines", "unit_conversions", "sku_conversions", "material_lots", "budget_activity_rates"]);
-  const isBudgetRateModal = table.key === "budget_activity_rates";
   const modalWideClass = fullTables.has(table.key)
     ? " is-wide is-full"
     : (wideTables.has(table.key) || visibleFields.length > 14 ? " is-wide" : "");
@@ -18301,6 +18356,16 @@ async function init() {
       return;
     }
     if (e.target.closest("[data-budget-contract-search]")) {
+      render();
+      return;
+    }
+    if (e.target.closest("[data-budget-rate-new]")) {
+      state.farmBudgetEditingRateId = "";
+      state.farmDetailId = "";
+      state.farmEditId = "";
+      state.farmActivityModalTable = "";
+      state.farmSyncStatus = "success";
+      state.farmSyncMessage = "พร้อมสร้าง Rate ใหม่จากรายการที่เลือก";
       render();
       return;
     }
