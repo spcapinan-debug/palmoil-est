@@ -334,9 +334,11 @@ function sanitizeDbRow(table, row) {
 
 async function upsertRealTableRow(table, row) {
   const dbRow = sanitizeDbRow(table, row);
+  const hadWritableId = Boolean(dbRow.id);
   if (!dbRow.id) dbRow.id = newUuid();
   if (!Object.keys(dbRow).length) throw new Error("No writable columns");
-  const conflictKey = dbRow.id ? "id" : (UNIQUE_KEYS[table] && dbRow[UNIQUE_KEYS[table]] ? UNIQUE_KEYS[table] : "");
+  const uniqueKey = UNIQUE_KEYS[table];
+  const conflictKey = hadWritableId ? "id" : (uniqueKey && dbRow[uniqueKey] ? uniqueKey : "id");
   const path = conflictKey
     ? `${table}?on_conflict=${encodeURIComponent(conflictKey)}`
     : table;
@@ -346,6 +348,22 @@ async function upsertRealTableRow(table, row) {
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
   });
   return saved?.[0] || dbRow;
+}
+
+async function upsertFarmTableRows(table, rows, reason = "") {
+  const savedRows = [];
+  const warnings = [];
+  for (const row of rows) {
+    try {
+      const saved = await upsertRealTableRow(table, row);
+      savedRows.push(saved);
+    } catch (err) {
+      const fallback = await saveFallbackRow(table, row, err.message || reason);
+      warnings.push(err.message);
+      savedRows.push(fallback);
+    }
+  }
+  return { rows: savedRows, warnings };
 }
 
 async function deleteRealTableRow(table, id) {
@@ -366,6 +384,20 @@ module.exports = async function handler(req, res) {
       const body = await readBody(req);
       const table = validTable(body.table);
       if (!table) return json(res, 400, { ok: false, error: "Invalid farm table" });
+      if (Array.isArray(body.rows)) {
+        const rows = body.rows.filter((row) => row && typeof row === "object");
+        if (!rows.length) return json(res, 400, { ok: false, error: "No rows" });
+        const result = await upsertFarmTableRows(table, rows, body.reason || "");
+        return json(res, 200, {
+          ok: true,
+          table,
+          mode: result.warnings.length ? "mixed" : "supabase-real-table",
+          count: result.rows.length,
+          warningCount: result.warnings.length,
+          warnings: [...new Set(result.warnings)].slice(0, 20),
+          rows: result.rows,
+        });
+      }
       const row = body.row && typeof body.row === "object" ? body.row : null;
       if (!row) return json(res, 400, { ok: false, error: "No row" });
       try {
