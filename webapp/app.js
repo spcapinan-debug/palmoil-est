@@ -3281,8 +3281,13 @@ async function refreshTransportFromQuery() {
     await loadClearOverridesFromServer();
     render();
     const synced = await syncTransportDatabase("refresh_data");
-    if (!synced) {
+    const warnings = Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean) : [];
+    if (warnings.length) {
+      setClearSyncStatus(`อัปเดตจากไฟล์แล้ว แต่มีคำเตือน: ${warnings.join(" | ").slice(0, 220)}`, "error");
+    } else if (!synced) {
       setClearSyncStatus(`อัปเดต local แล้ว แต่ sync online ไม่สำเร็จ: ${state.transportSyncResult?.error || ""}`, "error");
+    } else {
+      setClearSyncStatus("Refresh Data สำเร็จ และอัปเดตฐานข้อมูลออนไลน์แล้ว", "success");
     }
     els.refreshTransportBtn.textContent = `Data ${fmt(payload.source?.rowCount || 0)} rows${synced ? "" : " local"}`;
     window.setTimeout(() => {
@@ -3915,9 +3920,10 @@ function updateSourceInfo() {
 function setSourceRefreshError(error) {
   const message = String(error?.message || error || "refresh failed").slice(0, 140);
   const base = String(els.sourceInfo.textContent || "")
-    .replace(/(?:\s+refresh failed(?::\s*[^]*)?)+$/i, "")
+    .replace(/\n(?:refresh failed|อัปเดตไม่สำเร็จ):.*$/is, "")
     .trimEnd();
-  els.sourceInfo.textContent = `${base}\nrefresh failed: ${message}`;
+  els.sourceInfo.textContent = `${base}\nอัปเดตไม่สำเร็จ: ${message}`;
+  setClearSyncStatus(`Refresh Data ไม่สำเร็จ: ${message}`, "error");
 }
 
 function applyTransportPayload(payload, { silent = false } = {}) {

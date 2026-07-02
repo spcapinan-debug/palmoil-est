@@ -5,6 +5,7 @@ const TABLES = [
   "transport_mill_weight_records",
   "transport_mill_reconciliations",
 ];
+const DEFAULT_SUPABASE_URL = "https://xhtwmzlorceebsemqkww.supabase.co";
 
 function json(res, status, payload) {
   res.statusCode = status;
@@ -24,7 +25,7 @@ async function readBody(req) {
 }
 
 function supabaseConfig() {
-  const url = process.env.SUPABASE_URL || "https://xhtwmzlorceebsemqkww.supabase.co";
+  const url = process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
   if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
   if (String(key).startsWith("sb_publishable_")) {
@@ -85,7 +86,7 @@ function cleanText(value, max = 500) {
   return String(value || "").trim().slice(0, max);
 }
 
-function chunk(rows, size = 500) {
+function chunk(rows, size = 200) {
   const parts = [];
   for (let index = 0; index < rows.length; index += size) parts.push(rows.slice(index, index + size));
   return parts;
@@ -93,8 +94,16 @@ function chunk(rows, size = 500) {
 
 async function upsert(table, rows, conflictKey) {
   if (!rows.length) return [];
+  const uniqueRows = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const key = String(row?.[conflictKey] || "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    uniqueRows.push(row);
+  }
   const saved = [];
-  for (const part of chunk(rows)) {
+  for (const part of chunk(uniqueRows)) {
     const result = await supabaseFetch(`${table}?on_conflict=${encodeURIComponent(conflictKey)}`, {
       method: "POST",
       body: JSON.stringify(part),
@@ -225,7 +234,7 @@ module.exports = async function handler(req, res) {
           ok: Object.values(checks).every((value) => value === "ok"),
           route: "transport-sync",
           checks,
-          hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+          hasSupabaseUrl: Boolean(process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL),
           hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
           keyKind: keyKind(),
         });

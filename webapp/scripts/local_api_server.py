@@ -108,29 +108,40 @@ def save_clear_rows(rows):
     return payload
 
 
+def run_extract_command(command):
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    output = "\n".join(part for part in [completed.stdout.strip(), completed.stderr.strip()] if part)
+    return completed.returncode == 0, output or "done"
+
+
 def run_extract():
     commands = [
-        [sys.executable, str(EXTRACT_DATA), "--source", "sheet"],
-        [sys.executable, str(EXTRACT_MILL)],
+        ("data", [sys.executable, str(EXTRACT_DATA), "--source", "sheet"]),
+        ("mill", [sys.executable, str(EXTRACT_MILL)]),
     ]
     output = []
-    for command in commands:
-        completed = subprocess.run(
-            command,
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        output.extend([completed.stdout.strip(), completed.stderr.strip()])
-        if completed.returncode != 0:
-            raise RuntimeError("\n".join(part for part in output if part) or "extract failed")
+    warnings = []
+    for name, command in commands:
+        ok, message = run_extract_command(command)
+        output.append(f"{name}: {message}")
+        if not ok:
+            warnings.append(f"{name} refresh failed: {message}")
     data = read_json(DATA_JSON, {})
     mill = read_json(MILL_JSON, {})
+    if not isinstance(data, dict) or not data.get("records"):
+        raise RuntimeError("; ".join(warnings) or "data refresh failed")
     source = data.get("source", {}) if isinstance(data, dict) else {}
     mill_source = mill.get("source", {}) if isinstance(mill, dict) else {}
     return {
         "ok": True,
+        "warnings": warnings,
+        "partial": bool(warnings),
         "output": "\n".join(part for part in output if part),
         "source": {
             "recordSource": source.get("recordSource"),

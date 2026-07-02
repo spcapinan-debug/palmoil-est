@@ -13,16 +13,35 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DATA_WORKBOOK_CANDIDATES = [
-    ROOT / "Data.xlsx",
-    ROOT / "data.xlsx",
-    ROOT / "Data.xlsm",
-    ROOT / "data.xlsm",
-]
-REPORT_WORKBOOK_CANDIDATES = [
-    ROOT / "Summary_Palm_RSPO-Ramp.xlsx",
-    ROOT / "Summary_Palm_Ramp.xlsx",
-]
+
+
+def source_roots() -> list[Path]:
+    roots: list[Path] = []
+    for raw in [
+        # Let the local launcher or a developer pin the real workbook folder.
+        __import__("os").environ.get("PALM_DATA_DIR"),
+        r"H:\My Drive\Work\ขนส่งออก",
+        str(Path.cwd()),
+        str(ROOT),
+    ]:
+        if not raw:
+            continue
+        path = Path(raw)
+        if path.exists() and path not in roots:
+            roots.append(path)
+    return roots
+
+
+def workbook_candidates(names: list[str]) -> list[Path]:
+    return [root / name for root in source_roots() for name in names]
+
+
+DATA_WORKBOOK_CANDIDATES = workbook_candidates(["Data.xlsx", "data.xlsx", "Data.xlsm", "data.xlsm"])
+REPORT_WORKBOOK_CANDIDATES = workbook_candidates([
+    "Summary_Palm_RSPO-Ramp.xlsx",
+    "Summary_Palm_RSPO.xlsx",
+    "Summary_Palm_Ramp.xlsx",
+])
 OUTPUT = Path(__file__).resolve().parents[1] / "data" / "data.json"
 QUERY_SCRIPT = Path(__file__).resolve().parent / "query_weight_data.ps1"
 
@@ -94,16 +113,18 @@ DATA_FIELDS = [
 ]
 
 
-def first_existing(paths: list[Path], label: str) -> Path:
-    for path in paths:
-        if path.is_file():
-            return path
+def first_existing(paths: list[Path], label: str, *, newest: bool = True) -> Path:
+    existing = [path for path in paths if path.is_file()]
+    if existing:
+        if not newest:
+            return existing[0]
+        return max(existing, key=lambda path: path.stat().st_mtime)
     choices = ", ".join(str(path) for path in paths)
     raise FileNotFoundError(f"Missing {label}. Tried: {choices}")
 
 
 DATA_WORKBOOK = first_existing(DATA_WORKBOOK_CANDIDATES, "data workbook")
-REPORT_WORKBOOK = first_existing(REPORT_WORKBOOK_CANDIDATES, "report workbook")
+REPORT_WORKBOOK = first_existing(REPORT_WORKBOOK_CANDIDATES, "report workbook", newest=False)
 
 
 def sheet_source(
@@ -397,7 +418,7 @@ def read_monthly_stock_reports() -> dict[str, Any]:
     }
     sheet_keys = ["garden", "takuk", "combined"]
 
-    for path in ROOT.glob("*.xlsx"):
+    for path in DATA_WORKBOOK.parent.glob("*.xlsx"):
         if not path.name.startswith("สรุปสต๊อคผลปาล์มสดประจำเดือน"):
             continue
         month_info = month_from_filename(path.name)

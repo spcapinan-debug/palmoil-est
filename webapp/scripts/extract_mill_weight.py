@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any
@@ -9,11 +10,28 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def source_roots() -> list[Path]:
+    roots: list[Path] = []
+    for raw in [
+        os.environ.get("PALM_DATA_DIR"),
+        r"H:\My Drive\Work\ขนส่งออก",
+        str(Path.cwd()),
+        str(ROOT),
+    ]:
+        if not raw:
+            continue
+        path = Path(raw)
+        if path.exists() and path not in roots:
+            roots.append(path)
+    return roots
+
+
 DATA_WORKBOOK_CANDIDATES = [
-    ROOT / "Data.xlsx",
-    ROOT / "data.xlsx",
-    ROOT / "Data.xlsm",
-    ROOT / "data.xlsm",
+    root / name
+    for root in source_roots()
+    for name in ["Data.xlsx", "data.xlsx", "Data.xlsm", "data.xlsm"]
 ]
 OUTPUT = Path(__file__).resolve().parents[1] / "data" / "mill_weight.json"
 SHEET_NAME = "SPC"
@@ -36,9 +54,9 @@ FIELDS = [
 
 
 def first_existing(paths: list[Path]) -> Path:
-    for path in paths:
-        if path.is_file():
-            return path
+    existing = [path for path in paths if path.is_file()]
+    if existing:
+        return max(existing, key=lambda path: path.stat().st_mtime)
     choices = ", ".join(str(path) for path in paths)
     raise FileNotFoundError(f"Missing Data workbook. Tried: {choices}")
 
