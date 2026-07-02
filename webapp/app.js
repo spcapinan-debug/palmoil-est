@@ -12885,12 +12885,13 @@ function renderFarmInventoryBoard() {
   const skuConversions = farmRowsByKey("sku_conversions");
   const query = state.farmFilters.query.trim().toLowerCase();
   const selectedMajor = state.farmInventoryCategoryMajor || "";
-  const filteredItems = items.filter((item) => {
+  const shouldShowItems = Boolean(selectedMajor || query);
+  const filteredItems = shouldShowItems ? items.filter((item) => {
     const statusOk = state.farmFilters.status === "all" || String(item.status || "").toLowerCase() === state.farmFilters.status;
     const queryOk = !query || [item.item_code, item.item_name, item.item_type, item.category_name, item.unit_name, item.plate_no].join(" ").toLowerCase().includes(query);
     const categoryOk = !selectedMajor || farmInventoryItemMajor(item) === selectedMajor;
     return statusOk && queryOk && categoryOk;
-  });
+  }) : [];
   const categoryMajorMap = new Map();
   for (const category of categories) {
     const major = farmInventoryCategoryMajor(category);
@@ -13036,14 +13037,14 @@ function renderFarmInventoryBoard() {
           <div class="section-head">
             <div>
               <h3>รายการพัสดุ / อุปกรณ์</h3>
-              <span>${fmt(filteredItems.length)} รายการ${selectedMajor ? ` · ${esc(selectedMajor)}` : ""} · ดับเบิลคลิกเพื่อแก้ไข/ลบ</span>
+              <span>${shouldShowItems ? `${fmt(filteredItems.length)} รายการ${selectedMajor ? ` · ${esc(selectedMajor)}` : ""} · ดับเบิลคลิกเพื่อแก้ไข/ลบ` : "เลือกหมวดใหญ่ด้านซ้าย หรือค้นหารหัส/ชื่อรายการ"}</span>
             </div>
             <button type="button" data-farm-inventory-add="inventory_master">เพิ่มรายการ</button>
           </div>
           <div class="table-wrap">
             <table class="mini-table farm-table">
               <thead><tr><th>รหัส</th><th>รายการ</th><th>หน่วย</th><th>คลังหลัก</th><th>คงเหลือ</th><th>สถานะ</th></tr></thead>
-              <tbody>${itemRows || `<tr><td colspan="6">ยังไม่มีข้อมูลพัสดุ/อุปกรณ์</td></tr>`}</tbody>
+              <tbody>${itemRows || `<tr><td colspan="6">${shouldShowItems ? "ยังไม่มีข้อมูลพัสดุ/อุปกรณ์" : "เลือกหมวดใหญ่ด้านซ้ายเพื่อแสดงรายการพัสดุ / อุปกรณ์"}</td></tr>`}</tbody>
             </table>
           </div>
         </article>
