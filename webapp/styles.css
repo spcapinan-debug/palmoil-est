@@ -5617,6 +5617,15 @@ tfoot td {
   max-height: calc(100vh - 20px);
 }
 
+.budget-rate-full-modal {
+  padding: 14px;
+}
+
+.budget-rate-full-modal .farm-activity-modal-card {
+  width: min(1500px, calc(100vw - 18px));
+  max-height: calc(100vh - 18px);
+}
+
 .farm-activity-modal-head {
   position: sticky;
   top: 0;
@@ -5666,6 +5675,17 @@ tfoot td {
 .farm-activity-modal-form.is-full {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   min-height: min(560px, calc(100vh - 150px));
+}
+
+.budget-rate-full-modal .farm-activity-modal-form.is-full {
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 10px 12px;
+  min-height: calc(100vh - 126px);
+  align-content: start;
+}
+
+.budget-rate-full-modal .farm-activity-modal-form label {
+  min-width: 0;
 }
 
 .farm-activity-modal-form .farm-form-actions {

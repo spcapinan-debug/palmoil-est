@@ -16154,7 +16154,6 @@ function renderFarmBudgetBoard() {
       ${renderFarmBudgetExtraRateRows()}
       ${renderFarmBudgetCreateRateBar()}
       ${renderFarmBudgetRateTable(rates)}
-      ${renderFarmBudgetEditPanel()}
       ${renderFarmActivityModal()}
     </section>`;
 }
@@ -16453,17 +16452,18 @@ function renderFarmActivityModal() {
   const row = state.farmEditId ? farmRows(table).find((item) => item.id === state.farmEditId) || {} : { ...(state.farmNewDefaults || {}) };
   const visibleFields = farmVisibleFields(table);
   const wideTables = new Set(["people", "employees", "contractors", "worker_documents", "housing_units", "person_housing_assignments", "housing_utility_charges", "teams", "team_members", "team_activity_skills"]);
-  const fullTables = new Set(["inventory_master", "materials", "vehicles", "material_categories", "warehouses", "inventory_documents", "inventory_document_lines", "unit_conversions", "sku_conversions", "material_lots"]);
+  const fullTables = new Set(["inventory_master", "materials", "vehicles", "material_categories", "warehouses", "inventory_documents", "inventory_document_lines", "unit_conversions", "sku_conversions", "material_lots", "budget_activity_rates"]);
+  const isBudgetRateModal = table.key === "budget_activity_rates";
   const modalWideClass = fullTables.has(table.key)
     ? " is-wide is-full"
     : (wideTables.has(table.key) || visibleFields.length > 14 ? " is-wide" : "");
   return `
-    <div class="farm-activity-modal" role="dialog" aria-modal="true">
+    <div class="farm-activity-modal${isBudgetRateModal ? " budget-rate-full-modal" : ""}" role="dialog" aria-modal="true">
       <div class="farm-activity-modal-card${modalWideClass}">
         <div class="farm-activity-modal-head">
           <div>
-            <h3>${state.farmEditId ? "แก้ไข" : "เพิ่ม"}${esc(table.title)}</h3>
-            <span>${esc(table.key)} · กรอกข้อมูลแล้วกดบันทึก</span>
+            <h3>${isBudgetRateModal ? "แก้ไขรายการสัญญา / Rate" : `${state.farmEditId ? "แก้ไข" : "เพิ่ม"}${esc(table.title)}`}</h3>
+            <span>${isBudgetRateModal ? "ดับเบิลคลิกจากตารางเพื่อแก้ไขหรือลบ Rate นี้" : `${esc(table.key)} · กรอกข้อมูลแล้วกดบันทึก`}</span>
           </div>
           <button type="button" data-farm-activity-modal-close aria-label="ปิด">×</button>
         </div>
@@ -18452,8 +18452,11 @@ async function init() {
         return;
       }
       if (farmRow.matches("[data-farm-budget-rate-row]")) {
-        applyFarmBudgetRateToBuilder(farmRow.dataset.farmRow);
-        render();
+        window.clearTimeout(state.farmBudgetRateClickTimer);
+        state.farmBudgetRateClickTimer = window.setTimeout(() => {
+          applyFarmBudgetRateToBuilder(farmRow.dataset.farmRow);
+          render();
+        }, 220);
         return;
       }
       if (farmRow.matches("[data-farm-work-order-row]")) {
@@ -18675,9 +18678,13 @@ async function init() {
     }
     const budgetRateRow = e.target.closest("[data-farm-budget-rate-row]");
     if (budgetRateRow) {
+      window.clearTimeout(state.farmBudgetRateClickTimer);
       state.farmTableId = "budget_activity_rates";
       state.farmActivityModalTable = "budget_activity_rates";
-      editFarmRow(budgetRateRow.dataset.farmBudgetRateRow);
+      state.farmEditId = budgetRateRow.dataset.farmBudgetRateRow;
+      state.farmDetailId = state.farmEditId;
+      state.farmBudgetEditingRateId = state.farmEditId;
+      render();
       return;
     }
     const workOrderRow = e.target.closest("[data-farm-work-order-row]");
