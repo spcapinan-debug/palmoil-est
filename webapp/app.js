@@ -45,6 +45,7 @@
   farmRecords: [],
   farmFilters: { query: "", status: "all", role: "super_admin" },
   farmNewDefaults: {},
+  farmInventoryCategoryMajor: "",
   farmSelectedTeamId: "",
   farmActivityModalTable: "",
   farmBudgetContract: {
@@ -9738,6 +9739,28 @@ function mergeCleanRows(currentRows, derivedRows) {
   return [...map.values()];
 }
 
+function mergeInventoryRows(currentRows, derivedRows) {
+  const map = new Map();
+  for (const row of [...derivedRows, ...currentRows]) {
+    const key = String(row.item_code || row.id || "").trim().toLowerCase();
+    if (!key) continue;
+    const previous = map.get(key) || {};
+    map.set(key, {
+      ...previous,
+      ...row,
+      id: row.id || previous.id,
+      item_code: row.item_code || previous.item_code,
+      item_name: row.item_name || previous.item_name,
+      category_id: row.category_id || previous.category_id || "",
+      category_name: row.category_name || previous.category_name || "",
+      unit_id: row.unit_id || previous.unit_id || "",
+      unit_name: row.unit_name || previous.unit_name || "",
+      status: row.status || previous.status || "active",
+    });
+  }
+  return [...map.values()].sort((a, b) => String(a.item_code || "").localeCompare(String(b.item_code || ""), "th", { numeric: true }));
+}
+
 function mergeAreaRows(currentRows, derivedRows) {
   const map = new Map();
   for (const row of [...derivedRows, ...currentRows]) {
@@ -9896,8 +9919,10 @@ function farmCleanRows(tableId, rows) {
       item_code: row.material_code || row.id,
       item_name: row.material_name || row.material_code || row.id,
       item_type: "material",
-      category_name: row.category_id || row.category_name || "",
-      unit_name: row.unit_id || row.unit_name || "",
+      category_id: row.category_id || "",
+      category_name: farmLookupLabel("material_categories", row.category_id) || row.category_name || "",
+      unit_id: row.base_unit_id || row.unit_id || "",
+      unit_name: farmLookupLabel("units", row.base_unit_id || row.unit_id) || row.unit_name || "",
       warehouse_id: row.default_warehouse_id || "",
       status: row.status || "active",
       note: row.note || "",
@@ -9916,7 +9941,7 @@ function farmCleanRows(tableId, rows) {
       status: row.status || "active",
       note: row.note || "",
     }));
-    return mergeCleanRows(rows, [...materials, ...vehicles]);
+    return mergeInventoryRows(rows, [...materials, ...vehicles]);
   }
   if (tableId === "work_plans") {
     const annual = farmRowsByKey("annual_work_plans").map((row) => ({
@@ -12746,6 +12771,46 @@ function farmInventoryBaseUnitName(unitValue) {
   return baseUnit?.unit_name || unit.base_unit || unit.unit_name || unitValue || "";
 }
 
+function farmInventoryCategoryMajor(categoryOrName) {
+  const rawName = typeof categoryOrName === "string"
+    ? categoryOrName
+    : (categoryOrName?.major_category || categoryOrName?.category_group || categoryOrName?.category_name || "");
+  const name = String(rawName || "").trim();
+  if (!name || /^group\s*details/i.test(name)) return "";
+  return name.split("/")[0].trim() || name;
+}
+
+function farmInventoryCategoryCodeMajor(categoryOrCode) {
+  const rawCode = typeof categoryOrCode === "string" ? categoryOrCode : (categoryOrCode?.category_code || "");
+  const code = String(rawCode || "").trim();
+  if (!code || /^group\s*id/i.test(code)) return "";
+  return code.split("-")[0].trim() || code;
+}
+
+function farmInventoryCategoryForItem(item) {
+  if (!item) return null;
+  if (item.category_id) {
+    const byId = farmLookup("material_categories", item.category_id);
+    if (byId) return byId;
+  }
+  const itemCategoryName = String(item.category_name || "").trim();
+  if (itemCategoryName) {
+    const byName = farmRowsByKey("material_categories").find((category) =>
+      String(category.category_name || "").trim() === itemCategoryName
+    );
+    if (byName) return byName;
+    return { category_name: itemCategoryName, category_code: item.category_code || "" };
+  }
+  const itemCode = String(item.item_code || item.material_code || "").trim();
+  const itemPrefix = itemCode.split("-").slice(0, 2).join("-");
+  return farmRowsByKey("material_categories").find((category) => String(category.category_code || "").trim() === itemPrefix) || null;
+}
+
+function farmInventoryItemMajor(item) {
+  const category = farmInventoryCategoryForItem(item);
+  return farmInventoryCategoryMajor(category) || "ไม่ระบุหมวด";
+}
+
 function farmInventoryLineBaseQuantity(line, item = {}) {
   const unit = line.unit_name || line.unit || farmLookupLabel("units", line.unit_id) || item.unit_name;
   return n(line.quantity || line.received_quantity || line.issued_quantity) * farmInventoryUnitFactor(unit);
@@ -12778,19 +12843,51 @@ function renderFarmInventoryBoard() {
   const conversions = farmRowsByKey("unit_conversions");
   const skuConversions = farmRowsByKey("sku_conversions");
   const query = state.farmFilters.query.trim().toLowerCase();
+  const selectedMajor = state.farmInventoryCategoryMajor || "";
   const filteredItems = items.filter((item) => {
     const statusOk = state.farmFilters.status === "all" || String(item.status || "").toLowerCase() === state.farmFilters.status;
     const queryOk = !query || [item.item_code, item.item_name, item.item_type, item.category_name, item.unit_name, item.plate_no].join(" ").toLowerCase().includes(query);
-    return statusOk && queryOk;
+    const categoryOk = !selectedMajor || farmInventoryItemMajor(item) === selectedMajor;
+    return statusOk && queryOk && categoryOk;
   });
-  const groupRows = categories.map((category) => {
-    const categoryItems = filteredItems.filter((item) => item.category_id === category.id || item.category_name === category.category_name);
+  const categoryMajorMap = new Map();
+  for (const category of categories) {
+    const major = farmInventoryCategoryMajor(category);
+    if (!major) continue;
+    const current = categoryMajorMap.get(major) || {
+      major,
+      code: farmInventoryCategoryCodeMajor(category),
+      categoryCount: 0,
+      itemCount: 0,
+      activeCount: 0,
+    };
+    current.categoryCount += 1;
+    if (!current.code) current.code = farmInventoryCategoryCodeMajor(category);
+    categoryMajorMap.set(major, current);
+  }
+  for (const item of items) {
+    const major = farmInventoryItemMajor(item);
+    const current = categoryMajorMap.get(major) || {
+      major,
+      code: farmInventoryCategoryCodeMajor(item.item_code) || "-",
+      categoryCount: 0,
+      itemCount: 0,
+      activeCount: 0,
+    };
+    current.itemCount += 1;
+    if (String(item.status || "active").toLowerCase() === "active") current.activeCount += 1;
+    categoryMajorMap.set(major, current);
+  }
+  const majorRows = [...categoryMajorMap.values()]
+    .sort((a, b) => String(a.major).localeCompare(String(b.major), "th", { numeric: true }));
+  const groupRows = majorRows.map((category) => {
+    const isActive = selectedMajor === category.major;
     return `
-      <tr data-farm-inventory-table="material_categories" data-farm-row="${esc(category.id)}">
-        <td><strong>${esc(category.category_code || "-")}</strong></td>
-        <td>${esc(category.category_name || "-")}</td>
-        <td class="num">${fmt(categoryItems.length)}</td>
-        <td>${esc(farmTranslateValue(category.status) || "-")}</td>
+      <tr class="farm-inventory-major-row${isActive ? " active" : ""}" data-farm-inventory-major="${esc(category.major)}">
+        <td><strong>${esc(category.code || "-")}</strong></td>
+        <td>${esc(category.major)}<small>${fmt(category.categoryCount)} หมวดย่อย</small></td>
+        <td class="num">${fmt(category.itemCount)}</td>
+        <td class="num">${fmt(category.activeCount)}</td>
       </tr>`;
   }).join("");
   const warehouseRows = warehouses.map((warehouse) => {
@@ -12803,12 +12900,14 @@ function renderFarmInventoryBoard() {
         <td>${esc(farmTranslateValue(warehouse.status) || "-")}</td>
       </tr>`;
   }).join("");
-  const itemRows = filteredItems.slice(0, 80).map((item) => {
+  const itemRows = filteredItems.map((item) => {
     const qty = farmInventoryQuantityForItem(item.id);
+    const category = farmInventoryCategoryForItem(item);
+    const categoryLabel = category?.category_name || item.category_name || "-";
     return `
       <tr class="farm-editable-row" data-farm-row="${esc(item.id)}" data-farm-inventory-table="inventory_master">
         <td><strong>${esc(item.item_code || "-")}</strong><small>${esc(farmTranslateValue(item.item_type || "material"))}</small></td>
-        <td>${esc(item.item_name || "-")}<small>${esc(item.category_name || "-")}</small></td>
+        <td>${esc(item.item_name || "-")}<small>${esc(categoryLabel)}</small></td>
         <td>${esc(item.unit_name || "-")}</td>
         <td>${esc(farmLookupLabel("warehouses", item.warehouse_id) || "-")}</td>
         <td class="num">${moneyNf.format(qty)}<small>${esc(farmInventoryBaseUnitName(item.unit_name) || item.unit_name || "-")}</small></td>
@@ -12866,12 +12965,18 @@ function renderFarmInventoryBoard() {
       <div class="farm-inventory-grid">
         <article class="farm-panel farm-inventory-list">
           <div class="section-head">
-            <h3>หมวดพัสดุ / คลัง</h3>
-            <button type="button" data-farm-inventory-add="material_categories">เพิ่มหมวด</button>
+            <div>
+              <h3>หมวดพัสดุ / คลัง</h3>
+              <span>${selectedMajor ? `กำลังดู: ${esc(selectedMajor)}` : "คลิกหมวดใหญ่เพื่อกรองรายการด้านขวา"}</span>
+            </div>
+            <div>
+              ${selectedMajor ? `<button type="button" data-farm-inventory-major="">ทั้งหมด</button>` : ""}
+              <button type="button" data-farm-inventory-add="material_categories">เพิ่มหมวด</button>
+            </div>
           </div>
           <div class="table-wrap">
             <table class="mini-table farm-table">
-              <thead><tr><th>รหัส</th><th>ชื่อ</th><th>รายการ</th><th>สถานะ</th></tr></thead>
+              <thead><tr><th>รหัส</th><th>หมวดใหญ่</th><th>รายการ</th><th>ใช้งาน</th></tr></thead>
               <tbody>${groupRows || `<tr><td colspan="4">ยังไม่มีหมวดพัสดุ</td></tr>`}</tbody>
             </table>
           </div>
@@ -12888,7 +12993,10 @@ function renderFarmInventoryBoard() {
         </article>
         <article class="farm-panel farm-inventory-list">
           <div class="section-head">
-            <h3>รายการพัสดุ / อุปกรณ์</h3>
+            <div>
+              <h3>รายการพัสดุ / อุปกรณ์</h3>
+              <span>${fmt(filteredItems.length)} รายการ${selectedMajor ? ` · ${esc(selectedMajor)}` : ""} · ดับเบิลคลิกเพื่อแก้ไข/ลบ</span>
+            </div>
             <button type="button" data-farm-inventory-add="inventory_master">เพิ่มรายการ</button>
           </div>
           <div class="table-wrap">
@@ -15891,7 +15999,10 @@ function renderFarmActivityModal() {
   const row = state.farmEditId ? farmRows(table).find((item) => item.id === state.farmEditId) || {} : { ...(state.farmNewDefaults || {}) };
   const visibleFields = farmVisibleFields(table);
   const wideTables = new Set(["people", "employees", "contractors", "worker_documents", "housing_units", "person_housing_assignments", "housing_utility_charges", "teams", "team_members", "team_activity_skills"]);
-  const modalWideClass = wideTables.has(table.key) || visibleFields.length > 14 ? " is-wide" : "";
+  const fullTables = new Set(["inventory_master", "materials", "vehicles", "material_categories", "warehouses", "inventory_documents", "inventory_document_lines", "unit_conversions", "sku_conversions", "material_lots"]);
+  const modalWideClass = fullTables.has(table.key)
+    ? " is-wide is-full"
+    : (wideTables.has(table.key) || visibleFields.length > 14 ? " is-wide" : "");
   return `
     <div class="farm-activity-modal" role="dialog" aria-modal="true">
       <div class="farm-activity-modal-card${modalWideClass}">
@@ -17667,6 +17778,14 @@ async function init() {
       render();
       return;
     }
+    const inventoryMajor = e.target.closest("[data-farm-inventory-major]");
+    if (inventoryMajor) {
+      state.farmInventoryCategoryMajor = inventoryMajor.dataset.farmInventoryMajor || "";
+      state.farmDetailId = "";
+      state.farmEditId = "";
+      render();
+      return;
+    }
     const inventoryQuick = e.target.closest("[data-farm-inventory-quick]");
     if (inventoryQuick) {
       const type = inventoryQuick.dataset.farmInventoryQuick;
@@ -17869,7 +17988,6 @@ async function init() {
         state.farmTableId = farmRow.dataset.farmInventoryTable;
         state.farmDetailId = farmRow.dataset.farmRow;
         state.farmEditId = "";
-        render();
         return;
       }
       if (farmRow.matches("[data-farm-budget-rate-row]")) {

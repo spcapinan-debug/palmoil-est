@@ -5601,6 +5601,11 @@ tfoot td {
   max-height: calc(100vh - 28px);
 }
 
+.farm-activity-modal-card.is-full {
+  width: min(1480px, calc(100vw - 20px));
+  max-height: calc(100vh - 20px);
+}
+
 .farm-activity-modal-head {
   position: sticky;
   top: 0;
@@ -5645,6 +5650,11 @@ tfoot td {
 .farm-activity-modal-form.is-wide {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: start;
+}
+
+.farm-activity-modal-form.is-full {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-height: min(560px, calc(100vh - 150px));
 }
 
 .farm-activity-modal-form .farm-form-actions {
@@ -5711,7 +5721,8 @@ tfoot td {
 }
 
 @media (max-width: 980px) {
-  .farm-activity-modal-form.is-wide {
+  .farm-activity-modal-form.is-wide,
+  .farm-activity-modal-form.is-full {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -5722,11 +5733,13 @@ tfoot td {
   }
 
   .farm-activity-modal-form,
-  .farm-activity-modal-form.is-wide {
+  .farm-activity-modal-form.is-wide,
+  .farm-activity-modal-form.is-full {
     grid-template-columns: 1fr;
   }
 
-  .farm-activity-modal-card.is-wide {
+  .farm-activity-modal-card.is-wide,
+  .farm-activity-modal-card.is-full {
     width: calc(100vw - 20px);
   }
 }
@@ -7358,6 +7371,36 @@ tfoot td {
   font-size: 10px;
   font-weight: 800;
   line-height: 1.1;
+}
+
+.farm-inventory-major-row {
+  cursor: pointer;
+}
+
+.farm-inventory-major-row:hover {
+  background: rgba(94, 179, 155, .08);
+}
+
+.farm-inventory-major-row.active {
+  background: rgba(94, 179, 155, .16);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.farm-inventory-list .section-head > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.farm-inventory-list .section-head > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.farm-inventory-list .section-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .farm-inventory-form-grid {
