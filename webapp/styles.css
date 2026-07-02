@@ -13329,3 +13329,486 @@ tfoot td,
 .est-table tr.is-total td {
   font-weight: 900;
 }
+@media (max-width: 760px) {
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .farm-work-page,
+  .farm-dispatch-panel,
+  .farm-result-page {
+    gap: 10px;
+  }
+
+  .farm-work-page .section-head,
+  .farm-dispatch-panel > .section-head,
+  .farm-result-page > .section-head {
+    align-items: flex-start;
+    gap: 3px;
+    padding: 0 2px;
+  }
+
+  .farm-work-page .section-head h3,
+  .farm-dispatch-panel > .section-head h3,
+  .farm-result-page > .section-head h3 {
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  .farm-work-page .section-head span,
+  .farm-dispatch-panel > .section-head span,
+  .farm-result-page > .section-head span {
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .farm-work-board,
+  .farm-planner-console,
+  .farm-dispatch-panel,
+  .farm-result-card {
+    border-radius: 12px;
+    padding: 10px;
+  }
+
+  .farm-work-board {
+    margin-inline: -8px;
+  }
+
+  .farm-work-board .section-head {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: rgba(255, 255, 255, .94);
+  }
+
+  .farm-work-timeline,
+  .farm-work-board-scroll,
+  .farm-work-board-table,
+  .farm-work-gantt {
+    max-height: 44vh;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .farm-plan-flow {
+    display: flex !important;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 0 2px 4px;
+    scroll-snap-type: x mandatory;
+  }
+
+  .farm-plan-flow article {
+    flex: 0 0 154px;
+    min-height: 34px;
+    padding: 6px 8px;
+    scroll-snap-align: start;
+  }
+
+  .farm-plan-flow b {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+  }
+
+  .farm-plan-flow span {
+    font-size: 11px;
+    white-space: normal;
+  }
+
+  .farm-work-page .farm-plan-simple,
+  .farm-plan-simple,
+  .farm-dispatch-grid,
+  .farm-result-entry-grid,
+  .farm-result-bottom-grid,
+  .farm-result-resource-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+  }
+
+  .farm-work-page .farm-plan-selector-card,
+  .farm-work-page .farm-plan-summary,
+  .farm-plan-selector-card,
+  .farm-plan-summary {
+    grid-column: auto !important;
+  }
+
+  .farm-plan-card,
+  .farm-dispatch-card {
+    border-radius: 12px;
+    padding: 10px;
+  }
+
+  .farm-plan-card h4,
+  .farm-dispatch-card h4 {
+    font-size: 14px;
+  }
+
+  .farm-plan-work-grid,
+  .farm-dispatch-fields,
+  .farm-result-fields,
+  .farm-survey-meta-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+  }
+
+  .farm-plan-work-ref,
+  .farm-result-fields label:nth-child(2),
+  .farm-result-fields label:nth-child(6),
+  .farm-survey-meta-grid label:first-child {
+    grid-column: auto !important;
+  }
+
+  .farm-plan-card label,
+  .farm-dispatch-fields label,
+  .farm-result-card label {
+    font-size: 11px;
+    gap: 5px;
+  }
+
+  .farm-plan-card select,
+  .farm-plan-card input[type="text"],
+  .farm-plan-card input[type="number"],
+  .farm-dispatch-fields select,
+  .farm-dispatch-fields input[type="text"],
+  .farm-dispatch-table input,
+  .farm-result-card input,
+  .farm-result-card select,
+  .farm-result-resource-table input,
+  .farm-result-worker-table input,
+  .farm-result-worker-table select {
+    min-height: 42px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  .farm-plan-card .date-input-control input[type="text"],
+  .farm-dispatch-fields .date-input-control input[type="text"],
+  .farm-result-card .date-input-control input[type="text"] {
+    height: 42px;
+    min-height: 42px;
+    padding-right: 52px;
+  }
+
+  .farm-plan-card .calendar-btn,
+  .farm-plan-card .native-date-picker,
+  .farm-dispatch-fields .calendar-btn,
+  .farm-dispatch-fields .native-date-picker,
+  .farm-result-card .calendar-btn,
+  .farm-result-card .native-date-picker {
+    width: 46px;
+    min-height: 42px;
+  }
+
+  .farm-work-budget-selector {
+    display: flex !important;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x mandatory;
+  }
+
+  .farm-work-budget-selector .budget-tree-card {
+    flex: 0 0 84vw;
+    max-width: 420px;
+    min-height: 360px;
+    scroll-snap-align: start;
+  }
+
+  .farm-work-budget-selector .budget-tree-card h4 {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: -8px -8px 6px;
+    padding: 8px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #fff;
+  }
+
+  .farm-work-budget-selector .budget-tree-scroll {
+    height: 310px;
+    max-height: 310px;
+    padding-right: 2px;
+  }
+
+  .farm-plan-selector-note {
+    align-items: flex-start;
+    flex-direction: column;
+    font-size: 11px;
+  }
+
+  .farm-plan-methods,
+  .farm-plan-method-grid,
+  .farm-plan-resource-summary {
+    grid-template-columns: 1fr !important;
+  }
+
+  .farm-plan-methods label,
+  .farm-plan-method-grid label {
+    min-height: 42px;
+    padding: 9px 10px;
+    border: 1px solid #dbe5f2;
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  .farm-plan-resource-summary {
+    display: grid;
+    gap: 6px;
+  }
+
+  .farm-plan-cost-preview {
+    overflow-x: auto;
+  }
+
+  .farm-plan-cost-preview table {
+    min-width: 520px;
+  }
+
+  .farm-plan-actions,
+  .farm-dispatch-actions {
+    position: sticky;
+    bottom: 8px;
+    z-index: 15;
+    margin: 4px -2px 0;
+    padding: 8px;
+    border: 1px solid rgba(31, 41, 55, .1);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .94);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, .18);
+    backdrop-filter: blur(10px);
+  }
+
+  .farm-plan-actions button,
+  .farm-dispatch-actions button,
+  .farm-result-primary-save,
+  .farm-result-workbar > button {
+    min-height: 46px;
+    width: 100%;
+    border-radius: 12px;
+    font-size: 14px;
+  }
+
+  .farm-dispatch-summary {
+    grid-template-columns: 78px minmax(0, 1fr);
+    padding: 8px;
+  }
+
+  .farm-dispatch-worker-list {
+    grid-template-columns: 1fr !important;
+    max-height: 280px;
+  }
+
+  .farm-dispatch-worker-list label {
+    min-height: 46px;
+    border-radius: 10px;
+  }
+
+  .farm-dispatch-worker-list input {
+    width: 18px;
+    height: 18px;
+    flex-basis: 18px;
+  }
+
+  .farm-dispatch-worker-list strong {
+    font-size: 12px;
+  }
+
+  .farm-dispatch-materials .table-wrap,
+  .farm-result-worker-wrap,
+  .farm-result-resource-wrap {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .farm-dispatch-table,
+  .farm-result-worker-table,
+  .farm-result-resource-table {
+    min-width: 0;
+  }
+
+  .farm-dispatch-table thead,
+  .farm-result-worker-table thead,
+  .farm-result-resource-table thead {
+    display: none;
+  }
+
+  .farm-dispatch-table tbody,
+  .farm-result-worker-table tbody,
+  .farm-result-resource-table tbody,
+  .farm-dispatch-table tr,
+  .farm-result-worker-table tr,
+  .farm-result-resource-table tr,
+  .farm-dispatch-table td,
+  .farm-result-worker-table td,
+  .farm-result-resource-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .farm-dispatch-table tr,
+  .farm-result-worker-table tbody tr,
+  .farm-result-resource-table tbody tr {
+    margin-bottom: 8px;
+    border: 1px solid #dbe5f2;
+    border-radius: 12px;
+    padding: 8px;
+    background: #fff;
+  }
+
+  .farm-dispatch-table td,
+  .farm-result-worker-table td,
+  .farm-result-resource-table td {
+    border: 0;
+    padding: 4px 0;
+    text-align: left;
+  }
+
+  .farm-dispatch-table td:first-child {
+    display: none;
+  }
+
+  .farm-dispatch-table td:nth-child(2),
+  .farm-result-worker-table td:first-child,
+  .farm-result-resource-table td:first-child {
+    padding-bottom: 7px;
+    border-bottom: 1px solid #edf2f7;
+  }
+
+  .farm-dispatch-table td:nth-child(3)::before,
+  .farm-dispatch-table td:nth-child(4)::before,
+  .farm-dispatch-table td:nth-child(5)::before,
+  .farm-result-worker-table td:nth-child(n + 2)::before,
+  .farm-result-resource-table td:nth-child(n + 2)::before {
+    display: inline-block;
+    min-width: 82px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  .farm-dispatch-table td:nth-child(3)::before { content: "แผน"; }
+  .farm-dispatch-table td:nth-child(4)::before { content: "เบิกจ่าย"; }
+  .farm-dispatch-table td:nth-child(5)::before { content: "หน่วย"; }
+  .farm-result-worker-table td:nth-child(2)::before { content: "บทบาท"; }
+  .farm-result-worker-table td:nth-child(3)::before { content: "สถานะ"; }
+  .farm-result-worker-table td:nth-child(4)::before { content: "เข้า"; }
+  .farm-result-worker-table td:nth-child(5)::before { content: "ออก"; }
+  .farm-result-worker-table td:nth-child(6)::before { content: "ชั่วโมง"; }
+  .farm-result-worker-table td:nth-child(7)::before { content: "OT"; }
+  .farm-result-worker-table td:nth-child(8)::before { content: "ผลงาน"; }
+  .farm-result-worker-table td:nth-child(9)::before { content: "ค่าแรง"; }
+  .farm-result-worker-table td:nth-child(10)::before { content: "เพิ่ม"; }
+  .farm-result-worker-table td:nth-child(11)::before { content: "หัก"; }
+  .farm-result-worker-table td:nth-child(12)::before { content: "สุทธิ"; }
+  .farm-result-worker-table td:nth-child(13)::before { content: "หมายเหตุ"; }
+  .farm-result-resource-table:not(.farm-result-machine-table) td:nth-child(2)::before { content: "แผน"; }
+  .farm-result-resource-table:not(.farm-result-machine-table) td:nth-child(3)::before { content: "ใช้จริง"; }
+  .farm-result-resource-table:not(.farm-result-machine-table) td:nth-child(4)::before { content: "สูญเสีย"; }
+  .farm-result-resource-table:not(.farm-result-machine-table) td:nth-child(5)::before { content: "หน่วย"; }
+  .farm-result-resource-table:not(.farm-result-machine-table) td:nth-child(6)::before { content: "หมายเหตุ"; }
+  .farm-result-machine-table td:nth-child(2)::before { content: "ชม.จริง"; }
+  .farm-result-machine-table td:nth-child(3)::before { content: "ชม.เริ่ม"; }
+  .farm-result-machine-table td:nth-child(4)::before { content: "ชม.จบ"; }
+  .farm-result-machine-table td:nth-child(5)::before { content: "กม.เริ่ม"; }
+  .farm-result-machine-table td:nth-child(6)::before { content: "กม.จบ"; }
+  .farm-result-machine-table td:nth-child(7)::before { content: "น้ำมันเบิก"; }
+  .farm-result-machine-table td:nth-child(8)::before { content: "น้ำมันคง"; }
+  .farm-result-machine-table td:nth-child(9)::before { content: "หมายเหตุ"; }
+
+  .farm-dispatch-actions p {
+    font-size: 11px;
+  }
+
+  .farm-result-workbar {
+    grid-template-columns: 1fr !important;
+    border-radius: 12px;
+    padding: 10px;
+  }
+
+  .farm-result-workbar > div {
+    border-left: 0;
+    border-top: 1px solid #e5e7eb;
+    padding: 8px 0 0;
+  }
+
+  .farm-result-summary-strip,
+  .farm-result-role-strip {
+    display: flex !important;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 3px;
+    scroll-snap-type: x mandatory;
+  }
+
+  .farm-result-summary-strip article,
+  .farm-result-role-strip span {
+    flex: 0 0 170px;
+    min-height: 76px;
+    border-radius: 12px;
+    scroll-snap-align: start;
+  }
+
+  .farm-result-role-strip span {
+    min-height: 50px;
+  }
+
+  .farm-result-mobile-card {
+    display: none;
+  }
+
+  .farm-result-worker-tools {
+    gap: 8px;
+  }
+
+  .farm-result-worker-tools button {
+    width: 100%;
+  }
+
+  .farm-result-worker-table tfoot,
+  .farm-result-resource-table tfoot {
+    display: block;
+    border: 1px solid #dbe5f2;
+    border-radius: 12px;
+    padding: 8px;
+    background: #f8fafc;
+  }
+
+  .farm-result-worker-table tfoot tr,
+  .farm-result-resource-table tfoot tr,
+  .farm-result-worker-table tfoot td,
+  .farm-result-resource-table tfoot td {
+    display: block;
+    width: 100%;
+    border: 0;
+    padding: 2px 0;
+  }
+
+  .farm-result-card .section-head {
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .farm-survey-score-grid,
+  .farm-survey-answer-grid,
+  .farm-survey-readiness-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .farm-survey-score-section {
+    padding: 9px;
+    border-radius: 12px;
+  }
+
+  .farm-survey-score-section > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .farm-survey-ready-actions label {
+    flex: 1 1 120px;
+    justify-content: center;
+    min-height: 38px;
+  }
+}
