@@ -13370,7 +13370,6 @@ function renderFarmResultPanel() {
             </label>
           </div>
         </article>
-        ${renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, draft, resultDate: draft.resultDate || farmToday() })}
         <article class="farm-result-card farm-result-mobile-card">
           <div class="section-head"><h3>เช็กหน้างาน</h3><span>สำหรับหัวหน้าทีม</span></div>
           <div class="farm-result-mobile-grid">
@@ -13493,6 +13492,7 @@ function renderFarmResultPanel() {
           </div>
         </article>
       </div>
+      ${renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, draft, resultDate: draft.resultDate || farmToday() })}
       <div class="farm-result-bottom-grid">
         <article class="farm-result-card">
           <div class="section-head"><h3>ใบชั่ง / แหล่งผลงาน</h3><span>${fmt(calc.tickets.length)} ใบ · ${fmt(calc.ticketKg)} กก.</span></div>
