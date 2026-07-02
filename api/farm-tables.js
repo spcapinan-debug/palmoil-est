@@ -292,6 +292,14 @@ async function deleteFallbackRow(table, id) {
   return deleted;
 }
 
+async function deleteFallbackTableRows(table) {
+  const rows = await supabaseFetch(`est_master_records?category=eq.${encodeURIComponent(farmRecordCategory(table))}&target_table=eq.${encodeURIComponent(table)}`, {
+    method: "DELETE",
+    headers: { Prefer: "return=representation" },
+  });
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
 const META_KEYS = new Set([
   "moduleId",
   "tableId",
@@ -483,6 +491,15 @@ module.exports = async function handler(req, res) {
       const body = await readBody(req).catch(() => ({}));
       const table = validTable(body.table || requestUrl.searchParams.get("table"));
       if (!table) return json(res, 400, { ok: false, error: "Invalid farm table" });
+      if (body.fallbackOnly === true && body.all === true) {
+        const deleted = await deleteFallbackTableRows(table);
+        return json(res, 200, {
+          ok: true,
+          table,
+          mode: "farm-master-fallback",
+          deleted,
+        });
+      }
       const id = cleanText(body.id || requestUrl.searchParams.get("id"), 220);
       if (!id) return json(res, 400, { ok: false, error: "No id" });
       let realDeleted = 0;
