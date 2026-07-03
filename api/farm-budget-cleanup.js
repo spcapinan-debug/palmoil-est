@@ -300,6 +300,11 @@ module.exports = async function handler(req, res) {
       budget_rate_materials: [],
       budget_rate_roles: [],
     };
+    const fallbackRelationCreates = {
+      budget_rate_blocks: [],
+      budget_rate_materials: [],
+      budget_rate_roles: [],
+    };
     const relationDeletes = {
       budget_rate_blocks: [],
       budget_rate_materials: [],
@@ -360,7 +365,8 @@ module.exports = async function handler(req, res) {
           const key = relationKey(table, row);
           if (!map.has(key)) map.set(key, row);
         }
-        relationCreates[table].push(...map.values());
+        if (keep._farmFallback) fallbackRelationCreates[table].push(...map.values());
+        else relationCreates[table].push(...map.values());
       }
 
       staleRateIds.push(...rows.slice(1).map((row) => row.id).filter(Boolean));
@@ -381,6 +387,7 @@ module.exports = async function handler(req, res) {
         canonicalFallbackRates: canonicalFallbackRates.length,
         relationDeletes: Object.fromEntries(Object.entries(relationDeletes).map(([key, rows]) => [key, rows.length])),
         relationCreates: Object.fromEntries(Object.entries(relationCreates).map(([key, rows]) => [key, rows.length])),
+        fallbackRelationCreates: Object.fromEntries(Object.entries(fallbackRelationCreates).map(([key, rows]) => [key, rows.length])),
         details,
       });
     }
@@ -403,11 +410,11 @@ module.exports = async function handler(req, res) {
     for (const table of Object.keys(relationCreates)) {
       if (!availableRelations[table]) {
         result.upsertedRelations[table] = 0;
-        result.upsertedFallbackRelations[table] = await saveFallbackRows(table, relationCreates[table]);
+        result.upsertedFallbackRelations[table] = await saveFallbackRows(table, [...relationCreates[table], ...fallbackRelationCreates[table]]);
         continue;
       }
       result.upsertedRelations[table] = await bulkUpsert(table, relationCreates[table]);
-      result.upsertedFallbackRelations[table] = 0;
+      result.upsertedFallbackRelations[table] = await saveFallbackRows(table, fallbackRelationCreates[table]);
     }
     result.deletedRates = await bulkDelete("budget_activity_rates", staleRateIds);
     result.deletedFallbackRates = await bulkDeleteFallback("budget_activity_rates", staleRateIds);
