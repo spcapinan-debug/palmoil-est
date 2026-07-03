@@ -128,9 +128,60 @@ function cleanDbRow(row = {}) {
   delete out.updatedAt;
   delete out.databaseId;
   delete out._overrideOf;
+  delete out._source;
+  delete out._farmFallback;
   delete out._budgetGroupIds;
   delete out._budgetGroupSize;
   return out;
+}
+
+function farmRecordCategory(table) {
+  return `farm_table:${table}`;
+}
+
+function fallbackLocalId(table, row = {}) {
+  return `${table}:${row.id || Date.now()}`.slice(0, 180);
+}
+
+function fromFallbackRecord(row = {}) {
+  return {
+    ...(row.payload || {}),
+    id: row.payload?.id || row.local_id,
+    databaseId: row.id,
+    _source: "farm_master_records",
+    _farmFallback: true,
+    updated_at: row.updated_at,
+  };
+}
+
+async function loadFallbackRows(table) {
+  const rows = await supabaseFetchAll(`est_master_records?category=eq.${encodeURIComponent(farmRecordCategory(table))}&target_table=eq.${encodeURIComponent(table)}&order=updated_at.desc`);
+  return Array.isArray(rows) ? rows.map(fromFallbackRecord) : [];
+}
+
+async function saveFallbackRows(table, rows = [], reason = "budget cleanup") {
+  const payload = rows.map((row) => {
+    const localId = fallbackLocalId(table, row);
+    return {
+      local_id: localId,
+      category: farmRecordCategory(table),
+      target_table: table,
+      payload: cleanDbRow({ ...row, id: row.id || localId }),
+      note: reason,
+      updated_at: new Date().toISOString(),
+    };
+  });
+  let count = 0;
+  for (const chunk of chunks(payload, 200)) {
+    if (!chunk.length) continue;
+    const saved = await supabaseFetch("est_master_records?on_conflict=local_id", {
+      method: "POST",
+      body: JSON.stringify(chunk),
+      prefer: "resolution=merge-duplicates,return=representation",
+    });
+    count += Array.isArray(saved) ? saved.length : chunk.length;
+  }
+  return count;
 }
 
 function relationRow(table, row, keepId, index) {
@@ -163,6 +214,17 @@ async function bulkDelete(table, ids = []) {
   return count;
 }
 
+async function bulkDeleteFallback(table, ids = []) {
+  const localIds = unique(ids.flatMap((id) => [`${table}:${id}`, id]));
+  let count = 0;
+  for (const chunk of chunks(localIds, 200)) {
+    if (!chunk.length) continue;
+    const deleted = await supabaseFetch(`est_master_records?category=eq.${encodeURIComponent(farmRecordCategory(table))}&local_id=${inFilter(chunk)}`, { method: "DELETE" });
+    count += Array.isArray(deleted) ? deleted.length : chunk.length;
+  }
+  return count;
+}
+
 async function bulkUpsert(table, rows = []) {
   let count = 0;
   for (const chunk of chunks(rows.map(cleanDbRow), 200)) {
@@ -181,12 +243,16 @@ module.exports = async function handler(req, res) {
   try {
     if (req.method !== "POST" && req.method !== "GET") return json(res, 405, { ok: false, error: "Method not allowed" });
     const dryRun = req.method === "GET" || String(new URL(req.url, "http://localhost").searchParams.get("dryRun") || "") === "1";
-    const [rates, blockRelations, materialRelations, roleRelations, blocks] = await Promise.all([
+    const [realRates, fallbackRates, blockRelations, materialRelations, roleRelations, blocks, fallbackBlockRelations, fallbackMaterialRelations, fallbackRoleRelations] = await Promise.all([
       supabaseFetchAll("budget_activity_rates?select=*"),
+      loadFallbackRows("budget_activity_rates"),
       optionalSupabaseFetchAll("budget_rate_blocks?select=*"),
       optionalSupabaseFetchAll("budget_rate_materials?select=*"),
       optionalSupabaseFetchAll("budget_rate_roles?select=*"),
       optionalSupabaseFetchAll("blocks?select=*"),
+      loadFallbackRows("budget_rate_blocks"),
+      loadFallbackRows("budget_rate_materials"),
+      loadFallbackRows("budget_rate_roles"),
     ]);
     const availableRelations = {
       budget_rate_blocks: blockRelations.available,
@@ -194,6 +260,15 @@ module.exports = async function handler(req, res) {
       budget_rate_roles: roleRelations.available,
     };
     const blockRows = blocks.rows || [];
+    const ratesById = new Map();
+    for (const row of realRates) ratesById.set(row.id || JSON.stringify(row), row);
+    for (const row of fallbackRates) ratesById.set(row.id || row.databaseId || JSON.stringify(row), row);
+    const rates = [...ratesById.values()];
+    const relationRows = {
+      budget_rate_blocks: [...(blockRelations.rows || []), ...fallbackBlockRelations],
+      budget_rate_materials: [...(materialRelations.rows || []), ...fallbackMaterialRelations],
+      budget_rate_roles: [...(roleRelations.rows || []), ...fallbackRoleRelations],
+    };
 
     const groups = new Map();
     for (const row of rates) {
@@ -203,7 +278,8 @@ module.exports = async function handler(req, res) {
     }
 
     const targets = [...groups.entries()].filter(([, rows]) => rows.length > 1 && rows.every(isOldBlockRate));
-    const canonicalRates = [];
+    const canonicalRealRates = [];
+    const canonicalFallbackRates = [];
     const relationCreates = {
       budget_rate_blocks: [],
       budget_rate_materials: [],
@@ -236,9 +312,10 @@ module.exports = async function handler(req, res) {
         note: JSON.stringify({ ...note, selectedBlocks: unique([...(note.selectedBlocks || []), ...selectedBlocks]) }),
         updatedAt: new Date().toISOString(),
       });
-      canonicalRates.push(nextRate);
+      if (keep._farmFallback) canonicalFallbackRates.push(nextRate);
+      else canonicalRealRates.push(nextRate);
 
-      const blockRows = selectedBlocks.map((id, index) => {
+      const blockRelationRows = selectedBlocks.map((id, index) => {
         const block = blockRows.find((item) => String(item.id) === String(id)) || {};
         return {
           id: `budget-block-${safe(keepId)}-${safe(id)}-${index + 1}`.slice(0, 180),
@@ -255,14 +332,13 @@ module.exports = async function handler(req, res) {
       });
 
       for (const [table, sourceRows] of Object.entries({
-        budget_rate_blocks: blockRelations.rows,
-        budget_rate_materials: materialRelations.rows,
-        budget_rate_roles: roleRelations.rows,
+        budget_rate_blocks: relationRows.budget_rate_blocks,
+        budget_rate_materials: relationRows.budget_rate_materials,
+        budget_rate_roles: relationRows.budget_rate_roles,
       })) {
-        if (!availableRelations[table]) continue;
         const oldRows = sourceRows.filter((row) => ids.has(String(row.budget_rate_id || "")));
         relationDeletes[table].push(...oldRows.map((row) => row.id).filter(Boolean));
-        const rowsToCreate = table === "budget_rate_blocks" ? blockRows : oldRows.map((row, index) => relationRow(table, row, keepId, index + 1));
+        const rowsToCreate = table === "budget_rate_blocks" ? blockRelationRows : oldRows.map((row, index) => relationRow(table, row, keepId, index + 1));
         const map = new Map();
         for (const row of rowsToCreate) {
           const key = relationKey(table, row);
@@ -283,6 +359,8 @@ module.exports = async function handler(req, res) {
         availableRelations,
         missingRelations: Object.fromEntries(Object.entries(availableRelations).filter(([, ok]) => !ok)),
         staleRateRows: staleRateIds.length,
+        canonicalRealRates: canonicalRealRates.length,
+        canonicalFallbackRates: canonicalFallbackRates.length,
         relationDeletes: Object.fromEntries(Object.entries(relationDeletes).map(([key, rows]) => [key, rows.length])),
         relationCreates: Object.fromEntries(Object.entries(relationCreates).map(([key, rows]) => [key, rows.length])),
         details,
@@ -291,20 +369,30 @@ module.exports = async function handler(req, res) {
 
     const result = {
       targetGroups: targets.length,
-      upsertedRates: await bulkUpsert("budget_activity_rates", canonicalRates),
+      upsertedRates: await bulkUpsert("budget_activity_rates", canonicalRealRates),
+      upsertedFallbackRates: await saveFallbackRows("budget_activity_rates", canonicalFallbackRates),
       deletedRelations: {},
+      deletedFallbackRelations: {},
       upsertedRelations: {},
+      upsertedFallbackRelations: {},
       deletedRates: 0,
+      deletedFallbackRates: 0,
     };
-    for (const table of Object.keys(relationDeletes)) result.deletedRelations[table] = await bulkDelete(table, relationDeletes[table]);
+    for (const table of Object.keys(relationDeletes)) {
+      result.deletedFallbackRelations[table] = await bulkDeleteFallback(table, relationDeletes[table]);
+      result.deletedRelations[table] = availableRelations[table] ? await bulkDelete(table, relationDeletes[table]) : 0;
+    }
     for (const table of Object.keys(relationCreates)) {
       if (!availableRelations[table]) {
         result.upsertedRelations[table] = 0;
+        result.upsertedFallbackRelations[table] = await saveFallbackRows(table, relationCreates[table]);
         continue;
       }
       result.upsertedRelations[table] = await bulkUpsert(table, relationCreates[table]);
+      result.upsertedFallbackRelations[table] = 0;
     }
     result.deletedRates = await bulkDelete("budget_activity_rates", staleRateIds);
+    result.deletedFallbackRates = await bulkDeleteFallback("budget_activity_rates", staleRateIds);
 
     return json(res, 200, { ok: true, ...result, details });
   } catch (error) {
