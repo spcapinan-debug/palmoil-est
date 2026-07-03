@@ -4560,6 +4560,75 @@ tfoot td {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
+.farm-budget-year-settings {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.budget-year-grid {
+  display: grid;
+  grid-template-columns: 120px minmax(220px, 1fr) 170px 170px 130px auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.budget-year-grid label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.budget-year-grid input,
+.budget-year-grid select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #d8dfe8;
+  border-radius: 4px;
+  background: #f9fafb;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.budget-year-actions button {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 900;
+}
+
+.budget-year-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.budget-year-list button {
+  display: grid;
+  gap: 2px;
+  min-width: 170px;
+  padding: 8px 10px;
+  border: 1px solid #d8dfe8;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--ink);
+  text-align: left;
+}
+
+.budget-year-list span,
+.budget-year-list small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .budget-contract-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(170px, 1fr)) auto;

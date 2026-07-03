@@ -462,6 +462,24 @@ async function deleteRealTableRow(table, id) {
   return Array.isArray(rows) ? rows.length : 0;
 }
 
+function supabaseInFilter(values = []) {
+  return `in.(${values.map((value) => `"${String(value).replace(/"/g, '\\"')}"`).join(",")})`;
+}
+
+async function deleteRealTableRows(table) {
+  const rows = await supabaseFetchAll(`${table}?select=id`, 50000);
+  const ids = rows.map((row) => row.id).filter(Boolean);
+  let deleted = 0;
+  for (const part of chunkRows(ids, 300)) {
+    const result = await supabaseFetch(`${table}?id=${supabaseInFilter(part)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=representation" },
+    });
+    deleted += Array.isArray(result) ? result.length : 0;
+  }
+  return deleted;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return json(res, 200, { ok: true });
 
@@ -506,13 +524,26 @@ module.exports = async function handler(req, res) {
       const body = await readBody(req).catch(() => ({}));
       const table = validTable(body.table || requestUrl.searchParams.get("table"));
       if (!table) return json(res, 400, { ok: false, error: "Invalid farm table" });
-      if (body.fallbackOnly === true && body.all === true) {
+      if (body.all === true) {
+        let realDeleted = 0;
+        let realError = null;
+        if (body.fallbackOnly !== true) {
+          try {
+            realDeleted = await deleteRealTableRows(table);
+          } catch (err) {
+            realError = err;
+          }
+        }
         const deleted = await deleteFallbackTableRows(table);
+        if (realError && !deleted) return json(res, 500, { ok: false, table, error: realError.message });
         return json(res, 200, {
           ok: true,
           table,
-          mode: "farm-master-fallback",
-          deleted,
+          mode: realDeleted ? "supabase-real-table" : "farm-master-fallback",
+          deleted: realDeleted + deleted,
+          realDeleted,
+          fallbackDeleted: deleted,
+          warning: realError ? realError.message : "",
         });
       }
       const id = cleanText(body.id || requestUrl.searchParams.get("id"), 220);

@@ -10683,10 +10683,11 @@ async function createFarmBudgetRatesFromSelection() {
     render();
     return;
   }
-  const startDate = picks.startDate || farmToday();
-  const endDate = picks.endDate || `${String(startDate).slice(0, 4)}-12-31`;
-  const fiscalYear = farmBudgetFiscalYear(startDate);
-  const yearRow = farmRowsByKey("budget_years").find((row) => row.fiscal_year === fiscalYear) || farmRowsByKey("budget_years")[0] || {};
+  const startDate = picks.startDate || picks.budgetStartDate || farmToday();
+  const endDate = picks.endDate || picks.budgetEndDate || `${String(startDate).slice(0, 4)}-12-31`;
+  const fiscalYear = picks.budgetFiscalYear || farmBudgetFiscalYear(startDate);
+  const savedYear = await saveFarmBudgetYearSetting({ silent: true });
+  const yearRow = savedYear || farmRowsByKey("budget_years").find((row) => row.fiscal_year === fiscalYear) || {};
   const rateTable = farmTableByKey("budget_activity_rates");
   const blockTable = farmTableByKey("budget_rate_blocks");
   const materialTable = farmTableByKey("budget_rate_materials");
@@ -15266,6 +15267,11 @@ function farmBudgetContractState() {
       rateAmount: "",
       baseMaterialQuantity: "",
       baseUsageUnit: "",
+      budgetFiscalYear: farmBudgetFiscalYear(farmToday()),
+      budgetName: `อัตรางบประมาณ ${farmBudgetFiscalYear(farmToday())}`,
+      budgetStartDate: `${new Date().getFullYear()}-01-01`,
+      budgetEndDate: `${new Date().getFullYear()}-12-31`,
+      budgetStatus: "active",
     };
   }
   const picks = state.farmBudgetContract;
@@ -15288,12 +15294,70 @@ function farmBudgetContractState() {
   if (!Array.isArray(picks.selectedVehicles)) picks.selectedVehicles = [];
   if (picks.baseMaterialQuantity === undefined) picks.baseMaterialQuantity = "";
   if (!picks.baseUsageUnit) picks.baseUsageUnit = "";
+  if (!picks.budgetFiscalYear) picks.budgetFiscalYear = farmBudgetFiscalYear(farmToday());
+  if (!picks.budgetName) picks.budgetName = `อัตรางบประมาณ ${picks.budgetFiscalYear}`;
+  if (!picks.budgetStartDate) picks.budgetStartDate = `${new Date().getFullYear()}-01-01`;
+  if (!picks.budgetEndDate) picks.budgetEndDate = `${new Date().getFullYear()}-12-31`;
+  if (!picks.budgetStatus) picks.budgetStatus = "active";
   return state.farmBudgetContract;
 }
 
 function farmBudgetFiscalYear(dateValueText = "") {
   const year = n(String(dateValueText || "").slice(0, 4)) || new Date().getFullYear();
   return String(year + 543);
+}
+
+function farmBudgetYearId(fiscalYear = "") {
+  return `budget-year-${farmBudgetSafeCode(fiscalYear || farmBudgetFiscalYear(farmToday()))}`.slice(0, 120);
+}
+
+async function saveFarmBudgetYearSetting({ silent = false } = {}) {
+  const picks = farmBudgetContractState();
+  const fiscalYear = String(picks.budgetFiscalYear || farmBudgetFiscalYear(picks.budgetStartDate || farmToday())).trim();
+  if (!fiscalYear) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาระบุปีอัตรางบประมาณก่อนบันทึก";
+    render();
+    return null;
+  }
+  const table = farmTableByKey("budget_years");
+  const existing = farmRowsByKey("budget_years").find((row) => String(row.fiscal_year) === fiscalYear);
+  const row = {
+    id: existing?.id || farmBudgetYearId(fiscalYear),
+    moduleId: "farm-budget",
+    tableId: "budget_years",
+    fiscal_year: fiscalYear,
+    budget_name: picks.budgetName || `อัตรางบประมาณ ${fiscalYear}`,
+    effective_from: picks.budgetStartDate || "",
+    effective_to: picks.budgetEndDate || "",
+    status: picks.budgetStatus || "active",
+    note: "สร้างจากหน้าอัตรางบประมาณ",
+    updatedAt: new Date().toISOString(),
+  };
+  if (!silent) {
+    state.farmSyncBusy = true;
+    state.farmSyncStatus = "";
+    state.farmSyncMessage = `กำลังบันทึกปีอัตรางบประมาณ ${fiscalYear}...`;
+    render();
+  }
+  try {
+    const saved = await persistFarmRowToDatabase(table, row);
+    if (!silent) {
+      state.farmSyncStatus = "success";
+      state.farmSyncMessage = `บันทึกปีอัตรางบประมาณ ${fiscalYear} แล้ว`;
+      await loadFarmTablesFromDatabase({ silent: true, tables: farmDatabaseTablesForView("farm-budget") });
+    }
+    return saved.row || row;
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `บันทึกปีอัตรางบประมาณไม่สำเร็จ: ${error.message}`;
+    return null;
+  } finally {
+    if (!silent) {
+      state.farmSyncBusy = false;
+      render();
+    }
+  }
 }
 
 const FARM_BUDGET_RATE_PRESETS = [
@@ -16494,11 +16558,55 @@ function renderFarmBudgetEditPanel() {
     </article>`;
 }
 
+function renderFarmBudgetYearSettings() {
+  const picks = farmBudgetContractState();
+  const years = farmRowsByKey("budget_years").sort((a, b) => String(b.fiscal_year || "").localeCompare(String(a.fiscal_year || "")));
+  return `
+    <article class="farm-budget-year-settings">
+      <div class="section-head">
+        <h3>ตั้งค่าปีอัตรางบประมาณ</h3>
+        <span>เริ่มข้อมูลใหม่จากปีนี้ แล้วค่อยสร้าง Rate ผ่านหน้าเว็บ</span>
+      </div>
+      <div class="budget-year-grid">
+        <label>ปีอัตรางบประมาณ *
+          <input id="budgetFiscalYear" value="${esc(picks.budgetFiscalYear)}" placeholder="2569">
+        </label>
+        <label>ชื่อชุดอัตรา *
+          <input id="budgetYearName" value="${esc(picks.budgetName)}" placeholder="อัตรางบประมาณ 2569">
+        </label>
+        <label>เริ่มใช้
+          ${renderDateInputControl({ id: "budgetYearStart", value: picks.budgetStartDate, ariaLabel: "เลือกวันที่เริ่มปีอัตรางบประมาณ" })}
+        </label>
+        <label>สิ้นสุด
+          ${renderDateInputControl({ id: "budgetYearEnd", value: picks.budgetEndDate, ariaLabel: "เลือกวันที่สิ้นสุดปีอัตรางบประมาณ" })}
+        </label>
+        <label>สถานะ
+          <select id="budgetYearStatus">
+            ${["active", "draft", "inactive"].map((item) => `<option value="${esc(item)}"${picks.budgetStatus === item ? " selected" : ""}>${esc(farmTranslateValue(item))}</option>`).join("")}
+          </select>
+        </label>
+        <div class="budget-year-actions">
+          <button type="button" data-budget-year-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกปีอัตรางบประมาณ</button>
+        </div>
+      </div>
+      <div class="budget-year-list">
+        ${(years.length ? years : [{ fiscal_year: picks.budgetFiscalYear, budget_name: picks.budgetName, effective_from: picks.budgetStartDate, effective_to: picks.budgetEndDate, status: picks.budgetStatus }]).map((row) => `
+          <button type="button" data-budget-year-pick="${esc(row.id || farmBudgetYearId(row.fiscal_year))}" data-year="${esc(row.fiscal_year || "")}" data-name="${esc(row.budget_name || "")}" data-start="${esc(row.effective_from || "")}" data-end="${esc(row.effective_to || "")}" data-status="${esc(row.status || "active")}">
+            <b>${esc(row.fiscal_year || "-")}</b>
+            <span>${esc(row.budget_name || "-")}</span>
+            <small>${esc([row.effective_from, row.effective_to].filter(Boolean).join(" - ") || farmTranslateValue(row.status || "active"))}</small>
+          </button>
+        `).join("")}
+      </div>
+    </article>`;
+}
+
 function renderFarmBudgetBoard() {
   const rates = farmRowsByKey("budget_activity_rates");
   const picks = farmBudgetContractState();
   return `
     <section class="farm-budget-contract">
+      ${renderFarmBudgetYearSettings()}
       <article class="farm-budget-contract-head">
         <div class="section-head">
           <h3>ข้อมูลสัญญา</h3>
@@ -18200,6 +18308,24 @@ async function init() {
       render();
       return;
     }
+    if (e.target.id === "budgetYearStart") {
+      const picks = farmBudgetContractState();
+      picks.budgetStartDate = dateValue(e.target);
+      if (picks.budgetStartDate) picks.budgetFiscalYear = farmBudgetFiscalYear(picks.budgetStartDate);
+      if (!picks.budgetName || /^อัตรางบประมาณ\s+\d{4}$/.test(picks.budgetName)) picks.budgetName = `อัตรางบประมาณ ${picks.budgetFiscalYear}`;
+      render();
+      return;
+    }
+    if (e.target.id === "budgetYearEnd") {
+      farmBudgetContractState().budgetEndDate = dateValue(e.target);
+      render();
+      return;
+    }
+    if (e.target.id === "budgetYearStatus") {
+      farmBudgetContractState().budgetStatus = e.target.value;
+      render();
+      return;
+    }
     if (e.target.id === "budgetContractVersion") {
       farmBudgetContractState().versionNo = e.target.value;
       render();
@@ -18508,6 +18634,16 @@ async function init() {
       state.estSearchTimer = setTimeout(render, 200);
       return;
     }
+    if (e.target.id === "budgetFiscalYear") {
+      const picks = farmBudgetContractState();
+      picks.budgetFiscalYear = e.target.value.trim();
+      if (!picks.budgetName || /^อัตรางบประมาณ\s+\d{0,4}$/.test(picks.budgetName)) picks.budgetName = `อัตรางบประมาณ ${picks.budgetFiscalYear}`;
+      return;
+    }
+    if (e.target.id === "budgetYearName") {
+      farmBudgetContractState().budgetName = e.target.value;
+      return;
+    }
     if (e.target.id === "budgetUnitName") {
       farmBudgetContractState().unitName = e.target.value;
       return;
@@ -18587,6 +18723,21 @@ async function init() {
     }
     if (e.target.closest("[data-farm-budget-sync]")) {
       syncFarmBudgetRatesToDatabase();
+      return;
+    }
+    if (e.target.closest("[data-budget-year-save]")) {
+      saveFarmBudgetYearSetting();
+      return;
+    }
+    const budgetYearPick = e.target.closest("[data-budget-year-pick]");
+    if (budgetYearPick) {
+      const picks = farmBudgetContractState();
+      picks.budgetFiscalYear = budgetYearPick.dataset.year || picks.budgetFiscalYear;
+      picks.budgetName = budgetYearPick.dataset.name || picks.budgetName;
+      picks.budgetStartDate = budgetYearPick.dataset.start || picks.budgetStartDate;
+      picks.budgetEndDate = budgetYearPick.dataset.end || picks.budgetEndDate;
+      picks.budgetStatus = budgetYearPick.dataset.status || picks.budgetStatus;
+      render();
       return;
     }
     const activityAdd = e.target.closest("[data-farm-activity-add]");
