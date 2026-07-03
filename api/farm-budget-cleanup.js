@@ -49,6 +49,17 @@ async function supabaseFetchAll(path, limit = 50000) {
   return rows;
 }
 
+async function optionalSupabaseFetchAll(path, limit = 50000) {
+  try {
+    return { rows: await supabaseFetchAll(path, limit), available: true, error: "" };
+  } catch (error) {
+    if (String(error.message || "").includes("schema cache") || String(error.message || "").includes("Could not find the table")) {
+      return { rows: [], available: false, error: error.message };
+    }
+    throw error;
+  }
+}
+
 function norm(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -172,11 +183,17 @@ module.exports = async function handler(req, res) {
     const dryRun = req.method === "GET" || String(new URL(req.url, "http://localhost").searchParams.get("dryRun") || "") === "1";
     const [rates, blockRelations, materialRelations, roleRelations, blocks] = await Promise.all([
       supabaseFetchAll("budget_activity_rates?select=*"),
-      supabaseFetchAll("budget_rate_blocks?select=*"),
-      supabaseFetchAll("budget_rate_materials?select=*"),
-      supabaseFetchAll("budget_rate_roles?select=*"),
-      supabaseFetchAll("blocks?select=*"),
+      optionalSupabaseFetchAll("budget_rate_blocks?select=*"),
+      optionalSupabaseFetchAll("budget_rate_materials?select=*"),
+      optionalSupabaseFetchAll("budget_rate_roles?select=*"),
+      optionalSupabaseFetchAll("blocks?select=*"),
     ]);
+    const availableRelations = {
+      budget_rate_blocks: blockRelations.available,
+      budget_rate_materials: materialRelations.available,
+      budget_rate_roles: roleRelations.available,
+    };
+    const blockRows = blocks.rows || [];
 
     const groups = new Map();
     for (const row of rates) {
@@ -206,7 +223,7 @@ module.exports = async function handler(req, res) {
       const ids = new Set(rows.map((row) => String(row.id)));
       const selectedBlocks = unique(rows.flatMap((row) => {
         const tokens = [row.block_id, row.terrain_code, row.block_code, row.area_code, ...parseList(row.terrain_code || row.block_code || row.area_code)];
-        return tokens.map((token) => findBlock(blocks, token)?.id).filter(Boolean);
+        return tokens.map((token) => findBlock(blockRows, token)?.id).filter(Boolean);
       }));
       const note = parseNote(keep.note);
       const nextRate = cleanDbRow({
@@ -222,7 +239,7 @@ module.exports = async function handler(req, res) {
       canonicalRates.push(nextRate);
 
       const blockRows = selectedBlocks.map((id, index) => {
-        const block = blocks.find((item) => String(item.id) === String(id)) || {};
+        const block = blockRows.find((item) => String(item.id) === String(id)) || {};
         return {
           id: `budget-block-${safe(keepId)}-${safe(id)}-${index + 1}`.slice(0, 180),
           moduleId: "farm-budget",
@@ -238,10 +255,11 @@ module.exports = async function handler(req, res) {
       });
 
       for (const [table, sourceRows] of Object.entries({
-        budget_rate_blocks: blockRelations,
-        budget_rate_materials: materialRelations,
-        budget_rate_roles: roleRelations,
+        budget_rate_blocks: blockRelations.rows,
+        budget_rate_materials: materialRelations.rows,
+        budget_rate_roles: roleRelations.rows,
       })) {
+        if (!availableRelations[table]) continue;
         const oldRows = sourceRows.filter((row) => ids.has(String(row.budget_rate_id || "")));
         relationDeletes[table].push(...oldRows.map((row) => row.id).filter(Boolean));
         const rowsToCreate = table === "budget_rate_blocks" ? blockRows : oldRows.map((row, index) => relationRow(table, row, keepId, index + 1));
@@ -262,6 +280,8 @@ module.exports = async function handler(req, res) {
         ok: true,
         dryRun: true,
         targetGroups: targets.length,
+        availableRelations,
+        missingRelations: Object.fromEntries(Object.entries(availableRelations).filter(([, ok]) => !ok)),
         staleRateRows: staleRateIds.length,
         relationDeletes: Object.fromEntries(Object.entries(relationDeletes).map(([key, rows]) => [key, rows.length])),
         relationCreates: Object.fromEntries(Object.entries(relationCreates).map(([key, rows]) => [key, rows.length])),
@@ -277,7 +297,13 @@ module.exports = async function handler(req, res) {
       deletedRates: 0,
     };
     for (const table of Object.keys(relationDeletes)) result.deletedRelations[table] = await bulkDelete(table, relationDeletes[table]);
-    for (const table of Object.keys(relationCreates)) result.upsertedRelations[table] = await bulkUpsert(table, relationCreates[table]);
+    for (const table of Object.keys(relationCreates)) {
+      if (!availableRelations[table]) {
+        result.upsertedRelations[table] = 0;
+        continue;
+      }
+      result.upsertedRelations[table] = await bulkUpsert(table, relationCreates[table]);
+    }
     result.deletedRates = await bulkDelete("budget_activity_rates", staleRateIds);
 
     return json(res, 200, { ok: true, ...result, details });
