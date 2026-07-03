@@ -10876,6 +10876,9 @@ async function saveFarmBudgetSelectedRateFromSelection() {
   const materialTable = farmTableByKey("budget_rate_materials");
   const roleTable = farmTableByKey("budget_rate_roles");
   const rateAmount = n(picks.rateAmount || 0);
+  const effectiveUnitName = (picks.unitName && !(picks.unitName === "บาท/ไร่" && original.unit_name))
+    ? picks.unitName
+    : (original.unit_name || picks.unitName || "");
   const fallbackActivityName = farmBudgetVirtualLabel(firstVirtualActivity) || original.activity_name || "";
   const fallbackRateCode = `BR${farmBudgetFiscalYear(picks.startDate || original.effective_from || farmToday())}-${farmBudgetSafeCode(block?.block_code || block?.id || original.terrain_code || "area")}-${farmBudgetSafeCode(activity?.activity_code || activity?.id || fallbackActivityName || "activity")}`;
   const generatedNote = farmBudgetBuildRateNote(picks, { originalNote: original.note, materials, workers });
@@ -10900,7 +10903,7 @@ async function saveFarmBudgetSelectedRateFromSelection() {
     rate_type: preserveContractShape ? (original.rate_type || picks.rateType) : picks.rateType,
     calculation_method: picks.calculationMethod,
     comparison_basis: picks.comparisonBasis,
-    unit_name: picks.unitName || "",
+    unit_name: effectiveUnitName,
     rate_amount: rateAmount,
     rate_text: rateAmount ? "" : (original.rate_text || "กำหนดภายหลัง"),
     area_scope_type: preserveContractShape ? (original.area_scope_type || "contract") : (blocksForRate.length > 1 ? "multi_block" : (block ? "block" : (original.area_scope_type || "contract"))),
@@ -10965,7 +10968,7 @@ async function saveFarmBudgetSelectedRateFromSelection() {
         payee_type: worker.kind === "contractor" ? "contractor" : worker.kind === "team" ? "team" : (worker.row.payment_type || "daily_worker"),
         role_name: worker.row.worker_type || worker.row.team_type || "",
         rate_amount: rateAmount,
-        uom: picks.unitName || "",
+          uom: effectiveUnitName,
         rate_text: rateAmount ? "" : "กำหนดภายหลัง",
         calculation_method: picks.calculationMethod,
         is_hourly_enabled: "false",
@@ -15260,13 +15263,15 @@ function farmBudgetContractState() {
       comparisonBasis: "area_rai",
       unitName: "บาท/ไร่",
       rateAmount: "",
+      baseMaterialQuantity: "",
+      baseUsageUnit: "",
     };
   }
   const picks = state.farmBudgetContract;
   if (!Array.isArray(picks.extraRates)) {
     picks.extraRates = [
-      { id: "driver", lineType: "wage", roleName: "Driver Rate", rateAmount: "12", uom: "ตัน", calculationMethod: "per_ton", isHourly: true },
-      { id: "ramp", lineType: "wage", roleName: "Ramp Rate", rateAmount: "0", uom: "ตัน", calculationMethod: "per_ton", isHourly: false },
+      { id: "driver", lineType: "wage", roleName: "Driver Rate", rateAmount: "12", uom: "ตัน", calculationMethod: "per_ton", materialQuantity: "1", materialBasis: "per_ton", usageUnit: "ตัน", isHourly: true },
+      { id: "ramp", lineType: "wage", roleName: "Ramp Rate", rateAmount: "0", uom: "ตัน", calculationMethod: "per_ton", materialQuantity: "1", materialBasis: "per_ton", usageUnit: "ตัน", isHourly: false },
     ];
   }
   if (!picks.contractName) picks.contractName = "";
@@ -15280,6 +15285,8 @@ function farmBudgetContractState() {
   if (!picks.areaZoneId) picks.areaZoneId = "";
   if (!picks.areaPlotId) picks.areaPlotId = "";
   if (!Array.isArray(picks.selectedVehicles)) picks.selectedVehicles = [];
+  if (picks.baseMaterialQuantity === undefined) picks.baseMaterialQuantity = "";
+  if (!picks.baseUsageUnit) picks.baseUsageUnit = "";
   return state.farmBudgetContract;
 }
 
@@ -15331,11 +15338,11 @@ function farmBudgetSafeCode(value, fallback = "ALL") {
 function farmBudgetExtraRateTemplate(kind = "custom") {
   const id = `extra-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 6)}`;
   const templates = {
-    driver: { lineType: "wage", roleName: "Driver Rate", rateAmount: "12", uom: "ตัน", calculationMethod: "per_ton", materialQuantity: "1", materialBasis: "per_ton", isHourly: true, rateCategory: "driver" },
-    allowance: { lineType: "allowance", roleName: "เงินได้เพิ่ม", rateAmount: "0", uom: "ครั้ง", calculationMethod: "fixed", materialQuantity: "1", materialBasis: "fixed", isHourly: false, rateCategory: "quality_bonus" },
-    deduction: { lineType: "deduction", roleName: "เงินหัก/ปรับคุณภาพ", rateAmount: "0", uom: "ครั้ง", calculationMethod: "fixed", materialQuantity: "1", materialBasis: "fixed", isHourly: false, rateCategory: "quality_deduction" },
-    survey: { lineType: "survey_adjustment", roleName: "ปรับตามคะแนน Survey", rateAmount: "0", uom: "คะแนน", calculationMethod: "survey_score", materialQuantity: "1", materialBasis: "survey_score", isHourly: false, rateCategory: "survey_score" },
-    custom: { lineType: "wage", roleName: "Rate เพิ่มเติม", rateAmount: "0", uom: "ครั้ง", calculationMethod: "fixed", materialQuantity: "1", materialBasis: "fixed", isHourly: false, rateCategory: "other" },
+    driver: { lineType: "wage", roleName: "Driver Rate", rateAmount: "12", uom: "ตัน", calculationMethod: "per_ton", materialQuantity: "1", materialBasis: "per_ton", usageUnit: "ตัน", isHourly: true, rateCategory: "driver" },
+    allowance: { lineType: "allowance", roleName: "เงินได้เพิ่ม", rateAmount: "0", uom: "ครั้ง", calculationMethod: "fixed", materialQuantity: "1", materialBasis: "fixed", usageUnit: "หน่วย", isHourly: false, rateCategory: "quality_bonus" },
+    deduction: { lineType: "deduction", roleName: "เงินหัก/ปรับคุณภาพ", rateAmount: "0", uom: "ครั้ง", calculationMethod: "fixed", materialQuantity: "1", materialBasis: "fixed", usageUnit: "หน่วย", isHourly: false, rateCategory: "quality_deduction" },
+    survey: { lineType: "survey_adjustment", roleName: "ปรับตามคะแนน Survey", rateAmount: "0", uom: "คะแนน", calculationMethod: "survey_score", materialQuantity: "1", materialBasis: "survey_score", usageUnit: "คะแนน", isHourly: false, rateCategory: "survey_score" },
+    custom: { lineType: "wage", roleName: "Rate เพิ่มเติม", rateAmount: "0", uom: "ครั้ง", calculationMethod: "fixed", materialQuantity: "1", materialBasis: "fixed", usageUnit: "หน่วย", isHourly: false, rateCategory: "other" },
   };
   return { id, enabled: true, affectsPayroll: true, approvalRequired: false, ...(templates[kind] || templates.custom) };
 }
@@ -15359,6 +15366,7 @@ function farmBudgetExtraRateNote(extra = {}) {
     ...existing,
     materialQuantity: extra.materialQuantity ?? existing.materialQuantity ?? "",
     materialBasis: extra.materialBasis || existing.materialBasis || extra.calculationMethod || "",
+    usageUnit: extra.usageUnit || existing.usageUnit || "",
     note: extra.lineType === "survey_adjustment" ? "รองรับการประเมินการทำงานหลังปิดงาน" : (existing.note || ""),
   });
 }
@@ -15434,6 +15442,8 @@ function farmBudgetBuildRateNote(picks = {}, { originalNote = "", materials = []
     selectedMaterials: farmBudgetUnique(picks.selectedMaterials || []),
     selectedVehicles: farmBudgetUnique(picks.selectedVehicles || []),
     selectedWorkers: farmBudgetUnique(picks.selectedWorkers || []),
+    baseMaterialQuantity: picks.baseMaterialQuantity ?? existing.baseMaterialQuantity ?? "",
+    baseUsageUnit: picks.baseUsageUnit || existing.baseUsageUnit || "",
     materials: materials.map(farmBudgetMaterialLabel),
     workers: workers.map((item) => farmBudgetWorkerLabel({ ...item.row, _budgetType: item.kind })),
   });
@@ -15642,6 +15652,44 @@ async function deleteFarmBudgetRelationsForRate(rate = {}, savedRateId = "", mat
   state.farmRecords = state.farmRecords.filter((row) => !["budget_rate_blocks", "budget_rate_materials", "budget_rate_roles"].includes(row.tableId) || !rateIds.has(String(row.budget_rate_id || "")));
 }
 
+async function deleteFarmBudgetRateWithRelations(rateId = "") {
+  const rate = farmRowsByKey("budget_activity_rates").find((row) => String(row.id) === String(rateId));
+  if (!rate) return;
+  const label = rate.rate_code || rate.activity_name || rate.id;
+  if (!window.confirm(`ยืนยันลบ Rate ${label} และข้อมูลที่ผูกกับ Rate นี้ทั้งหมด?`)) return;
+  const rateTable = farmTableByKey("budget_activity_rates");
+  const blockTable = farmTableByKey("budget_rate_blocks");
+  const materialTable = farmTableByKey("budget_rate_materials");
+  const roleTable = farmTableByKey("budget_rate_roles");
+  const rateIds = farmBudgetRateIds(rate);
+  const rateRows = farmBudgetRateGroupRows(rate).filter((row) => row.id && rateIds.has(String(row.id)));
+  state.farmSyncBusy = true;
+  state.farmSyncStatus = "";
+  state.farmSyncMessage = "กำลังลบ Rate และข้อมูลที่ผูกอยู่...";
+  render();
+  try {
+    await deleteFarmBudgetRelationsForRate(rate, rate.id, materialTable, roleTable, blockTable);
+    for (const row of rateRows.length ? rateRows : [rate]) {
+      await deleteFarmRowFromDatabase(rateTable, row.id);
+      rateIds.add(String(row.id));
+    }
+    state.farmDbRows = state.farmDbRows || {};
+    state.farmDbRows.budget_activity_rates = (state.farmDbRows.budget_activity_rates || []).filter((row) => !rateIds.has(String(row.id)));
+    state.farmRecords = state.farmRecords.filter((row) => row.tableId !== "budget_activity_rates" || !rateIds.has(String(row.id)));
+    state.farmBudgetEditingRateId = "";
+    state.farmDetailId = "";
+    state.farmSyncStatus = "success";
+    state.farmSyncMessage = `ลบ Rate ${label} แล้ว`;
+    await loadFarmTablesFromDatabase({ silent: false, tables: farmDatabaseTablesForView("farm-budget") });
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `ลบ Rate ไม่สำเร็จ: ${error.message}`;
+  } finally {
+    state.farmSyncBusy = false;
+    render();
+  }
+}
+
 function farmBudgetRoleToExtraRate(row = {}) {
   const meta = farmBudgetParseNoteJson(row);
   return {
@@ -15654,6 +15702,7 @@ function farmBudgetRoleToExtraRate(row = {}) {
     calculationMethod: row.calculation_method || "fixed",
     materialQuantity: row.material_quantity ?? meta.materialQuantity ?? "1",
     materialBasis: row.material_basis || meta.materialBasis || row.calculation_method || "fixed",
+    usageUnit: row.usage_unit || meta.usageUnit || "หน่วย",
     isHourly: farmBudgetStringBool(row.is_hourly_enabled),
     affectsPayroll: row.affects_payroll === undefined ? true : farmBudgetStringBool(row.affects_payroll),
     approvalRequired: farmBudgetStringBool(row.approval_required),
@@ -15674,6 +15723,7 @@ function farmBudgetDedupeExtraRates(rows = []) {
       row.calculationMethod,
       row.materialQuantity,
       row.materialBasis,
+      row.usageUnit,
       row.rateCategory,
       row.payeeType,
     ].join("|");
@@ -15738,6 +15788,8 @@ function applyFarmBudgetRateToBuilder(rateId) {
     comparisonBasis: rate.comparison_basis || picks.comparisonBasis || "area_rai",
     unitName: rate.unit_name || picks.unitName || "",
     rateAmount: rate.rate_amount ?? "",
+    baseMaterialQuantity: noteMeta.baseMaterialQuantity ?? picks.baseMaterialQuantity ?? "",
+    baseUsageUnit: noteMeta.baseUsageUnit || picks.baseUsageUnit || "",
     externalContractNo: noteMeta.externalContractNo || rate.rate_code || "",
     supplierContractNo: noteMeta.supplierContractNo || "",
     dataGroup: noteMeta.dataGroup || rate.fiscal_year || "",
@@ -16116,6 +16168,14 @@ function renderFarmBudgetExtraRateRows() {
     ["survey_score", "คะแนน Survey"],
   ];
   const uoms = ["ตัน", "ไร่", "ต้น", "วัน", "ชั่วโมง", "ครั้ง", "หน่วย", "คะแนน"];
+  const usageUnits = ["กระสอบ", "กิโลกรัม", "กรัม", "ลิตร", "มิลลิลิตร", "ซีซี", "ตัน", "ต้น", "ไร่", "หน่วย", "คะแนน"];
+  const baseMaterialQuantity = picks.baseMaterialQuantity ?? farmBudgetParseNoteJson(selectedRate || {}).baseMaterialQuantity ?? "";
+  const baseUsageUnit = picks.baseUsageUnit || farmBudgetParseNoteJson(selectedRate || {}).baseUsageUnit || "";
+  const activeUnitName = selectedRate
+    ? (picks.unitName && picks.unitName !== "บาท/ไร่" ? picks.unitName : (selectedRate.unit_name || picks.unitName || ""))
+    : (picks.unitName || "");
+  const mainUomOptions = farmBudgetUnique([picks.unitName, selectedRate?.unit_name, ...uoms].filter(Boolean));
+  const mainUsageUnitOptions = farmBudgetUnique([baseUsageUnit, ...usageUnits].filter(Boolean));
   return `
     <article class="budget-extra-rates">
       <div class="section-head">
@@ -16137,8 +16197,8 @@ function renderFarmBudgetExtraRateRows() {
               <th>ชื่อ Rate / เงื่อนไข</th>
               <th>UOM</th>
               <th>Rate</th>
-              <th>ปริมาณวัสดุ</th>
-              <th>ต่อเท่าไหร่</th>
+              <th>อัตราการใช้</th>
+              <th>หน่วยการใช้</th>
               <th>วิธีคำนวณ</th>
               <th>Hourly</th>
               <th>ใช้คำนวณค่าแรง</th>
@@ -16152,15 +16212,28 @@ function renderFarmBudgetExtraRateRows() {
                 <td><input type="checkbox" checked disabled></td>
                 <td>Rate หลัก</td>
                 <td>${esc(farmBudgetContractMaskLabel(selectedRate))}</td>
-                <td>${esc(selectedRate.unit_name || "")}</td>
-                <td>${esc(farmBudgetRateAmountLabel(selectedRate))}</td>
-                <td>-</td>
-                <td>${esc(selectedRate.comparison_basis || selectedRate.calculation_method || "-")}</td>
-                <td>${esc(selectedRate.calculation_method || "-")}</td>
+                <td>
+                  <select data-budget-main-field="unitName">
+                    ${mainUomOptions.map((unit) => `<option value="${esc(unit)}"${activeUnitName === unit ? " selected" : ""}>${esc(unit)}</option>`).join("")}
+                  </select>
+                </td>
+                <td><input data-budget-main-field="rateAmount" type="number" step="0.001" value="${esc(picks.rateAmount ?? selectedRate.rate_amount ?? "")}" placeholder="0"></td>
+                <td><input data-budget-main-field="baseMaterialQuantity" type="number" step="0.001" value="${esc(baseMaterialQuantity)}" placeholder="เช่น 750"></td>
+                <td>
+                  <select data-budget-main-field="baseUsageUnit">
+                    <option value="">เลือกหน่วย</option>
+                    ${mainUsageUnitOptions.map((unit) => `<option value="${esc(unit)}"${baseUsageUnit === unit ? " selected" : ""}>${esc(unit)}</option>`).join("")}
+                  </select>
+                </td>
+                <td>
+                  <select data-budget-main-field="calculationMethod">
+                    ${methods.map(([value, label]) => `<option value="${esc(value)}"${(picks.calculationMethod || selectedRate.calculation_method) === value ? " selected" : ""}>${esc(label)}</option>`).join("")}
+                  </select>
+                </td>
                 <td><input type="checkbox" disabled></td>
                 <td><input type="checkbox" checked disabled></td>
                 <td><input type="checkbox" disabled></td>
-                <td></td>
+                <td><button type="button" class="danger" data-budget-rate-delete="${esc(selectedRate.id)}">ลบ</button></td>
               </tr>
             ` : ""}
             ${picks.extraRates.map((row) => `
@@ -16174,14 +16247,15 @@ function renderFarmBudgetExtraRateRows() {
                 <td><input data-budget-extra-field="${esc(row.id)}" data-field="roleName" value="${esc(row.roleName || "")}" placeholder="เช่น Driver Rate, Harvester Rate"></td>
                 <td>
                   <select data-budget-extra-field="${esc(row.id)}" data-field="uom">
-                    ${uoms.map((unit) => `<option value="${esc(unit)}"${row.uom === unit ? " selected" : ""}>${esc(unit)}</option>`).join("")}
+                    ${farmBudgetUnique([row.uom, ...uoms].filter(Boolean)).map((unit) => `<option value="${esc(unit)}"${row.uom === unit ? " selected" : ""}>${esc(unit)}</option>`).join("")}
                   </select>
                 </td>
                 <td><input data-budget-extra-field="${esc(row.id)}" data-field="rateAmount" type="number" step="0.001" value="${esc(row.rateAmount ?? "")}" placeholder="0"></td>
-                <td><input data-budget-extra-field="${esc(row.id)}" data-field="materialQuantity" type="number" step="0.001" value="${esc(row.materialQuantity ?? "1")}" placeholder="1"></td>
+                <td><input data-budget-extra-field="${esc(row.id)}" data-field="materialQuantity" type="number" step="0.001" value="${esc(row.materialQuantity ?? "1")}" placeholder="เช่น 750"></td>
                 <td>
-                  <select data-budget-extra-field="${esc(row.id)}" data-field="materialBasis">
-                    ${methods.map(([value, label]) => `<option value="${esc(value)}"${(row.materialBasis || row.calculationMethod) === value ? " selected" : ""}>${esc(label)}</option>`).join("")}
+                  <select data-budget-extra-field="${esc(row.id)}" data-field="usageUnit">
+                    <option value="">เลือกหน่วย</option>
+                    ${farmBudgetUnique([row.usageUnit, ...usageUnits].filter(Boolean)).map((unit) => `<option value="${esc(unit)}"${(row.usageUnit || "") === unit ? " selected" : ""}>${esc(unit)}</option>`).join("")}
                   </select>
                 </td>
                 <td>
@@ -18231,6 +18305,11 @@ async function init() {
       render();
       return;
     }
+    if (e.target.matches("[data-budget-main-field]")) {
+      farmBudgetContractState()[e.target.dataset.budgetMainField] = e.target.value;
+      render();
+      return;
+    }
     if (e.target.matches("[data-budget-extra-check]")) {
       farmBudgetUpdateExtraRate(e.target.dataset.budgetExtraCheck, e.target.dataset.field, e.target.checked);
       render();
@@ -18413,6 +18492,10 @@ async function init() {
     }
     if (e.target.id === "budgetRateAmount") {
       farmBudgetContractState().rateAmount = e.target.value;
+      return;
+    }
+    if (e.target.matches("[data-budget-main-field]")) {
+      farmBudgetContractState()[e.target.dataset.budgetMainField] = e.target.value;
       return;
     }
     if (e.target.matches("[data-budget-extra-field]")) {
@@ -18632,6 +18715,11 @@ async function init() {
     if (e.target.closest("[data-budget-rate-create]")) {
       if (state.farmBudgetEditingRateId) saveFarmBudgetSelectedRateFromSelection();
       else createFarmBudgetRatesFromSelection();
+      return;
+    }
+    const budgetRateDelete = e.target.closest("[data-budget-rate-delete]");
+    if (budgetRateDelete) {
+      deleteFarmBudgetRateWithRelations(budgetRateDelete.dataset.budgetRateDelete);
       return;
     }
     const extraAdd = e.target.closest("[data-budget-extra-add]");

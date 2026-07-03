@@ -4940,6 +4940,11 @@ tfoot td {
   font-weight: 900;
 }
 
+.budget-extra-table button.danger {
+  border-color: #f1c6c2;
+  color: #b42318;
+}
+
 .budget-extra-table-wrap {
   max-height: 320px;
 }
@@ -4976,7 +4981,9 @@ tfoot td {
 .budget-extra-table th:nth-child(5),
 .budget-extra-table td:nth-child(5),
 .budget-extra-table th:nth-child(6),
-.budget-extra-table td:nth-child(6) {
+.budget-extra-table td:nth-child(6),
+.budget-extra-table th:nth-child(7),
+.budget-extra-table td:nth-child(7) {
   min-width: 110px;
 }
 
