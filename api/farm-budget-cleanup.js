@@ -230,6 +230,16 @@ async function bulkDeleteFallback(table, ids = []) {
   return count;
 }
 
+async function bulkDeleteFallbackRecordIds(ids = []) {
+  let count = 0;
+  for (const chunk of chunks(unique(ids), 200)) {
+    if (!chunk.length) continue;
+    const deleted = await supabaseFetch(`est_master_records?id=${inFilter(chunk)}`, { method: "DELETE" });
+    count += Array.isArray(deleted) ? deleted.length : chunk.length;
+  }
+  return count;
+}
+
 async function bulkUpsert(table, rows = []) {
   let count = 0;
   for (const chunk of chunks(rows.map(cleanDbRow), 200)) {
@@ -296,6 +306,7 @@ module.exports = async function handler(req, res) {
       budget_rate_roles: [],
     };
     const staleRateIds = [];
+    const staleFallbackRecordIds = [];
     const details = [];
 
     for (const [, rows] of targets) {
@@ -353,6 +364,7 @@ module.exports = async function handler(req, res) {
       }
 
       staleRateIds.push(...rows.slice(1).map((row) => row.id).filter(Boolean));
+      staleFallbackRecordIds.push(...rows.slice(1).filter((row) => row._farmFallback && row.databaseId).map((row) => row.databaseId));
       details.push({ activity: keep.activity_name, kept: keepId, removed: rows.length - 1, blocks: selectedBlocks.length });
     }
 
@@ -364,6 +376,7 @@ module.exports = async function handler(req, res) {
         availableRelations,
         missingRelations: Object.fromEntries(Object.entries(availableRelations).filter(([, ok]) => !ok)),
         staleRateRows: staleRateIds.length,
+        staleFallbackRecordRows: staleFallbackRecordIds.length,
         canonicalRealRates: canonicalRealRates.length,
         canonicalFallbackRates: canonicalFallbackRates.length,
         relationDeletes: Object.fromEntries(Object.entries(relationDeletes).map(([key, rows]) => [key, rows.length])),
@@ -398,6 +411,7 @@ module.exports = async function handler(req, res) {
     }
     result.deletedRates = await bulkDelete("budget_activity_rates", staleRateIds);
     result.deletedFallbackRates = await bulkDeleteFallback("budget_activity_rates", staleRateIds);
+    result.deletedFallbackRateRecords = await bulkDeleteFallbackRecordIds(staleFallbackRecordIds);
 
     return json(res, 200, { ok: true, ...result, details });
   } catch (error) {
