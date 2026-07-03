@@ -15539,6 +15539,10 @@ function farmBudgetRateGroupKey(row = {}) {
   ].map((part) => String(part || "").trim().toLowerCase()).join("|");
 }
 
+function farmBudgetIsOldBlockRate(row = {}) {
+  return String(row.id || "").startsWith("bar-") || String(row.rate_code || "").startsWith("BR69-");
+}
+
 function farmBudgetRateAmountLabel(row = {}) {
   const amount = n(row.rate_amount);
   const hasAmount = String(row.rate_amount ?? "").trim() !== "" && Number.isFinite(amount);
@@ -15655,6 +15659,7 @@ async function deleteFarmBudgetRelationsForRate(rate = {}, savedRateId = "", mat
 
 async function deleteFarmBudgetDuplicateRateRowsForGroup(rate = {}, keepRateId = "", rateTable = farmTableByKey("budget_activity_rates")) {
   const groupRows = farmBudgetRateGroupRows(rate);
+  if (!groupRows.length || !groupRows.every(farmBudgetIsOldBlockRate)) return;
   const keep = String(keepRateId || rate.id || "");
   const staleRows = groupRows.filter((row) => row.id && String(row.id) !== keep);
   for (const row of staleRows) {
