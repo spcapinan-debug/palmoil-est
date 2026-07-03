@@ -15710,43 +15710,6 @@ async function deleteFarmBudgetRateWithRelations(rateId = "") {
   }
 }
 
-async function hideFarmBudgetRateGroupTemporarily(rateId = "") {
-  const rate = farmRowsByKey("budget_activity_rates").find((row) => String(row.id) === String(rateId));
-  if (!rate) return;
-  const rows = farmBudgetRateGroupRows(rate).filter((row) => row.id && String(row.status || "active").toLowerCase() !== "inactive");
-  if (!rows.length) return;
-  const label = rate.activity_name || rate.rate_code || rate.id;
-  if (!window.confirm(`ลบชั่วคราวรายการ ${label} ทั้งชุดจากตารางสัญญา / Rate?`)) return;
-  const table = farmTableByKey("budget_activity_rates");
-  state.farmSyncBusy = true;
-  state.farmSyncStatus = "";
-  state.farmSyncMessage = `กำลังลบชั่วคราว ${label}...`;
-  render();
-  try {
-    for (const row of rows) {
-      const nextRow = { ...row, moduleId: "farm-budget", tableId: "budget_activity_rates", status: "inactive", updatedAt: new Date().toISOString() };
-      const saved = await persistFarmRowToDatabase(table, nextRow);
-      mergeFarmDbRow(table.key, saved.row || nextRow);
-    }
-    const ids = new Set(rows.map((row) => String(row.id)));
-    state.farmRecords = state.farmRecords.map((row) => row.tableId === "budget_activity_rates" && ids.has(String(row.id))
-      ? { ...row, status: "inactive", updatedAt: new Date().toISOString() }
-      : row);
-    if (ids.has(String(state.farmBudgetEditingRateId))) state.farmBudgetEditingRateId = "";
-    if (ids.has(String(state.farmDetailId))) state.farmDetailId = "";
-    if (ids.has(String(state.farmEditId))) state.farmEditId = "";
-    state.farmSyncStatus = "success";
-    state.farmSyncMessage = `ลบชั่วคราว ${label} แล้ว`;
-    await loadFarmTablesFromDatabase({ silent: false, tables: farmDatabaseTablesForView("farm-budget") });
-  } catch (error) {
-    state.farmSyncStatus = "error";
-    state.farmSyncMessage = `ลบชั่วคราวไม่สำเร็จ: ${error.message}`;
-  } finally {
-    state.farmSyncBusy = false;
-    render();
-  }
-}
-
 function farmBudgetRoleToExtraRate(row = {}) {
   const meta = farmBudgetParseNoteJson(row);
   return {
@@ -16365,7 +16328,7 @@ function renderFarmBudgetRateTable(rates) {
     <article class="farm-budget-rate-table">
       <div class="section-head">
         <h3>รายการสัญญา / Rate</h3>
-        <span>${fmt(rows.length)} กิจกรรม · ดับเบิลคลิกแถวเพื่อแก้ไข / ลบ</span>
+        <span>${fmt(rows.length)} กิจกรรม · ดับเบิลคลิกแถวเพื่อแก้ไข หรือกดลบเพื่อลบออกจากฐานข้อมูล</span>
       </div>
       <div class="table-wrap farm-table-wrap">
         <table class="mini-table farm-table">
@@ -16394,7 +16357,7 @@ function renderFarmBudgetRateTable(rates) {
               <td>${esc(row.effective_to || "-")}</td>
               <td>${esc(row._budgetBlockCount ? `${fmt(row._budgetBlockCount)} Block` : ([row.terrain_code, row.ap_code].filter(Boolean).join(" / ") || "-"))}</td>
               <td>${esc(farmBudgetRateAmountLabel(row))}</td>
-              <td><button type="button" class="row-danger" data-budget-rate-hide="${esc(row.id)}" title="ลบชั่วคราวจากตาราง">ลบชั่วคราว</button></td>
+              <td><button type="button" class="row-danger" data-budget-rate-delete="${esc(row.id)}" title="ลบออกจากฐานข้อมูล">ลบ</button></td>
             </tr>`).join("") || `<tr><td colspan="10">No data matching...</td></tr>`}
           </tbody>
         </table>
@@ -18779,11 +18742,6 @@ async function init() {
     const budgetRateDelete = e.target.closest("[data-budget-rate-delete]");
     if (budgetRateDelete) {
       deleteFarmBudgetRateWithRelations(budgetRateDelete.dataset.budgetRateDelete);
-      return;
-    }
-    const budgetRateHide = e.target.closest("[data-budget-rate-hide]");
-    if (budgetRateHide) {
-      hideFarmBudgetRateGroupTemporarily(budgetRateHide.dataset.budgetRateHide);
       return;
     }
     const extraAdd = e.target.closest("[data-budget-extra-add]");
