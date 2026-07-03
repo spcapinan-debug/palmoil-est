@@ -122,6 +122,9 @@ function relationKey(table, row = {}) {
 
 function cleanDbRow(row = {}) {
   const out = { ...row };
+  for (const [key, value] of Object.entries(out)) {
+    if (value === "") delete out[key];
+  }
   delete out.created_at;
   delete out.updated_at;
   delete out.createdAt;
