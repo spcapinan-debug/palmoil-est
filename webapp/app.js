@@ -11002,6 +11002,7 @@ async function saveFarmBudgetSelectedRateFromSelection() {
         note: farmBudgetExtraRateNote(extra),
       });
     }
+    await deleteFarmBudgetDuplicateRateRowsForGroup(original, savedRateId, rateTable);
     state.farmDetailId = savedRateId;
     state.farmBudgetEditingRateId = savedRateId;
     state.farmSyncStatus = "success";
@@ -15650,6 +15651,20 @@ async function deleteFarmBudgetRelationsForRate(rate = {}, savedRateId = "", mat
   state.farmDbRows.budget_rate_materials = (state.farmDbRows.budget_rate_materials || []).filter((row) => !rateIds.has(String(row.budget_rate_id || "")));
   state.farmDbRows.budget_rate_roles = (state.farmDbRows.budget_rate_roles || []).filter((row) => !rateIds.has(String(row.budget_rate_id || "")));
   state.farmRecords = state.farmRecords.filter((row) => !["budget_rate_blocks", "budget_rate_materials", "budget_rate_roles"].includes(row.tableId) || !rateIds.has(String(row.budget_rate_id || "")));
+}
+
+async function deleteFarmBudgetDuplicateRateRowsForGroup(rate = {}, keepRateId = "", rateTable = farmTableByKey("budget_activity_rates")) {
+  const groupRows = farmBudgetRateGroupRows(rate);
+  const keep = String(keepRateId || rate.id || "");
+  const staleRows = groupRows.filter((row) => row.id && String(row.id) !== keep);
+  for (const row of staleRows) {
+    await deleteFarmRowFromDatabase(rateTable, row.id);
+  }
+  if (!staleRows.length) return;
+  const staleIds = new Set(staleRows.map((row) => String(row.id)));
+  state.farmDbRows = state.farmDbRows || {};
+  state.farmDbRows.budget_activity_rates = (state.farmDbRows.budget_activity_rates || []).filter((row) => !staleIds.has(String(row.id)));
+  state.farmRecords = state.farmRecords.filter((row) => row.tableId !== "budget_activity_rates" || !staleIds.has(String(row.id)));
 }
 
 async function deleteFarmBudgetRateWithRelations(rateId = "") {
