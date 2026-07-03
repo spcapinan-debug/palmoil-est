@@ -290,6 +290,18 @@ async function deleteFallbackRow(table, id) {
     }).catch(() => []);
     deleted += Array.isArray(rows) ? rows.length : 0;
   }
+  if (isUuid(id)) {
+    const rows = await supabaseFetch(`est_master_records?id=eq.${encodeURIComponent(id)}&category=eq.${encodeURIComponent(farmRecordCategory(table))}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=representation" },
+    }).catch(() => []);
+    deleted += Array.isArray(rows) ? rows.length : 0;
+  }
+  const payloadRows = await supabaseFetch(`est_master_records?category=eq.${encodeURIComponent(farmRecordCategory(table))}&target_table=eq.${encodeURIComponent(table)}&payload->>id=eq.${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Prefer: "return=representation" },
+  }).catch(() => []);
+  deleted += Array.isArray(payloadRows) ? payloadRows.length : 0;
   return deleted;
 }
 
