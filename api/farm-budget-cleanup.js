@@ -126,6 +126,8 @@ function cleanDbRow(row = {}) {
   delete out.updated_at;
   delete out.createdAt;
   delete out.updatedAt;
+  delete out.moduleId;
+  delete out.tableId;
   delete out.databaseId;
   delete out._overrideOf;
   delete out._source;
