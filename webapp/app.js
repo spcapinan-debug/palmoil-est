@@ -66,10 +66,7 @@
     dataGroup: "",
     approvalScope: "standard_contract",
     approvalMode: "not_required",
-    extraRates: [
-      { id: "driver", lineType: "wage", roleName: "Driver Rate", rateAmount: "12", uom: "ตัน", calculationMethod: "per_ton", isHourly: true },
-      { id: "ramp", lineType: "wage", roleName: "Ramp Rate", rateAmount: "0", uom: "ตัน", calculationMethod: "per_ton", isHourly: false },
-    ],
+    extraRates: [],
     rateType: "labor",
     calculationMethod: "per_rai",
     comparisonBasis: "area_rai",
@@ -146,7 +143,7 @@ const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
 const FARM_BUDGET_SYNC_API = window.__FARM_BUDGET_SYNC_API__ || "/api/farm-budget-sync";
 const MASTER_FOLDER_DATA_URL = window.__MASTER_FOLDER_DATA_URL__ || "./data/master_data_full.json";
-const FARM_BUDGET_RATE_DATA_URL = window.__FARM_BUDGET_RATE_DATA_URL__ || "./data/farm_budget_rates_2569.json";
+const FARM_BUDGET_RATE_DATA_URL = "";
 const TRANSPORT_VIEWS = new Set(["dashboard", "stock", "mill", "rspo", "daily", "summary", "clear"]);
 const DAILY_HEADERS = [
   "วันที่",
@@ -4098,10 +4095,7 @@ async function loadSummaryPalmoilAreas() {
 }
 
 async function loadFarmBudgetRateData() {
-  const payload = window.__FARM_BUDGET_RATE_DATA__ || await fetch(`${FARM_BUDGET_RATE_DATA_URL}?t=${Date.now()}`, { cache: "no-store" })
-    .then((res) => res.json())
-    .catch(() => ({ ok: false, source: null, tables: {} }));
-  state.farmBudgetRateData = payload?.ok ? payload : null;
+  state.farmBudgetRateData = null;
 }
 
 function startLiveRefresh() {
@@ -15282,10 +15276,7 @@ function farmBudgetContractState() {
   }
   const picks = state.farmBudgetContract;
   if (!Array.isArray(picks.extraRates)) {
-    picks.extraRates = [
-      { id: "driver", lineType: "wage", roleName: "Driver Rate", rateAmount: "12", uom: "ตัน", calculationMethod: "per_ton", materialQuantity: "1", materialBasis: "per_ton", usageUnit: "ตัน", isHourly: true },
-      { id: "ramp", lineType: "wage", roleName: "Ramp Rate", rateAmount: "0", uom: "ตัน", calculationMethod: "per_ton", materialQuantity: "1", materialBasis: "per_ton", usageUnit: "ตัน", isHourly: false },
-    ];
+    picks.extraRates = [];
   }
   if (!picks.contractName) picks.contractName = "";
   if (!picks.approvalStatus) picks.approvalStatus = "approved";
