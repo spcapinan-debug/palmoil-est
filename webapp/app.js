@@ -10790,6 +10790,7 @@ async function createFarmBudgetRatesFromSelection() {
         });
       }
       for (const extra of picks.extraRates || []) {
+        if (extra.enabled === false) continue;
         const extraAmount = n(extra.rateAmount || 0);
         if (!String(extra.roleName || "").trim() && !extraAmount) continue;
         await persistFarmRowToDatabase(roleTable, {
@@ -10974,6 +10975,7 @@ async function saveFarmBudgetSelectedRateFromSelection() {
       });
     }
     for (const extra of picks.extraRates || []) {
+      if (extra.enabled === false) continue;
       await persistFarmRowToDatabase(roleTable, {
         id: extra.id && !String(extra.id).startsWith("extra-") ? extra.id : `budget-extra-${farmBudgetSafeCode(savedRateId)}-${sequence++}`,
         moduleId: "farm-budget",
@@ -15334,7 +15336,7 @@ function farmBudgetExtraRateTemplate(kind = "custom") {
     survey: { lineType: "survey_adjustment", roleName: "ปรับตามคะแนน Survey", rateAmount: "0", uom: "คะแนน", calculationMethod: "survey_score", isHourly: false, rateCategory: "survey_score" },
     custom: { lineType: "wage", roleName: "Rate เพิ่มเติม", rateAmount: "0", uom: "ครั้ง", calculationMethod: "fixed", isHourly: false, rateCategory: "other" },
   };
-  return { id, ...(templates[kind] || templates.custom) };
+  return { id, enabled: true, ...(templates[kind] || templates.custom) };
 }
 
 function farmBudgetUpdateExtraRate(id, field, value) {
@@ -15504,9 +15506,23 @@ function farmBudgetRateGroupKey(row = {}) {
   return [
     row.fiscal_year || "",
     activityKey || farmNormalizeKey(row.rate_code || row.id),
-    row.effective_from || "",
-    row.effective_to || "",
   ].map((part) => String(part || "").trim().toLowerCase()).join("|");
+}
+
+function farmBudgetRateAmountLabel(row = {}) {
+  const amount = n(row.rate_amount);
+  const hasAmount = String(row.rate_amount ?? "").trim() !== "" && Number.isFinite(amount);
+  return hasAmount ? `${fmt(amount)} ${row.unit_name || ""}`.trim() : (row.rate_text || "กำหนดภายหลัง");
+}
+
+function farmBudgetCompactRateCode(row = {}, index = 0) {
+  const fiscal = String(row.fiscal_year || "").replace(/\D/g, "").slice(-2) || "69";
+  const activity = farmBudgetSafeCode(row.activity_code || row.activity_name || row.id || "RATE").replace(/^R\d+-?/i, "").slice(0, 8) || "ACT";
+  return `R${fiscal}-${activity}-${String(index + 1).padStart(3, "0")}`;
+}
+
+function farmBudgetContractMaskLabel(row = {}) {
+  return [row.activity_name || farmLookupLabel("activities", row.activity_id), farmBudgetRateAmountLabel(row)].filter(Boolean).join(" · ");
 }
 
 function farmBudgetRateGroupRows(rate = {}) {
@@ -15624,6 +15640,23 @@ function farmBudgetRoleToExtraRate(row = {}) {
   };
 }
 
+function farmBudgetDedupeExtraRates(rows = []) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const key = [
+      row.lineType,
+      farmNormalizeKey(row.roleName),
+      row.rateAmount,
+      row.uom,
+      row.calculationMethod,
+      row.rateCategory,
+      row.payeeType,
+    ].join("|");
+    if (!map.has(key)) map.set(key, { ...row, enabled: row.enabled !== false });
+  }
+  return [...map.values()];
+}
+
 function applyFarmBudgetRateToBuilder(rateId) {
   const rate = farmRowsByKey("budget_activity_rates").find((row) => row.id === rateId);
   if (!rate) return false;
@@ -15662,7 +15695,7 @@ function applyFarmBudgetRateToBuilder(rateId) {
   const selectedMaterials = farmBudgetSelectionFromMeta(noteMeta, "selectedMaterials", materialRows.map(farmBudgetMapMaterialSelection));
   const selectedWorkers = farmBudgetSelectionFromMeta(noteMeta, "selectedWorkers", roleRows.map(farmBudgetMapWorkerSelection));
   const extraRates = roleRows
-    .filter((row) => !row.team_id || row.line_type !== "wage" || row.rate_category !== "base")
+    .filter((row) => !(row.line_type === "wage" && row.rate_category === "base"))
     .map(farmBudgetRoleToExtraRate);
   Object.assign(picks, {
     versionNo: String(rate.version_no || picks.versionNo || "1"),
@@ -15685,7 +15718,7 @@ function applyFarmBudgetRateToBuilder(rateId) {
     dataGroup: noteMeta.dataGroup || rate.fiscal_year || "",
     approvalScope: noteMeta.approvalScope || picks.approvalScope,
     approvalMode: noteMeta.approvalMode || picks.approvalMode,
-    extraRates: extraRates.length ? extraRates : picks.extraRates,
+    extraRates: farmBudgetDedupeExtraRates(extraRates),
   });
   const firstRealBlockId = selectedBlocks.find((value) => !farmBudgetIsVirtualValue(value));
   if (firstRealBlockId) {
@@ -16037,6 +16070,9 @@ function renderFarmBudgetWorkerTree() {
 
 function renderFarmBudgetExtraRateRows() {
   const picks = farmBudgetContractState();
+  const selectedRate = state.farmBudgetEditingRateId
+    ? farmRowsByKey("budget_activity_rates").find((row) => row.id === state.farmBudgetEditingRateId)
+    : null;
   const lineTypes = [
     ["wage", "ค่าแรง/เรทงาน"],
     ["allowance", "เงินได้เพิ่ม"],
@@ -16069,6 +16105,7 @@ function renderFarmBudgetExtraRateRows() {
         <table class="mini-table budget-extra-table">
           <thead>
             <tr>
+              <th>ใช้</th>
               <th>ประเภทรายการ</th>
               <th>ชื่อ Rate / เงื่อนไข</th>
               <th>UOM</th>
@@ -16081,8 +16118,23 @@ function renderFarmBudgetExtraRateRows() {
             </tr>
           </thead>
           <tbody>
+            ${selectedRate ? `
+              <tr class="budget-base-rate-row">
+                <td><input type="checkbox" checked disabled></td>
+                <td>Rate หลัก</td>
+                <td>${esc(farmBudgetContractMaskLabel(selectedRate))}</td>
+                <td>${esc(selectedRate.unit_name || "")}</td>
+                <td>${esc(farmBudgetRateAmountLabel(selectedRate))}</td>
+                <td>${esc(selectedRate.calculation_method || "-")}</td>
+                <td><input type="checkbox" disabled></td>
+                <td><input type="checkbox" checked disabled></td>
+                <td><input type="checkbox" disabled></td>
+                <td></td>
+              </tr>
+            ` : ""}
             ${picks.extraRates.map((row) => `
               <tr>
+                <td><input data-budget-extra-check="${esc(row.id)}" data-field="enabled" type="checkbox"${row.enabled !== false ? " checked" : ""}></td>
                 <td>
                   <select data-budget-extra-field="${esc(row.id)}" data-field="lineType">
                     ${lineTypes.map(([value, label]) => `<option value="${esc(value)}"${row.lineType === value ? " selected" : ""}>${esc(label)}</option>`).join("")}
@@ -16105,7 +16157,7 @@ function renderFarmBudgetExtraRateRows() {
                 <td><input data-budget-extra-check="${esc(row.id)}" data-field="approvalRequired" type="checkbox"${row.approvalRequired ? " checked" : ""}></td>
                 <td><button type="button" data-budget-extra-delete="${esc(row.id)}">ลบ</button></td>
               </tr>
-            `).join("")}
+            `).join("") || (!selectedRate ? `<tr><td colspan="10">ยังไม่มีเรทเสริม</td></tr>` : "")}
           </tbody>
         </table>
       </div>
@@ -16145,7 +16197,7 @@ function renderFarmBudgetRateTable(rates) {
     <article class="farm-budget-rate-table">
       <div class="section-head">
         <h3>รายการสัญญา / Rate</h3>
-        <span>${fmt(rows.length)} กิจกรรม · รวมจาก ${fmt(filtered.length)} รายการฐานข้อมูล · ดับเบิลคลิกแถวเพื่อแก้ไข / ลบ</span>
+        <span>${fmt(rows.length)} กิจกรรม · ดับเบิลคลิกแถวเพื่อแก้ไข / ลบ</span>
       </div>
       <div class="table-wrap farm-table-wrap">
         <table class="mini-table farm-table">
@@ -16163,16 +16215,16 @@ function renderFarmBudgetRateTable(rates) {
             </tr>
           </thead>
           <tbody>
-            ${rows.map((row) => `<tr class="farm-editable-row ${row._budgetGroupIds?.includes(state.farmBudgetEditingRateId) ? "is-selected" : ""}" data-farm-row="${esc(row.id)}" data-farm-budget-rate-row="${esc(row.id)}" title="คลิกเพื่อดึงข้อมูลขึ้นไปแก้ไขด้านบน / ดับเบิลคลิกเพื่อเปิดหน้าต่างแก้ไข">
-              <td>${esc(row.rate_code || row.id)}</td>
+            ${rows.map((row, index) => `<tr class="farm-editable-row ${row._budgetGroupIds?.includes(state.farmBudgetEditingRateId) ? "is-selected" : ""}" data-farm-row="${esc(row.id)}" data-farm-budget-rate-row="${esc(row.id)}" title="คลิกเพื่อดึงข้อมูลขึ้นไปแก้ไขด้านบน / ดับเบิลคลิกเพื่อเปิดหน้าต่างแก้ไข">
+              <td>${esc(farmBudgetCompactRateCode(row, index))}</td>
               <td>${esc(row.version_no || "1")}</td>
-              <td>${esc(row.mapping_rule || row.calculation_method || "-")}</td>
+              <td>${esc(farmBudgetContractMaskLabel(row))}</td>
               <td>${esc(row.rate_type || "-")}</td>
-              <td>${esc(row.activity_name || farmLookupLabel("activities", row.activity_id))}</td>
+              <td>${esc(row.activity_group_name || "-")}</td>
               <td>${esc(row.effective_from || "-")}</td>
               <td>${esc(row.effective_to || "-")}</td>
               <td>${esc(row._budgetBlockCount ? `${fmt(row._budgetBlockCount)} Block` : ([row.terrain_code, row.ap_code].filter(Boolean).join(" / ") || "-"))}</td>
-              <td>${esc(row.rate_text || `${fmt(n(row.rate_amount))} ${row.unit_name || ""}`)}</td>
+              <td>${esc(farmBudgetRateAmountLabel(row))}</td>
             </tr>`).join("") || `<tr><td colspan="9">No data matching...</td></tr>`}
           </tbody>
         </table>
