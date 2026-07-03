@@ -4961,6 +4961,25 @@ tfoot td {
   accent-color: #e75f9a;
 }
 
+.budget-extra-table th:first-child,
+.budget-extra-table td:first-child,
+.budget-extra-table th:nth-child(9),
+.budget-extra-table td:nth-child(9),
+.budget-extra-table th:nth-child(10),
+.budget-extra-table td:nth-child(10),
+.budget-extra-table th:nth-child(11),
+.budget-extra-table td:nth-child(11) {
+  text-align: center;
+  width: 54px;
+}
+
+.budget-extra-table th:nth-child(5),
+.budget-extra-table td:nth-child(5),
+.budget-extra-table th:nth-child(6),
+.budget-extra-table td:nth-child(6) {
+  min-width: 110px;
+}
+
 .budget-approval-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
