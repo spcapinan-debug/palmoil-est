@@ -9807,8 +9807,8 @@ function farmRows(table = selectedFarmTable()) {
   const deleted = new Set(state.farmRecords.filter((row) => row.tableId === tableId && row._deleted).map((row) => row._overrideOf || row.id));
   const databaseRows = Array.isArray(state.farmDbRows?.[tableId]) ? state.farmDbRows[tableId] : [];
   const seedRows = farmSeedRows(table);
-  const sourceRows = tableId.startsWith("budget_") && databaseRows.length
-    ? mergeFarmBudgetSourceRows(tableId, seedRows, databaseRows)
+  const sourceRows = tableId.startsWith("budget_")
+    ? databaseRows
     : (databaseRows.length ? databaseRows : seedRows);
   const baseRows = sourceRows
     .map((row) => overrides.has(row.id) ? { ...row, ...overrides.get(row.id), id: row.id, readonly: false } : row)
