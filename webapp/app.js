@@ -10688,6 +10688,12 @@ async function createFarmBudgetRatesFromSelection() {
   const fiscalYear = picks.budgetFiscalYear || farmBudgetFiscalYear(startDate);
   const savedYear = await saveFarmBudgetYearSetting({ silent: true });
   const yearRow = savedYear || farmRowsByKey("budget_years").find((row) => row.fiscal_year === fiscalYear) || {};
+  if (!yearRow.id) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "ยังไม่ได้บันทึกปีอัตรางบประมาณ กรุณาบันทึกปีอัตรางบประมาณก่อนสร้าง Rate";
+    render();
+    return;
+  }
   const rateTable = farmTableByKey("budget_activity_rates");
   const blockTable = farmTableByKey("budget_rate_blocks");
   const materialTable = farmTableByKey("budget_rate_materials");
