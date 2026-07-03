@@ -15497,6 +15497,36 @@ function farmBudgetMapWorkerSelection(row = {}) {
   return farmBudgetVirtualValue("worker", label);
 }
 
+function farmBudgetRateGroupKey(row = {}) {
+  const activityKey = row.activity_id
+    || farmNormalizeKey(row.activity_code)
+    || farmNormalizeKey(row.activity_name);
+  return [
+    row.fiscal_year || "",
+    activityKey || farmNormalizeKey(row.rate_code || row.id),
+    row.effective_from || "",
+    row.effective_to || "",
+  ].map((part) => String(part || "").trim().toLowerCase()).join("|");
+}
+
+function farmBudgetRateGroupRows(rate = {}) {
+  const key = farmBudgetRateGroupKey(rate);
+  if (!key) return rate?.id ? [rate] : [];
+  const rows = farmRowsByKey("budget_activity_rates").filter((row) => farmBudgetRateGroupKey(row) === key);
+  return rows.length ? rows : (rate?.id ? [rate] : []);
+}
+
+function farmBudgetRateIds(rate = {}) {
+  const ids = [
+    rate.id,
+    rate._overrideOf,
+    rate.databaseId,
+    ...(Array.isArray(rate._budgetGroupIds) ? rate._budgetGroupIds : []),
+    ...farmBudgetRateGroupRows(rate).flatMap((row) => [row.id, row._overrideOf, row.databaseId]),
+  ];
+  return new Set(ids.filter(Boolean).map(String));
+}
+
 function farmBudgetFindBlockId(rate = {}) {
   if (rate.block_id && (farmLookup("blocks", rate.block_id) || farmLookup("areas", rate.block_id))) return rate.block_id;
   const areaId = farmBudgetFindAreaOrBlockId(rate.terrain_code || rate.block_code || rate.area_code);
@@ -15510,12 +15540,57 @@ function farmBudgetFindBlockId(rate = {}) {
 }
 
 function farmBudgetRateRelations(tableKey, rate = {}) {
-  const rateIds = new Set([rate.id, rate._overrideOf, rate.databaseId].filter(Boolean).map(String));
+  const rateIds = farmBudgetRateIds(rate);
   return farmRowsByKey(tableKey).filter((row) => rateIds.has(String(row.budget_rate_id || "")));
 }
 
+function farmBudgetBlockTokensForRate(rate = {}) {
+  const relationRows = farmBudgetRateRelations("budget_rate_blocks", rate);
+  const relationTokens = relationRows.map((row) => farmBudgetMapBlockRelationSelection(row));
+  const legacyTokens = farmBudgetRateGroupRows(rate).flatMap((row) => [
+    farmBudgetFindBlockId(row),
+    ...farmBudgetSplitContractList(row.terrain_code || row.block_code || row.area_code).map(farmBudgetMapAreaSelection),
+  ]);
+  return farmBudgetUnique([...relationTokens, ...legacyTokens]);
+}
+
+function farmBudgetGroupedRates(rates = []) {
+  const map = new Map();
+  for (const row of rates || []) {
+    const key = farmBudgetRateGroupKey(row);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row);
+  }
+  const blockRelations = farmRowsByKey("budget_rate_blocks");
+  return [...map.values()].map((rows) => {
+    const first = rows[0] || {};
+    const groupIds = rows.map((row) => row.id).filter(Boolean);
+    const groupIdSet = new Set(groupIds.map(String));
+    const relationBlocks = blockRelations
+      .filter((row) => groupIdSet.has(String(row.budget_rate_id || "")))
+      .map(farmBudgetMapBlockRelationSelection);
+    const legacyBlocks = rows.flatMap((row) => [
+      farmBudgetFindBlockId(row),
+      ...farmBudgetSplitContractList(row.terrain_code || row.block_code || row.area_code).map(farmBudgetMapAreaSelection),
+    ]);
+    const blocks = farmBudgetUnique([...relationBlocks, ...legacyBlocks]);
+    const areaRai = rows.reduce((sum, row) => sum + n(row.area_rai), 0);
+    const treeCount = rows.reduce((sum, row) => sum + n(row.tree_count), 0);
+    return {
+      ...first,
+      _budgetGroupIds: groupIds,
+      _budgetGroupSize: rows.length,
+      _budgetBlockCount: blocks.length,
+      area_scope_type: blocks.length > 1 ? "multi_block" : first.area_scope_type,
+      terrain_code: blocks.length > 1 ? `${fmt(blocks.length)} Block` : first.terrain_code,
+      area_rai: areaRai || first.area_rai,
+      tree_count: treeCount || first.tree_count,
+    };
+  }).sort((a, b) => String(a.activity_name || a.rate_code || "").localeCompare(String(b.activity_name || b.rate_code || ""), "th"));
+}
+
 async function deleteFarmBudgetRelationsForRate(rate = {}, savedRateId = "", materialTable, roleTable, blockTable = farmTableByKey("budget_rate_blocks")) {
-  const rateIds = new Set([rate.id, rate._overrideOf, rate.databaseId, savedRateId].filter(Boolean).map(String));
+  const rateIds = farmBudgetRateIds({ ...rate, _budgetGroupIds: [...farmBudgetRateIds(rate), savedRateId].filter(Boolean) });
   if (!rateIds.size) return;
   const rowsToDelete = [
     ...farmRowsByKey("budget_rate_blocks").map((row) => ({ table: blockTable, row })),
@@ -15554,6 +15629,7 @@ function applyFarmBudgetRateToBuilder(rateId) {
   if (!rate) return false;
   const picks = farmBudgetContractState();
   const noteMeta = farmBudgetParseNoteJson(rate);
+  const groupRows = farmBudgetRateGroupRows(rate);
   const blockId = farmBudgetFindBlockId(rate);
   const directActivityCandidate = farmBudgetFindByCode("activities", rate.activity_id, ["activity_code", "activity_name", "name"], [rate.activity_code, rate.activity_name]);
   const directActivityId = directActivityCandidate && farmLookup("activities", directActivityCandidate) ? directActivityCandidate : "";
@@ -15566,6 +15642,8 @@ function applyFarmBudgetRateToBuilder(rateId) {
   const fallbackBlocks = farmBudgetUnique([
     blockId,
     ...blockRows.map(farmBudgetMapBlockRelationSelection),
+    ...groupRows.map(farmBudgetFindBlockId),
+    ...groupRows.flatMap((row) => farmBudgetSplitContractList(row.terrain_code || row.block_code || row.area_code).map(farmBudgetMapAreaSelection)),
     ...terrainLabels.map(farmBudgetMapAreaSelection),
   ]);
   const activityLabels = [
@@ -15577,7 +15655,9 @@ function applyFarmBudgetRateToBuilder(rateId) {
     directActivityId,
     ...activityLabels.map(farmBudgetMapActivitySelection),
   ]);
-  const selectedBlocks = farmBudgetSelectionFromMeta(noteMeta, "selectedBlocks", fallbackBlocks);
+  const selectedBlocks = Array.isArray(noteMeta.selectedBlocks) && (noteMeta.selectedBlocks.length > 1 || groupRows.length <= 1)
+    ? farmBudgetSelectionFromMeta(noteMeta, "selectedBlocks", fallbackBlocks)
+    : fallbackBlocks;
   const selectedActivities = farmBudgetSelectionFromMeta(noteMeta, "selectedActivities", fallbackActivities);
   const selectedMaterials = farmBudgetSelectionFromMeta(noteMeta, "selectedMaterials", materialRows.map(farmBudgetMapMaterialSelection));
   const selectedWorkers = farmBudgetSelectionFromMeta(noteMeta, "selectedWorkers", roleRows.map(farmBudgetMapWorkerSelection));
@@ -16060,12 +16140,12 @@ function renderFarmBudgetRateTable(rates) {
     const endOk = !picks.endDate || !row.effective_from || row.effective_from <= picks.endDate;
     return queryOk && startOk && endOk;
   });
-  const rows = filtered;
+  const rows = farmBudgetGroupedRates(filtered);
   return `
     <article class="farm-budget-rate-table">
       <div class="section-head">
         <h3>รายการสัญญา / Rate</h3>
-        <span>${fmt(filtered.length)} รายการ · ดับเบิลคลิกแถวเพื่อแก้ไข / ลบ</span>
+        <span>${fmt(rows.length)} กิจกรรม · รวมจาก ${fmt(filtered.length)} รายการฐานข้อมูล · ดับเบิลคลิกแถวเพื่อแก้ไข / ลบ</span>
       </div>
       <div class="table-wrap farm-table-wrap">
         <table class="mini-table farm-table">
@@ -16083,7 +16163,7 @@ function renderFarmBudgetRateTable(rates) {
             </tr>
           </thead>
           <tbody>
-            ${rows.map((row) => `<tr class="farm-editable-row ${state.farmBudgetEditingRateId === row.id ? "is-selected" : ""}" data-farm-row="${esc(row.id)}" data-farm-budget-rate-row="${esc(row.id)}" title="คลิกเพื่อดึงข้อมูลขึ้นไปแก้ไขด้านบน / ดับเบิลคลิกเพื่อเปิดหน้าต่างแก้ไข">
+            ${rows.map((row) => `<tr class="farm-editable-row ${row._budgetGroupIds?.includes(state.farmBudgetEditingRateId) ? "is-selected" : ""}" data-farm-row="${esc(row.id)}" data-farm-budget-rate-row="${esc(row.id)}" title="คลิกเพื่อดึงข้อมูลขึ้นไปแก้ไขด้านบน / ดับเบิลคลิกเพื่อเปิดหน้าต่างแก้ไข">
               <td>${esc(row.rate_code || row.id)}</td>
               <td>${esc(row.version_no || "1")}</td>
               <td>${esc(row.mapping_rule || row.calculation_method || "-")}</td>
@@ -16091,7 +16171,7 @@ function renderFarmBudgetRateTable(rates) {
               <td>${esc(row.activity_name || farmLookupLabel("activities", row.activity_id))}</td>
               <td>${esc(row.effective_from || "-")}</td>
               <td>${esc(row.effective_to || "-")}</td>
-              <td>${esc(farmBudgetRateRelations("budget_rate_blocks", row).length ? `${fmt(farmBudgetRateRelations("budget_rate_blocks", row).length)} Block` : ([row.terrain_code, row.ap_code].filter(Boolean).join(" / ") || "-"))}</td>
+              <td>${esc(row._budgetBlockCount ? `${fmt(row._budgetBlockCount)} Block` : ([row.terrain_code, row.ap_code].filter(Boolean).join(" / ") || "-"))}</td>
               <td>${esc(row.rate_text || `${fmt(n(row.rate_amount))} ${row.unit_name || ""}`)}</td>
             </tr>`).join("") || `<tr><td colspan="9">No data matching...</td></tr>`}
           </tbody>
