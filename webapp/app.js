@@ -15955,6 +15955,22 @@ function farmBudgetTeamMemberEmployeeValues(teamId) {
     .map((employee) => `employee:${employee.id}`);
 }
 
+function farmBudgetAreaGroupValue(blocks = []) {
+  return `area-group:${blocks.map((block) => block.id).filter(Boolean).join("|")}`;
+}
+
+function renderBudgetAreaGroupSummary(label, blocks = [], checkedList = [], meta = "") {
+  const ids = blocks.map((block) => block.id).filter(Boolean);
+  const checked = ids.length > 0 && ids.every((id) => checkedList.includes(id));
+  const inputId = farmBudgetCheckId("block", farmBudgetAreaGroupValue(blocks));
+  return `
+    <summary class="budget-team-summary">
+      <input id="${esc(inputId)}" type="checkbox" data-budget-pick="block" data-budget-block-group="1" value="${esc(farmBudgetAreaGroupValue(blocks))}"${checked ? " checked" : ""} onclick="event.stopPropagation()">
+      <span>${esc(label)}</span>
+      <small>${esc(meta || `${fmt(ids.length)} Block`)}</small>
+    </summary>`;
+}
+
 function renderBudgetTeamMemberCheckbox(teamId, employee, checkedList, meta = "") {
   const value = `employee:${employee.id}`;
   const excludeValue = `exclude:${teamId}:${employee.id}`;
@@ -15995,19 +16011,19 @@ function renderFarmBudgetAreaTree() {
       groupMap.get(groupName).push(block);
     }
     return [...estateMap.entries()].map(([estateName, zoneMap]) => {
-      const estateCount = [...zoneMap.values()].reduce((sum, groupMap) => sum + [...groupMap.values()].reduce((count, rows) => count + rows.length, 0), 0);
+      const estateBlocks = [...zoneMap.values()].flatMap((groupMap) => [...groupMap.values()].flat());
       return `
         <details open>
-          <summary>${esc(estateName)} <small>${fmt(estateCount)}</small></summary>
+          ${renderBudgetAreaGroupSummary(estateName, estateBlocks, picks.selectedBlocks)}
           <div class="budget-area-zone-grid">
           ${[...zoneMap.entries()].map(([zoneName, groupMap]) => {
-            const zoneCount = [...groupMap.values()].reduce((count, rows) => count + rows.length, 0);
+            const zoneBlocks = [...groupMap.values()].flat();
             return `
               <details open class="budget-zone-branch">
-                <summary>${esc(zoneName)} <small>${fmt(zoneCount)}</small></summary>
+                ${renderBudgetAreaGroupSummary(zoneName, zoneBlocks, picks.selectedBlocks)}
                 ${[...groupMap.entries()].map(([groupName, groupBlocks]) => `
                   <details open>
-                    <summary>${esc(groupName)} <small>${fmt(groupBlocks.length)}</small></summary>
+                    ${renderBudgetAreaGroupSummary(groupName, groupBlocks, picks.selectedBlocks)}
                     ${groupBlocks.map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่ · ${fmt(n(block.tree_count))} ต้น`)).join("")}
                   </details>
                 `).join("")}
@@ -16023,20 +16039,20 @@ function renderFarmBudgetAreaTree() {
     if (!estateBlocks.length) return "";
     return `
       <details open>
-        <summary>${esc(estate.estate_name || estate.estate_code || estate.id)} <small>${fmt(estateBlocks.length)}</small></summary>
+        ${renderBudgetAreaGroupSummary(estate.estate_name || estate.estate_code || estate.id, estateBlocks, picks.selectedBlocks)}
         ${estateZones.map((zone) => {
           const zonePlots = plots.filter((plot) => plot.zone_id === zone.id);
           const zoneBlocks = estateBlocks.filter((block) => block.zone_id === zone.id || zonePlots.some((plot) => plot.id === block.plot_id));
           if (!zoneBlocks.length) return "";
           return `
             <details open>
-              <summary>${esc(zone.zone_name || zone.zone_code || zone.id)} <small>${fmt(zoneBlocks.length)}</small></summary>
+              ${renderBudgetAreaGroupSummary(zone.zone_name || zone.zone_code || zone.id, zoneBlocks, picks.selectedBlocks)}
               ${zonePlots.map((plot) => {
                 const plotBlocks = zoneBlocks.filter((block) => block.plot_id === plot.id);
                 if (!plotBlocks.length) return "";
                 return `
                   <details open>
-                    <summary>${esc(plot.plot_name || plot.plot_code || plot.id)} <small>${fmt(plotBlocks.length)}</small></summary>
+                    ${renderBudgetAreaGroupSummary(plot.plot_name || plot.plot_code || plot.id, plotBlocks, picks.selectedBlocks)}
                     ${plotBlocks.map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่ · ${fmt(n(block.tree_count))} ต้น`)).join("")}
                   </details>`;
               }).join("")}
@@ -18413,7 +18429,11 @@ async function init() {
             : type === "vehicle" ? "selectedVehicles"
               : "selectedWorkers";
       const current = new Set(picks[key] || []);
-      if (type === "worker" && String(e.target.value).startsWith("team:")) {
+      if (type === "block" && e.target.dataset.budgetBlockGroup) {
+        const blockIds = String(e.target.value || "").replace(/^area-group:/, "").split("|").filter(Boolean);
+        if (e.target.checked) blockIds.forEach((id) => current.add(id));
+        else blockIds.forEach((id) => current.delete(id));
+      } else if (type === "worker" && String(e.target.value).startsWith("team:")) {
         const teamId = String(e.target.value).slice(5);
         const memberValues = farmBudgetTeamMemberEmployeeValues(teamId);
         if (e.target.checked) {
@@ -18873,12 +18893,19 @@ async function init() {
       return;
     }
     if (e.target.closest("[data-budget-rate-new]")) {
+      const picks = farmBudgetContractState();
       state.farmBudgetEditingRateId = "";
       state.farmDetailId = "";
       state.farmEditId = "";
       state.farmActivityModalTable = "";
+      picks.selectedBlocks = [];
+      picks.selectedActivities = [];
+      picks.selectedMaterials = [];
+      picks.selectedVehicles = [];
+      picks.selectedWorkers = [];
+      picks.extraRates = [];
       state.farmSyncStatus = "success";
-      state.farmSyncMessage = "พร้อมสร้าง Rate ใหม่จากรายการที่เลือก";
+      state.farmSyncMessage = "พร้อมสร้าง Rate ใหม่ กรุณาเลือกพื้นที่ กิจกรรม และเงื่อนไขใหม่";
       render();
       return;
     }
