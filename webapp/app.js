@@ -15629,9 +15629,15 @@ function farmBudgetRateGroupKey(row = {}) {
   const activityKey = row.activity_id
     || farmNormalizeKey(row.activity_code)
     || farmNormalizeKey(row.activity_name);
+  const rateKey = [
+    String(row.rate_amount ?? row.rate_text ?? "").trim(),
+    farmNormalizeKey(farmBudgetRateUnitLabel(row.unit_name || "")),
+    farmNormalizeKey(row.calculation_method || ""),
+  ].join(":");
   return [
     row.fiscal_year || "",
     activityKey || farmNormalizeKey(row.rate_code || row.id),
+    rateKey || farmNormalizeKey(row.rate_code || row.id),
   ].map((part) => String(part || "").trim().toLowerCase()).join("|");
 }
 
@@ -15642,7 +15648,15 @@ function farmBudgetIsOldBlockRate(row = {}) {
 function farmBudgetRateAmountLabel(row = {}) {
   const amount = n(row.rate_amount);
   const hasAmount = String(row.rate_amount ?? "").trim() !== "" && Number.isFinite(amount);
-  return hasAmount ? `${fmt(amount)} ${row.unit_name || ""}`.trim() : (row.rate_text || "กำหนดภายหลัง");
+  return hasAmount ? `${fmt(amount)} ${farmBudgetRateUnitLabel(row.unit_name || "")}`.trim() : (row.rate_text || "กำหนดภายหลัง");
+}
+
+function farmBudgetRateUnitLabel(unit = "") {
+  const clean = String(unit || "").trim();
+  if (!clean) return "";
+  if (clean.includes("/")) return clean;
+  if (clean.startsWith("บาท")) return clean;
+  return `บาท/${clean}`;
 }
 
 function farmBudgetCompactRateCode(row = {}, index = 0) {
@@ -15652,7 +15666,7 @@ function farmBudgetCompactRateCode(row = {}, index = 0) {
 }
 
 function farmBudgetContractMaskLabel(row = {}) {
-  return [row.activity_name || farmLookupLabel("activities", row.activity_id), farmBudgetRateAmountLabel(row)].filter(Boolean).join(" · ");
+  return [row.activity_name || farmLookupLabel("activities", row.activity_id), farmBudgetRateAmountLabel(row)].filter(Boolean).join(" - ");
 }
 
 function farmBudgetRateGroupRows(rate = {}) {
@@ -16299,13 +16313,16 @@ function renderFarmBudgetExtraRateRows() {
     ["fixed", "เหมาจ่าย"],
     ["survey_score", "คะแนน Survey"],
   ];
-  const uoms = ["ตัน", "ไร่", "ต้น", "วัน", "ชั่วโมง", "ครั้ง", "หน่วย", "คะแนน"];
+  const uoms = ["บาท/ตัน", "บาท/ไร่", "บาท/ต้น", "บาท/วัน", "บาท/ชั่วโมง", "บาท/ครั้ง", "บาท/หน่วย", "บาท/คะแนน", "ตัน", "ไร่", "ต้น", "วัน", "ชั่วโมง", "ครั้ง", "หน่วย", "คะแนน"];
   const usageUnits = ["กระสอบ", "กิโลกรัม", "กรัม", "ลิตร", "มิลลิลิตร", "ซีซี", "ตัน", "ต้น", "ไร่", "หน่วย", "คะแนน"];
   const baseMaterialQuantity = picks.baseMaterialQuantity ?? farmBudgetParseNoteJson(selectedRate || {}).baseMaterialQuantity ?? "";
   const baseUsageUnit = picks.baseUsageUnit || farmBudgetParseNoteJson(selectedRate || {}).baseUsageUnit || "";
   const activeUnitName = selectedRate
-    ? (picks.unitName && picks.unitName !== "บาท/ไร่" ? picks.unitName : (selectedRate.unit_name || picks.unitName || ""))
+    ? (picks.unitName || selectedRate.unit_name || "")
     : (picks.unitName || "");
+  const activeRateAmount = picks.rateAmount !== "" && picks.rateAmount !== undefined
+    ? picks.rateAmount
+    : (selectedRate?.rate_amount ?? "");
   const mainUomOptions = farmBudgetUnique([picks.unitName, selectedRate?.unit_name, ...uoms].filter(Boolean));
   const mainUsageUnitOptions = farmBudgetUnique([baseUsageUnit, ...usageUnits].filter(Boolean));
   return `
@@ -16343,13 +16360,13 @@ function renderFarmBudgetExtraRateRows() {
               <tr class="budget-base-rate-row">
                 <td><input type="checkbox" checked disabled></td>
                 <td>Rate หลัก</td>
-                <td>${esc(farmBudgetContractMaskLabel(selectedRate))}</td>
+                <td>${esc(farmBudgetContractMaskLabel({ ...selectedRate, unit_name: activeUnitName, rate_amount: activeRateAmount }))}</td>
                 <td>
                   <select data-budget-main-field="unitName">
                     ${mainUomOptions.map((unit) => `<option value="${esc(unit)}"${activeUnitName === unit ? " selected" : ""}>${esc(unit)}</option>`).join("")}
                   </select>
                 </td>
-                <td><input data-budget-main-field="rateAmount" type="number" step="0.001" value="${esc(picks.rateAmount ?? selectedRate.rate_amount ?? "")}" placeholder="0"></td>
+                <td><input data-budget-main-field="rateAmount" type="number" step="0.001" value="${esc(activeRateAmount)}" placeholder="0"></td>
                 <td><input data-budget-main-field="baseMaterialQuantity" type="number" step="0.001" value="${esc(baseMaterialQuantity)}" placeholder="เช่น 750"></td>
                 <td>
                   <select data-budget-main-field="baseUsageUnit">
