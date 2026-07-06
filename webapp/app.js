@@ -15423,11 +15423,20 @@ function syncFarmBudgetFormFromDom() {
   const picks = farmBudgetContractState();
   const preset = document.getElementById("budgetRatePreset");
   if (preset) applyFarmBudgetRatePreset(preset.value);
-  const amount = document.getElementById("budgetRateAmount");
-  if (amount) picks.rateAmount = amount.value;
+  const rateInputs = [
+    document.getElementById("budgetRateAmount"),
+    ...document.querySelectorAll('[data-budget-main-field="rateAmount"]'),
+  ].filter(Boolean);
+  const latestRateInput = rateInputs.find((input) => String(input.value ?? "").trim() !== "");
+  if (latestRateInput) picks.rateAmount = farmBudgetParseRateInput(latestRateInput.value);
   document.querySelectorAll("[data-budget-main-field]").forEach((input) => {
     if (input.type === "checkbox") picks[input.dataset.budgetMainField] = input.checked;
-    else picks[input.dataset.budgetMainField] = input.dataset.budgetMainField === "unitName" ? farmBudgetUnitBaseLabel(input.value) : input.value;
+    else if (input.dataset.budgetMainField === "unitName") picks.unitName = farmBudgetUnitBaseLabel(input.value);
+    else if (input.dataset.budgetMainField === "rateAmount") {
+      const parsedRate = farmBudgetParseRateInput(input.value);
+      if (parsedRate !== "") picks.rateAmount = parsedRate;
+    }
+    else picks[input.dataset.budgetMainField] = input.value;
   });
   document.querySelectorAll("[data-budget-extra-field]").forEach((input) => {
     farmBudgetUpdateExtraRate(input.dataset.budgetExtraField, input.dataset.field, input.value);
@@ -15664,6 +15673,13 @@ function farmBudgetRateNumberLabel(value = "") {
   }).format(num);
 }
 
+function farmBudgetParseRateInput(value = "") {
+  const clean = String(value ?? "").replace(/,/g, "").trim();
+  if (!clean) return "";
+  const num = Number(clean);
+  return Number.isFinite(num) ? String(num) : clean;
+}
+
 function farmBudgetUnitBaseLabel(unit = "") {
   return String(unit || "").trim().replace(/^บาท\s*\/\s*/i, "");
 }
@@ -15681,7 +15697,7 @@ function farmBudgetCompactRateCode(row = {}, index = 0) {
   if (/^R\d{2}-/i.test(existing)) return existing.toUpperCase();
   const fiscal = String(row.fiscal_year || "").replace(/\D/g, "").slice(-2) || "69";
   const activity = farmBudgetSafeCode(row.activity_code || row.activity_name || row.id || "RATE").replace(/^R\d+-?/i, "").slice(0, 8) || "ACT";
-  const legacyMatch = existing.match(/BR\d{4}-([A-Z0-9ก-๙-]+)/i);
+  const legacyMatch = existing.match(/BR\d{4}-([A-Z0-9ก-๙]+)(?:-|$)/i);
   const activityCode = legacyMatch?.[1] || activity;
   return `R${fiscal}-${activityCode}-${String(index + 1).padStart(3, "0")}`.toUpperCase();
 }
