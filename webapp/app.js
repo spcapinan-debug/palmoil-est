@@ -10709,7 +10709,7 @@ async function createFarmBudgetRatesFromSelection() {
     const totalTreeCount = blocks.reduce((sum, row) => sum + n(row.tree_count), 0);
     for (const activity of activities) {
       const activityGroup = farmLookup("activity_groups", activity.activity_group_id);
-      const rateCode = `BR${fiscalYear}-${farmBudgetSafeCode(activity.activity_code || activity.id)}-${nowKey}-${sequence}`;
+      const rateCode = nextFarmBudgetRateCode(fiscalYear, activity);
       const rateRow = {
         id: `budget-rate-${nowKey}-${sequence}`,
         moduleId: "farm-budget",
@@ -15677,9 +15677,32 @@ function farmBudgetRateUnitLabel(unit = "") {
 }
 
 function farmBudgetCompactRateCode(row = {}, index = 0) {
+  const existing = String(row.rate_code || "").trim();
+  if (/^R\d{2}-/i.test(existing)) return existing.toUpperCase();
   const fiscal = String(row.fiscal_year || "").replace(/\D/g, "").slice(-2) || "69";
   const activity = farmBudgetSafeCode(row.activity_code || row.activity_name || row.id || "RATE").replace(/^R\d+-?/i, "").slice(0, 8) || "ACT";
-  return `R${fiscal}-${activity}-${String(index + 1).padStart(3, "0")}`;
+  const legacyMatch = existing.match(/BR\d{4}-([A-Z0-9ก-๙-]+)/i);
+  const activityCode = legacyMatch?.[1] || activity;
+  return `R${fiscal}-${activityCode}-${String(index + 1).padStart(3, "0")}`.toUpperCase();
+}
+
+function nextFarmBudgetRateCode(fiscalYear = "", activity = {}) {
+  const fiscal = String(fiscalYear || farmBudgetFiscalYear(farmToday())).replace(/\D/g, "").slice(-2) || "69";
+  const activityCode = farmBudgetSafeCode(activity.activity_code || activity.id || activity.activity_name || "ACT").slice(0, 8).toUpperCase();
+  const prefix = `R${fiscal}-${activityCode}-`;
+  const relatedRows = farmRowsByKey("budget_activity_rates").filter((row) => {
+    const code = String(row.rate_code || "").toUpperCase();
+    const rowFiscal = String(row.fiscal_year || "").replace(/\D/g, "").slice(-2) || fiscal;
+    const rowActivity = farmBudgetSafeCode(row.activity_code || row.activity_id || row.activity_name || "").slice(0, 8).toUpperCase();
+    return code.startsWith(prefix) || (rowFiscal === fiscal && rowActivity === activityCode);
+  });
+  const usedNumbers = relatedRows
+    .map((row) => String(row.rate_code || "").toUpperCase().match(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)$`))?.[1])
+    .filter(Boolean)
+    .map((value) => Number(value))
+    .filter(Number.isFinite);
+  const next = usedNumbers.length ? Math.max(...usedNumbers) + 1 : relatedRows.length + 1;
+  return `${prefix}${String(next).padStart(3, "0")}`;
 }
 
 function farmBudgetContractMaskLabel(row = {}) {
