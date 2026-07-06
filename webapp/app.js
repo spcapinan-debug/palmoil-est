@@ -15414,6 +15414,41 @@ function farmBudgetUpdateExtraRate(id, field, value) {
   picks.extraRates = picks.extraRates.map((row) => row.id === id ? { ...row, [field]: value } : row);
 }
 
+function syncFarmBudgetFormFromDom() {
+  const picks = farmBudgetContractState();
+  const preset = document.getElementById("budgetRatePreset");
+  if (preset) applyFarmBudgetRatePreset(preset.value);
+  const amount = document.getElementById("budgetRateAmount");
+  if (amount) picks.rateAmount = amount.value;
+  document.querySelectorAll("[data-budget-main-field]").forEach((input) => {
+    if (input.type === "checkbox") picks[input.dataset.budgetMainField] = input.checked;
+    else picks[input.dataset.budgetMainField] = input.value;
+  });
+  document.querySelectorAll("[data-budget-extra-field]").forEach((input) => {
+    farmBudgetUpdateExtraRate(input.dataset.budgetExtraField, input.dataset.field, input.value);
+  });
+  document.querySelectorAll("[data-budget-extra-check]").forEach((input) => {
+    farmBudgetUpdateExtraRate(input.dataset.budgetExtraCheck, input.dataset.field, input.checked);
+  });
+}
+
+function renderPreservingBudgetTreeScroll(target) {
+  const tree = target?.closest?.(".budget-tree-scroll");
+  const treeScrollTop = tree ? tree.scrollTop : 0;
+  const treeIndex = tree ? [...document.querySelectorAll(".budget-tree-scroll")].indexOf(tree) : -1;
+  const pageX = window.scrollX;
+  const pageY = window.scrollY;
+  render();
+  requestAnimationFrame(() => {
+    if (tree) {
+      const trees = [...document.querySelectorAll(".budget-tree-scroll")];
+      const nextTree = treeIndex >= 0 ? trees[treeIndex] : null;
+      if (nextTree) nextTree.scrollTop = treeScrollTop;
+    }
+    window.scrollTo(pageX, pageY);
+  });
+}
+
 function farmBudgetExtraRateNote(extra = {}) {
   const raw = String(extra.note || "").trim();
   let existing = {};
@@ -18462,7 +18497,7 @@ async function init() {
         current.delete(e.target.value);
       }
       picks[key] = [...current];
-      render();
+      renderPreservingBudgetTreeScroll(e.target);
       return;
     }
     if (e.target.matches("[data-budget-extra-field]")) {
@@ -18910,6 +18945,7 @@ async function init() {
       return;
     }
     if (e.target.closest("[data-budget-rate-create]")) {
+      syncFarmBudgetFormFromDom();
       if (state.farmBudgetEditingRateId) saveFarmBudgetSelectedRateFromSelection();
       else createFarmBudgetRatesFromSelection();
       return;
