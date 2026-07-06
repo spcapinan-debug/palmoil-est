@@ -10696,6 +10696,7 @@ async function createFarmBudgetRatesFromSelection() {
   const rateAmount = n(picks.rateAmount || 0);
   const unitName = farmBudgetUnitBaseLabel(picks.unitName || "");
   const created = [];
+  const createdRows = [];
 
   state.farmSyncBusy = true;
   state.farmSyncStatus = "";
@@ -10749,6 +10750,7 @@ async function createFarmBudgetRatesFromSelection() {
       const savedRate = await persistFarmRowToDatabase(rateTable, rateRow);
       const savedRateId = savedRate.row?.id || rateRow.id;
       created.push(savedRateId);
+      createdRows.push(savedRate.row || rateRow);
       let blockIndex = 1;
       for (const block of blocks) {
         await persistFarmRowToDatabase(blockTable, farmBudgetBlockRelationRow(savedRateId, block, blockIndex++));
@@ -10822,10 +10824,14 @@ async function createFarmBudgetRatesFromSelection() {
     }
     state.farmTableId = "budget_activity_rates";
     state.farmDetailId = created[0] || "";
-    state.farmBudgetEditingRateId = created[0] || "";
+    state.farmBudgetEditingRateId = "";
     state.farmSyncStatus = "success";
     state.farmSyncMessage = `สร้าง Rate แล้ว ${fmt(created.length)} กิจกรรม พร้อมผูก Block ${fmt(blocks.length)} วัสดุ ${fmt(materials.length)} กลุ่มคนงาน ${fmt(workers.length)} และเรทเสริม ${fmt((picks.extraRates || []).length)}`;
-    await loadFarmTablesFromDatabase({ silent: false });
+    await loadFarmTablesFromDatabase({ silent: false, tables: farmDatabaseTablesForView("farm-budget") });
+    const loadedIds = new Set(farmRowsByKey("budget_activity_rates").map((row) => String(row.id)));
+    for (const row of createdRows) {
+      if (row?.id && !loadedIds.has(String(row.id))) mergeFarmDbRow("budget_activity_rates", row);
+    }
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `สร้าง Rate ไม่สำเร็จ: ${error.message}`;
@@ -18961,8 +18967,6 @@ async function init() {
       state.farmDetailId = "";
       state.farmEditId = "";
       state.farmActivityModalTable = "";
-      picks.selectedBlocks = [];
-      picks.selectedActivities = [];
       picks.selectedMaterials = [];
       picks.selectedVehicles = [];
       picks.selectedWorkers = [];
