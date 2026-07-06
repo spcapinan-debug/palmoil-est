@@ -15419,6 +15419,19 @@ function farmBudgetUpdateExtraRate(id, field, value) {
   picks.extraRates = picks.extraRates.map((row) => row.id === id ? { ...row, [field]: value } : row);
 }
 
+function clearFarmBudgetRateSelections() {
+  const picks = farmBudgetContractState();
+  picks.selectedBlocks = [];
+  picks.selectedActivities = [];
+  picks.selectedMaterials = [];
+  picks.selectedVehicles = [];
+  picks.selectedWorkers = [];
+  picks.extraRates = [];
+  picks.areaEstateId = "";
+  picks.areaZoneId = "";
+  picks.areaPlotId = "";
+}
+
 function syncFarmBudgetFormFromDom() {
   const picks = farmBudgetContractState();
   const preset = document.getElementById("budgetRatePreset");
@@ -19036,15 +19049,11 @@ async function init() {
       return;
     }
     if (e.target.closest("[data-budget-rate-new]")) {
-      const picks = farmBudgetContractState();
       state.farmBudgetEditingRateId = "";
       state.farmDetailId = "";
       state.farmEditId = "";
       state.farmActivityModalTable = "";
-      picks.selectedMaterials = [];
-      picks.selectedVehicles = [];
-      picks.selectedWorkers = [];
-      picks.extraRates = [];
+      clearFarmBudgetRateSelections();
       state.farmSyncStatus = "success";
       state.farmSyncMessage = "พร้อมสร้าง Rate ใหม่ กรุณาเลือกพื้นที่ กิจกรรม และเงื่อนไขใหม่";
       render();
