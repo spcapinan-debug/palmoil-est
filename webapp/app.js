@@ -15702,6 +15702,40 @@ function farmBudgetCompactRateCode(row = {}, index = 0) {
   return `R${fiscal}-${activityCode}-${String(index + 1).padStart(3, "0")}`.toUpperCase();
 }
 
+function farmBudgetRateCodePrefix(row = {}) {
+  const fiscal = String(row.fiscal_year || "").replace(/\D/g, "").slice(-2) || "69";
+  const existing = String(row.rate_code || "").trim();
+  const legacyMatch = existing.match(/BR\d{4}-([A-Z0-9ก-๙]+)(?:-|$)/i);
+  const activity = farmBudgetSafeCode(legacyMatch?.[1] || row.activity_code || row.activity_name || row.id || "RATE").replace(/^R\d+-?/i, "").slice(0, 8) || "ACT";
+  return `R${fiscal}-${activity.toUpperCase()}-`;
+}
+
+function farmBudgetDisplayRateCodes(rows = []) {
+  const used = new Set();
+  const out = new Map();
+  rows.forEach((row) => {
+    const existing = String(row.rate_code || "").trim().toUpperCase();
+    if (/^R\d{2}-[A-Z0-9ก-๙]+-\d+$/i.test(existing) && !used.has(existing)) {
+      used.add(existing);
+      out.set(row.id, existing);
+    }
+  });
+  rows.forEach((row, index) => {
+    if (out.has(row.id)) return;
+    const legacy = farmBudgetCompactRateCode(row, index);
+    const prefix = /^R\d{2}-[A-Z0-9ก-๙]+-\d+$/i.test(legacy) ? legacy.replace(/\d+$/, "") : farmBudgetRateCodePrefix(row);
+    let next = Number(String(legacy).match(/(\d+)$/)?.[1] || index + 1);
+    let code = `${prefix}${String(next).padStart(3, "0")}`.toUpperCase();
+    while (used.has(code)) {
+      next += 1;
+      code = `${prefix}${String(next).padStart(3, "0")}`.toUpperCase();
+    }
+    used.add(code);
+    out.set(row.id, code);
+  });
+  return out;
+}
+
 function nextFarmBudgetRateCode(fiscalYear = "", activity = {}) {
   const fiscal = String(fiscalYear || farmBudgetFiscalYear(farmToday())).replace(/\D/g, "").slice(-2) || "69";
   const activityCode = farmBudgetSafeCode(activity.activity_code || activity.id || activity.activity_name || "ACT").slice(0, 8).toUpperCase();
@@ -16509,6 +16543,7 @@ function renderFarmBudgetRateTable(rates) {
     return queryOk && startOk && endOk;
   });
   const rows = farmBudgetGroupedRates(filtered);
+  const displayCodes = farmBudgetDisplayRateCodes(rows);
   return `
     <article class="farm-budget-rate-table">
       <div class="section-head">
@@ -16532,8 +16567,8 @@ function renderFarmBudgetRateTable(rates) {
             </tr>
           </thead>
           <tbody>
-            ${rows.map((row, index) => `<tr class="farm-editable-row ${row._budgetGroupIds?.includes(state.farmBudgetEditingRateId) ? "is-selected" : ""}" data-farm-row="${esc(row.id)}" data-farm-budget-rate-row="${esc(row.id)}" title="คลิกเพื่อดึงข้อมูลขึ้นไปแก้ไขด้านบน / ดับเบิลคลิกเพื่อเปิดหน้าต่างแก้ไข">
-              <td>${esc(farmBudgetCompactRateCode(row, index))}</td>
+            ${rows.map((row) => `<tr class="farm-editable-row ${row._budgetGroupIds?.includes(state.farmBudgetEditingRateId) ? "is-selected" : ""}" data-farm-row="${esc(row.id)}" data-farm-budget-rate-row="${esc(row.id)}" title="คลิกเพื่อดึงข้อมูลขึ้นไปแก้ไขด้านบน / ดับเบิลคลิกเพื่อเปิดหน้าต่างแก้ไข">
+              <td>${esc(displayCodes.get(row.id) || farmBudgetCompactRateCode(row))}</td>
               <td>${esc(row.version_no || "1")}</td>
               <td>${esc(farmBudgetContractMaskLabel(row))}</td>
               <td>${esc(row.rate_type || "-")}</td>
