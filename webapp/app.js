@@ -11766,6 +11766,42 @@ function farmAddDays(iso, days) {
   return isoDateFromUtc(new Date(base + days * 86400000));
 }
 
+function farmAddMonths(iso, months) {
+  const date = isoDay(iso);
+  if (!date) return "";
+  const [year, month, day] = date.split("-").map((value) => Number(value));
+  const next = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+  next.setUTCDate(Math.min(day, lastDay));
+  return isoDateFromUtc(next);
+}
+
+function farmRepeatModeLabel(mode) {
+  return ({
+    none: "ไม่ทำซ้ำ",
+    "7d": "ทุก 7 วัน",
+    "15d": "ทุก 15 วัน",
+    "30d": "ทุก 30 วัน",
+    "3m": "ทุก 3 เดือน",
+    "4m": "ทุก 4 เดือน",
+    "6m": "ทุก 6 เดือน",
+  })[mode || "none"] || mode || "ไม่ทำซ้ำ";
+}
+
+function farmPlanScheduledDates(startDate, endDate, workMode, repeatMode) {
+  const start = isoDay(startDate) || farmToday();
+  const end = isoDay(endDate) || start;
+  if (workMode !== "repeat" || !repeatMode || repeatMode === "none") return [start];
+  const dates = [];
+  const dayStep = ({ "7d": 7, "15d": 15, "30d": 30 })[repeatMode] || 0;
+  const monthStep = ({ "3m": 3, "4m": 4, "6m": 6 })[repeatMode] || 0;
+  for (let current = start, guard = 0; current && farmDateMs(current) <= farmDateMs(end) && guard < 80; guard += 1) {
+    dates.push(current);
+    current = dayStep ? farmAddDays(current, dayStep) : monthStep ? farmAddMonths(current, monthStep) : "";
+  }
+  return dates.length ? dates : [start];
+}
+
 function farmDaysBetween(startIso, endIso) {
   const start = farmDateMs(startIso);
   const end = farmDateMs(endIso);
@@ -12322,6 +12358,9 @@ function renderFarmWorkPlanner() {
                 <option value="7d"${budgetPicks.repeatMode === "7d" ? " selected" : ""}>ทุก 7 วัน</option>
                 <option value="15d"${budgetPicks.repeatMode === "15d" ? " selected" : ""}>ทุก 15 วัน</option>
                 <option value="30d"${budgetPicks.repeatMode === "30d" ? " selected" : ""}>ทุก 30 วัน</option>
+                <option value="3m"${budgetPicks.repeatMode === "3m" ? " selected" : ""}>ทุก 3 เดือน</option>
+                <option value="4m"${budgetPicks.repeatMode === "4m" ? " selected" : ""}>ทุก 4 เดือน</option>
+                <option value="6m"${budgetPicks.repeatMode === "6m" ? " selected" : ""}>ทุก 6 เดือน</option>
               </select>
             </label>
             <label class="farm-plan-work-ref">อ้างอิงงานล่าสุด
@@ -12383,7 +12422,7 @@ function renderFarmWorkPlanner() {
             <dt>ช่วงวัน</dt><dd>${esc(displayDate(budgetPicks.startDate))} ถึง ${esc(displayDate(budgetPicks.endDate))}</dd>
             <dt>ทรัพยากร</dt><dd>วัสดุ ${fmt(selectedMaterials.length)} รายการ · รถ/เครื่องจักร ${fmt(selectedVehicles.length)} รายการ</dd>
             <dt>แบบตรวจงาน</dt><dd>${previewSurvey ? `${esc(previewSurvey.template_code || "")} · ${esc(previewSurvey.template_name || previewSurvey.file_name || "")} · ${fmt(previewSurveyQuestions.length)} ช่องตัวเลข` : "ไม่พบแบบตรวจที่ตรงกับกิจกรรม"}</dd>
-            <dt>สถานะเริ่มต้น</dt><dd>Draft · ไม่ต้องผ่านขั้นตอนอนุมัติ</dd>
+            <dt>สถานะเริ่มต้น</dt><dd>อนุมัติแล้ว · ผู้สร้างแผนเป็นผู้มีสิทธิ์อนุมัติ</dd>
           </dl>
           <div class="farm-plan-cost-preview">
             <strong>ต้นทุนประมาณการก่อนสร้างแผน</strong>
@@ -12425,14 +12464,9 @@ async function createFarmWorkPlanFromSelection() {
   const selectedVehicles = picks.selectedVehicles.length ? vehicles.filter((vehicle) => picks.selectedVehicles.includes(vehicle.id)) : [];
   const startDate = picks.startDate || dateValue(document.querySelector("#farmPlanStartDate")) || farmToday();
   const endDate = picks.endDate || dateValue(document.querySelector("#farmPlanEndDate")) || startDate;
-  const repeatDays = picks.workMode === "repeat" ? ({ "7d": 7, "15d": 15, "30d": 30 }[picks.repeatMode] || 0) : 0;
-  const scheduledDates = [];
-  if (repeatDays > 0) {
-    for (let date = new Date(`${startDate}T00:00:00`); date <= new Date(`${endDate}T00:00:00`); date.setDate(date.getDate() + repeatDays)) {
-      scheduledDates.push(date.toISOString().slice(0, 10));
-    }
-  }
-  if (!scheduledDates.length) scheduledDates.push(startDate);
+  const scheduledDates = farmPlanScheduledDates(startDate, endDate, picks.workMode, picks.repeatMode);
+  const repeatLabel = farmRepeatModeLabel(picks.workMode === "repeat" ? picks.repeatMode : "none");
+  const planSeriesId = `PLAN-${startDate.replaceAll("-", "")}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
   if (!table || !selectedBlocks.length || !selectedActivities.length) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = "กรุณาเลือก Block และกิจกรรมก่อนสร้างแผน";
@@ -12448,6 +12482,7 @@ async function createFarmWorkPlanFromSelection() {
     for (const block of selectedBlocks) {
       for (const activity of selectedActivities) {
         for (const scheduledDate of scheduledDates) {
+          const occurrenceNo = scheduledDates.indexOf(scheduledDate) + 1;
           const survey = farmSurveyForActivity(activity);
           const activeRates = budgetRates.filter((rate) => String(rate.status || "active").toLowerCase() !== "inactive");
           const ratePool = activeRates.filter((rate) => farmRateMatchesActivity(rate, activity) && farmRateMatchesBlock(rate, block));
@@ -12467,7 +12502,10 @@ async function createFarmWorkPlanFromSelection() {
           const noteLines = [
             title,
             `ช่วงแผน: ${startDate} ถึง ${endDate}`,
-            `รูปแบบ: ${picks.workMode || "single"} / รอบซ้ำ: ${picks.repeatMode || "none"}`,
+            `รูปแบบ: ${picks.workMode || "single"} / รอบซ้ำ: ${repeatLabel}`,
+            `ชุดงานซ้ำ: ${planSeriesId}`,
+            `รอบงานที่สร้าง: ${occurrenceNo}/${scheduledDates.length} · วันที่รอบนี้ ${scheduledDate}`,
+            `อนุมัติอัตโนมัติ: ผู้สร้างแผนมีสิทธิ์อนุมัติ`,
             selectedRate?.id ? `อัตรางบประมาณ: ${farmBudgetDisplayRateCode(selectedRate)} · ${farmBudgetRateAmountLabel(selectedRate)}` : "",
             survey?.id ? `แบบตรวจงาน: ${survey.template_code || survey.template_name || survey.id}` : "",
             selectedMaterials.length ? `วัสดุ: ${selectedMaterials.map((material) => material.material_name || material.material_code || material.id).join(", ")}` : "",
@@ -12492,10 +12530,10 @@ async function createFarmWorkPlanFromSelection() {
             planned_machine_cost: 0,
             planned_total_cost: estimate.amount + materialCost,
             note: noteLines,
-            status: "draft",
+            status: "approved",
           };
           const saved = await persistFarmRowToDatabase(table, row);
-          const savedRow = { ...row, ...(saved.row || {}), work_order_title: title, planned_start_date: scheduledDate, planned_end_date: scheduledDate, budget_rate_id: selectedRate?.id || "", survey_template_id: survey?.id || "", approval_status: "not_required" };
+          const savedRow = { ...row, ...(saved.row || {}), work_order_title: title, planned_start_date: scheduledDate, planned_end_date: scheduledDate, budget_rate_id: selectedRate?.id || "", survey_template_id: survey?.id || "", approval_status: "approved", plan_series_id: planSeriesId, repeat_mode: picks.repeatMode || "none", repeat_label: repeatLabel, repeat_occurrence_no: occurrenceNo, repeat_occurrence_total: scheduledDates.length };
           state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === savedRow.id || item.work_order_no === savedRow.work_order_no)));
           state.farmRecords.push(savedRow);
           await ensureFarmWorkOrderQr(savedRow, "plan");
@@ -14952,6 +14990,7 @@ function renderFarmWorkDetail(order) {
       </div>
       ${renderFarmQrCard(order, "QR Work Order", "detail")}
       ${order.rescheduled_date ? `<div class="farm-work-shift-note">เลื่อนจาก ${esc(order.original_scheduled_date || "-")} เป็น ${esc(order.rescheduled_date)} โดย ${esc(farmLookupLabel("profiles", order.rescheduled_by_manager_id))}</div>` : ""}
+      ${order.note ? `<pre class="farm-work-note-detail">${esc(order.note)}</pre>` : ""}
       <dl class="farm-work-detail-list">
         ${details.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value ?? "-")}</dd>`).join("")}
       </dl>

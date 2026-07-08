@@ -8730,8 +8730,8 @@ tfoot td {
   position: relative;
   min-height: 42px;
   background-image:
-    linear-gradient(to right, rgba(226, 218, 213, .8) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 250, 247, .82), rgba(255, 250, 247, .82));
+    linear-gradient(to right, rgba(203, 213, 225, .82) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 251, 248, .94), rgba(255, 251, 248, .94));
   background-size: 30px 100%, 100% 100%;
 }
 
@@ -8758,16 +8758,17 @@ tfoot td {
 
 .farm-work-plan-bar.draft {
   top: 8px;
-  border: 2px dashed #60a5fa;
-  background: rgba(219, 234, 254, .7);
+  border: 2px dashed #3b82f6;
+  background: rgba(219, 234, 254, .92);
   color: #1d4ed8;
 }
 
 .farm-work-plan-bar.approved {
   top: 28px;
-  border: 2px dashed #ef4444;
-  background: rgba(254, 226, 226, .72);
-  color: #b91c1c;
+  border: 1px solid #b91c1c;
+  background: linear-gradient(180deg, #f87171 0%, #dc2626 100%);
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(185, 28, 28, .24);
 }
 
 .farm-work-actual-bar {
@@ -8946,11 +8947,11 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-row {
-  min-height: 27px;
+  min-height: 38px;
 }
 
 .farm-work-compact .farm-work-left {
-  min-height: 27px;
+  min-height: 38px;
   padding: 2px 7px;
 }
 
@@ -8979,14 +8980,14 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-lane {
-  min-height: 27px;
+  min-height: 38px;
   background-size: 24px 100%, 100% 100%;
 }
 
 .farm-work-compact .farm-work-plan-bar,
 .farm-work-compact .farm-work-actual-bar {
-  height: 9px;
-  min-height: 9px;
+  height: 11px;
+  min-height: 11px;
   border-radius: 0;
 }
 
@@ -8998,21 +8999,22 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-plan-bar.draft {
-  top: 3px;
+  top: 2px;
   border-width: 1.5px;
-  background: repeating-linear-gradient(90deg, rgba(45, 121, 184, .22) 0 7px, rgba(45, 121, 184, .07) 7px 12px);
+  background: repeating-linear-gradient(90deg, rgba(59, 130, 246, .32) 0 7px, rgba(59, 130, 246, .1) 7px 12px);
 }
 
 .farm-work-compact .farm-work-plan-bar.approved {
-  top: 10px;
-  border-width: 1.5px;
-  background: repeating-linear-gradient(90deg, rgba(203, 77, 55, .25) 0 7px, rgba(203, 77, 55, .08) 7px 12px);
+  top: 13px;
+  border: 1px solid #a83228;
+  background: linear-gradient(180deg, #ee6b5f 0%, #c94f3e 100%);
+  box-shadow: inset 0 -1px 0 rgba(120, 29, 24, .28), 0 1px 2px rgba(120, 29, 24, .18);
 }
 
 .farm-work-compact .farm-work-actual-bar {
-  top: 18px;
+  top: 24px;
   border-width: 1px;
-  background: #c94f3e;
+  background: linear-gradient(180deg, #b94436 0%, #7f1d1d 100%);
   box-shadow: 0 1px 0 rgba(120, 29, 24, .35);
 }
 
@@ -9028,11 +9030,11 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-milestone.approved {
-  top: 10px;
+  top: 13px;
 }
 
 .farm-work-compact .farm-work-milestone.closed {
-  top: 18px;
+  top: 24px;
 }
 
 .farm-work-compact .farm-work-group-row,
@@ -9109,6 +9111,21 @@ tfoot td {
   background: #faf5ff;
   color: #7e22ce;
   font-weight: 800;
+}
+
+.farm-work-note-detail {
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  background: #f8fafc;
+  color: #334155;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .farm-work-detail-list {
