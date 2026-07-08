@@ -80,6 +80,12 @@
     selectedVehicles: [],
     selectedWorkers: [],
     selectedBudgetRateId: "",
+    workMode: "single",
+    repeatMode: "none",
+    referenceOrderId: "",
+    startDate: "",
+    endDate: "",
+    calcMode: "rate",
   },
   farmWorkFilters: { activityGroup: "all", team: "all", zone: "all", plotGroup: "all", status: "all", query: "" },
   farmPlannerTab: "dates",
@@ -12008,6 +12014,28 @@ function farmBudgetRateCost(rate, blocks) {
   };
 }
 
+function farmPlanBudgetRateBaseQuantity(rate, blocks, calcMode = "rate") {
+  const areaRai = blocks.reduce((sum, row) => sum + n(row.area_rai), 0);
+  const treeCount = blocks.reduce((sum, row) => sum + n(row.tree_count), 0);
+  if (calcMode === "tree_count") return { quantity: treeCount, label: "จำนวนต้นจากข้อมูลแปลง", unit: "ต้น" };
+  if (calcMode === "area_rai") return { quantity: areaRai, label: "พื้นที่ไร่จากข้อมูลแปลง", unit: "ไร่" };
+  if (calcMode === "actual_result") return { quantity: n(rate?.planned_quantity || 0) || 1, label: "ผลงานจริงหลังบันทึกงาน", unit: rate?.planned_unit || rate?.unit_name || "หน่วย" };
+  if (calcMode === "contractor") return { quantity: blocks.length || 1, label: "อัตราผู้รับเหมา", unit: "งาน" };
+  return farmBudgetRateBaseQuantity(rate, blocks);
+}
+
+function farmPlanBudgetRateCost(rate, blocks, calcMode = "rate") {
+  const base = farmPlanBudgetRateBaseQuantity(rate, blocks, calcMode);
+  const rateAmount = n(rate?.rate_amount || 0);
+  return {
+    ...base,
+    rateAmount,
+    amount: base.quantity * rateAmount,
+    unitName: rate?.unit_name || base.unit,
+    rateLabel: farmBudgetRateAmountLabel(rate) || moneyNf.format(rateAmount),
+  };
+}
+
 function renderFarmWorkPlanner() {
   const budgetPicks = farmWorkPlanState();
   const blocks = farmRows(farmTableByKey("blocks"));
@@ -12041,7 +12069,8 @@ function renderFarmWorkPlanner() {
     && (!selectedBlocks.length || selectedBlocks.some((block) => farmRateMatchesBlock(row, block)))
   );
   const activityBudgetRates = activeBudgetRates.filter((row) => !previewActivity || farmRateMatchesActivity(row, previewActivity));
-  const planBudgetRates = matchingBudgetRates.length ? matchingBudgetRates : activityBudgetRates.length ? activityBudgetRates : activeBudgetRates;
+  const blockBudgetRates = activeBudgetRates.filter((row) => selectedBlocks.some((block) => farmRateMatchesBlock(row, block)));
+  const planBudgetRates = matchingBudgetRates.length ? matchingBudgetRates : activityBudgetRates.length ? activityBudgetRates : blockBudgetRates.length ? blockBudgetRates : activeBudgetRates;
   const autoBudgetRate = farmBestBudgetRateForPlan(planBudgetRates, previewActivity, selectedBlocks, []);
   const selectedBudgetRate = planBudgetRates.find((row) => row.id === budgetPicks.selectedBudgetRateId) || autoBudgetRate;
   budgetPicks.selectedBudgetRateId = selectedBudgetRate?.id || "";
@@ -12064,14 +12093,14 @@ function renderFarmWorkPlanner() {
   const previewSurveyQuestions = farmSurveyQuestions(previewSurvey);
   const calculationBase = selectedUsageRate.usage_basis === "per_tree" ? totalTrees : selectedUsageRate.usage_basis === "per_rai" ? totalRai : selectedBlocks.length;
   const materialQuantity = selectedMaterials.length ? calculationBase * n(selectedUsageRate.usage_rate || 0) : 0;
-  const laborEstimate = farmBudgetRateCost(laborBudgetRate, selectedBlocks);
+  const laborEstimate = farmPlanBudgetRateCost(laborBudgetRate, selectedBlocks, budgetPicks.calcMode);
   const materialRate = selectedMaterials.length ? n(materialBudgetRate?.rate_amount || 0) : 0;
   const laborCost = laborEstimate.amount;
   const materialCost = materialQuantity * materialRate;
   const totalCost = laborCost + materialCost;
   const plotCountText = `${fmt(selectedBlocks.length)} จาก ${fmt(blocks.length)} Block`;
   const selectedWorkerCount = selectedWorkerRefs.length || previewMembers.length || (previewTeam ? 1 : 0);
-  const latestWorkOptions = workOrders.slice(0, 6).map((row) => `<option>${esc(row.shortNo || farmShortWorkOrderNo(row))} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("");
+  const latestWorkOptions = workOrders.slice(0, 6).map((row) => `<option value="${esc(row.id)}"${row.id === budgetPicks.referenceOrderId ? " selected" : ""}>${esc(row.shortNo || farmShortWorkOrderNo(row))} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("");
   return `
     <section class="farm-planner-console">
       <div class="section-head">
@@ -12091,25 +12120,25 @@ function renderFarmWorkPlanner() {
           <h4>2. งานที่จะทำ</h4>
           <div class="farm-plan-work-grid">
             <label>รูปแบบ
-              <select>
-                <option>ทำครั้งเดียว</option>
-                <option>ทำซ้ำตามรอบ</option>
-                <option>อ้างอิงจากงานล่าสุด</option>
+              <select id="farmPlanWorkMode">
+                <option value="single"${budgetPicks.workMode === "single" ? " selected" : ""}>ทำครั้งเดียว</option>
+                <option value="repeat"${budgetPicks.workMode === "repeat" ? " selected" : ""}>ทำซ้ำตามรอบ</option>
+                <option value="reference"${budgetPicks.workMode === "reference" ? " selected" : ""}>อ้างอิงจากงานล่าสุด</option>
               </select>
             </label>
-            <label>วันที่เริ่มงาน${renderDateInputControl({ id: "farmPlanStartDate", value: "2026-01-15", ariaLabel: "เลือกวันที่เริ่มงาน" })}</label>
-            <label>วันที่สิ้นสุด${renderDateInputControl({ id: "farmPlanEndDate", value: "2026-01-16", ariaLabel: "เลือกวันที่สิ้นสุดงาน" })}</label>
+            <label>วันที่เริ่มงาน${renderDateInputControl({ id: "farmPlanStartDate", value: budgetPicks.startDate, ariaLabel: "เลือกวันที่เริ่มงาน" })}</label>
+            <label>วันที่สิ้นสุด${renderDateInputControl({ id: "farmPlanEndDate", value: budgetPicks.endDate, ariaLabel: "เลือกวันที่สิ้นสุดงาน" })}</label>
             <label>รอบซ้ำ
-              <select>
-                <option>ไม่ทำซ้ำ</option>
-                <option>ทุก 7 วัน</option>
-                <option>ทุก 15 วัน</option>
-                <option>ทุก 30 วัน</option>
+              <select id="farmPlanRepeatMode">
+                <option value="none"${budgetPicks.repeatMode === "none" ? " selected" : ""}>ไม่ทำซ้ำ</option>
+                <option value="7d"${budgetPicks.repeatMode === "7d" ? " selected" : ""}>ทุก 7 วัน</option>
+                <option value="15d"${budgetPicks.repeatMode === "15d" ? " selected" : ""}>ทุก 15 วัน</option>
+                <option value="30d"${budgetPicks.repeatMode === "30d" ? " selected" : ""}>ทุก 30 วัน</option>
               </select>
             </label>
             <label class="farm-plan-work-ref">อ้างอิงงานล่าสุด
-              <select>
-                <option>ไม่อ้างอิง</option>
+              <select id="farmPlanReferenceOrder">
+                <option value="">ไม่อ้างอิง</option>
                 ${latestWorkOptions}
               </select>
             </label>
@@ -12137,10 +12166,11 @@ function renderFarmWorkPlanner() {
         <article class="farm-plan-card farm-plan-method-card">
           <h4>3. วิธีคำนวณและทรัพยากร</h4>
           <div class="farm-plan-methods farm-plan-method-grid">
-            <label><input type="radio" name="planCalcMode" checked> ตามจำนวนต้นจากข้อมูลแปลง</label>
-            <label><input type="radio" name="planCalcMode"> ตามพื้นที่ไร่จากข้อมูลแปลง</label>
-            <label><input type="radio" name="planCalcMode"> ตามผลงานจริงหลังบันทึกงาน</label>
-            <label><input type="radio" name="planCalcMode"> ตามอัตราผู้รับเหมา</label>
+            <label><input type="radio" name="planCalcMode" value="rate"${budgetPicks.calcMode === "rate" ? " checked" : ""}> ตามฐานของอัตรางบประมาณ</label>
+            <label><input type="radio" name="planCalcMode" value="tree_count"${budgetPicks.calcMode === "tree_count" ? " checked" : ""}> ตามจำนวนต้นจากข้อมูลแปลง</label>
+            <label><input type="radio" name="planCalcMode" value="area_rai"${budgetPicks.calcMode === "area_rai" ? " checked" : ""}> ตามพื้นที่ไร่จากข้อมูลแปลง</label>
+            <label><input type="radio" name="planCalcMode" value="actual_result"${budgetPicks.calcMode === "actual_result" ? " checked" : ""}> ตามผลงานจริงหลังบันทึกงาน</label>
+            <label><input type="radio" name="planCalcMode" value="contractor"${budgetPicks.calcMode === "contractor" ? " checked" : ""}> ตามอัตราผู้รับเหมา</label>
           </div>
           <div class="farm-plan-resource-summary">
             <span>วัสดุ ${fmt(selectedMaterials.length)} รายการ</span>
@@ -12166,7 +12196,7 @@ function renderFarmWorkPlanner() {
             <dt>งาน</dt><dd>${esc(previewGroup?.group_name || "-")} / ${esc(previewActivity?.activity_name || "-")}</dd>
             <dt>พื้นที่</dt><dd>${esc(plotCountText)} · ${moneyNf.format(totalRai)} ไร่ · ${fmt(totalTrees)} ต้น</dd>
             <dt>ทีม</dt><dd>${esc(previewTeam?.team_name || "-")} · ${fmt(previewMembers.length)} คน</dd>
-            <dt>ช่วงวัน</dt><dd>2026-01-15 ถึง 2026-01-16</dd>
+            <dt>ช่วงวัน</dt><dd>${esc(displayDate(budgetPicks.startDate))} ถึง ${esc(displayDate(budgetPicks.endDate))}</dd>
             <dt>ทรัพยากร</dt><dd>วัสดุ ${fmt(selectedMaterials.length)} รายการ · รถ/เครื่องจักร ${fmt(selectedVehicles.length)} รายการ</dd>
             <dt>แบบตรวจงาน</dt><dd>${previewSurvey ? `${esc(previewSurvey.template_code || "")} · ${esc(previewSurvey.template_name || previewSurvey.file_name || "")} · ${fmt(previewSurveyQuestions.length)} ช่องตัวเลข` : "ไม่พบแบบตรวจที่ตรงกับกิจกรรม"}</dd>
             <dt>สถานะเริ่มต้น</dt><dd>Draft · ไม่ต้องผ่านขั้นตอนอนุมัติ</dd>
@@ -12197,6 +12227,10 @@ async function createFarmWorkPlanFromSelection() {
   const picks = farmWorkPlanState();
   const blocks = farmRows(farmTableByKey("blocks"));
   const activities = farmRows(farmTableByKey("activities"));
+  const budgetRates = farmRows(farmTableByKey("budget_activity_rates"));
+  const materials = farmRows(farmTableByKey("materials"));
+  const vehicles = farmRows(farmTableByKey("vehicles"));
+  const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
   const selectedBlocks = picks.selectedBlocks.length
     ? blocks.filter((block) => picks.selectedBlocks.includes(block.id))
     : blocks.slice(0, 1);
@@ -12205,8 +12239,18 @@ async function createFarmWorkPlanFromSelection() {
     : activities.slice(0, 1);
   const selectedTeamIds = (picks.selectedWorkers || []).filter((value) => value.startsWith("team:")).map((value) => value.slice(5));
   const teamId = selectedTeamIds[0] || "";
-  const startDate = dateValue(document.querySelector("#farmPlanStartDate")) || farmToday();
-  const endDate = dateValue(document.querySelector("#farmPlanEndDate")) || startDate;
+  const selectedMaterials = picks.selectedMaterials.length ? materials.filter((material) => picks.selectedMaterials.includes(material.id)) : [];
+  const selectedVehicles = picks.selectedVehicles.length ? vehicles.filter((vehicle) => picks.selectedVehicles.includes(vehicle.id)) : [];
+  const startDate = picks.startDate || dateValue(document.querySelector("#farmPlanStartDate")) || farmToday();
+  const endDate = picks.endDate || dateValue(document.querySelector("#farmPlanEndDate")) || startDate;
+  const repeatDays = picks.workMode === "repeat" ? ({ "7d": 7, "15d": 15, "30d": 30 }[picks.repeatMode] || 0) : 0;
+  const scheduledDates = [];
+  if (repeatDays > 0) {
+    for (let date = new Date(`${startDate}T00:00:00`); date <= new Date(`${endDate}T00:00:00`); date.setDate(date.getDate() + repeatDays)) {
+      scheduledDates.push(date.toISOString().slice(0, 10));
+    }
+  }
+  if (!scheduledDates.length) scheduledDates.push(startDate);
   if (!table || !selectedBlocks.length || !selectedActivities.length) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = "กรุณาเลือก Block และกิจกรรมก่อนสร้างแผน";
@@ -12221,34 +12265,59 @@ async function createFarmWorkPlanFromSelection() {
   try {
     for (const block of selectedBlocks) {
       for (const activity of selectedActivities) {
-        const stamp = `${Date.now()}-${created.length + 1}`;
-        const survey = farmSurveyForActivity(activity);
-        const row = {
-          id: `farm-work-orders-${stamp}`,
-          moduleId: "farm-work",
-          tableId: "work_orders",
-          work_order_no: farmNextShortWorkOrderNo(startDate, created.length),
-          work_order_title: `${activity.activity_name || activity.activity_code || "งาน"} ${block.block_name || block.block_code || block.id}`,
-          plot_id: block.plot_id || "",
-          block_id: block.id,
-          plot_group_id: block.plot_group_id || "",
-          activity_id: activity.id,
-          budget_rate_id: picks.selectedBudgetRateId || "",
-          survey_template_id: survey?.id || "",
-          team_id: teamId,
-          planned_start_date: startDate,
-          planned_end_date: endDate,
-          scheduled_date: startDate,
-          approval_status: "not_required",
-          status: "draft",
-          updatedAt: new Date().toISOString(),
-        };
-        state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && item.id === row.id));
-        state.farmRecords.push(row);
-        const saved = await persistFarmRowToDatabase(table, row);
-        await ensureFarmWorkOrderQr(row, "plan");
-        await ensureFarmSurveyAttachment({ ...row, id: saved.row?.id || row.id, activity });
-        created.push(saved.row?.id || row.id);
+        for (const scheduledDate of scheduledDates) {
+          const survey = farmSurveyForActivity(activity);
+          const activeRates = budgetRates.filter((rate) => String(rate.status || "active").toLowerCase() !== "inactive");
+          const ratePool = activeRates.filter((rate) => farmRateMatchesActivity(rate, activity) && farmRateMatchesBlock(rate, block));
+          const selectedRate = activeRates.find((rate) => rate.id === picks.selectedBudgetRateId && farmRateMatchesActivity(rate, activity) && farmRateMatchesBlock(rate, block))
+            || ratePool[0]
+            || farmBestBudgetRateForPlan(activeRates, activity, [block], []);
+          const estimate = farmPlanBudgetRateCost(selectedRate, [block], picks.calcMode);
+          const materialRate = farmBestBudgetRateForPlan(activeRates, activity, [block], ["material"]);
+          const selectedUsageRate = usageRates.find((row) => row.activity_id === activity.id && (!row.material_id || selectedMaterials.some((material) => material.id === row.material_id))) || {};
+          const usageBasis = selectedUsageRate.usage_basis || (materialRate?.comparison_basis === "tree_count" ? "per_tree" : materialRate?.comparison_basis === "area_rai" ? "per_rai" : "manual");
+          const materialBase = usageBasis === "per_tree" ? n(block.tree_count) : usageBasis === "per_rai" ? n(block.area_rai) : 1;
+          const materialQuantity = selectedMaterials.length ? materialBase * n(selectedUsageRate.usage_rate || 0) : 0;
+          const materialCost = materialQuantity * n(materialRate?.rate_amount || 0);
+          const title = `${activity.activity_name || activity.activity_code || "งาน"} ${block.block_name || block.block_code || block.id}`;
+          const noteLines = [
+            title,
+            `ช่วงแผน: ${startDate} ถึง ${endDate}`,
+            `รูปแบบ: ${picks.workMode || "single"} / รอบซ้ำ: ${picks.repeatMode || "none"}`,
+            selectedRate?.id ? `อัตรางบประมาณ: ${selectedRate.rate_code || selectedRate.budget_rate_code || selectedRate.id} · ${farmBudgetRateAmountLabel(selectedRate)}` : "",
+            survey?.id ? `แบบตรวจงาน: ${survey.template_code || survey.template_name || survey.id}` : "",
+            selectedMaterials.length ? `วัสดุ: ${selectedMaterials.map((material) => material.material_name || material.material_code || material.id).join(", ")}` : "",
+            selectedVehicles.length ? `รถ/เครื่องจักร: ${selectedVehicles.map((vehicle) => vehicle.vehicle_name || vehicle.vehicle_code || vehicle.id).join(", ")}` : "",
+            picks.referenceOrderId ? `อ้างอิง WO: ${picks.referenceOrderId}` : "",
+          ].filter(Boolean).join("\n");
+          const row = {
+            moduleId: "farm-work",
+            tableId: "work_orders",
+            work_order_no: farmNextShortWorkOrderNo(scheduledDate, created.length),
+            plot_id: block.plot_id || "",
+            block_id: block.id,
+            ap_code: block.ap_code || block.AP_code || "",
+            activity_id: activity.id,
+            team_id: teamId,
+            scheduled_date: scheduledDate,
+            planned_quantity: estimate.quantity,
+            planned_unit: estimate.unitName || estimate.unit,
+            planned_labor_cost: estimate.amount,
+            planned_material_cost: materialCost,
+            planned_fuel_cost: 0,
+            planned_machine_cost: 0,
+            planned_total_cost: estimate.amount + materialCost,
+            note: noteLines,
+            status: "draft",
+          };
+          const saved = await persistFarmRowToDatabase(table, row);
+          const savedRow = { ...row, ...(saved.row || {}), work_order_title: title, planned_start_date: scheduledDate, planned_end_date: scheduledDate, budget_rate_id: selectedRate?.id || "", survey_template_id: survey?.id || "", approval_status: "not_required" };
+          state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === savedRow.id || item.work_order_no === savedRow.work_order_no)));
+          state.farmRecords.push(savedRow);
+          await ensureFarmWorkOrderQr(savedRow, "plan");
+          await ensureFarmSurveyAttachment({ ...savedRow, activity });
+          created.push(savedRow.id || savedRow.work_order_no);
+        }
       }
     }
     saveFarmRecords();
@@ -15311,6 +15380,12 @@ function farmWorkPlanState() {
   if (!Array.isArray(picks.selectedVehicles)) picks.selectedVehicles = [];
   if (!Array.isArray(picks.selectedWorkers)) picks.selectedWorkers = [];
   if (!picks.selectedBudgetRateId) picks.selectedBudgetRateId = "";
+  if (!picks.workMode) picks.workMode = "single";
+  if (!picks.repeatMode) picks.repeatMode = "none";
+  if (!picks.referenceOrderId) picks.referenceOrderId = "";
+  if (!picks.startDate) picks.startDate = farmToday();
+  if (!picks.endDate) picks.endDate = picks.startDate || farmToday();
+  if (!picks.calcMode) picks.calcMode = "rate";
   return picks;
 }
 
@@ -18595,6 +18670,38 @@ async function init() {
     }
     if (e.target.id === "farmPlanBudgetRate") {
       farmWorkPlanState().selectedBudgetRateId = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.id === "farmPlanWorkMode") {
+      farmWorkPlanState().workMode = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.id === "farmPlanRepeatMode") {
+      farmWorkPlanState().repeatMode = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.id === "farmPlanReferenceOrder") {
+      farmWorkPlanState().referenceOrderId = e.target.value;
+      render();
+      return;
+    }
+    if (e.target.id === "farmPlanStartDate") {
+      const picks = farmWorkPlanState();
+      picks.startDate = dateValue(e.target) || picks.startDate || farmToday();
+      if (!picks.endDate || farmDateMs(picks.endDate) < farmDateMs(picks.startDate)) picks.endDate = picks.startDate;
+      render();
+      return;
+    }
+    if (e.target.id === "farmPlanEndDate") {
+      farmWorkPlanState().endDate = dateValue(e.target) || farmWorkPlanState().endDate || farmToday();
+      render();
+      return;
+    }
+    if (e.target.name === "planCalcMode") {
+      farmWorkPlanState().calcMode = e.target.value || "rate";
       render();
       return;
     }
