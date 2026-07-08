@@ -11954,10 +11954,45 @@ function farmShortBlockText(row) {
   return String(raw).replace(/\s*[-/]\s*(Upper|Lower)\b/gi, "").trim();
 }
 
+function farmResolveBlockIdForPlanner(order = {}) {
+  const blocks = farmRowsByKey("blocks");
+  const directId = order.block?.id || "";
+  if (directId && blocks.some((block) => block.id === directId)) return directId;
+  const rawValues = [
+    order.block_id,
+    order.block?.block_code,
+    order.block?.block_name,
+    order.block?.area_code,
+    order.block?.terrain_code,
+  ].filter(Boolean);
+  const normalizedValues = new Set(rawValues.map(farmNormalizeKey).filter(Boolean));
+  const comparableValues = new Set(rawValues.map(farmNormalizeComparable).filter(Boolean));
+  const apKey = farmNormalizeKey(order.ap_code || order.AP_code || order.block?.ap_code || order.block?.AP_code);
+  const match = blocks.find((block) => {
+    const candidates = [
+      block.id,
+      block.block_code,
+      block.block_name,
+      block.area_code,
+      block.area_name,
+      block.terrain_code,
+    ].filter(Boolean);
+    if (candidates.some((value) => normalizedValues.has(farmNormalizeKey(value)))) return true;
+    if (candidates.some((value) => comparableValues.has(farmNormalizeComparable(value)))) return true;
+    return false;
+  }) || blocks.find((block) => {
+    if (!apKey) return false;
+    const blockAp = farmNormalizeKey(block.ap_code || block.AP_code);
+    const blockCode = farmNormalizeComparable(block.block_code || block.block_name || block.area_code);
+    return blockAp === apKey && rawValues.some((value) => blockCode === farmNormalizeComparable(value));
+  });
+  return match?.id || rawValues[0] || "";
+}
+
 function syncFarmWorkOrderToPlanner(order = {}) {
   if (!order?.id) return;
   const picks = farmWorkPlanState();
-  const blockId = order.block?.id || order.block_id || "";
+  const blockId = farmResolveBlockIdForPlanner(order);
   const activityId = order.activity?.id || order.activity_id || "";
   picks.selectedBlocks = blockId ? [blockId] : [];
   picks.selectedActivities = activityId ? [activityId] : [];
@@ -12443,10 +12478,10 @@ function renderFarmWorkPlanner() {
             <span>Block ${fmt(selectedBlocks.length)} รายการ</span>
             <span>ทีม/คน ${fmt(selectedWorkerCount)} รายการ</span>
           </div>
-          <label>อัตรางบประมาณ
+          <label class="farm-plan-rate-select">อัตรางบประมาณ
             <select id="farmPlanBudgetRate">
               ${planBudgetRates.length
-                ? planBudgetRates.map((row) => `<option value="${esc(row.id)}"${row.id === selectedBudgetRate?.id ? " selected" : ""}>${esc(farmBudgetDisplayRateCode(row))} · ${esc(row.activity_name || farmLookupLabel("activities", row.activity_id))} · ${esc(row.terrain_code || row.block_id || "ทุก Block")} · ${esc(farmBudgetRateAmountLabel(row))}</option>`).join("")
+                ? planBudgetRates.map((row) => `<option value="${esc(row.id)}"${row.id === selectedBudgetRate?.id ? " selected" : ""}>${esc(farmPlanBudgetRateOptionLabel(row))}</option>`).join("")
                 : `<option value="">ยังไม่มีอัตราที่ตรงกับ Block และกิจกรรม</option>`}
             </select>
           </label>
@@ -12470,7 +12505,7 @@ function renderFarmWorkPlanner() {
             <strong>ต้นทุนประมาณการก่อนสร้างแผน</strong>
             <table>
               <tbody>
-                <tr><th>Rate ที่ใช้</th><td>${selectedBudgetRate?.id ? `${esc(farmBudgetDisplayRateCode(laborBudgetRate))} · ${esc(laborBudgetRate?.activity_name || "-")} · ${esc(laborBudgetRate?.terrain_code || "ตาม Block/AP ที่ผูกไว้")}` : esc(budgetMismatchMessage || "ไม่ match")}</td></tr>
+                <tr><th>Rate ที่ใช้</th><td>${selectedBudgetRate?.id ? esc(farmPlanBudgetRateOptionLabel(laborBudgetRate)) : esc(budgetMismatchMessage || "ไม่ match")}</td></tr>
                 ${budgetCalculationWarning ? `<tr><th>สถานะคำนวณ</th><td>${esc(budgetCalculationWarning)}</td></tr>` : ""}
                 <tr><th>ฐานคำนวณ</th><td>${esc(laborEstimate.label)} ${moneyNf.format(laborEstimate.quantity)} ${esc(laborEstimate.unit)} / ข้อมูลแปลง ${moneyNf.format(totalRai)} ไร่ / ${fmt(totalTrees)} ต้น</td></tr>
                 <tr><th>ค่าแรง</th><td>${moneyNf.format(laborEstimate.quantity)} ${esc(laborEstimate.unit)} × ${esc(laborEstimate.rateLabel)} = ${moneyNf.format(laborCost)}</td></tr>
@@ -16131,6 +16166,14 @@ function farmBudgetContractMaskLabel(row = {}) {
   return [row.activity_name || farmLookupLabel("activities", row.activity_id), farmBudgetRateAmountLabel(row)].filter(Boolean).join(" - ");
 }
 
+function farmPlanBudgetRateOptionLabel(row = {}) {
+  return [
+    farmBudgetDisplayRateCode(row),
+    row.activity_name || farmLookupLabel("activities", row.activity_id),
+    farmBudgetRateAmountLabel(row),
+  ].filter(Boolean).join(" · ");
+}
+
 function farmBudgetRateGroupRows(rate = {}) {
   const key = farmBudgetRateGroupKey(rate);
   if (!key) return rate?.id ? [rate] : [];
@@ -16677,16 +16720,45 @@ function renderFarmBudgetActivityTree(picks = farmBudgetContractState()) {
   }).join("") || activities.map((activity) => renderBudgetCheckbox("activity", activity.id, farmBudgetActivityDisplayLabel(activity), picks.selectedActivities)).join("");
 }
 
+const FARM_MATERIAL_PRIORITY_PREFIXES = ["F-CM", "C-HB", "C-PT", "O-FU", "S-CP", "S-PP"];
+
+function farmBudgetMaterialPriority(row = {}) {
+  const text = [
+    row.category_code,
+    row.category_name,
+    row.material_code,
+    row.item_code,
+    row.sku,
+    row.material_name,
+    row.item_name,
+  ].filter(Boolean).join(" ").toUpperCase();
+  const index = FARM_MATERIAL_PRIORITY_PREFIXES.findIndex((prefix) => text.includes(prefix));
+  return index === -1 ? FARM_MATERIAL_PRIORITY_PREFIXES.length : index;
+}
+
+function farmSortBudgetMaterials(rows = []) {
+  return rows.slice().sort((a, b) => {
+    const priority = farmBudgetMaterialPriority(a) - farmBudgetMaterialPriority(b);
+    if (priority) return priority;
+    return String(a.material_code || a.item_code || a.material_name || a.item_name || "")
+      .localeCompare(String(b.material_code || b.item_code || b.material_name || b.item_name || ""), "th");
+  });
+}
+
 function renderFarmBudgetMaterialTree(picks = farmBudgetContractState()) {
-  const categories = farmAuthoritativeRowsByKey("material_categories");
-  const materials = farmAuthoritativeRowsByKey("materials")
+  const categories = farmAuthoritativeRowsByKey("material_categories").slice().sort((a, b) => {
+    const priority = farmBudgetMaterialPriority(a) - farmBudgetMaterialPriority(b);
+    if (priority) return priority;
+    return String(a.category_code || a.category_name || "").localeCompare(String(b.category_code || b.category_name || ""), "th");
+  });
+  const materials = farmSortBudgetMaterials(farmAuthoritativeRowsByKey("materials")
     .filter((material) => String(material.status || "active").toLowerCase() !== "inactive")
-    .filter((material) => farmBudgetMatchesQuery(farmBudgetMaterialLabel(material)));
+    .filter((material) => farmBudgetMatchesQuery(farmBudgetMaterialLabel(material))));
   const materialIds = new Set(materials.map((material) => material.id).filter(Boolean));
   picks.selectedMaterials = (picks.selectedMaterials || []).filter((id) => materialIds.has(id));
   if (!materials.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลวัสดุ</div>`;
   const grouped = categories.map((category) => {
-    const categoryMaterials = materials.filter((material) => material.category_id === category.id);
+    const categoryMaterials = farmSortBudgetMaterials(materials.filter((material) => material.category_id === category.id));
     if (!categoryMaterials.length) return "";
     return `
       <details open>
@@ -16695,7 +16767,7 @@ function renderFarmBudgetMaterialTree(picks = farmBudgetContractState()) {
       </details>`;
   }).join("");
   const groupedIds = new Set(categories.flatMap((category) => materials.filter((material) => material.category_id === category.id).map((material) => material.id)));
-  const uncategorized = materials.filter((material) => !groupedIds.has(material.id));
+  const uncategorized = farmSortBudgetMaterials(materials.filter((material) => !groupedIds.has(material.id)));
   const uncategorizedHtml = uncategorized.length ? `
       <details open>
         <summary>ไม่ระบุหมวด <small>${fmt(uncategorized.length)}</small></summary>

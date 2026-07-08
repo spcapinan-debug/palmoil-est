@@ -6633,6 +6633,28 @@ tfoot td {
   font-weight: 900;
 }
 
+.farm-plan-rate-select {
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid #f2c98e;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #7c2d12;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.farm-plan-rate-select select {
+  min-height: 46px;
+  border: 2px solid #d97706;
+  border-radius: 7px;
+  background: #fffaf0;
+  color: #13233a;
+  font-size: 14px;
+  font-weight: 950;
+}
+
 .farm-plan-tags {
   display: flex;
   flex-wrap: wrap;
