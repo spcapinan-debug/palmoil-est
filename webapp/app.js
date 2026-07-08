@@ -11944,6 +11944,13 @@ function farmNormalizeComparable(value) {
     .replace(/[_/]+/g, "-");
 }
 
+function farmSplitMultiValue(value) {
+  return String(value || "")
+    .split(/[,\n;|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function farmBlockRateKeys(block = {}) {
   return new Set([
     block.id,
@@ -12061,19 +12068,27 @@ function farmRateMatchesBlock(rate, block) {
   const enrichedBlock = farmEnrichPlanningBlock(block);
   const blockIds = [enrichedBlock.id, enrichedBlock.area_id, enrichedBlock.source_block_id].filter(Boolean).map(String);
   const blockIdKeys = new Set(blockIds.map(farmNormalizeComparable));
+  const keys = farmBlockRateKeys(enrichedBlock);
+  const apKey = farmNormalizeKey(enrichedBlock.ap_code || enrichedBlock.AP_code);
+  const anyBlockIdMatches = (value) => farmSplitMultiValue(value).some((item) =>
+    blockIds.includes(String(item)) || blockIdKeys.has(farmNormalizeComparable(item))
+  );
+  const anyTerrainMatches = (value) => farmSplitMultiValue(value).some((item) =>
+    keys.has(farmNormalizeKey(item))
+    || farmBlockMapKeyVariants(item).some((variant) => [...keys].some((key) => farmBlockMapKey(key) === variant))
+  );
+  const anyApMatches = (value) => Boolean(apKey) && farmSplitMultiValue(value).some((item) => farmNormalizeKey(item) === apKey);
   const relationRows = farmBudgetRateRelations("budget_rate_blocks", rate);
   if (relationRows.length) {
-    const keys = farmBlockRateKeys(enrichedBlock);
     return relationRows.some((row) =>
-      (row.block_id && (blockIds.includes(String(row.block_id)) || blockIdKeys.has(farmNormalizeComparable(row.block_id))))
-      || (row.terrain_code && keys.has(farmNormalizeKey(row.terrain_code)))
-      || (row.ap_code && farmNormalizeKey(row.ap_code) === farmNormalizeKey(enrichedBlock.ap_code || enrichedBlock.AP_code))
+      (row.block_id && anyBlockIdMatches(row.block_id))
+      || (row.terrain_code && anyTerrainMatches(row.terrain_code))
+      || (row.ap_code && anyApMatches(row.ap_code))
     );
   }
-  if (rate.block_id && (blockIds.includes(String(rate.block_id)) || blockIdKeys.has(farmNormalizeComparable(rate.block_id)))) return true;
-  const keys = farmBlockRateKeys(enrichedBlock);
-  if (rate.terrain_code && keys.has(farmNormalizeKey(rate.terrain_code))) return true;
-  if (rate.ap_code && farmNormalizeKey(rate.ap_code) === farmNormalizeKey(enrichedBlock.ap_code || enrichedBlock.AP_code)) return true;
+  if (rate.block_id && anyBlockIdMatches(rate.block_id)) return true;
+  if (rate.terrain_code && anyTerrainMatches(rate.terrain_code)) return true;
+  if (rate.ap_code && anyApMatches(rate.ap_code)) return true;
   return false;
 }
 
@@ -12189,7 +12204,7 @@ function farmPlanBudgetMatchMessage({ activeRates = [], activity, selectedBlocks
       .join(", ");
     const rateText = activityMatched
       .slice(0, 4)
-      .map((row) => [row.rate_code || row.id, row.terrain_code || row.block_id || "", row.ap_code || ""].filter(Boolean).join(" / "))
+      .map((row) => [farmBudgetDisplayRateCode(row), row.terrain_code || row.block_id || "", row.ap_code || ""].filter(Boolean).join(" / "))
       .join(", ");
     return `พบอัตราของกิจกรรม ${fmt(activityMatched.length)} รายการ แต่ไม่พบอัตราที่ผูกกับ Block/AP ที่เลือก: ${blockText || "ไม่พบรหัส Block/AP"}${rateText ? ` | อัตราที่พบ: ${rateText}` : ""}`;
   }
@@ -12350,7 +12365,7 @@ function renderFarmWorkPlanner() {
           <label>อัตรางบประมาณ
             <select id="farmPlanBudgetRate">
               ${planBudgetRates.length
-                ? planBudgetRates.map((row) => `<option value="${esc(row.id)}"${row.id === selectedBudgetRate?.id ? " selected" : ""}>${esc(farmBudgetCompactRateCode(row))} · ${esc(row.activity_name || farmLookupLabel("activities", row.activity_id))} · ${esc(row.terrain_code || row.block_id || "ทุก Block")} · ${esc(farmBudgetRateAmountLabel(row))}</option>`).join("")
+                ? planBudgetRates.map((row) => `<option value="${esc(row.id)}"${row.id === selectedBudgetRate?.id ? " selected" : ""}>${esc(farmBudgetDisplayRateCode(row))} · ${esc(row.activity_name || farmLookupLabel("activities", row.activity_id))} · ${esc(row.terrain_code || row.block_id || "ทุก Block")} · ${esc(farmBudgetRateAmountLabel(row))}</option>`).join("")
                 : `<option value="">ยังไม่มีอัตราที่ตรงกับ Block และกิจกรรม</option>`}
             </select>
           </label>
@@ -12374,7 +12389,7 @@ function renderFarmWorkPlanner() {
             <strong>ต้นทุนประมาณการก่อนสร้างแผน</strong>
             <table>
               <tbody>
-                <tr><th>Rate ที่ใช้</th><td>${selectedBudgetRate?.id ? `${esc(laborBudgetRate?.rate_code || laborBudgetRate?.budget_rate_code || laborBudgetRate?.id || "-")} · ${esc(laborBudgetRate?.activity_name || "-")} · ${esc(laborBudgetRate?.terrain_code || "ตาม Block/AP ที่ผูกไว้")}` : esc(budgetMismatchMessage || "ไม่ match")}</td></tr>
+                <tr><th>Rate ที่ใช้</th><td>${selectedBudgetRate?.id ? `${esc(farmBudgetDisplayRateCode(laborBudgetRate))} · ${esc(laborBudgetRate?.activity_name || "-")} · ${esc(laborBudgetRate?.terrain_code || "ตาม Block/AP ที่ผูกไว้")}` : esc(budgetMismatchMessage || "ไม่ match")}</td></tr>
                 ${budgetCalculationWarning ? `<tr><th>สถานะคำนวณ</th><td>${esc(budgetCalculationWarning)}</td></tr>` : ""}
                 <tr><th>ฐานคำนวณ</th><td>${esc(laborEstimate.label)} ${moneyNf.format(laborEstimate.quantity)} ${esc(laborEstimate.unit)} / ข้อมูลแปลง ${moneyNf.format(totalRai)} ไร่ / ${fmt(totalTrees)} ต้น</td></tr>
                 <tr><th>ค่าแรง</th><td>${moneyNf.format(laborEstimate.quantity)} ${esc(laborEstimate.unit)} × ${esc(laborEstimate.rateLabel)} = ${moneyNf.format(laborCost)}</td></tr>
@@ -12453,7 +12468,7 @@ async function createFarmWorkPlanFromSelection() {
             title,
             `ช่วงแผน: ${startDate} ถึง ${endDate}`,
             `รูปแบบ: ${picks.workMode || "single"} / รอบซ้ำ: ${picks.repeatMode || "none"}`,
-            selectedRate?.id ? `อัตรางบประมาณ: ${selectedRate.rate_code || selectedRate.budget_rate_code || selectedRate.id} · ${farmBudgetRateAmountLabel(selectedRate)}` : "",
+            selectedRate?.id ? `อัตรางบประมาณ: ${farmBudgetDisplayRateCode(selectedRate)} · ${farmBudgetRateAmountLabel(selectedRate)}` : "",
             survey?.id ? `แบบตรวจงาน: ${survey.template_code || survey.template_name || survey.id}` : "",
             selectedMaterials.length ? `วัสดุ: ${selectedMaterials.map((material) => material.material_name || material.material_code || material.id).join(", ")}` : "",
             selectedVehicles.length ? `รถ/เครื่องจักร: ${selectedVehicles.map((vehicle) => vehicle.vehicle_name || vehicle.vehicle_code || vehicle.id).join(", ")}` : "",
@@ -16001,6 +16016,12 @@ function farmBudgetDisplayRateCodes(rows = []) {
     out.set(row.id, code);
   });
   return out;
+}
+
+function farmBudgetDisplayRateCode(row = {}) {
+  if (!row?.id) return farmBudgetCompactRateCode(row);
+  const codes = farmBudgetDisplayRateCodes(farmRowsByKey("budget_activity_rates"));
+  return codes.get(row.id) || farmBudgetCompactRateCode(row);
 }
 
 function nextFarmBudgetRateCode(fiscalYear = "", activity = {}) {
