@@ -2,7 +2,7 @@
   "ok": true,
   "source": {
     "type": "clear_ramp_log",
-    "updatedAt": "2026-06-30T02:54:11.187855Z",
+    "updatedAt": "2026-06-22T02:49:13.137349Z",
     "rowCount": 140
   },
   "rows": [
@@ -14,7 +14,7 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-02",
@@ -24,17 +24,17 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-03",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-04",
@@ -44,27 +44,27 @@
       "clearTk": 21970.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-05",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 11560.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-06",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 7530.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-07",
@@ -74,57 +74,57 @@
       "clearTk": 11080.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-08",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 9560.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-09",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 12650.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-10",
-      "clearPrSet": false,
-      "clearTkSet": false,
+      "clearPrSet": true,
+      "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-11",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 8580.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-12",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 850.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-13",
@@ -134,27 +134,27 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-14",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-15",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 750.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-16",
@@ -164,27 +164,27 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-17",
-      "clearPrSet": false,
+      "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-18",
-      "clearPrSet": false,
+      "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-19",
@@ -194,37 +194,37 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-20",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 1590.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-21",
-      "clearPrSet": false,
-      "clearTkSet": false,
+      "clearPrSet": true,
+      "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-22",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 10880.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-23",
@@ -234,17 +234,17 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-24",
-      "clearPrSet": false,
+      "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-25",
@@ -254,17 +254,17 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-26",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-27",
@@ -274,7 +274,7 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-28",
@@ -284,7 +284,7 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-29",
@@ -294,7 +294,7 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-30",
@@ -304,7 +304,7 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-01-31",
@@ -314,7 +314,7 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-01",
@@ -324,7 +324,7 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-02",
@@ -334,17 +334,17 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-03",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 2900.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-04",
@@ -354,37 +354,37 @@
       "clearTk": 8970.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-05",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 4640.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-06",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 3300.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-07",
-      "clearPrSet": false,
+      "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-08",
@@ -394,7 +394,7 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-09",
@@ -404,7 +404,7 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-10",
@@ -414,17 +414,17 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-11",
-      "clearPrSet": false,
+      "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-12",
@@ -434,7 +434,7 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-13",
@@ -444,17 +444,17 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-14",
-      "clearPrSet": false,
+      "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-15",
@@ -462,9 +462,9 @@
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-16",
@@ -472,19 +472,19 @@
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-17",
-      "clearPrSet": false,
+      "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-18",
@@ -494,47 +494,47 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-19",
-      "clearPrSet": false,
-      "clearTkSet": false,
+      "clearPrSet": true,
+      "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-20",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 8070.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-21",
-      "clearPrSet": false,
-      "clearTkSet": false,
+      "clearPrSet": true,
+      "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-22",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 2040.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-23",
@@ -544,17 +544,17 @@
       "clearTk": 10060.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-24",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 15380.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-25",
@@ -564,47 +564,47 @@
       "clearTk": 9370.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-26",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 15980.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-27",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 10320.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-02-28",
       "clearPrSet": true,
-      "clearTkSet": true,
+      "clearTkSet": false,
       "clearPr": 25330.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-01",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 0.0,
+      "clearPr": 25330.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-02",
@@ -612,9 +612,9 @@
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-03",
@@ -622,9 +622,9 @@
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-04",
@@ -634,377 +634,377 @@
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-05",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 33020.0,
-      "clearTk": 0.0,
-      "note": "",
-      "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
-    },
-    {
-      "date": "2026-03-06",
-      "clearPrSet": true,
-      "clearTkSet": false,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
+    },
+    {
+      "date": "2026-03-06",
+      "clearPrSet": true,
+      "clearTkSet": true,
+      "clearPr": 33020.0,
+      "clearTk": 0.0,
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
+      "source": "manual",
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-07",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 21190.0,
+      "clearTkSet": true,
+      "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-08",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 0.0,
+      "clearPr": 21190.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-09",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 28840.0,
+      "clearTkSet": true,
+      "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-10",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 39970.0,
+      "clearTkSet": true,
+      "clearPr": 28840.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-11",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 29800.0,
+      "clearTkSet": true,
+      "clearPr": 39970.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-12",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 3750.0,
+      "clearTkSet": true,
+      "clearPr": 29800.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-13",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 13030.0,
+      "clearTkSet": true,
+      "clearPr": 3750.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-14",
-      "clearPrSet": false,
-      "clearTkSet": false,
-      "clearPr": 0.0,
+      "clearPrSet": true,
+      "clearTkSet": true,
+      "clearPr": 13030.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-15",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 2330.0,
+      "clearTkSet": true,
+      "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-16",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 13170.0,
+      "clearPr": 2330.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-17",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 23930.0,
+      "clearPr": 13170.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-18",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 25000.0,
+      "clearTkSet": true,
+      "clearPr": 23930.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-19",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 0.0,
+      "clearTkSet": true,
+      "clearPr": 25000.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-20",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 13490.0,
-      "clearTk": 0.0,
-      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
-      "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
-    },
-    {
-      "date": "2026-03-21",
-      "clearPrSet": false,
-      "clearTkSet": false,
+      "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
+    },
+    {
+      "date": "2026-03-21",
+      "clearPrSet": true,
+      "clearTkSet": true,
+      "clearPr": 13490.0,
+      "clearTk": 0.0,
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
+      "source": "manual",
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-22",
+      "clearPrSet": true,
+      "clearTkSet": true,
+      "clearPr": 0.0,
+      "clearTk": 0.0,
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
+      "source": "manual",
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
+    },
+    {
+      "date": "2026-03-23",
       "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 3220.0,
       "clearTk": 0.0,
       "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
-    },
-    {
-      "date": "2026-03-23",
-      "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 11660.0,
-      "clearTk": 0.0,
-      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
-      "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-24",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 14240.0,
+      "clearTkSet": true,
+      "clearPr": 11660.0,
       "clearTk": 0.0,
       "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-25",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 20690.0,
+      "clearTkSet": true,
+      "clearPr": 14240.0,
       "clearTk": 0.0,
       "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-03-26",
       "clearPrSet": true,
-      "clearTkSet": false,
+      "clearTkSet": true,
+      "clearPr": 20690.0,
+      "clearTk": 0.0,
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
+      "source": "manual",
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
+    },
+    {
+      "date": "2026-03-27",
+      "clearPrSet": true,
+      "clearTkSet": true,
       "clearPr": 12300.0,
       "clearTk": 0.0,
       "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
-      "date": "2026-03-27",
+      "date": "2026-03-28",
       "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 26010.0,
       "clearTk": 0.0,
       "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
-      "date": "2026-03-28",
-      "clearPrSet": false,
+      "date": "2026-03-29",
+      "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
       "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
-      "date": "2026-03-29",
+      "date": "2026-03-30",
       "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 4770.0,
       "clearTk": 0.0,
       "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
-      "date": "2026-03-30",
+      "date": "2026-03-31",
       "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 16540.0,
       "clearTk": 0.0,
       "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
-      "date": "2026-03-31",
+      "date": "2026-04-01",
       "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 4220.0,
       "clearTk": 0.0,
       "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
-    },
-    {
-      "date": "2026-04-01",
-      "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 22670.0,
-      "clearTk": 0.0,
-      "note": "",
-      "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-02",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 3300.0,
+      "clearTkSet": true,
+      "clearPr": 22670.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-03",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 0.0,
+      "clearPr": 3300.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-04",
-      "clearPrSet": false,
+      "clearPrSet": true,
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-05",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 7090.0,
+      "clearTkSet": true,
+      "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-06",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 10210.0,
+      "clearTkSet": true,
+      "clearPr": 7090.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-07",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 12050.0,
-      "clearTk": 11650.0,
-      "note": "",
+      "clearPr": 10210.0,
+      "clearTk": 0.0,
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-08",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 7270.0,
-      "clearTk": 0.0,
-      "note": "",
+      "clearTkSet": true,
+      "clearPr": 12050.0,
+      "clearTk": 11650.0,
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-09",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 2530.0,
+      "clearTkSet": true,
+      "clearPr": 7270.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-10",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 0.0,
+      "clearPr": 2530.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-11",
@@ -1012,9 +1012,9 @@
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-12",
@@ -1022,9 +1022,9 @@
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-13",
@@ -1032,9 +1032,9 @@
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-14",
@@ -1042,39 +1042,39 @@
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-15",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 2420.0,
+      "clearTkSet": true,
+      "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-16",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 9000.0,
+      "clearTkSet": true,
+      "clearPr": 2420.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-17",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 0.0,
+      "clearPr": 9000.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-18",
@@ -1082,129 +1082,129 @@
       "clearTkSet": true,
       "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-19",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 9240.0,
+      "clearTkSet": true,
+      "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-20",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 55480.0,
+      "clearTkSet": true,
+      "clearPr": 9240.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-21",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 0.0,
-      "clearTk": 11190.0,
-      "note": "",
+      "clearPr": 55480.0,
+      "clearTk": 0.0,
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-22",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 19980.0,
-      "clearTk": 0.0,
-      "note": "",
+      "clearTkSet": true,
+      "clearPr": 0.0,
+      "clearTk": 11190.0,
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-23",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 22290.0,
+      "clearTkSet": true,
+      "clearPr": 19980.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-24",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 23660.0,
+      "clearTkSet": true,
+      "clearPr": 22290.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-25",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 27620.0,
-      "clearTk": 20730.0,
-      "note": "",
+      "clearPr": 23660.0,
+      "clearTk": 0.0,
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.083+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-26",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 0.0,
-      "clearTk": 0.0,
-      "note": "",
+      "clearPr": 27620.0,
+      "clearTk": 20730.0,
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-27",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 18660.0,
+      "clearTkSet": true,
+      "clearPr": 0.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-28",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 15710.0,
+      "clearTkSet": true,
+      "clearPr": 18660.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-29",
       "clearPrSet": true,
-      "clearTkSet": false,
-      "clearPr": 23470.0,
+      "clearTkSet": true,
+      "clearPr": 15710.0,
       "clearTk": 0.0,
-      "note": "",
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-04-30",
       "clearPrSet": true,
       "clearTkSet": true,
-      "clearPr": 0.0,
-      "clearTk": 0.0,
-      "note": "",
+      "clearPr": 23470.0,
+      "clearTk": 30470.0,
+      "note": "Source: uploaded stock files Jan-Apr 2569; B:C are next-day clear logs, G:P are same-day loss-weight logs",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-01",
@@ -1214,7 +1214,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-02",
@@ -1224,7 +1224,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-03",
@@ -1234,7 +1234,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-04",
@@ -1244,7 +1244,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-05",
@@ -1254,7 +1254,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-06",
@@ -1264,7 +1264,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-07",
@@ -1274,7 +1274,7 @@
       "clearTk": 10320.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-08",
@@ -1284,7 +1284,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-09",
@@ -1294,7 +1294,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-10",
@@ -1304,7 +1304,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-11",
@@ -1314,7 +1314,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-12",
@@ -1324,7 +1324,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-13",
@@ -1334,7 +1334,7 @@
       "clearTk": 21940.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-14",
@@ -1344,7 +1344,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-15",
@@ -1354,7 +1354,7 @@
       "clearTk": 4740.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-16",
@@ -1364,7 +1364,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-17",
@@ -1374,7 +1374,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-18",
@@ -1384,7 +1384,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-19",
@@ -1394,7 +1394,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     },
     {
       "date": "2026-05-20",
@@ -1404,7 +1404,7 @@
       "clearTk": 0.0,
       "note": "Stored from Stock Report current period; B:C are next-day clear values, G:P same-day loss values",
       "source": "manual",
-      "updatedAt": "2026-06-24T09:07:56.084+00:00"
+      "updatedAt": "2026-06-19T12:07:26.502+00:00"
     }
   ]
 }
