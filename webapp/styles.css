@@ -8486,7 +8486,8 @@ tfoot td {
 }
 
 .farm-work-legend i.plan-draft,
-.farm-work-legend i.plan-approved {
+.farm-work-legend i.plan-approved,
+.farm-work-legend i.plan-dispatched {
   width: 18px;
   height: 8px;
   border-radius: 3px;
@@ -8498,8 +8499,13 @@ tfoot td {
 }
 
 .farm-work-legend i.plan-approved {
-  border: 2px dashed #ef4444;
-  background: rgba(239, 68, 68, .08);
+  border: 1px solid #b91c1c;
+  background: #dc2626;
+}
+
+.farm-work-legend i.plan-dispatched {
+  border: 1px solid #0f766e;
+  background: #14b8a6;
 }
 
 .farm-work-legend i.actual-done {
@@ -8771,6 +8777,17 @@ tfoot td {
   box-shadow: 0 4px 10px rgba(185, 28, 28, .24);
 }
 
+.farm-work-plan-bar.approved.dispatched {
+  border-color: #0f766e;
+  background: linear-gradient(180deg, #2dd4bf 0%, #0f766e 100%);
+  box-shadow: 0 4px 10px rgba(15, 118, 110, .24);
+}
+
+.farm-work-plan-bar.approved.rescheduled {
+  border-color: #7c3aed;
+  background: linear-gradient(180deg, #c084fc 0%, #7c3aed 100%);
+}
+
 .farm-work-actual-bar {
   top: 48px;
   border: 1px solid #b91c1c;
@@ -9009,6 +9026,16 @@ tfoot td {
   border: 1px solid #a83228;
   background: linear-gradient(180deg, #ee6b5f 0%, #c94f3e 100%);
   box-shadow: inset 0 -1px 0 rgba(120, 29, 24, .28), 0 1px 2px rgba(120, 29, 24, .18);
+}
+
+.farm-work-compact .farm-work-plan-bar.approved.dispatched {
+  border-color: #0f766e;
+  background: linear-gradient(180deg, #2dd4bf 0%, #0f766e 100%);
+}
+
+.farm-work-compact .farm-work-plan-bar.approved.rescheduled {
+  border-color: #7c3aed;
+  background: linear-gradient(180deg, #c084fc 0%, #7c3aed 100%);
 }
 
 .farm-work-compact .farm-work-actual-bar {
