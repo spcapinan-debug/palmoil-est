@@ -6248,7 +6248,13 @@ tfoot td {
 }
 
 .farm-plan-work-ref {
-  grid-column: 1 / -1;
+  grid-column: span 2;
+  min-width: 0;
+}
+
+.farm-plan-work-ref select {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .farm-plan-selector-note,
@@ -8792,7 +8798,7 @@ tfoot td {
 }
 
 .farm-work-plan-bar.approved {
-  top: 28px;
+  top: 13px;
   border: 1px solid #b91c1c;
   background: linear-gradient(180deg, #f87171 0%, #dc2626 100%);
   color: #fff;

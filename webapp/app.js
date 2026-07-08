@@ -11655,8 +11655,7 @@ function farmWorkStatusMeta(order) {
   if (status === "in_progress") return { key: "in_progress", label: "กำลังทำ", color: "#2563eb", tone: "active" };
   if (isRescheduled || status === "rescheduled") return { key: "rescheduled", label: "เลื่อนวัน", color: "#a855f7", tone: "shift" };
   if (status === "sent_to_mobile") return { key: "sent_to_mobile", label: "ส่งเข้ามือถือ", color: "#06b6d4", tone: "active" };
-  if (approval === "approved" || status === "approved") return { key: "approved", label: "อนุมัติแล้ว", color: "#22c55e", tone: "done" };
-  if (status === "scheduled" || status === "planned") return { key: status, label: status === "scheduled" ? "กำหนดการ" : "แผนงาน", color: "#64748b", tone: "neutral" };
+  if (approval === "approved" || status === "approved" || status === "scheduled" || status === "planned" || status === "draft") return { key: "approved", label: "อนุมัติแล้ว", color: "#22c55e", tone: "done" };
   return { key: status, label: status || "ไม่ระบุ", color: "#64748b", tone: "neutral" };
 }
 
@@ -11813,10 +11812,15 @@ function farmDaysBetween(startIso, endIso) {
 function farmWorkOrders() {
   const orders = farmRows(farmTableByKey("work_orders"));
   const blocks = farmRows(farmTableByKey("blocks"));
+  const areaBlocks = farmRowsByKey("areas").filter((area) => !area.area_level || area.area_level === "block");
   const results = farmRows(farmTableByKey("work_results"));
   return orders.map((order) => {
-    const block = farmLookup("blocks", order.block_id)
+    const resolvedBlockId = farmResolveBlockIdForPlanner(order);
+    const block = areaBlocks.find((item) => item.id === resolvedBlockId)
+      || farmLookup("blocks", resolvedBlockId)
+      || farmLookup("blocks", order.block_id)
       || blocks.find((item) => [item.block_code, item.block_name, item.area_code].filter(Boolean).includes(order.block_id))
+      || areaBlocks.find((item) => [item.block_code, item.block_name, item.area_code, item.area_name].filter(Boolean).includes(order.block_id))
       || blocks.find((item) => item.plot_id === order.plot_id && (!order.ap_code || item.ap_code === order.ap_code || item.AP_code === order.ap_code))
       || null;
     const plot = farmLookup("plots", order.plot_id || block?.plot_id);
@@ -11945,6 +11949,10 @@ function farmShortActivityText(row) {
 }
 
 function farmShortBlockText(row) {
+  const resolvedBlockId = farmResolveBlockIdForPlanner(row);
+  const resolvedBlock = farmRowsByKey("areas").find((area) => area.id === resolvedBlockId)
+    || farmRowsByKey("blocks").find((block) => block.id === resolvedBlockId);
+  if (resolvedBlock) return farmBudgetBlockLabel(resolvedBlock);
   const raw = row?.block?.block_code
     || row?.block?.block_name
     || row?.block?.area_code
@@ -11955,8 +11963,9 @@ function farmShortBlockText(row) {
 }
 
 function farmResolveBlockIdForPlanner(order = {}) {
-  const blocks = farmRowsByKey("blocks");
-  const directId = order.block?.id || "";
+  const areaBlocks = farmRowsByKey("areas").filter((area) => !area.area_level || area.area_level === "block");
+  const blocks = areaBlocks.length ? areaBlocks : farmRowsByKey("blocks");
+  const directId = order.block?.id || order.block_id || "";
   if (directId && blocks.some((block) => block.id === directId)) return directId;
   const rawValues = [
     order.block_id,
@@ -11976,6 +11985,7 @@ function farmResolveBlockIdForPlanner(order = {}) {
       block.area_code,
       block.area_name,
       block.terrain_code,
+      block.source_block_id,
     ].filter(Boolean);
     if (candidates.some((value) => normalizedValues.has(farmNormalizeKey(value)))) return true;
     if (candidates.some((value) => comparableValues.has(farmNormalizeComparable(value)))) return true;
@@ -12401,7 +12411,14 @@ function renderFarmWorkPlanner() {
   const totalCost = laborCost + materialCost;
   const plotCountText = `${fmt(selectedBlocks.length)} จาก ${fmt(blocks.length)} Block`;
   const selectedWorkerCount = selectedWorkerRefs.length || previewMembers.length || (previewTeam ? 1 : 0);
-  const latestWorkOptions = workOrders.slice(0, 6).map((row) => `<option value="${esc(row.id)}"${row.id === budgetPicks.referenceOrderId ? " selected" : ""}>${esc(row.shortNo || farmShortWorkOrderNo(row))} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("");
+  const latestWorkOptions = workOrders.slice(0, 6).map((row) => {
+    const label = [
+      row.shortNo || farmShortWorkOrderNo(row),
+      farmShortActivityText(row),
+      farmShortBlockText(row),
+    ].filter(Boolean).join(" · ");
+    return `<option value="${esc(row.id)}"${row.id === budgetPicks.referenceOrderId ? " selected" : ""}>${esc(label)}</option>`;
+  }).join("");
   return `
     <section class="farm-planner-console">
       <div class="section-head">
@@ -12440,12 +12457,12 @@ function renderFarmWorkPlanner() {
                 <option value="6m"${budgetPicks.repeatMode === "6m" ? " selected" : ""}>ทุก 6 เดือน</option>
               </select>
             </label>
-            <label class="farm-plan-work-ref">อ้างอิงงานล่าสุด
+            ${budgetPicks.workMode === "reference" ? `<label class="farm-plan-work-ref">อ้างอิงงานล่าสุด
               <select id="farmPlanReferenceOrder">
                 <option value="">ไม่อ้างอิง</option>
                 ${latestWorkOptions}
               </select>
-            </label>
+            </label>` : ""}
           </div>
           <div class="farm-plan-picked-work">
             <span>งานจากรายการเลือก</span>
@@ -14949,7 +14966,7 @@ function renderFarmWorkBoard(options = {}) {
               const actualIndex = row.actualStartDate ? Math.max(0, farmDaysBetween(timelineStart, row.actualStartDate)) : -1;
               const actualSpan = row.actualStartDate ? Math.max(1, farmDaysBetween(row.actualStartDate, row.actualEndDate || row.actualStartDate) + 1) : 0;
               const needsApproval = row.statusMeta.key === "pending_approval";
-              const hasApprovedPlan = row.approval_status === "approved" || ["approved", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(row.statusMeta.key);
+              const hasApprovedPlan = true;
               const showDraftPlan = false;
               const planStateClass = row.statusMeta.key === "sent_to_mobile" ? "dispatched" : row.statusMeta.key === "rescheduled" ? "rescheduled" : "";
               const activityText = farmShortActivityText(row);
