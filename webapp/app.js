@@ -9852,6 +9852,15 @@ function farmRowsByKey(tableKey) {
   return schema ? farmRows({ key: tableKey, ...schema }) : [];
 }
 
+function farmDbRowsByKey(tableKey) {
+  return Array.isArray(state.farmDbRows?.[tableKey]) ? state.farmDbRows[tableKey] : [];
+}
+
+function farmAuthoritativeRowsByKey(tableKey) {
+  const dbRows = farmDbRowsByKey(tableKey);
+  return dbRows.length ? dbRows : farmRowsByKey(tableKey);
+}
+
 function mergeCleanRows(currentRows, derivedRows) {
   const map = new Map();
   for (const row of [...derivedRows, ...currentRows]) {
@@ -16355,10 +16364,14 @@ function renderFarmBudgetActivityTree(picks = farmBudgetContractState()) {
 }
 
 function renderFarmBudgetMaterialTree(picks = farmBudgetContractState()) {
-  const categories = farmRowsByKey("material_categories");
-  const materials = farmRowsByKey("materials").filter((material) => farmBudgetMatchesQuery(farmBudgetMaterialLabel(material)));
+  const categories = farmAuthoritativeRowsByKey("material_categories");
+  const materials = farmAuthoritativeRowsByKey("materials")
+    .filter((material) => String(material.status || "active").toLowerCase() !== "inactive")
+    .filter((material) => farmBudgetMatchesQuery(farmBudgetMaterialLabel(material)));
+  const materialIds = new Set(materials.map((material) => material.id).filter(Boolean));
+  picks.selectedMaterials = (picks.selectedMaterials || []).filter((id) => materialIds.has(id));
   if (!materials.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลวัสดุ</div>`;
-  return categories.map((category) => {
+  const grouped = categories.map((category) => {
     const categoryMaterials = materials.filter((material) => material.category_id === category.id);
     if (!categoryMaterials.length) return "";
     return `
@@ -16366,7 +16379,15 @@ function renderFarmBudgetMaterialTree(picks = farmBudgetContractState()) {
         <summary>${esc(category.category_code || "")} ${esc(category.category_name || "")} <small>${fmt(categoryMaterials.length)}</small></summary>
         ${categoryMaterials.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials, farmLookupLabel("units", material.base_unit_id))).join("")}
       </details>`;
-  }).join("") || materials.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials)).join("");
+  }).join("");
+  const groupedIds = new Set(categories.flatMap((category) => materials.filter((material) => material.category_id === category.id).map((material) => material.id)));
+  const uncategorized = materials.filter((material) => !groupedIds.has(material.id));
+  const uncategorizedHtml = uncategorized.length ? `
+      <details open>
+        <summary>ไม่ระบุหมวด <small>${fmt(uncategorized.length)}</small></summary>
+        ${uncategorized.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials, farmLookupLabel("units", material.base_unit_id))).join("")}
+      </details>` : "";
+  return grouped || uncategorizedHtml ? `${grouped}${uncategorizedHtml}` : materials.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials)).join("");
 }
 
 function renderFarmBudgetVehicleTree(picks = farmBudgetContractState()) {
