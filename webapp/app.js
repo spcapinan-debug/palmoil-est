@@ -11936,6 +11936,14 @@ function farmNormalizeKey(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function farmNormalizeComparable(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[_/]+/g, "-");
+}
+
 function farmBlockRateKeys(block = {}) {
   return new Set([
     block.id,
@@ -12051,33 +12059,80 @@ function farmSelectedPlanningBlocks(picks = farmWorkPlanState()) {
 function farmRateMatchesBlock(rate, block) {
   if (!rate || !block) return false;
   const enrichedBlock = farmEnrichPlanningBlock(block);
+  const blockIds = [enrichedBlock.id, enrichedBlock.area_id, enrichedBlock.source_block_id].filter(Boolean).map(String);
+  const blockIdKeys = new Set(blockIds.map(farmNormalizeComparable));
   const relationRows = farmBudgetRateRelations("budget_rate_blocks", rate);
   if (relationRows.length) {
     const keys = farmBlockRateKeys(enrichedBlock);
     return relationRows.some((row) =>
-      (row.block_id && [enrichedBlock.id, enrichedBlock.area_id, enrichedBlock.source_block_id].filter(Boolean).includes(row.block_id))
+      (row.block_id && (blockIds.includes(String(row.block_id)) || blockIdKeys.has(farmNormalizeComparable(row.block_id))))
       || (row.terrain_code && keys.has(farmNormalizeKey(row.terrain_code)))
       || (row.ap_code && farmNormalizeKey(row.ap_code) === farmNormalizeKey(enrichedBlock.ap_code || enrichedBlock.AP_code))
     );
   }
-  if (rate.block_id && [enrichedBlock.id, enrichedBlock.area_id, enrichedBlock.source_block_id].filter(Boolean).includes(rate.block_id)) return true;
+  if (rate.block_id && (blockIds.includes(String(rate.block_id)) || blockIdKeys.has(farmNormalizeComparable(rate.block_id)))) return true;
   const keys = farmBlockRateKeys(enrichedBlock);
   if (rate.terrain_code && keys.has(farmNormalizeKey(rate.terrain_code))) return true;
   if (rate.ap_code && farmNormalizeKey(rate.ap_code) === farmNormalizeKey(enrichedBlock.ap_code || enrichedBlock.AP_code)) return true;
   return false;
 }
 
+function farmActivityRateKeys(activity = {}) {
+  const raw = [
+    activity.id,
+    activity.activity_id,
+    activity.activity_code,
+    activity.activity_name,
+    activity.name,
+    activity.code,
+  ];
+  return new Set(raw.flatMap((value) => {
+    const text = String(value || "").trim();
+    const out = [farmNormalizeKey(text), farmNormalizeComparable(text)];
+    const codeMatch = text.match(/([A-Z]{1,4}\d{1,4})/i);
+    if (codeMatch) {
+      out.push(farmNormalizeKey(codeMatch[1]));
+      out.push(farmNormalizeComparable(codeMatch[1]));
+    }
+    return out;
+  }).filter(Boolean));
+}
+
+function farmRateActivityTokens(rate = {}) {
+  const raw = [
+    rate.activity_id,
+    rate.activity_code,
+    rate.activity_name,
+    rate.rate_code,
+    rate.budget_rate_code,
+    rate.contract_mask,
+    rate.rate_name,
+    rate.rate_text,
+    rate.id,
+  ];
+  return new Set(raw.flatMap((value) => {
+    const text = String(value || "").trim();
+    const out = [farmNormalizeKey(text), farmNormalizeComparable(text)];
+    const dashParts = text.split(/[-\s]+/).filter(Boolean);
+    for (const part of dashParts) {
+      out.push(farmNormalizeKey(part));
+      out.push(farmNormalizeComparable(part));
+    }
+    const codeMatches = text.match(/[A-Z]{1,4}\d{1,4}/gi) || [];
+    for (const match of codeMatches) {
+      out.push(farmNormalizeKey(match));
+      out.push(farmNormalizeComparable(match));
+    }
+    return out;
+  }).filter(Boolean));
+}
+
 function farmRateMatchesActivity(rate, activity) {
   if (!rate || !activity) return false;
   if (rate.activity_id && activity.id && rate.activity_id === activity.id) return true;
-  const rateName = farmNormalizeKey(rate.activity_name || rate.activity_code);
-  const activityNames = [
-    activity.activity_name,
-    activity.activity_code,
-    activity.name,
-    activity.code,
-  ].map(farmNormalizeKey).filter(Boolean);
-  return activityNames.includes(rateName);
+  const activityKeys = farmActivityRateKeys(activity);
+  const rateTokens = farmRateActivityTokens(rate);
+  return [...activityKeys].some((key) => rateTokens.has(key));
 }
 
 function farmBestBudgetRateForPlan(rates, activity, blocks, preferredTypes = ["labor", "contractor"]) {
@@ -12128,11 +12183,15 @@ function farmPlanBudgetMatchMessage({ activeRates = [], activity, selectedBlocks
   }
   if (!matchingRates.length) {
     const blockText = selectedBlocks
-      .map((block) => [block.block_name || block.block_code, block.ap_code || block.AP_code].filter(Boolean).join(" / "))
+      .map((block) => [block.block_name || block.block_code || block.area_code, block.ap_code || block.AP_code].filter(Boolean).join(" / "))
       .filter(Boolean)
       .slice(0, 6)
       .join(", ");
-    return `พบอัตราของกิจกรรมแล้ว แต่ไม่พบอัตราที่ผูกกับ Block/AP ที่เลือก: ${blockText || "ไม่พบรหัส Block/AP"}`;
+    const rateText = activityMatched
+      .slice(0, 4)
+      .map((row) => [row.rate_code || row.id, row.terrain_code || row.block_id || "", row.ap_code || ""].filter(Boolean).join(" / "))
+      .join(", ");
+    return `พบอัตราของกิจกรรม ${fmt(activityMatched.length)} รายการ แต่ไม่พบอัตราที่ผูกกับ Block/AP ที่เลือก: ${blockText || "ไม่พบรหัส Block/AP"}${rateText ? ` | อัตราที่พบ: ${rateText}` : ""}`;
   }
   return "";
 }
