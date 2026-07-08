@@ -445,12 +445,7 @@ async function upsertRealTableRows(table, rows) {
 }
 
 async function upsertFarmTableRows(table, rows, reason = "") {
-  try {
-    return { rows: await upsertRealTableRows(table, rows), warnings: [] };
-  } catch (err) {
-    const fallbackRows = await saveFallbackRows(table, rows, err.message || reason);
-    return { rows: fallbackRows, warnings: [err.message] };
-  }
+  return { rows: await upsertRealTableRows(table, rows), warnings: [] };
 }
 
 async function deleteRealTableRow(table, id) {
@@ -509,14 +504,7 @@ module.exports = async function handler(req, res) {
         const saved = await upsertRealTableRow(table, row);
         return json(res, 200, { ok: true, table, mode: "supabase-real-table", row: saved });
       } catch (err) {
-        const fallback = await saveFallbackRow(table, row, err.message);
-        return json(res, 200, {
-          ok: true,
-          table,
-          mode: "farm-master-fallback",
-          warning: err.message,
-          row: fallback,
-        });
+        return json(res, 500, { ok: false, table, mode: "supabase-real-table", error: err.message });
       }
     }
 
@@ -589,20 +577,15 @@ module.exports = async function handler(req, res) {
     for (const table of tables) {
       let realRows = [];
       let realError = null;
-      let fallbackRows = [];
       try {
         realRows = await supabaseFetchAll(`${table}?select=*`, limit);
       } catch (err) {
         realError = err;
       }
-      try {
-        fallbackRows = await loadFallbackRows(table);
-      } catch {}
       const map = new Map();
       for (const row of Array.isArray(realRows) ? realRows : []) map.set(row.id || JSON.stringify(row), row);
-      for (const row of fallbackRows) map.set(row.id || row.databaseId || JSON.stringify(row), row);
       result[table] = [...map.values()];
-      if (realError && !result[table].length) {
+      if (realError) {
         if (REQUIRED_TABLES.has(table)) errors[table] = realError.message;
         else warnings[table] = realError.message;
       }
@@ -614,7 +597,7 @@ module.exports = async function handler(req, res) {
       errors,
       warnings,
       source: {
-        mode: "supabase-real-tables",
+        mode: "supabase-real-only",
         tableCount: tables.length,
         rowCount: Object.values(result).reduce((sum, rows) => sum + rows.length, 0),
         generatedAt: new Date().toISOString(),

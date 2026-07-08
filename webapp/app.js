@@ -3191,7 +3191,7 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null } = {}
     return true;
   } catch (error) {
     if (!isPartial) state.farmDbRows = {};
-    state.farmDbSource = { mode: "fallback-seed", error: error.message };
+    state.farmDbSource = { mode: "supabase-real-only", error: error.message };
     state.farmDbErrors = { ...(state.farmDbErrors || {}), api: error.message };
     return false;
   }
@@ -9805,46 +9805,11 @@ function mergeFarmBudgetSourceRows(tableId, seedRows = [], databaseRows = []) {
 
 function farmRows(table = selectedFarmTable()) {
   const tableId = table.key;
-  const overrides = new Map(state.farmRecords.filter((row) => row.tableId === tableId && row._overrideOf && !row._deleted).map((row) => [row._overrideOf, row]));
-  const deleted = new Set(state.farmRecords.filter((row) => row.tableId === tableId && row._deleted).map((row) => row._overrideOf || row.id));
   const databaseRows = Array.isArray(state.farmDbRows?.[tableId]) ? state.farmDbRows[tableId] : [];
-  const seedRows = farmSeedRows(table);
-  const sourceRows = tableId.startsWith("budget_")
-    ? databaseRows
-    : (databaseRows.length ? databaseRows : seedRows);
-  const baseRows = sourceRows
-    .map((row) => overrides.has(row.id) ? { ...row, ...overrides.get(row.id), id: row.id, readonly: false } : row)
-    .filter((row) => !deleted.has(row.id));
-  const baseIds = new Set(baseRows.map((row) => row.id));
-  const customRows = state.farmRecords
-    .filter((row) => row.tableId === tableId && !row._overrideOf && !row._deleted && !baseIds.has(row.id));
-  const rows = [...baseRows, ...customRows];
+  const rows = databaseRows.map((row) => ({ ...row, readonly: false }));
   const cleanRows = farmCleanRows(tableId, rows);
   if (cleanRows) return cleanRows;
-  if (tableId !== "blocks") return rows;
-  const existingPlotIds = new Set(rows.map((row) => row.plot_id).filter(Boolean));
-  const legacyPlots = farmRows(farmTableByKey("plots"))
-    .filter((plot) => !existingPlotIds.has(plot.id) && [plot.area_rai, plot.planting_year, plot.tree_count, plot.rspo_status, plot.ap_code, plot.AP_code].some((value) => value !== undefined && value !== ""))
-    .map((plot) => ({
-      id: `legacy-block-${plot.id}`,
-      tableId: "blocks",
-      moduleId: "farm-area",
-      readonly: true,
-      createdAt: "legacy",
-      updatedAt: "legacy",
-      estate_id: plot.estate_id,
-      zone_id: plot.zone_id,
-      plot_id: plot.id,
-      block_code: plot.block_code || plot.plot_code || plot.id,
-      block_name: plot.block_name || plot.plot_name || "",
-      ap_code: plot.ap_code || plot.AP_code || "",
-      area_rai: plot.area_rai || "",
-      planting_year: plot.planting_year || "",
-      tree_count: plot.tree_count || "",
-      rspo_status: plot.rspo_status || "",
-      status: plot.status || "active",
-    }));
-  return [...rows, ...legacyPlots];
+  return rows;
 }
 
 function farmRowsByKey(tableKey) {
@@ -9858,7 +9823,7 @@ function farmDbRowsByKey(tableKey) {
 
 function farmAuthoritativeRowsByKey(tableKey) {
   const dbRows = farmDbRowsByKey(tableKey);
-  return dbRows.length ? dbRows : farmRowsByKey(tableKey);
+  return dbRows;
 }
 
 function mergeCleanRows(currentRows, derivedRows) {
