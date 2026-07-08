@@ -11939,28 +11939,131 @@ function farmNormalizeKey(value) {
 function farmBlockRateKeys(block = {}) {
   return new Set([
     block.id,
+    block.area_id,
+    block.source_block_id,
     block.block_code,
     block.block_name,
     block.area_code,
+    block.area_name,
     block.terrain_code,
   ].map(farmNormalizeKey).filter(Boolean));
 }
 
+function farmFirstFilled(...values) {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "") ?? "";
+}
+
+function farmFirstPositiveNumber(...values) {
+  const value = values.find((item) => n(item) > 0);
+  return value === undefined || value === null ? "" : value;
+}
+
+function farmAreaBlockSourceRows() {
+  return farmRowsByKey("areas")
+    .filter((row) => !row.area_level || String(row.area_level).toLowerCase() === "block");
+}
+
+function farmBlockKeySet(row = {}) {
+  const values = [
+    row.id,
+    row.area_id,
+    row.source_block_id,
+    row.block_id,
+    row.block_code,
+    row.block_name,
+    row.area_code,
+    row.area_name,
+    row.terrain_code,
+  ];
+  return new Set(values.flatMap((value) => farmBlockMapKeyVariants(value)).filter(Boolean));
+}
+
+function farmFindMatchingAreaForBlock(block = {}) {
+  const keys = farmBlockKeySet(block);
+  if (!keys.size) return null;
+  return farmAreaBlockSourceRows().find((area) => {
+    if (block.id && area.id === block.id) return true;
+    return [...farmBlockKeySet(area)].some((key) => keys.has(key));
+  }) || null;
+}
+
+function farmFindMatchingLegacyBlock(block = {}) {
+  const keys = farmBlockKeySet(block);
+  if (!keys.size) return null;
+  return farmRowsByKey("blocks").find((row) => {
+    if (block.id && row.id === block.id) return true;
+    return [...farmBlockKeySet(row)].some((key) => keys.has(key));
+  }) || null;
+}
+
+function farmEnrichPlanningBlock(block = {}) {
+  if (!block || !Object.keys(block).length) return {};
+  const matchedArea = farmFindMatchingAreaForBlock(block);
+  const matchedBlock = farmFindMatchingLegacyBlock(block);
+  const isAreaRow = Boolean(block.area_code || block.area_name || block.area_level);
+  const id = block.id || matchedArea?.id || matchedBlock?.id || "";
+  const sourceBlockId = matchedBlock?.id || (!isAreaRow ? block.id : "") || "";
+  const areaId = matchedArea?.id || (isAreaRow ? block.id : "") || "";
+  return {
+    ...matchedBlock,
+    ...matchedArea,
+    ...block,
+    id,
+    area_id: areaId,
+    source_block_id: sourceBlockId,
+    block_code: farmFirstFilled(block.block_code, block.area_code, matchedArea?.area_code, matchedBlock?.block_code, block.terrain_code, matchedArea?.terrain_code),
+    block_name: farmFirstFilled(block.block_name, block.area_name, matchedArea?.area_name, matchedBlock?.block_name, block.block_code, block.area_code),
+    area_code: farmFirstFilled(block.area_code, matchedArea?.area_code, block.block_code, matchedBlock?.block_code),
+    area_name: farmFirstFilled(block.area_name, matchedArea?.area_name, block.block_name, matchedBlock?.block_name),
+    terrain_code: farmFirstFilled(block.terrain_code, block.block_code, block.area_code, matchedArea?.terrain_code, matchedArea?.area_code, matchedBlock?.terrain_code),
+    estate_name: farmFirstFilled(block.estate_name, matchedArea?.estate_name, matchedBlock?.estate_name),
+    zone_name: farmFirstFilled(block.zone_name, matchedArea?.zone_name, matchedBlock?.zone_name),
+    plot_group_code: farmFirstFilled(block.plot_group_code, block.plot_group_name, matchedArea?.plot_group_code, matchedArea?.plot_group_name, matchedBlock?.plot_group_code),
+    ap_code: farmFirstFilled(block.ap_code, block.AP_code, matchedArea?.ap_code, matchedArea?.AP_code, matchedBlock?.ap_code, matchedBlock?.AP_code),
+    area_rai: farmFirstPositiveNumber(block.area_rai, matchedArea?.area_rai, matchedBlock?.area_rai),
+    tree_count: farmFirstPositiveNumber(block.tree_count, matchedArea?.tree_count, matchedBlock?.tree_count),
+    planting_year: farmFirstFilled(block.planting_year, matchedArea?.planting_year, matchedBlock?.planting_year),
+    rspo_status: farmFirstFilled(block.rspo_status, matchedArea?.rspo_status, matchedBlock?.rspo_status),
+  };
+}
+
+function farmPlanningBlockRows() {
+  const areaRows = farmAreaBlockSourceRows();
+  const sourceRows = areaRows.length ? areaRows : farmRowsByKey("blocks");
+  return sourceRows.map(farmEnrichPlanningBlock);
+}
+
+function farmSelectedPlanningBlocks(picks = farmWorkPlanState()) {
+  const ids = farmBudgetUnique(picks.selectedBlocks || []);
+  if (!ids.length) return [];
+  const candidates = [...farmAreaBlockSourceRows(), ...farmRowsByKey("blocks")].map(farmEnrichPlanningBlock);
+  return ids
+    .map((id) => candidates.find((block) =>
+      block.id === id
+      || block.area_id === id
+      || block.source_block_id === id
+      || farmBlockKeySet(block).has(farmBlockMapKey(id))
+    ))
+    .filter(Boolean)
+    .map(farmEnrichPlanningBlock);
+}
+
 function farmRateMatchesBlock(rate, block) {
   if (!rate || !block) return false;
+  const enrichedBlock = farmEnrichPlanningBlock(block);
   const relationRows = farmBudgetRateRelations("budget_rate_blocks", rate);
   if (relationRows.length) {
-    const keys = farmBlockRateKeys(block);
+    const keys = farmBlockRateKeys(enrichedBlock);
     return relationRows.some((row) =>
-      (row.block_id && block.id && row.block_id === block.id)
+      (row.block_id && [enrichedBlock.id, enrichedBlock.area_id, enrichedBlock.source_block_id].filter(Boolean).includes(row.block_id))
       || (row.terrain_code && keys.has(farmNormalizeKey(row.terrain_code)))
-      || (row.ap_code && farmNormalizeKey(row.ap_code) === farmNormalizeKey(block.ap_code || block.AP_code))
+      || (row.ap_code && farmNormalizeKey(row.ap_code) === farmNormalizeKey(enrichedBlock.ap_code || enrichedBlock.AP_code))
     );
   }
-  if (rate.block_id && block.id && rate.block_id === block.id) return true;
-  const keys = farmBlockRateKeys(block);
+  if (rate.block_id && [enrichedBlock.id, enrichedBlock.area_id, enrichedBlock.source_block_id].filter(Boolean).includes(rate.block_id)) return true;
+  const keys = farmBlockRateKeys(enrichedBlock);
   if (rate.terrain_code && keys.has(farmNormalizeKey(rate.terrain_code))) return true;
-  if (rate.ap_code && farmNormalizeKey(rate.ap_code) === farmNormalizeKey(block.ap_code || block.AP_code)) return true;
+  if (rate.ap_code && farmNormalizeKey(rate.ap_code) === farmNormalizeKey(enrichedBlock.ap_code || enrichedBlock.AP_code)) return true;
   return false;
 }
 
@@ -11990,8 +12093,9 @@ function farmBestBudgetRateForPlan(rates, activity, blocks, preferredTypes = ["l
 
 function farmBudgetRateBaseQuantity(rate, blocks) {
   const basis = rate?.comparison_basis || "";
-  const areaRai = blocks.reduce((sum, row) => sum + n(row.area_rai), 0);
-  const treeCount = blocks.reduce((sum, row) => sum + n(row.tree_count), 0);
+  const enrichedBlocks = (blocks || []).map(farmEnrichPlanningBlock);
+  const areaRai = enrichedBlocks.reduce((sum, row) => sum + n(row.area_rai), 0);
+  const treeCount = enrichedBlocks.reduce((sum, row) => sum + n(row.tree_count), 0);
   if (basis === "tree_count") return { quantity: treeCount, label: "จำนวนต้น", unit: "ต้น" };
   if (basis === "area_rai") return { quantity: areaRai, label: "พื้นที่", unit: "ไร่" };
   if (basis === "weight_ton") return { quantity: n(rate?.planned_quantity || 0), label: "ผลผลิตแผน", unit: "ตัน" };
@@ -12035,7 +12139,7 @@ function farmPlanBudgetMatchMessage({ activeRates = [], activity, selectedBlocks
 
 function renderFarmWorkPlanner() {
   const budgetPicks = farmWorkPlanState();
-  const blocks = farmRows(farmTableByKey("blocks"));
+  const blocks = farmPlanningBlockRows();
   const activityGroups = farmRows(farmTableByKey("activity_groups"));
   const activities = farmRows(farmTableByKey("activities"));
   const teams = farmRows(farmTableByKey("teams"));
@@ -12058,9 +12162,7 @@ function renderFarmWorkPlanner() {
   const previewMembers = selectedEmployeeIds.length
     ? selectedEmployeeIds.map((id) => ({ employee_id: id, member_role: farmLookup("employees", id)?.worker_type || "" }))
     : teamMembers.filter((item) => item.team_id === previewTeam?.id).slice(0, 8);
-  const selectedBlocks = budgetPicks.selectedBlocks.length
-    ? blocks.filter((block) => budgetPicks.selectedBlocks.includes(block.id))
-    : [];
+  const selectedBlocks = farmSelectedPlanningBlocks(budgetPicks);
   const totalRai = selectedBlocks.reduce((sum, row) => sum + n(row.area_rai), 0);
   const totalTrees = selectedBlocks.reduce((sum, row) => sum + n(row.tree_count), 0);
   const activeBudgetRates = budgetRates.filter((row) => String(row.status || "active").toLowerCase() !== "inactive");
@@ -12234,15 +12336,12 @@ function renderFarmWorkPlanner() {
 async function createFarmWorkPlanFromSelection() {
   const table = farmTableByKey("work_orders");
   const picks = farmWorkPlanState();
-  const blocks = farmRows(farmTableByKey("blocks"));
   const activities = farmRows(farmTableByKey("activities"));
   const budgetRates = farmRows(farmTableByKey("budget_activity_rates"));
   const materials = farmRows(farmTableByKey("materials"));
   const vehicles = farmRows(farmTableByKey("vehicles"));
   const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
-  const selectedBlocks = picks.selectedBlocks.length
-    ? blocks.filter((block) => picks.selectedBlocks.includes(block.id))
-    : blocks.slice(0, 1);
+  const selectedBlocks = farmSelectedPlanningBlocks(picks);
   const selectedActivities = picks.selectedActivities.length
     ? activities.filter((activity) => picks.selectedActivities.includes(activity.id))
     : activities.slice(0, 1);
