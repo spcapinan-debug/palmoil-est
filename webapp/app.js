@@ -16425,7 +16425,7 @@ function farmBudgetBuildRateNote(picks = {}, { originalNote = "", materials = []
   });
 }
 
-const FARM_BUDGET_RATE_UOM_OPTIONS = ["บาท/ไร่", "บาท/ต้น", "บาท/ตัน", "บาท/วัน", "บาท/ชั่วโมง", "บาท/ครั้ง", "บาท/หน่วย", "บาท/คะแนน"];
+const FARM_BUDGET_RATE_UOM_OPTIONS = ["ไร่", "ต้น", "ตัน", "วัน", "ชั่วโมง", "ครั้ง", "หน่วย", "คะแนน"];
 const FARM_BUDGET_USAGE_UNIT_OPTIONS = ["กรัม", "กิโลกรัม", "กก.", "กระสอบ", "ถุง", "ลิตร", "ซีซี", "มิลลิลิตร", "ตัน", "ต้น", "ไร่", "หน่วย"];
 const FARM_BUDGET_USAGE_BASIS_OPTIONS = [
   ["per_tree", "ต่อต้น"],
@@ -16440,7 +16440,7 @@ function farmBudgetNormalizeRateUom(unit = "") {
   const clean = farmBudgetUnitBaseLabel(unit);
   if (!clean) return "";
   if (/(กรัม|กิโลกรัม|กก\.?|กระสอบ|ถุง|ลิตร|ซีซี|มิลลิลิตร)/.test(clean)) return "";
-  return clean.startsWith("บาท/") ? clean : `บาท/${clean}`;
+  return clean;
 }
 
 function farmBudgetNormalizeUsageBasis(value = "") {
@@ -16527,9 +16527,24 @@ function farmBudgetMapAreaSelection(label) {
 
 function farmBudgetMapBlockRelationSelection(row = {}) {
   const block = row.block_id ? (farmLookup("blocks", row.block_id) || farmLookup("areas", row.block_id)) : null;
-  const code = row.terrain_code || row.block_code || row.block_name || block?.block_code || block?.terrain_code || block?.area_code || block?.block_name || "";
-  const areaId = farmBudgetFindAreaOrBlockId(code);
-  if (areaId) return areaId;
+  const candidates = [
+    row.block_id,
+    row.terrain_code,
+    row.block_code,
+    row.block_name,
+    row.area_code,
+    block?.id,
+    block?.block_code,
+    block?.terrain_code,
+    block?.area_code,
+    block?.block_name,
+    block?.area_name,
+  ].filter(Boolean);
+  for (const code of candidates) {
+    const areaId = farmBudgetFindAreaOrBlockId(code);
+    if (areaId) return areaId;
+  }
+  const code = candidates[0] || "";
   return row.block_id && block ? row.block_id : farmBudgetMapAreaSelection(code || row.id);
 }
 
@@ -18157,6 +18172,9 @@ function renderFarmActivityModal() {
   ]);
   let visibleFields = farmVisibleFields(table);
   if (isBudgetRateModal) visibleFields = visibleFields.filter((field) => !budgetModalHiddenFields.has(farmFieldKey(field)));
+  const modalRow = isBudgetRateModal
+    ? { ...row, rate_code: farmBudgetDisplayRateCode(row), unit_name: farmBudgetNormalizeRateUom(row.unit_name || "") }
+    : row;
   const wideTables = new Set(["people", "employees", "contractors", "worker_documents", "housing_units", "person_housing_assignments", "housing_utility_charges", "teams", "team_members", "team_activity_skills"]);
   const fullTables = new Set(["inventory_master", "materials", "vehicles", "material_categories", "warehouses", "inventory_documents", "inventory_document_lines", "unit_conversions", "sku_conversions", "material_lots", "budget_activity_rates"]);
   const modalWideClass = fullTables.has(table.key)
@@ -18173,10 +18191,10 @@ function renderFarmActivityModal() {
           <button type="button" data-farm-activity-modal-close aria-label="ปิด">×</button>
         </div>
         <form class="farm-form farm-activity-modal-form${modalWideClass}">
-          <label class="auto-id-field">id อัตโนมัติ
+          ${isBudgetRateModal ? "" : `<label class="auto-id-field">id อัตโนมัติ
             <input type="text" value="${esc(row.id || "สร้างอัตโนมัติ")}" disabled aria-disabled="true">
-          </label>
-          ${visibleFields.map((field) => renderFarmInput(field, row[farmFieldKey(field)] ?? "")).join("")}
+          </label>`}
+          ${visibleFields.map((field) => renderFarmInput(field, modalRow[farmFieldKey(field)] ?? "")).join("")}
           <div class="farm-form-actions">
             <button type="button" data-farm-save ${farmCan(state.farmEditId ? "update" : "create") && !state.farmSyncBusy ? "" : "disabled"}>${state.farmSyncBusy ? "กำลังบันทึก..." : "บันทึก"}</button>
             ${state.farmEditId ? `<button type="button" class="danger" data-farm-delete-modal ${farmCan("delete") && !state.farmSyncBusy ? "" : "disabled"}>ลบ</button>` : ""}
