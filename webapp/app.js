@@ -12533,6 +12533,7 @@ function renderFarmWorkPlanner() {
             </table>
           </div>
           <div class="farm-plan-actions">
+            ${state.farmWorkDetailId ? `<button type="button" class="secondary" data-farm-save-work-plan-edit ${state.farmSyncBusy ? "disabled" : ""}>บันทึกแก้ไขแผน</button>` : ""}
             <button type="button" data-farm-create-work-plan ${state.farmSyncBusy ? "disabled" : ""}>สร้างแผน</button>
             ${state.farmWorkDetailId ? `<button type="button" class="danger ghost" data-farm-delete-work-order="${esc(state.farmWorkDetailId)}" ${state.farmSyncBusy ? "disabled" : ""}>ลบ Work Order ที่เลือก</button>` : ""}
           </div>
@@ -12645,6 +12646,147 @@ async function createFarmWorkPlanFromSelection() {
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `สร้างแผนไม่สำเร็จ: ${error.message}`;
+  } finally {
+    state.farmSyncBusy = false;
+    render();
+  }
+}
+
+async function saveFarmWorkPlanEditFromSelection() {
+  const table = farmTableByKey("work_orders");
+  const picks = farmWorkPlanState();
+  const currentOrder = farmRowsByKey("work_orders").find((row) => row.id === (state.farmWorkDetailId || picks.referenceOrderId))
+    || farmWorkOrders().find((row) => row.id === (state.farmWorkDetailId || picks.referenceOrderId));
+  if (!table || !currentOrder?.id) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาคลิกเลือก Work Order จาก timeline ก่อนบันทึกแก้ไขแผน";
+    render();
+    return;
+  }
+  const activities = farmRows(farmTableByKey("activities"));
+  const budgetRates = farmRows(farmTableByKey("budget_activity_rates"));
+  const materials = farmRows(farmTableByKey("materials"));
+  const vehicles = farmRows(farmTableByKey("vehicles"));
+  const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
+  const selectedBlocks = farmSelectedPlanningBlocks(picks);
+  const selectedActivities = picks.selectedActivities.length
+    ? activities.filter((activity) => picks.selectedActivities.includes(activity.id))
+    : [farmLookup("activities", currentOrder.activity_id)].filter(Boolean);
+  const selectedTeamIds = (picks.selectedWorkers || []).filter((value) => value.startsWith("team:")).map((value) => value.slice(5));
+  const teamId = selectedTeamIds[0] || currentOrder.team_id || "";
+  const selectedMaterials = picks.selectedMaterials.length ? materials.filter((material) => picks.selectedMaterials.includes(material.id)) : [];
+  const selectedVehicles = picks.selectedVehicles.length ? vehicles.filter((vehicle) => picks.selectedVehicles.includes(vehicle.id)) : [];
+  const startDate = picks.startDate || dateValue(document.querySelector("#farmPlanStartDate")) || currentOrder.planned_start_date || currentOrder.scheduled_date || farmToday();
+  const endDate = picks.endDate || dateValue(document.querySelector("#farmPlanEndDate")) || currentOrder.planned_end_date || startDate;
+  const scheduledDates = farmPlanScheduledDates(startDate, endDate, picks.workMode, picks.repeatMode);
+  const repeatMode = picks.workMode === "repeat" ? picks.repeatMode : "none";
+  const repeatLabel = farmRepeatModeLabel(repeatMode);
+  const planSeriesId = currentOrder.plan_series_id || `PLAN-${startDate.replaceAll("-", "")}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  if (!selectedBlocks.length || !selectedActivities.length) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาเลือก Block และกิจกรรมก่อนบันทึกแก้ไขแผน";
+    render();
+    return;
+  }
+  state.farmSyncBusy = true;
+  state.farmSyncStatus = "";
+  state.farmSyncMessage = "กำลังบันทึกแก้ไขแผน...";
+  render();
+  const savedIds = [];
+  try {
+    let createdOffset = 0;
+    for (const block of selectedBlocks) {
+      for (const activity of selectedActivities) {
+        for (const scheduledDate of scheduledDates) {
+          const occurrenceNo = scheduledDates.indexOf(scheduledDate) + 1;
+          const activeRates = budgetRates.filter((rate) => String(rate.status || "active").toLowerCase() !== "inactive");
+          const ratePool = activeRates.filter((rate) => farmRateMatchesActivity(rate, activity) && farmRateMatchesBlock(rate, block));
+          const selectedRate = activeRates.find((rate) => rate.id === picks.selectedBudgetRateId && farmRateMatchesActivity(rate, activity) && farmRateMatchesBlock(rate, block))
+            || ratePool[0];
+          if (!selectedRate?.id) throw new Error(farmPlanBudgetMatchMessage({ activeRates, activity, selectedBlocks: [block], matchingRates: ratePool }));
+          const estimate = farmBudgetRateCost(selectedRate, [block]);
+          const materialRate = farmBestBudgetRateForPlan(activeRates, activity, [block], ["material"]);
+          const selectedUsageRate = usageRates.find((row) => row.activity_id === activity.id && (!row.material_id || selectedMaterials.some((material) => material.id === row.material_id))) || {};
+          const usageBasis = selectedUsageRate.usage_basis || (materialRate?.comparison_basis === "tree_count" ? "per_tree" : materialRate?.comparison_basis === "area_rai" ? "per_rai" : "manual");
+          const materialBase = usageBasis === "per_tree" ? n(block.tree_count) : usageBasis === "per_rai" ? n(block.area_rai) : 1;
+          const materialQuantity = selectedMaterials.length ? materialBase * n(selectedUsageRate.usage_rate || 0) : 0;
+          const materialCost = materialQuantity * n(materialRate?.rate_amount || 0);
+          const survey = farmSurveyForActivity(activity);
+          const existingSibling = occurrenceNo === 1
+            ? currentOrder
+            : farmRowsByKey("work_orders").find((row) =>
+              row.plan_series_id === planSeriesId
+              && Number(row.repeat_occurrence_no) === occurrenceNo
+              && (row.block_id === block.id || farmResolveBlockIdForPlanner(row) === block.id)
+              && row.activity_id === activity.id
+              && (row.id !== currentOrder.id)
+            );
+          const title = `${activity.activity_name || activity.activity_code || "งาน"} ${block.block_name || block.block_code || block.area_code || block.id}`;
+          const noteLines = [
+            title,
+            `ช่วงแผน: ${startDate} ถึง ${endDate}`,
+            `รูปแบบ: ${picks.workMode || "single"} / รอบซ้ำ: ${repeatLabel}`,
+            `ชุดงานซ้ำ: ${planSeriesId}`,
+            scheduledDates.length > 1 ? `รอบงานที่สร้าง: ${occurrenceNo}/${scheduledDates.length} · วันที่รอบนี้ ${scheduledDate}` : "",
+            `อนุมัติอัตโนมัติ: ผู้สร้างแผนมีสิทธิ์อนุมัติ`,
+            selectedRate?.id ? `อัตรางบประมาณ: ${farmBudgetDisplayRateCode(selectedRate)} · ${farmBudgetRateAmountLabel(selectedRate)}` : "",
+            survey?.id ? `แบบตรวจงาน: ${survey.template_code || survey.template_name || survey.id}` : "",
+            selectedMaterials.length ? `วัสดุ: ${selectedMaterials.map((material) => material.material_name || material.material_code || material.id).join(", ")}` : "",
+            selectedVehicles.length ? `รถ/เครื่องจักร: ${selectedVehicles.map((vehicle) => vehicle.vehicle_name || vehicle.vehicle_code || vehicle.id).join(", ")}` : "",
+          ].filter(Boolean).join("\n");
+          const baseOrder = existingSibling || {};
+          const row = {
+            ...baseOrder,
+            moduleId: "farm-work",
+            tableId: "work_orders",
+            work_order_no: baseOrder.work_order_no || farmNextShortWorkOrderNo(scheduledDate, createdOffset++),
+            work_order_title: title,
+            plot_id: block.plot_id || "",
+            block_id: block.id,
+            ap_code: block.ap_code || block.AP_code || "",
+            activity_id: activity.id,
+            team_id: teamId,
+            scheduled_date: scheduledDate,
+            planned_start_date: scheduledDate,
+            planned_end_date: scheduledDate,
+            planned_quantity: estimate.quantity,
+            planned_unit: estimate.unitName || estimate.unit,
+            planned_labor_cost: estimate.amount,
+            planned_material_cost: materialCost,
+            planned_fuel_cost: n(baseOrder.planned_fuel_cost),
+            planned_machine_cost: n(baseOrder.planned_machine_cost),
+            planned_total_cost: n(estimate.amount) + n(materialCost) + n(baseOrder.planned_fuel_cost) + n(baseOrder.planned_machine_cost),
+            budget_rate_id: selectedRate?.id || "",
+            survey_template_id: survey?.id || "",
+            note: noteLines,
+            approval_status: "approved",
+            approved_at: baseOrder.approved_at || new Date().toISOString(),
+            status: baseOrder.status === "sent_to_mobile" ? "sent_to_mobile" : "approved",
+            plan_series_id: planSeriesId,
+            repeat_mode: repeatMode,
+            repeat_label: repeatLabel,
+            repeat_occurrence_no: occurrenceNo,
+            repeat_occurrence_total: scheduledDates.length,
+          };
+          const saved = await persistFarmRowToDatabase(table, row);
+          const savedRow = { ...row, ...(saved.row || {}) };
+          state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === savedRow.id || item.work_order_no === savedRow.work_order_no)));
+          state.farmRecords.push(savedRow);
+          await ensureFarmWorkOrderQr(savedRow, "plan");
+          await ensureFarmSurveyAttachment({ ...savedRow, activity });
+          savedIds.push(savedRow.id || savedRow.work_order_no);
+        }
+      }
+    }
+    saveFarmRecords();
+    state.farmTableId = "work_orders";
+    state.farmDetailId = savedIds[0] || currentOrder.id;
+    state.farmWorkDetailId = savedIds[0] || currentOrder.id;
+    state.farmSyncStatus = "ok";
+    state.farmSyncMessage = `บันทึกแก้ไขแผนแล้ว ${fmt(savedIds.length)} รายการ${scheduledDates.length > 1 ? " และลงรอบซ้ำใน timeline แล้ว" : ""}`;
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `บันทึกแก้ไขแผนไม่สำเร็จ: ${error.message}`;
   } finally {
     state.farmSyncBusy = false;
     render();
@@ -14983,7 +15125,7 @@ function renderFarmWorkBoard(options = {}) {
                   </button>
                   <div class="farm-work-lane" style="width:${timelineWidth}px">
                     ${showDraftPlan ? `<button class="farm-work-plan-bar draft ${needsApproval ? "needs-approval" : ""}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนก่อนอนุมัติ ${esc(row.original_scheduled_date || row.startDate || "-")} - ${esc(row.planned_end_date || row.endDate || "-")}" style="left:${(originalIndex >= 0 ? originalIndex : startIndex) * dayWidth + 3}px;width:${Math.max(18, (originalIndex >= 0 ? originalSpan : span) * dayWidth - 6)}px"><span>${needsApproval ? "รออนุมัติ" : "แผน"}</span></button>` : ""}
-                    ${hasApprovedPlan ? `<button class="farm-work-plan-bar approved ${esc(planStateClass)}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนอนุมัติแล้ว ${esc(row.startDate || "-")} - ${esc(row.endDate || "-")}" style="left:${startIndex * dayWidth + 3}px;width:${Math.max(18, span * dayWidth - 6)}px"><span>${row.statusMeta.key === "sent_to_mobile" ? "สั่งงาน" : "อนุมัติ"}</span></button>` : ""}
+                    ${hasApprovedPlan ? `<button class="farm-work-plan-bar approved ${esc(planStateClass)}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนอนุมัติแล้ว ${esc(row.startDate || "-")} - ${esc(row.endDate || "-")}${row.repeat_occurrence_total > 1 ? ` · รอบ ${esc(row.repeat_occurrence_no || "-")}/${esc(row.repeat_occurrence_total)}` : ""}" style="left:${startIndex * dayWidth + 3}px;width:${Math.max(18, span * dayWidth - 6)}px"><span>${row.repeat_occurrence_total > 1 ? `รอบ ${esc(row.repeat_occurrence_no || "-")}/${esc(row.repeat_occurrence_total)}` : row.statusMeta.key === "sent_to_mobile" ? "สั่งงาน" : "อนุมัติ"}</span></button>` : ""}
                     ${actualIndex >= 0 ? `<button class="farm-work-actual-bar" type="button" data-farm-work-detail="${esc(row.id)}" title="บันทึกงานจริง ${esc(row.actualStartDate || "-")} - ${esc(row.actualEndDate || "-")} (${fmt(row.actualResultCount)} รายการ)" style="left:${actualIndex * dayWidth + 3}px;width:${Math.max(18, actualSpan * dayWidth - 6)}px"><span>${row.statusMeta.key === "closed" ? "ปิดงาน" : "ทำจริง"}</span></button>` : ""}
                     ${needsApproval ? `<button class="farm-work-milestone approval" type="button" data-farm-work-detail="${esc(row.id)}" title="ต้องอนุมัติ" style="left:${startIndex * dayWidth + Math.max(10, span * dayWidth - 12)}px"></button>` : ""}
                     ${approvedIndex >= 0 ? `<i class="farm-work-milestone approved" title="อนุมัติ ${esc(row.approved_at)}" style="left:${approvedIndex * dayWidth + 10}px"></i>` : ""}
@@ -19585,6 +19727,10 @@ async function init() {
     }
     if (e.target.closest("[data-farm-create-work-plan]")) {
       createFarmWorkPlanFromSelection();
+      return;
+    }
+    if (e.target.closest("[data-farm-save-work-plan-edit]")) {
+      saveFarmWorkPlanEditFromSelection();
       return;
     }
     if (e.target.closest("[data-farm-dispatch-save]")) {
