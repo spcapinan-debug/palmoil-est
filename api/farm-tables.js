@@ -407,6 +407,13 @@ function sanitizeDbRow(table, row) {
   return out;
 }
 
+function missingColumnFromError(error) {
+  const message = String(error?.message || error || "");
+  return message.match(/Could not find the '([^']+)' column/i)?.[1]
+    || message.match(/column \"([^\"]+)\" of relation/i)?.[1]
+    || "";
+}
+
 async function upsertRealTableRow(table, row) {
   const dbRow = sanitizeDbRow(table, row);
   const hadWritableId = Boolean(dbRow.id);
@@ -417,11 +424,23 @@ async function upsertRealTableRow(table, row) {
   const path = conflictKey
     ? `${table}?on_conflict=${encodeURIComponent(conflictKey)}`
     : table;
-  const saved = await supabaseFetch(path, {
-    method: "POST",
-    body: JSON.stringify([dbRow]),
-    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-  });
+  let writableRow = { ...dbRow };
+  let saved = null;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      saved = await supabaseFetch(path, {
+        method: "POST",
+        body: JSON.stringify([writableRow]),
+        headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      });
+      break;
+    } catch (error) {
+      const missing = missingColumnFromError(error);
+      if (!missing || !Object.prototype.hasOwnProperty.call(writableRow, missing)) throw error;
+      delete writableRow[missing];
+      if (!Object.keys(writableRow).length) throw new Error("No writable columns after schema cleanup");
+    }
+  }
   return saved?.[0] || dbRow;
 }
 
@@ -444,11 +463,27 @@ async function upsertRealTableRows(table, rows) {
   const normalizedRows = dbRows.map((row) => Object.fromEntries(allKeys.map((key) => [key, Object.prototype.hasOwnProperty.call(row, key) ? row[key] : null])));
   const savedRows = [];
   for (const part of chunkRows(normalizedRows)) {
-    const saved = await supabaseFetch(`${table}?on_conflict=${encodeURIComponent(conflictKey)}`, {
-      method: "POST",
-      body: JSON.stringify(part),
-      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-    });
+    let writablePart = part.map((row) => ({ ...row }));
+    let saved = null;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        saved = await supabaseFetch(`${table}?on_conflict=${encodeURIComponent(conflictKey)}`, {
+          method: "POST",
+          body: JSON.stringify(writablePart),
+          headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+        });
+        break;
+      } catch (error) {
+        const missing = missingColumnFromError(error);
+        if (!missing || !writablePart.some((row) => Object.prototype.hasOwnProperty.call(row, missing))) throw error;
+        writablePart = writablePart.map((row) => {
+          const next = { ...row };
+          delete next[missing];
+          return next;
+        });
+        if (!writablePart.some((row) => Object.keys(row).length)) throw new Error("No writable columns after schema cleanup");
+      }
+    }
     savedRows.push(...(Array.isArray(saved) ? saved : []));
   }
   return savedRows;
