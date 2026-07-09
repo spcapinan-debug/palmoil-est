@@ -11241,6 +11241,108 @@ async function deleteFarmRow(id = state.farmEditId, tableKey = state.farmActivit
   }
 }
 
+const FARM_WORK_ORDER_LOCK_STATUSES = new Set(["sent_to_mobile", "in_progress", "completed", "closed"]);
+const FARM_WORK_ORDER_HARD_LOCK_TABLES = new Set([
+  "inventory_documents",
+  "inventory_document_lines",
+  "work_results",
+  "work_attendance",
+  "daily_work_entries",
+  "cost_entries",
+  "payroll_period_lines",
+]);
+
+function farmWorkOrderRelatedRows(workOrderId = "") {
+  const rows = [];
+  for (const [tableKey, schema] of Object.entries(FARM_TABLE_SCHEMAS)) {
+    const table = { key: tableKey, ...schema };
+    const fields = schema.fields || [];
+    const hasWorkOrderRef = fields.some((field) => farmFieldKey(field) === "work_order_id");
+    const hasEntityRef = fields.some((field) => farmFieldKey(field) === "entity_id");
+    if (!hasWorkOrderRef && !hasEntityRef) continue;
+    for (const row of farmRows(table)) {
+      const direct = hasWorkOrderRef && String(row.work_order_id || "") === String(workOrderId);
+      const entity = hasEntityRef && row.entity_table === "work_orders" && String(row.entity_id || "") === String(workOrderId);
+      if (direct || entity) rows.push({ table, row });
+    }
+  }
+  return rows;
+}
+
+function farmWorkOrderCanDeleteFromPlanner(order = {}) {
+  const status = String(order.status || "").toLowerCase();
+  if (FARM_WORK_ORDER_LOCK_STATUSES.has(status)) {
+    return { ok: false, reason: `ใบงานสถานะ ${farmTranslateValue(status)} แล้ว ต้องยกเลิกจากหน้าสั่งงาน/บันทึกงานก่อน` };
+  }
+  const lockedRows = farmWorkOrderRelatedRows(order.id)
+    .filter(({ table }) => FARM_WORK_ORDER_HARD_LOCK_TABLES.has(table.key));
+  if (lockedRows.length) {
+    const first = lockedRows[0];
+    return {
+      ok: false,
+      reason: `ใบงานนี้มีข้อมูลใช้งานจริงแล้วที่ ${first.table.title || first.table.key} จำนวน ${fmt(lockedRows.length)} รายการ ต้องลบ/ยกเลิกจากหน้านั้นก่อน`,
+    };
+  }
+  return { ok: true, reason: "" };
+}
+
+async function deleteFarmWorkOrderFromPlanner(id = "") {
+  const table = farmTableByKey("work_orders");
+  if (!table || !id) return;
+  const order = farmRowsByKey("work_orders").find((row) => row.id === id);
+  if (!order) return;
+  const guard = farmWorkOrderCanDeleteFromPlanner(order);
+  if (!guard.ok) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `ลบไม่ได้: ${guard.reason}`;
+    window.alert(state.farmSyncMessage);
+    render();
+    return;
+  }
+  const label = `${farmShortWorkOrderNo(order)} - ${order.work_order_title || order.activityName || order.id}`;
+  if (!window.confirm(`ยืนยันลบ "${label}"?\n\nลบได้เฉพาะใบงานที่ยังไม่พิมพ์/ออกใบสั่งงานจากหน้าสั่งงาน ระบบจะลบ QR และข้อมูลเตรียมงานที่ผูกอยู่ด้วย`)) return;
+  const related = farmWorkOrderRelatedRows(order.id)
+    .filter(({ table: childTable }) => !FARM_WORK_ORDER_HARD_LOCK_TABLES.has(childTable.key));
+  state.farmSyncBusy = true;
+  state.farmSyncStatus = "";
+  state.farmSyncMessage = "กำลังลบ Work Order และข้อมูลเตรียมงานที่เกี่ยวข้อง...";
+  render();
+  try {
+    for (const { table: childTable, row } of related) {
+      await deleteFarmRowFromDatabase(childTable, row.id);
+    }
+    await deleteFarmRowFromDatabase(table, order.id);
+    const relatedIds = new Set(related.map(({ row }) => row.id));
+    state.farmRecords = state.farmRecords.filter((item) => {
+      if (item.tableId === "work_orders" && (item.id === order.id || item._overrideOf === order.id)) return false;
+      if (relatedIds.has(item.id)) return false;
+      if (item.work_order_id === order.id) return false;
+      if (item.entity_table === "work_orders" && item.entity_id === order.id) return false;
+      return true;
+    });
+    state.farmDbRows = {
+      ...state.farmDbRows,
+      work_orders: (state.farmDbRows?.work_orders || []).filter((item) => item.id !== order.id),
+    };
+    for (const { table: childTable, row } of related) {
+      state.farmDbRows[childTable.key] = (state.farmDbRows?.[childTable.key] || []).filter((item) => item.id !== row.id);
+    }
+    state.farmWorkDetailId = "";
+    state.farmDetailId = "";
+    state.farmEditId = "";
+    saveFarmRecords();
+    state.farmSyncStatus = "success";
+    state.farmSyncMessage = `ลบ Work Order แล้ว: ${label}`;
+    await loadFarmTablesFromDatabase({ silent: false });
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = `ลบ Work Order ไม่สำเร็จ: ${error.message}`;
+  } finally {
+    state.farmSyncBusy = false;
+    render();
+  }
+}
+
 function exportFarmCsv() {
   const module = selectedFarmModule();
   const table = selectedFarmTable(module);
@@ -19816,7 +19918,7 @@ async function init() {
     }
     const deleteWorkOrder = e.target.closest("[data-farm-delete-work-order]");
     if (deleteWorkOrder) {
-      deleteFarmRow(deleteWorkOrder.dataset.farmDeleteWorkOrder, "work_orders");
+      deleteFarmWorkOrderFromPlanner(deleteWorkOrder.dataset.farmDeleteWorkOrder);
       return;
     }
     const openWorkTable = e.target.closest("[data-farm-open-work-table]");
