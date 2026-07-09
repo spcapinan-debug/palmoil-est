@@ -16501,10 +16501,21 @@ function farmBudgetRateGroupKey(row = {}) {
   const activityKey = row.activity_id
     || farmNormalizeKey(row.activity_code)
     || farmNormalizeKey(row.activity_name);
+  const isMaterialRate = String(row.rate_type || "").toLowerCase() === "material";
+  const materialRateKey = isMaterialRate
+    ? farmNormalizeKey([
+        row.rate_text,
+        row.mapping_rule,
+        row.source_file,
+        row.source_sheet,
+        row.source_column,
+      ].filter(Boolean).join("|"))
+    : "";
   const rateKey = [
     String(row.rate_amount ?? row.rate_text ?? "").trim(),
     farmNormalizeKey(farmBudgetRateUnitLabel(row.unit_name || "")),
     farmNormalizeKey(row.calculation_method || ""),
+    materialRateKey,
   ].join(":");
   return [
     row.fiscal_year || "",
@@ -16518,6 +16529,9 @@ function farmBudgetIsOldBlockRate(row = {}) {
 }
 
 function farmBudgetRateAmountLabel(row = {}) {
+  if (String(row.rate_type || "").toLowerCase() === "material" && String(row.rate_text || "").trim()) {
+    return String(row.rate_text || "").trim();
+  }
   const amount = n(row.rate_amount);
   const hasAmount = String(row.rate_amount ?? "").trim() !== "" && Number.isFinite(amount);
   return hasAmount ? `${farmBudgetRateNumberLabel(amount)} ${farmBudgetRateUnitLabel(row.unit_name || "")}`.trim() : (row.rate_text || "กำหนดภายหลัง");
