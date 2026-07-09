@@ -16606,6 +16606,20 @@ function farmBudgetRateAmountLabel(row = {}) {
   return hasAmount ? `${farmBudgetRateNumberLabel(amount)} ${farmBudgetRateUnitLabel(row.unit_name || "")}`.trim() : (row.rate_text || "กำหนดภายหลัง");
 }
 
+function farmBudgetMoneyRateLabel(row = {}) {
+  const amount = n(row.rate_amount);
+  const hasAmount = String(row.rate_amount ?? "").trim() !== "" && Number.isFinite(amount);
+  if (!hasAmount) return "-";
+  const unit = farmBudgetNormalizeRateUom(row.unit_name || "");
+  return [farmBudgetRateNumberLabel(amount), unit ? `/ ${unit}` : ""].filter(Boolean).join(" ");
+}
+
+function farmBudgetPerformancePerUomLabel(row = {}) {
+  const meta = farmBudgetParseNoteJson(row);
+  const value = meta.performancePerUom ?? row.performance_per_uom ?? row.performance_per_unit ?? "";
+  return String(value ?? "").trim() || "-";
+}
+
 function farmBudgetMaterialRateParts(row = {}) {
   const text = String(row.rate_text || "").trim();
   const parts = text.split("|").map((part) => part.trim()).filter(Boolean);
@@ -16662,9 +16676,7 @@ function farmBudgetUnitBaseLabel(unit = "") {
 function farmBudgetRateUnitLabel(unit = "") {
   const clean = farmBudgetUnitBaseLabel(unit);
   if (!clean) return "";
-  if (clean.includes("/")) return clean;
-  if (clean.startsWith("บาท")) return clean;
-  return `บาท/${clean}`;
+  return clean;
 }
 
 function farmBudgetCompactRateCode(row = {}, index = 0) {
@@ -16737,7 +16749,11 @@ function nextFarmBudgetRateCode(fiscalYear = "", activity = {}) {
 }
 
 function farmBudgetContractMaskLabel(row = {}) {
-  return [row.activity_name || farmLookupLabel("activities", row.activity_id), farmBudgetRateAmountLabel(row)].filter(Boolean).join(" - ");
+  const activity = row.activity_name || farmLookupLabel("activities", row.activity_id);
+  const detail = String(row.rate_type || "").toLowerCase() === "material"
+    ? farmBudgetMaterialUsageLabel(row)
+    : farmBudgetMoneyRateLabel(row);
+  return [activity, detail && detail !== "-" ? detail : ""].filter(Boolean).join(" - ");
 }
 
 function farmPlanBudgetRateOptionLabel(row = {}) {
@@ -17612,6 +17628,7 @@ function renderFarmBudgetRateTable(rates) {
               <th>ประเภทงาน</th>
               <th>พื้นที่ / AP</th>
               <th>อัตราการใช้</th>
+              <th>ประสิทธิภาพ คน/UOM</th>
               <th>อัตรา</th>
             </tr>
           </thead>
@@ -17624,7 +17641,8 @@ function renderFarmBudgetRateTable(rates) {
               <td>${esc(row.activity_group_name || "-")}</td>
               <td>${esc(row._budgetBlockCount ? `${fmt(row._budgetBlockCount)} Block` : ([row.terrain_code, row.ap_code].filter(Boolean).join(" / ") || "-"))}</td>
               <td>${esc(farmBudgetMaterialUsageLabel(row))}</td>
-              <td>${esc(farmBudgetRateAmountLabel(row))}</td>
+              <td>${esc(farmBudgetPerformancePerUomLabel(row))}</td>
+              <td>${esc(farmBudgetMoneyRateLabel(row))}</td>
             </tr>`).join("") || `<tr><td colspan="9">No data matching...</td></tr>`}
           </tbody>
         </table>
