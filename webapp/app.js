@@ -16528,17 +16528,17 @@ function farmBudgetMapAreaSelection(label) {
 function farmBudgetMapBlockRelationSelection(row = {}) {
   const block = row.block_id ? (farmLookup("blocks", row.block_id) || farmLookup("areas", row.block_id)) : null;
   const candidates = [
-    row.block_id,
     row.terrain_code,
     row.block_code,
     row.block_name,
     row.area_code,
-    block?.id,
     block?.block_code,
     block?.terrain_code,
     block?.area_code,
     block?.block_name,
     block?.area_name,
+    row.block_id,
+    block?.id,
   ].filter(Boolean);
   for (const code of candidates) {
     const areaId = farmBudgetFindAreaOrBlockId(code);
@@ -17068,7 +17068,7 @@ function farmBudgetCheckId(type, value) {
 }
 
 function renderBudgetCheckbox(type, value, label, checkedList, meta = "") {
-  const checked = checkedList.includes(value);
+  const checked = type === "block" ? farmBudgetBlockValueChecked(value, checkedList) : checkedList.includes(value);
   const id = farmBudgetCheckId(type, value);
   return `
     <label class="budget-tree-item" for="${esc(id)}">
@@ -17076,6 +17076,26 @@ function renderBudgetCheckbox(type, value, label, checkedList, meta = "") {
       <span>${esc(label)}</span>
       ${meta ? `<em>${esc(meta)}</em>` : ""}
     </label>`;
+}
+
+function farmBudgetBlockComparableKeys(value = "") {
+  const row = farmLookup("areas", value) || farmLookup("blocks", value);
+  return [
+    value,
+    row?.id,
+    row?.area_code,
+    row?.block_code,
+    row?.terrain_code,
+    row?.area_name,
+    row?.block_name,
+  ].map(farmBlockMapKey).filter(Boolean);
+}
+
+function farmBudgetBlockValueChecked(value = "", checkedList = []) {
+  if (checkedList.includes(value)) return true;
+  const wanted = new Set(farmBudgetBlockComparableKeys(value));
+  if (!wanted.size) return false;
+  return checkedList.some((selected) => farmBudgetBlockComparableKeys(selected).some((key) => wanted.has(key)));
 }
 
 function farmBudgetTeamMemberEmployeeValues(teamId) {
