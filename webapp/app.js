@@ -17628,8 +17628,8 @@ function renderFarmBudgetRateTable(rates) {
               <th>ประเภทงาน</th>
               <th>พื้นที่ / AP</th>
               <th>อัตราการใช้</th>
-              <th>ประสิทธิภาพ คน/UOM</th>
               <th>อัตรา</th>
+              <th>ประสิทธิภาพ คน/UOM</th>
             </tr>
           </thead>
           <tbody>
@@ -17641,8 +17641,8 @@ function renderFarmBudgetRateTable(rates) {
               <td>${esc(row.activity_group_name || "-")}</td>
               <td>${esc(row._budgetBlockCount ? `${fmt(row._budgetBlockCount)} Block` : ([row.terrain_code, row.ap_code].filter(Boolean).join(" / ") || "-"))}</td>
               <td>${esc(farmBudgetMaterialUsageLabel(row))}</td>
-              <td>${esc(farmBudgetPerformancePerUomLabel(row))}</td>
               <td>${esc(farmBudgetMoneyRateLabel(row))}</td>
+              <td>${esc(farmBudgetPerformancePerUomLabel(row))}</td>
             </tr>`).join("") || `<tr><td colspan="9">No data matching...</td></tr>`}
           </tbody>
         </table>
