@@ -3370,11 +3370,12 @@ async function refreshTransportFromQuery() {
   const original = els.refreshTransportBtn.textContent;
   els.refreshTransportBtn.textContent = "Refreshing...";
   els.refreshTransportBtn.disabled = true;
+  let clearPersistOk = false;
   try {
     writeClearOverridesLocal();
-    await persistClearOverridesToServer();
-    const res = await fetchWithTimeout(`${TRANSPORT_REFRESH_API}?t=${Date.now()}`, { method: "POST", cache: "no-store" }, 120000);
-    const payload = await res.json();
+    clearPersistOk = await persistClearOverridesToServer();
+    const res = await fetchJsonWithRetry(`${TRANSPORT_REFRESH_API}?t=${Date.now()}`, { method: "POST", cache: "no-store" }, 120000, 1);
+    const payload = res.payload;
     if (!res.ok || payload.ok === false) throw new Error(payload.error || "Refresh failed");
     if (payload.data?.records) applyTransportPayload(payload.data, { silent: true });
     else await loadPayload({ silent: true });
@@ -3386,6 +3387,8 @@ async function refreshTransportFromQuery() {
     const warnings = Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean) : [];
     if (warnings.length) {
       setClearSyncStatus(`อัปเดตจากไฟล์แล้ว แต่มีคำเตือน: ${warnings.join(" | ").slice(0, 220)}`, "error");
+    } else if (!clearPersistOk && state.clearOverrides.length) {
+      setClearSyncStatus("อัปเดตข้อมูลแล้ว แต่ local Clear_Ramp_Log ยังบันทึกเฉพาะในเครื่อง รอ sync online รอบถัดไป", "error");
     } else if (!synced) {
       setClearSyncStatus(`อัปเดต local แล้ว แต่ sync online ไม่สำเร็จ: ${state.transportSyncResult?.error || ""}`, "error");
     } else {
@@ -3397,7 +3400,15 @@ async function refreshTransportFromQuery() {
     }, 2500);
   } catch (error) {
     setSourceRefreshError(error);
-    els.refreshTransportBtn.textContent = "Refresh failed";
+    await loadPayload({ silent: true });
+    await loadMillWeightData();
+    await loadClearOverridesFromServer();
+    render();
+    const hint = endpointIsLocalOnly(TRANSPORT_REFRESH_API)
+      ? "Local backend ไม่พร้อม ให้เปิด Start_Transport_Backend.ps1 แล้วกด Refresh Data อีกครั้ง"
+      : "ใช้ snapshot ล่าสุดบนหน้าเว็บก่อน";
+    setClearSyncStatus(`Refresh Data ไม่สำเร็จ: ${error.message || error}. ${hint}`, "error");
+    els.refreshTransportBtn.textContent = "ใช้ข้อมูลล่าสุด";
     window.setTimeout(() => {
       els.refreshTransportBtn.textContent = original;
     }, 3000);
@@ -3750,6 +3761,30 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 60000) {
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function fetchJsonWithRetry(url, options = {}, timeoutMs = 60000, retries = 1) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const res = await fetchWithTimeout(url, options, timeoutMs);
+      let payload = null;
+      try {
+        payload = await res.json();
+      } catch {
+        payload = { ok: false, error: `Invalid JSON response (${res.status})` };
+      }
+      return { ok: res.ok, status: res.status, payload };
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) await wait(1200);
+    }
+  }
+  throw lastError;
 }
 
 function setClearSyncStatus(message, type = "") {

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -15,6 +16,10 @@ MILL_JSON = ROOT / "webapp" / "data" / "mill_weight.json"
 CLEAR_RAMP_JSON = ROOT / "webapp" / "data" / "clear_ramp_log.json"
 EXTRACT_DATA = ROOT / "webapp" / "scripts" / "extract_data.py"
 EXTRACT_MILL = ROOT / "webapp" / "scripts" / "extract_mill_weight.py"
+BUNDLED_PYTHON = Path.home() / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies" / "python" / "python.exe"
+PYTHON_EXE = Path(sys.executable)
+if BUNDLED_PYTHON.exists():
+    PYTHON_EXE = BUNDLED_PYTHON
 
 
 def now_iso() -> str:
@@ -108,22 +113,32 @@ def save_clear_rows(rows):
     return payload
 
 
-def run_extract_command(command):
-    completed = subprocess.run(
-        command,
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+def run_extract_command(command, timeout_seconds=240):
+    started = time.time()
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as error:
+        elapsed = round(time.time() - started, 1)
+        output = "\n".join(part for part in [
+            (error.stdout or "").strip() if isinstance(error.stdout, str) else "",
+            (error.stderr or "").strip() if isinstance(error.stderr, str) else "",
+        ] if part)
+        return False, f"timeout after {elapsed}s. {output}".strip()
     output = "\n".join(part for part in [completed.stdout.strip(), completed.stderr.strip()] if part)
     return completed.returncode == 0, output or "done"
 
 
 def run_extract():
     commands = [
-        ("data", [sys.executable, str(EXTRACT_DATA), "--source", "sheet"]),
-        ("mill", [sys.executable, str(EXTRACT_MILL)]),
+        ("data", [str(PYTHON_EXE), str(EXTRACT_DATA), "--source", "sheet"]),
+        ("mill", [str(PYTHON_EXE), str(EXTRACT_MILL)]),
     ]
     output = []
     warnings = []
@@ -154,6 +169,31 @@ def run_extract():
         },
         "data": data,
         "mill": mill,
+    }
+
+
+def transport_status():
+    data = read_json(DATA_JSON, {})
+    mill = read_json(MILL_JSON, {})
+    clear = read_json(CLEAR_RAMP_JSON, {})
+    workbook = None
+    for name in ["Data.xlsx", "data.xlsx", "Data.xlsm", "data.xlsm"]:
+        candidate = ROOT / name
+        if candidate.exists():
+            workbook = candidate
+            break
+    return {
+        "ok": True,
+        "service": "palm-local-api",
+        "time": now_iso(),
+        "root": str(ROOT),
+        "workbook": str(workbook) if workbook else None,
+        "python": str(PYTHON_EXE),
+        "dataRows": len(data.get("records") or []) if isinstance(data, dict) else 0,
+        "millRows": len(mill.get("records") or []) if isinstance(mill, dict) else 0,
+        "clearRows": len(clear.get("rows") or []) if isinstance(clear, dict) else 0,
+        "dataUpdatedAt": (data.get("source") or {}).get("generatedAt") if isinstance(data, dict) else None,
+        "millUpdatedAt": (mill.get("source") or {}).get("generatedAt") if isinstance(mill, dict) else None,
     }
 
 
@@ -203,8 +243,11 @@ class Handler(BaseHTTPRequestHandler):
                     save_clear_rows(body["rows"])
                 self._send(200, clear_rows_payload())
                 return
+            if path.endswith("/api/transport_status.php"):
+                self._send(200, transport_status())
+                return
             if path.endswith("/health") or path.endswith("/api/health"):
-                self._send(200, {"ok": True, "service": "palm-local-api", "time": now_iso()})
+                self._send(200, transport_status())
                 return
             self._send(404, {"ok": False, "error": f"Unknown route: {path}"})
         except Exception as error:

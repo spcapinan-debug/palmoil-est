@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import json
 import argparse
+import json
+import os
 import subprocess
 import tempfile
 from collections import defaultdict
@@ -19,7 +20,9 @@ def source_roots() -> list[Path]:
     roots: list[Path] = []
     for raw in [
         # Let the local launcher or a developer pin the real workbook folder.
-        __import__("os").environ.get("PALM_DATA_DIR"),
+        os.environ.get("PALM_DATA_DIR"),
+        str(ROOT),
+        str(ROOT.parent),
         r"H:\My Drive\Work\ขนส่งออก",
         str(Path.cwd()),
         str(ROOT),

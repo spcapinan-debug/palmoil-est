@@ -16,6 +16,8 @@ def source_roots() -> list[Path]:
     roots: list[Path] = []
     for raw in [
         os.environ.get("PALM_DATA_DIR"),
+        str(ROOT),
+        str(ROOT.parent),
         r"H:\My Drive\Work\ขนส่งออก",
         str(Path.cwd()),
         str(ROOT),
