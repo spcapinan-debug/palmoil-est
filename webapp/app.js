@@ -16474,9 +16474,11 @@ function farmBudgetMapAreaSelection(label) {
 }
 
 function farmBudgetMapBlockRelationSelection(row = {}) {
-  return row.block_id && (farmLookup("blocks", row.block_id) || farmLookup("areas", row.block_id))
-    ? row.block_id
-    : farmBudgetMapAreaSelection(row.terrain_code || row.block_name || row.id);
+  const block = row.block_id ? (farmLookup("blocks", row.block_id) || farmLookup("areas", row.block_id)) : null;
+  const code = row.terrain_code || row.block_code || row.block_name || block?.block_code || block?.terrain_code || block?.area_code || block?.block_name || "";
+  const areaId = farmBudgetFindAreaOrBlockId(code);
+  if (areaId) return areaId;
+  return row.block_id && block ? row.block_id : farmBudgetMapAreaSelection(code || row.id);
 }
 
 function farmBudgetMapActivitySelection(labelOrCode) {
@@ -16530,11 +16532,45 @@ function farmBudgetIsOldBlockRate(row = {}) {
 
 function farmBudgetRateAmountLabel(row = {}) {
   if (String(row.rate_type || "").toLowerCase() === "material" && String(row.rate_text || "").trim()) {
-    return String(row.rate_text || "").trim();
+    return farmBudgetMaterialRateSummary(row);
   }
   const amount = n(row.rate_amount);
   const hasAmount = String(row.rate_amount ?? "").trim() !== "" && Number.isFinite(amount);
   return hasAmount ? `${farmBudgetRateNumberLabel(amount)} ${farmBudgetRateUnitLabel(row.unit_name || "")}`.trim() : (row.rate_text || "กำหนดภายหลัง");
+}
+
+function farmBudgetMaterialRateParts(row = {}) {
+  const text = String(row.rate_text || "").trim();
+  const parts = text.split("|").map((part) => part.trim()).filter(Boolean);
+  const first = parts[0] || text;
+  const materialName = first
+    .replace(/\s+\d+(?:[.,]\d+)?\s*(กรัม|กก\.?|kg|KG|กระสอบ)\s*\/?\s*(ต้น|ไร่|หน่วย)?/g, "")
+    .replace(/\s+/g, " ")
+    .trim() || (row.activity_name || "-");
+  const month = parts.find((part) => /ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\./.test(part)) || "";
+  const plannedQty = parts.find((part) => /กระสอบ|ถุง/.test(part))
+    || parts.find((part) => /กก\.|ตัน|ลิตร/.test(part) && !/กรัม\/ต้น/.test(part))
+    || "";
+  return { materialName, month, plannedQty, raw: text };
+}
+
+function farmBudgetMaterialRateSummary(row = {}) {
+  const parts = farmBudgetMaterialRateParts(row);
+  return [parts.materialName, parts.plannedQty].filter(Boolean).join(" · ") || parts.raw || "กำหนดภายหลัง";
+}
+
+function farmBudgetMaterialUsageLabel(rate = {}) {
+  const rows = farmBudgetRateRelations("budget_rate_materials", rate);
+  if (!rows.length && String(rate.rate_type || "").toLowerCase() === "material") {
+    const match = String(rate.rate_text || "").match(/(\d+(?:[.,]\d+)?)\s*(กรัม|กก\.?|kg|KG|กระสอบ)\s*\/\s*(ต้น|ไร่|หน่วย)/);
+    return match ? `${farmBudgetRateNumberLabel(match[1])} ${match[2]}/${match[3]}` : "-";
+  }
+  return rows.map((row) => {
+    const basis = row.usage_basis === "tree_count" ? "ต้น"
+      : row.usage_basis === "area_rai" ? "ไร่"
+        : row.usage_basis || "หน่วย";
+    return `${farmBudgetRateNumberLabel(row.usage_quantity)} ${row.usage_unit || ""}/${basis}`;
+  }).filter(Boolean).join(" · ") || "-";
 }
 
 function farmBudgetRateNumberLabel(value = "") {
@@ -17460,9 +17496,7 @@ function renderFarmBudgetRateTable(rates) {
   const query = picks.query.trim().toLowerCase();
   const filtered = rates.filter((row) => {
     const queryOk = !query || Object.values(row).join(" ").toLowerCase().includes(query);
-    const startOk = !picks.startDate || !row.effective_to || row.effective_to >= picks.startDate;
-    const endOk = !picks.endDate || !row.effective_from || row.effective_from <= picks.endDate;
-    return queryOk && startOk && endOk;
+    return queryOk;
   });
   const rows = farmBudgetGroupedRates(filtered);
   const displayCodes = farmBudgetDisplayRateCodes(rows);
@@ -17481,11 +17515,9 @@ function renderFarmBudgetRateTable(rates) {
               <th>Contract Mask</th>
               <th>ประเภท</th>
               <th>ประเภทงาน</th>
-              <th>มีผลตั้งแต่</th>
-              <th>มีผลจนถึง</th>
               <th>พื้นที่ / AP</th>
+              <th>อัตราการใช้</th>
               <th>อัตรา</th>
-              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -17495,12 +17527,10 @@ function renderFarmBudgetRateTable(rates) {
               <td>${esc(farmBudgetContractMaskLabel(row))}</td>
               <td>${esc(row.rate_type || "-")}</td>
               <td>${esc(row.activity_group_name || "-")}</td>
-              <td>${esc(row.effective_from || "-")}</td>
-              <td>${esc(row.effective_to || "-")}</td>
               <td>${esc(row._budgetBlockCount ? `${fmt(row._budgetBlockCount)} Block` : ([row.terrain_code, row.ap_code].filter(Boolean).join(" / ") || "-"))}</td>
+              <td>${esc(farmBudgetMaterialUsageLabel(row))}</td>
               <td>${esc(farmBudgetRateAmountLabel(row))}</td>
-              <td><button type="button" class="row-danger" data-budget-rate-delete="${esc(row.id)}" title="ลบออกจากฐานข้อมูล">ลบ</button></td>
-            </tr>`).join("") || `<tr><td colspan="10">No data matching...</td></tr>`}
+            </tr>`).join("") || `<tr><td colspan="9">No data matching...</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -18042,7 +18072,29 @@ function renderFarmActivityModal() {
   if (!table) return "";
   const row = state.farmEditId ? farmRows(table).find((item) => item.id === state.farmEditId) || {} : { ...(state.farmNewDefaults || {}) };
   const isBudgetRateModal = table.key === "budget_activity_rates";
-  const budgetModalHiddenFields = new Set(["budget_year_id", "calculation_method", "comparison_basis"]);
+  const budgetModalHiddenFields = new Set([
+    "budget_year_id",
+    "calculation_method",
+    "comparison_basis",
+    "area_scope_type",
+    "block_id",
+    "estate_name",
+    "zone_name",
+    "plot_group_code",
+    "terrain_code",
+    "ap_code",
+    "rspo_status",
+    "area_rai",
+    "tree_count",
+    "effective_from",
+    "effective_to",
+    "source_file",
+    "source_sheet",
+    "source_column",
+    "source_row",
+    "mapping_rule",
+    "rate_text",
+  ]);
   let visibleFields = farmVisibleFields(table);
   if (isBudgetRateModal) visibleFields = visibleFields.filter((field) => !budgetModalHiddenFields.has(farmFieldKey(field)));
   const wideTables = new Set(["people", "employees", "contractors", "worker_documents", "housing_units", "person_housing_assignments", "housing_utility_charges", "teams", "team_members", "team_activity_skills"]);
