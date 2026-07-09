@@ -12170,19 +12170,40 @@ function farmResolveBlockIdForPlanner(order = {}) {
 function syncFarmWorkOrderToPlanner(order = {}) {
   if (!order?.id) return;
   const picks = farmWorkPlanState();
+  const rate = order.budget_rate_id ? farmRowsByKey("budget_activity_rates").find((row) => String(row.id) === String(order.budget_rate_id)) : null;
   const blockId = farmResolveBlockIdForPlanner(order);
   const activityId = order.activity?.id || order.activity_id || "";
-  picks.selectedBlocks = blockId ? [blockId] : [];
+  const rateBlockIds = rate ? farmBudgetRateRelations("budget_rate_blocks", rate).map(farmBudgetMapBlockRelationSelection).filter(Boolean) : [];
+  const orderMaterials = farmRowsByKey("work_order_materials").filter((row) => String(row.work_order_id || "") === String(order.id));
+  const orderMachines = farmRowsByKey("work_order_machines").filter((row) => String(row.work_order_id || "") === String(order.id));
+  const orderWorkers = farmRowsByKey("work_order_workers").filter((row) => String(row.work_order_id || "") === String(order.id));
+  const rateMaterials = rate ? farmBudgetRateRelations("budget_rate_materials", rate) : [];
+  const rateRoles = rate ? farmBudgetRateRelations("budget_rate_roles", rate) : [];
+  picks.selectedBlocks = farmBudgetUnique((blockId ? [blockId] : rateBlockIds).filter(Boolean));
   picks.selectedActivities = activityId ? [activityId] : [];
-  picks.selectedWorkers = order.team_id ? [`team:${order.team_id}`] : [];
+  picks.selectedMaterials = farmBudgetUnique([
+    ...orderMaterials.map((row) => row.material_id).filter(Boolean),
+    ...rateMaterials.map(farmBudgetMapMaterialSelection).filter(Boolean),
+  ]);
+  picks.selectedVehicles = farmBudgetUnique(orderMachines.map((row) => row.vehicle_id).filter(Boolean));
+  picks.selectedWorkers = farmBudgetUnique([
+    order.team_id ? `team:${order.team_id}` : "",
+    ...orderWorkers.map((row) => row.employee_id ? `employee:${row.employee_id}` : "").filter(Boolean),
+    ...orderMachines.map((row) => row.driver_employee_id ? `employee:${row.driver_employee_id}` : "").filter(Boolean),
+    ...rateRoles.map(farmBudgetMapWorkerSelection).filter(Boolean),
+  ].filter(Boolean));
   picks.selectedBudgetRateId = order.budget_rate_id || picks.selectedBudgetRateId || "";
   picks.startDate = order.planned_start_date || order.scheduled_date || order.startDate || picks.startDate || farmToday();
   picks.endDate = order.planned_end_date || order.rescheduled_date || order.endDate || picks.startDate;
-  picks.workMode = "single";
+  picks.workMode = order.repeat_mode && order.repeat_mode !== "none" ? "repeat" : "single";
+  picks.repeatMode = order.repeat_mode || "none";
   picks.referenceOrderId = order.id;
   state.farmTableId = "work_orders";
   state.farmDetailId = order.id;
   state.farmEditId = order.id;
+  state.farmPlannerTab = "work";
+  state.farmSyncStatus = "success";
+  state.farmSyncMessage = `ดึง ${farmShortWorkOrderNo(order)} กลับมาแก้ไขในแบบฟอร์มวางแผนแล้ว`;
 }
 
 function selectFarmWorkOrderFromTimeline(id = "") {
