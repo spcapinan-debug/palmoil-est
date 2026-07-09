@@ -12581,6 +12581,85 @@ function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}
   })).filter((row) => row.work_order_id && row.material_id);
 }
 
+function farmWorkPlanEmployeeIdsFromSelection(selectedWorkers = [], teamId = "") {
+  const selected = (selectedWorkers || []).filter((value) => !String(value).startsWith("exclude:"));
+  const directEmployees = selected
+    .filter((value) => String(value).startsWith("employee:"))
+    .map((value) => String(value).slice(9))
+    .filter(Boolean);
+  const teamIds = farmBudgetUnique([
+    teamId,
+    ...selected.filter((value) => String(value).startsWith("team:")).map((value) => String(value).slice(5)),
+  ].filter(Boolean));
+  const teamEmployees = teamIds.flatMap((id) =>
+    farmRowsByKey("team_members").filter((row) => row.team_id === id).map((row) => row.employee_id).filter(Boolean)
+  );
+  return farmBudgetUnique([...teamEmployees, ...directEmployees]);
+}
+
+async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], selectedVehicles = [], selectedMaterials = [], selectedUsageRate = {}, selectedRate = {}, block = {} } = {}) {
+  if (!order?.id) return;
+  const workerTable = farmTableByKey("work_order_workers");
+  const machineTable = farmTableByKey("work_order_machines");
+  const materialTable = farmTableByKey("work_order_materials");
+  const now = new Date().toISOString();
+  const employeeIds = farmWorkPlanEmployeeIdsFromSelection(selectedWorkers, order.team_id);
+  if (workerTable) {
+    for (const employeeId of employeeIds) {
+      const employee = farmLookup("employees", employeeId) || {};
+      const row = {
+        id: `plan-worker-${order.id}-${employeeId}`.slice(0, 180),
+        moduleId: "farm-work",
+        tableId: "work_order_workers",
+        work_order_id: order.id,
+        employee_id: employeeId,
+        role: employee.worker_type || employee.payment_type || "worker",
+        planned_hours: "8",
+        rate: employee.daily_wage || employee.hourly_wage_rate || "",
+        updatedAt: now,
+      };
+      state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === workerTable.key && item.work_order_id === order.id && item.employee_id === employeeId));
+      state.farmRecords.push(row);
+      await persistFarmRowToDatabase(workerTable, row);
+    }
+  }
+  if (machineTable) {
+    for (const vehicleId of farmBudgetUnique(selectedVehicles || [])) {
+      const vehicle = farmLookup("vehicles", vehicleId) || {};
+      const row = {
+        id: `plan-machine-${order.id}-${vehicleId}`.slice(0, 180),
+        moduleId: "farm-work",
+        tableId: "work_order_machines",
+        work_order_id: order.id,
+        vehicle_id: vehicleId,
+        driver_employee_id: vehicle.default_driver_id || "",
+        planned_hours: 0,
+        fuel_plan_liter: 0,
+        fuel_material_id: vehicle.fuel_material_id || "",
+        updatedAt: now,
+      };
+      state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === machineTable.key && item.work_order_id === order.id && item.vehicle_id === vehicleId));
+      state.farmRecords.push(row);
+      await persistFarmRowToDatabase(machineTable, row);
+    }
+  }
+  if (materialTable) {
+    const materialPlanRows = farmWorkOrderMaterialPlanRows({
+      workOrderId: order.id,
+      rate: selectedRate,
+      block,
+      selectedMaterials,
+      selectedUsageRate,
+    });
+    for (const materialRow of materialPlanRows) {
+      const savedMaterial = await persistFarmRowToDatabase(materialTable, materialRow);
+      const finalMaterialRow = { ...materialRow, ...(savedMaterial.row || {}) };
+      state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === materialTable.key && item.work_order_id === order.id && item.material_id === finalMaterialRow.material_id));
+      state.farmRecords.push(finalMaterialRow);
+    }
+  }
+}
+
 function farmPlanBudgetMatchMessage({ activeRates = [], activity, selectedBlocks = [], matchingRates = [] } = {}) {
   if (!activity) return "ยังไม่ได้เลือกกิจกรรม จึงยังหาอัตรางบประมาณไม่ได้";
   if (!selectedBlocks.length) return "ยังไม่ได้เลือก Block จึงยังหาอัตรางบประมาณไม่ได้";
@@ -12827,7 +12906,6 @@ async function createFarmWorkPlanFromSelection() {
   const materials = farmRows(farmTableByKey("materials"));
   const vehicles = farmRows(farmTableByKey("vehicles"));
   const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
-  const workOrderMaterialTable = farmTableByKey("work_order_materials");
   const selectedBlocks = farmSelectedPlanningBlocks(picks);
   const selectedActivities = picks.selectedActivities.length
     ? activities.filter((activity) => picks.selectedActivities.includes(activity.id))
@@ -12895,12 +12973,15 @@ async function createFarmWorkPlanFromSelection() {
             moduleId: "farm-work",
             tableId: "work_orders",
             work_order_no: farmNextShortWorkOrderNo(scheduledDate, created.length),
+            work_order_title: title,
             plot_id: block.plot_id || "",
             block_id: block.id,
             ap_code: block.ap_code || block.AP_code || "",
             activity_id: activity.id,
             team_id: teamId,
             scheduled_date: scheduledDate,
+            planned_start_date: scheduledDate,
+            planned_end_date: scheduledDate,
             planned_quantity: estimate.quantity,
             planned_unit: estimate.unitName || estimate.unit,
             planned_labor_cost: estimate.amount,
@@ -12908,28 +12989,23 @@ async function createFarmWorkPlanFromSelection() {
             planned_fuel_cost: 0,
             planned_machine_cost: 0,
             planned_total_cost: estimate.amount + materialCost,
+            budget_rate_id: selectedRate?.id || "",
+            survey_template_id: survey?.id || "",
             note: noteLines,
+            approval_status: "approved",
+            approved_at: farmToday(),
+            plan_series_id: planSeriesId,
+            repeat_mode: picks.workMode === "repeat" ? picks.repeatMode || "none" : "none",
+            repeat_label: repeatLabel,
+            repeat_occurrence_no: occurrenceNo,
+            repeat_occurrence_total: scheduledDates.length,
             status: "approved",
           };
           const saved = await persistFarmRowToDatabase(table, row);
-          const savedRow = { ...row, ...(saved.row || {}), work_order_title: title, planned_start_date: scheduledDate, planned_end_date: scheduledDate, budget_rate_id: selectedRate?.id || "", survey_template_id: survey?.id || "", approval_status: "approved", plan_series_id: planSeriesId, repeat_mode: picks.repeatMode || "none", repeat_label: repeatLabel, repeat_occurrence_no: occurrenceNo, repeat_occurrence_total: scheduledDates.length };
+          const savedRow = { ...row, ...(saved.row || {}) };
           state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === savedRow.id || item.work_order_no === savedRow.work_order_no)));
           state.farmRecords.push(savedRow);
-          if (workOrderMaterialTable && savedRow.id) {
-            const materialPlanRows = farmWorkOrderMaterialPlanRows({
-              workOrderId: savedRow.id,
-              rate: selectedRate,
-              block,
-              selectedMaterials,
-              selectedUsageRate,
-            });
-            for (const materialRow of materialPlanRows) {
-              const savedMaterial = await persistFarmRowToDatabase(workOrderMaterialTable, materialRow);
-              const finalMaterialRow = { ...materialRow, ...(savedMaterial.row || {}) };
-              state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === workOrderMaterialTable.key && item.work_order_id === savedRow.id && item.material_id === finalMaterialRow.material_id));
-              state.farmRecords.push(finalMaterialRow);
-            }
-          }
+          await persistFarmWorkPlanResources({ order: savedRow, selectedWorkers: picks.selectedWorkers, selectedVehicles: selectedVehicles.map((vehicle) => vehicle.id), selectedMaterials, selectedUsageRate, selectedRate, block });
           await ensureFarmWorkOrderQr(savedRow, "plan");
           await ensureFarmSurveyAttachment({ ...savedRow, activity });
           created.push(savedRow.id || savedRow.work_order_no);
@@ -12966,7 +13042,6 @@ async function saveFarmWorkPlanEditFromSelection() {
   const materials = farmRows(farmTableByKey("materials"));
   const vehicles = farmRows(farmTableByKey("vehicles"));
   const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
-  const workOrderMaterialTable = farmTableByKey("work_order_materials");
   const selectedBlocks = farmSelectedPlanningBlocks(picks);
   const selectedActivities = picks.selectedActivities.length
     ? activities.filter((activity) => picks.selectedActivities.includes(activity.id))
@@ -13076,21 +13151,7 @@ async function saveFarmWorkPlanEditFromSelection() {
           const savedRow = { ...row, ...(saved.row || {}) };
           state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === savedRow.id || item.work_order_no === savedRow.work_order_no)));
           state.farmRecords.push(savedRow);
-          if (workOrderMaterialTable && savedRow.id) {
-            const materialPlanRows = farmWorkOrderMaterialPlanRows({
-              workOrderId: savedRow.id,
-              rate: selectedRate,
-              block,
-              selectedMaterials,
-              selectedUsageRate,
-            });
-            for (const materialRow of materialPlanRows) {
-              const savedMaterial = await persistFarmRowToDatabase(workOrderMaterialTable, materialRow);
-              const finalMaterialRow = { ...materialRow, ...(savedMaterial.row || {}) };
-              state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === workOrderMaterialTable.key && item.work_order_id === savedRow.id && item.material_id === finalMaterialRow.material_id));
-              state.farmRecords.push(finalMaterialRow);
-            }
-          }
+          await persistFarmWorkPlanResources({ order: savedRow, selectedWorkers: picks.selectedWorkers, selectedVehicles: selectedVehicles.map((vehicle) => vehicle.id), selectedMaterials, selectedUsageRate, selectedRate, block });
           await ensureFarmWorkOrderQr(savedRow, "plan");
           await ensureFarmSurveyAttachment({ ...savedRow, activity });
           savedIds.push(savedRow.id || savedRow.work_order_no);

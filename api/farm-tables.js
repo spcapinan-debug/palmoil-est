@@ -345,6 +345,16 @@ const TEXT_ID_KEYS_BY_TABLE = {
   budget_rate_roles: new Set(["id", "budget_rate_id"]),
   survey_templates: new Set(["id", "activity_id"]),
   survey_questions: new Set(["id", "template_id"]),
+  work_orders: new Set(["planned_work_item_id", "plot_id", "block_id", "plot_group_id", "activity_id", "survey_template_id", "team_id", "rescheduled_by_manager_id", "approved_by", "budget_rate_id"]),
+  work_order_workers: new Set(["id", "work_order_id", "employee_id"]),
+  work_order_materials: new Set(["id", "work_order_id", "material_id", "unit_id"]),
+  work_order_machines: new Set(["id", "work_order_id", "vehicle_id", "driver_employee_id", "fuel_material_id"]),
+  work_order_qr_codes: new Set(["id", "work_order_id"]),
+  work_order_locations: new Set(["id", "work_order_id"]),
+  work_order_status_logs: new Set(["id", "work_order_id", "entity_id"]),
+  work_results: new Set(["id", "work_order_id", "supervisor_id"]),
+  work_attendance: new Set(["id", "work_order_id", "employee_id"]),
+  attachments: new Set(["id", "entity_id", "survey_template_id"]),
 };
 
 const UNIQUE_KEYS = {
