@@ -10956,7 +10956,7 @@ async function saveFarmBudgetSelectedRateFromSelection() {
     moduleId: "farm-budget",
     tableId: "budget_activity_rates",
     fiscal_year: picks.dataGroup || original.fiscal_year || farmBudgetFiscalYear(picks.startDate || original.effective_from),
-    rate_code: original.rate_code || picks.externalContractNo || fallbackRateCode,
+    rate_code: picks.externalContractNo || original.rate_code || fallbackRateCode,
     activity_id: preserveContractShape ? (original.activity_id || "") : (activity?.id || original.activity_id || ""),
     activity_code: preserveContractShape ? (original.activity_code || "") : (activity?.activity_code || original.activity_code || ""),
     activity_name: preserveContractShape ? (original.activity_name || fallbackActivityName) : (activity?.activity_name || activity?.name || fallbackActivityName),
@@ -16958,9 +16958,10 @@ function farmBudgetDedupeExtraRates(rows = []) {
   return [...map.values()];
 }
 
-function applyFarmBudgetRateToBuilder(rateId) {
+function applyFarmBudgetRateToBuilder(rateId, displayCode = "") {
   const rate = farmRowsByKey("budget_activity_rates").find((row) => row.id === rateId);
   if (!rate) return false;
+  const visibleRateCode = displayCode || farmBudgetDisplayRateCode(rate);
   const picks = farmBudgetContractState();
   const noteMeta = farmBudgetParseNoteJson(rate);
   const groupRows = farmBudgetRateGroupRows(rate);
@@ -17019,7 +17020,7 @@ function applyFarmBudgetRateToBuilder(rateId) {
     baseUsageUnit: firstMaterialRate.usage_unit || noteMeta.baseUsageUnit || picks.baseUsageUnit || "",
     baseMaterialBasis: farmBudgetNormalizeUsageBasis(firstMaterialRate.usage_basis || noteMeta.baseMaterialBasis || picks.baseMaterialBasis || rate.comparison_basis || ""),
     performancePerUom: noteMeta.performancePerUom ?? picks.performancePerUom ?? "",
-    externalContractNo: noteMeta.externalContractNo || rate.rate_code || "",
+    externalContractNo: visibleRateCode || noteMeta.externalContractNo || rate.rate_code || "",
     supplierContractNo: noteMeta.supplierContractNo || "",
     dataGroup: noteMeta.dataGroup || rate.fiscal_year || "",
     approvalScope: noteMeta.approvalScope || picks.approvalScope,
@@ -17039,7 +17040,7 @@ function applyFarmBudgetRateToBuilder(rateId) {
   state.farmDetailId = rate.id;
   state.farmBudgetEditingRateId = rate.id;
   state.farmSyncStatus = "success";
-  state.farmSyncMessage = `ดึง Rate ${rate.rate_code || rate.id} กลับมาแก้ไขด้านบนแล้ว`;
+  state.farmSyncMessage = `ดึง Rate ${visibleRateCode || rate.rate_code || rate.id} กลับมาแก้ไขด้านบนแล้ว`;
   return true;
 }
 
@@ -17633,8 +17634,10 @@ function renderFarmBudgetRateTable(rates) {
             </tr>
           </thead>
           <tbody>
-            ${rows.map((row) => `<tr class="farm-editable-row ${row._budgetGroupIds?.includes(state.farmBudgetEditingRateId) ? "is-selected" : ""}" data-farm-row="${esc(row.id)}" data-farm-budget-rate-row="${esc(row.id)}" title="คลิกเพื่อดึงข้อมูลขึ้นไปแก้ไขด้านบน / ดับเบิลคลิกเพื่อเปิดหน้าต่างแก้ไข">
-              <td>${esc(displayCodes.get(row.id) || farmBudgetCompactRateCode(row))}</td>
+            ${rows.map((row) => {
+              const displayCode = displayCodes.get(row.id) || farmBudgetCompactRateCode(row);
+              return `<tr class="farm-editable-row ${row._budgetGroupIds?.includes(state.farmBudgetEditingRateId) ? "is-selected" : ""}" data-farm-row="${esc(row.id)}" data-farm-budget-rate-row="${esc(row.id)}" data-budget-display-code="${esc(displayCode)}" title="คลิกเพื่อดึงข้อมูลขึ้นไปแก้ไขด้านบน / ดับเบิลคลิกเพื่อเปิดหน้าต่างแก้ไข">
+              <td>${esc(displayCode)}</td>
               <td>${esc(row.version_no || "1")}</td>
               <td>${esc(farmBudgetContractMaskLabel(row))}</td>
               <td>${esc(row.rate_type || "-")}</td>
@@ -17643,7 +17646,8 @@ function renderFarmBudgetRateTable(rates) {
               <td>${esc(farmBudgetMaterialUsageLabel(row))}</td>
               <td>${esc(farmBudgetMoneyRateLabel(row))}</td>
               <td>${esc(farmBudgetPerformancePerUomLabel(row))}</td>
-            </tr>`).join("") || `<tr><td colspan="9">No data matching...</td></tr>`}
+            </tr>`;
+            }).join("") || `<tr><td colspan="9">No data matching...</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -17654,9 +17658,10 @@ function renderFarmBudgetCreateRateBar() {
   const editing = state.farmBudgetEditingRateId
     ? farmRowsByKey("budget_activity_rates").find((row) => row.id === state.farmBudgetEditingRateId)
     : null;
+  const editingCode = editing ? (farmBudgetContractState().externalContractNo || farmBudgetDisplayRateCode(editing) || editing.rate_code || editing.id) : "";
   return `
     <article class="budget-create-rate-bar">
-      <span>${editing ? `กำลังแก้ไข ${esc(editing.rate_code || editing.id)}` : "เลือกพื้นที่ กิจกรรม และรูปแบบอัตรา แล้วสร้าง Rate"}</span>
+      <span>${editing ? `กำลังแก้ไข ${esc(editingCode)}` : "เลือกพื้นที่ กิจกรรม และรูปแบบอัตรา แล้วสร้าง Rate"}</span>
       <div class="budget-rate-actions">
         <button type="button" data-budget-rate-create ${state.farmSyncBusy ? "disabled" : ""}>${editing ? "บันทึกแก้ไข Rate" : "สร้าง Rate"}</button>
         ${editing ? `<button type="button" class="secondary" data-budget-rate-new ${state.farmSyncBusy ? "disabled" : ""}>สร้าง Rate ใหม่</button>` : ""}
@@ -20343,7 +20348,7 @@ async function init() {
       if (farmRow.matches("[data-farm-budget-rate-row]")) {
         window.clearTimeout(state.farmBudgetRateClickTimer);
         state.farmBudgetRateClickTimer = window.setTimeout(() => {
-          applyFarmBudgetRateToBuilder(farmRow.dataset.farmRow);
+          applyFarmBudgetRateToBuilder(farmRow.dataset.farmRow, farmRow.dataset.budgetDisplayCode || "");
           render();
         }, 220);
         return;
@@ -20573,6 +20578,7 @@ async function init() {
       state.farmEditId = budgetRateRow.dataset.farmBudgetRateRow;
       state.farmDetailId = state.farmEditId;
       state.farmBudgetEditingRateId = state.farmEditId;
+      applyFarmBudgetRateToBuilder(state.farmEditId, budgetRateRow.dataset.budgetDisplayCode || "");
       render();
       return;
     }
