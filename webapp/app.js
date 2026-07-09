@@ -17819,8 +17819,6 @@ function renderFarmBudgetYearSettings() {
         ${(years.length ? years : [{ fiscal_year: picks.budgetFiscalYear, budget_name: picks.budgetName, effective_from: picks.budgetStartDate, effective_to: picks.budgetEndDate, status: picks.budgetStatus }]).map((row) => `
           <button type="button" data-budget-year-pick="${esc(row.id || farmBudgetYearId(row.fiscal_year))}" data-year="${esc(row.fiscal_year || "")}" data-name="${esc(row.budget_name || "")}" data-start="${esc(row.effective_from || "")}" data-end="${esc(row.effective_to || "")}" data-status="${esc(row.status || "active")}">
             <b>${esc(row.fiscal_year || "-")}</b>
-            <span>${esc(row.budget_name || "-")}</span>
-            <small>${esc([row.effective_from, row.effective_to].filter(Boolean).join(" - ") || farmTranslateValue(row.status || "active"))}</small>
           </button>
         `).join("")}
       </div>
@@ -17833,55 +17831,6 @@ function renderFarmBudgetBoard() {
   return `
     <section class="farm-budget-contract">
       ${renderFarmBudgetYearSettings()}
-      <article class="farm-budget-contract-head">
-        <div class="section-head">
-          <h3>ข้อมูลสัญญา</h3>
-          <span>ข้อมูลส่วนหัวของสัญญาและเงื่อนไขการคำนวณ Rate</span>
-        </div>
-        <div class="budget-contract-grid">
-          <label>หมายเลขภายในของสัญญา
-            <input id="budgetExternalContractNo" value="${esc(picks.externalContractNo)}" placeholder="เช่น 1 - กลุ่มเก็บเกี่ยว">
-          </label>
-          <label>เวอร์ชัน
-            <select id="budgetContractVersion">
-              ${["1", "2", "3", "4", "5"].map((item) => `<option value="${esc(item)}"${String(picks.versionNo || "1") === item ? " selected" : ""}>${esc(item)}</option>`).join("")}
-            </select>
-          </label>
-          <label>ชื่อ/คำอธิบายของสัญญา
-            <input id="budgetContractName" value="${esc(picks.contractName)}" maxlength="256" placeholder="เช่น เกี่ยว 406 บาทต่อตัน">
-          </label>
-          <label>ค้นหา
-            <input id="budgetContractSearch" type="search" value="${esc(picks.query)}" placeholder="ค้นหา">
-          </label>
-          <label>ประเภทสัญญา
-            <select id="budgetContractType">
-              ${["Role Based Compounded", "Role Based", "Activity Based", "Material Included", "Machine Included"].map((item) => `<option value="${esc(item)}"${picks.contractType === item ? " selected" : ""}>${esc(farmTranslateValue(item))}</option>`).join("")}
-            </select>
-          </label>
-          <label>สถานะ
-            <select id="budgetApprovalStatus">
-              ${["draft", "pending_approval", "approved", "inactive"].map((item) => `<option value="${esc(item)}"${picks.approvalStatus === item ? " selected" : ""}>${esc(farmTranslateValue(item))}</option>`).join("")}
-            </select>
-          </label>
-          <label>หมายเลขสัญญาของซัพพลายเออร์
-            <input id="budgetSupplierContractNo" value="${esc(picks.supplierContractNo)}" placeholder="เลขอ้างอิงภายนอก">
-          </label>
-          <label>กลุ่มข้อมูล
-            <input id="budgetDataGroup" value="${esc(picks.dataGroup)}" placeholder="กลุ่มข้อมูล">
-          </label>
-          <label>Start date
-            ${renderDateInputControl({ id: "budgetContractStart", value: picks.startDate, ariaLabel: "เลือกวันที่เริ่มสัญญา" })}
-          </label>
-          <label>End date
-            ${renderDateInputControl({ id: "budgetContractEnd", value: picks.endDate, ariaLabel: "เลือกวันที่สิ้นสุดสัญญา" })}
-          </label>
-          <div class="budget-contract-buttons">
-            <button type="button" data-budget-contract-search>ค้นหา</button>
-            <button type="button" data-budget-contract-reset>ล้างตัวกรอง</button>
-          </div>
-        </div>
-        ${renderFarmBudgetRateBuilder()}
-      </article>
       <article class="budget-contract-options">
         <div class="budget-tree-grid budget-tree-grid-wide-area">
           <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetAreaTree()}</div></section>
