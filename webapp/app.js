@@ -3176,6 +3176,37 @@ function farmDatabaseTablesForView(view = state.view) {
       "contractors",
     ].forEach((key) => tableSet.add(key));
   }
+  if (["farm-work", "farm-dispatch", "farm-result"].includes(view)) {
+    [
+      "blocks",
+      "areas",
+      "estates",
+      "zones",
+      "plots",
+      "plot_groups",
+      "activity_groups",
+      "activities",
+      "materials",
+      "vehicles",
+      "teams",
+      "team_members",
+      "employees",
+      "contractors",
+      "survey_templates",
+      "survey_questions",
+      "activity_material_usage_rates",
+      "budget_years",
+      "budget_activity_rates",
+      "budget_rate_blocks",
+      "budget_rate_materials",
+      "budget_rate_roles",
+      "work_order_workers",
+      "work_order_materials",
+      "work_order_machines",
+      "work_results",
+      "work_attendance",
+    ].forEach((key) => tableSet.add(key));
+  }
   return [...tableSet].filter((key) => FARM_TABLE_SCHEMAS[key]);
 }
 
