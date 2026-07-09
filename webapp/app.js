@@ -3178,6 +3178,7 @@ function farmDatabaseTablesForView(view = state.view) {
   }
   if (["farm-work", "farm-dispatch", "farm-result"].includes(view)) {
     [
+      "work_orders",
       "blocks",
       "areas",
       "estates",
@@ -12660,6 +12661,34 @@ async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], 
   }
 }
 
+async function finalizeFarmWorkPlanOrder(savedRow, { selectedWorkers = [], selectedVehicles = [], selectedMaterials = [], selectedUsageRate = {}, selectedRate = {}, block = {}, activity = {} } = {}) {
+  const warnings = [];
+  try {
+    await persistFarmWorkPlanResources({
+      order: savedRow,
+      selectedWorkers,
+      selectedVehicles: selectedVehicles.map ? selectedVehicles.map((vehicle) => typeof vehicle === "string" ? vehicle : vehicle.id).filter(Boolean) : [],
+      selectedMaterials,
+      selectedUsageRate,
+      selectedRate,
+      block,
+    });
+  } catch (error) {
+    warnings.push(`ข้อมูลคนงาน/วัสดุ/รถ: ${error.message}`);
+  }
+  try {
+    await ensureFarmWorkOrderQr(savedRow, "plan");
+  } catch (error) {
+    warnings.push(`QR: ${error.message}`);
+  }
+  try {
+    await ensureFarmSurveyAttachment({ ...savedRow, activity });
+  } catch (error) {
+    warnings.push(`Survey: ${error.message}`);
+  }
+  return warnings;
+}
+
 function farmPlanBudgetMatchMessage({ activeRates = [], activity, selectedBlocks = [], matchingRates = [] } = {}) {
   if (!activity) return "ยังไม่ได้เลือกกิจกรรม จึงยังหาอัตรางบประมาณไม่ได้";
   if (!selectedBlocks.length) return "ยังไม่ได้เลือก Block จึงยังหาอัตรางบประมาณไม่ได้";
@@ -12930,6 +12959,7 @@ async function createFarmWorkPlanFromSelection() {
   state.farmSyncMessage = "กำลังสร้าง Work Order...";
   render();
   const created = [];
+  const warnings = [];
   try {
     for (const block of selectedBlocks) {
       for (const activity of selectedActivities) {
@@ -13005,18 +13035,36 @@ async function createFarmWorkPlanFromSelection() {
           const savedRow = { ...row, ...(saved.row || {}) };
           state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === savedRow.id || item.work_order_no === savedRow.work_order_no)));
           state.farmRecords.push(savedRow);
-          await persistFarmWorkPlanResources({ order: savedRow, selectedWorkers: picks.selectedWorkers, selectedVehicles: selectedVehicles.map((vehicle) => vehicle.id), selectedMaterials, selectedUsageRate, selectedRate, block });
-          await ensureFarmWorkOrderQr(savedRow, "plan");
-          await ensureFarmSurveyAttachment({ ...savedRow, activity });
+          warnings.push(...await finalizeFarmWorkPlanOrder(savedRow, { selectedWorkers: picks.selectedWorkers, selectedVehicles, selectedMaterials, selectedUsageRate, selectedRate, block, activity }));
           created.push(savedRow.id || savedRow.work_order_no);
         }
       }
     }
     saveFarmRecords();
+    await loadFarmTablesFromDatabase({
+      silent: false,
+      tables: [
+        "work_orders",
+        "work_order_workers",
+        "work_order_materials",
+        "work_order_machines",
+        "work_order_qr_codes",
+        "attachments",
+        "blocks",
+        "areas",
+        "activities",
+        "teams",
+        "budget_activity_rates",
+        "budget_rate_blocks",
+        "budget_rate_materials",
+        "budget_rate_roles",
+      ],
+    });
     state.farmTableId = "work_orders";
     state.farmDetailId = created[0] || "";
-    state.farmSyncStatus = "ok";
-    state.farmSyncMessage = `สร้างแผน Work Order แล้ว ${fmt(created.length)} รายการ`;
+    state.farmWorkDetailId = created[0] || "";
+    state.farmSyncStatus = warnings.length ? "warning" : "ok";
+    state.farmSyncMessage = `สร้างแผน Work Order แล้ว ${fmt(created.length)} รายการ${warnings.length ? ` แต่ข้อมูลประกอบบางส่วนยังไม่ครบ: ${warnings.slice(0, 3).join(" | ")}` : ""}`;
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `สร้างแผนไม่สำเร็จ: ${error.message}`;
@@ -13067,6 +13115,7 @@ async function saveFarmWorkPlanEditFromSelection() {
   state.farmSyncMessage = "กำลังบันทึกแก้ไขแผน...";
   render();
   const savedIds = [];
+  const warnings = [];
   try {
     let createdOffset = 0;
     for (const block of selectedBlocks) {
@@ -13151,19 +13200,36 @@ async function saveFarmWorkPlanEditFromSelection() {
           const savedRow = { ...row, ...(saved.row || {}) };
           state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === savedRow.id || item.work_order_no === savedRow.work_order_no)));
           state.farmRecords.push(savedRow);
-          await persistFarmWorkPlanResources({ order: savedRow, selectedWorkers: picks.selectedWorkers, selectedVehicles: selectedVehicles.map((vehicle) => vehicle.id), selectedMaterials, selectedUsageRate, selectedRate, block });
-          await ensureFarmWorkOrderQr(savedRow, "plan");
-          await ensureFarmSurveyAttachment({ ...savedRow, activity });
+          warnings.push(...await finalizeFarmWorkPlanOrder(savedRow, { selectedWorkers: picks.selectedWorkers, selectedVehicles, selectedMaterials, selectedUsageRate, selectedRate, block, activity }));
           savedIds.push(savedRow.id || savedRow.work_order_no);
         }
       }
     }
     saveFarmRecords();
+    await loadFarmTablesFromDatabase({
+      silent: false,
+      tables: [
+        "work_orders",
+        "work_order_workers",
+        "work_order_materials",
+        "work_order_machines",
+        "work_order_qr_codes",
+        "attachments",
+        "blocks",
+        "areas",
+        "activities",
+        "teams",
+        "budget_activity_rates",
+        "budget_rate_blocks",
+        "budget_rate_materials",
+        "budget_rate_roles",
+      ],
+    });
     state.farmTableId = "work_orders";
     state.farmDetailId = savedIds[0] || currentOrder.id;
     state.farmWorkDetailId = savedIds[0] || currentOrder.id;
-    state.farmSyncStatus = "ok";
-    state.farmSyncMessage = `บันทึกแก้ไขแผนแล้ว ${fmt(savedIds.length)} รายการ${scheduledDates.length > 1 ? " และลงรอบซ้ำใน timeline แล้ว" : ""}`;
+    state.farmSyncStatus = warnings.length ? "warning" : "ok";
+    state.farmSyncMessage = `บันทึกแก้ไขแผนแล้ว ${fmt(savedIds.length)} รายการ${scheduledDates.length > 1 ? " และลงรอบซ้ำใน timeline แล้ว" : ""}${warnings.length ? ` แต่ข้อมูลประกอบบางส่วนยังไม่ครบ: ${warnings.slice(0, 3).join(" | ")}` : ""}`;
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `บันทึกแก้ไขแผนไม่สำเร็จ: ${error.message}`;
