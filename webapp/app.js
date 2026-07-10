@@ -12037,15 +12037,47 @@ function farmWorkFilterOptions(rows, key, labelFallback = "ไม่ระบุ
   return Array.from(map, ([value, label]) => ({ value, label: label || labelFallback }));
 }
 
+function farmWorkBlockPlotGroupCode(block = {}, plot = {}) {
+  const direct = farmFirstFilled(
+    block.plot_group_code,
+    block.plot_group_name,
+    block.plot_group,
+    plot.plot_group_code,
+    plot.plot_group_name,
+    plot.plot_code,
+    block.plot_code,
+    block.plot_name
+  );
+  if (direct) return String(direct).trim();
+  const source = farmFirstFilled(block.area_name, block.block_name, block.terrain_code, block.area_code, block.block_code);
+  const raw = String(source || "").trim().toUpperCase();
+  const fromFullName = raw.match(/^\d{2}-([A-Z]+)\d+/);
+  if (fromFullName) return fromFullName[1];
+  const fromShortCode = raw.match(/^([A-Z]+)\d+/);
+  if (fromShortCode && !/^BA$/i.test(fromShortCode[1])) return fromShortCode[1];
+  const fromMiddle = raw.match(/-([A-Z]+)\d+/);
+  return fromMiddle ? fromMiddle[1] : "";
+}
+
+function farmWorkZoneFromBlock(block = {}, plotGroupCode = "") {
+  const direct = farmFirstFilled(block.zone_name, block.zone_code, block.zone, block.section_name, block.section);
+  if (direct) return String(direct).trim();
+  const group = String(plotGroupCode || farmWorkBlockPlotGroupCode(block)).trim().toUpperCase();
+  if (!group) return "";
+  return ["B", "T"].includes(group) ? "Upper" : "Lower";
+}
+
 function farmWorkTextOption(row = {}, key = "") {
   if (key === "zone") {
-    const value = farmFirstFilled(row.zone?.id, row.block?.zone_id, row.block?.zone_name, row.block?.zone_code, row.zone_name);
-    const label = farmFirstFilled(row.zone?.zone_name, row.zone?.zone_code, row.block?.zone_name, row.block?.zone_code, value);
+    const derivedZone = farmWorkZoneFromBlock(row.block, farmWorkBlockPlotGroupCode(row.block, row.plot));
+    const value = farmFirstFilled(row.zone?.id, row.block?.zone_id, row.block?.zone, row.block?.zone_name, row.block?.zone_code, row.zone_name, row.zone_code, derivedZone);
+    const label = farmFirstFilled(row.zone?.zone_name, row.zone?.zone_code, row.block?.zone_name, row.block?.zone, row.block?.zone_code, derivedZone, value);
     return { value: farmNormalizeKey(value), label };
   }
   if (key === "plotGroup") {
-    const value = farmFirstFilled(row.plotGroup?.id, row.plot?.plot_group_id, row.block?.plot_group_id, row.block?.plot_group_code, row.block?.plot_group_name, row.plot_group_id);
-    const label = farmFirstFilled(row.plotGroup?.group_name, row.plotGroup?.group_code, row.block?.plot_group_name, row.block?.plot_group_code, value);
+    const derivedGroup = farmWorkBlockPlotGroupCode(row.block, row.plot);
+    const value = farmFirstFilled(row.plotGroup?.id, row.plot?.plot_group_id, row.block?.plot_group_id, row.block?.plot_group, row.block?.plot_group_code, row.block?.plot_group_name, row.block?.plot, row.block?.plot_code, row.block?.plot_name, row.plot_group_id, row.plot_group_code, derivedGroup);
+    const label = farmFirstFilled(row.plotGroup?.group_name, row.plotGroup?.group_code, row.block?.plot_group_name, row.block?.plot_group, row.block?.plot_group_code, row.block?.plot_name, row.block?.plot, row.block?.plot_code, derivedGroup, value);
     return { value: farmNormalizeKey(value), label };
   }
   return { value: "", label: "" };
@@ -12082,7 +12114,7 @@ function filteredFarmWorkOrders() {
     const statusKey = row.statusMeta.key;
     const zoneOption = farmWorkTextOption(row, "zone");
     const plotGroupOption = farmWorkTextOption(row, "plotGroup");
-    const text = [row.shortNo, row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.block?.block_code, row.block?.block_name, row.block?.zone_name, row.block?.plot_group_code, row.block?.ap_code || row.block?.AP_code, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
+    const text = [row.shortNo, row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.block?.block_code, row.block?.block_name, row.block?.zone_name, row.block?.zone, row.block?.plot_group_code, row.block?.plot_group, zoneOption.label, plotGroupOption.label, row.block?.ap_code || row.block?.AP_code, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
     return (f.activityGroup === "all" || row.activityGroup?.id === f.activityGroup)
       && (f.team === "all" || row.team?.id === f.team)
       && (f.zone === "all" || zoneOption.value === f.zone || row.zone?.id === f.zone)
