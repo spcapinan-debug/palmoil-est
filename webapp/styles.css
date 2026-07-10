@@ -8780,7 +8780,7 @@ tfoot td {
 .farm-work-actual-bar {
   position: absolute;
   isolation: isolate;
-  min-height: 16px;
+  min-height: 20px;
   border-radius: 999px;
   padding: 0;
   font-size: 9px;
@@ -8833,7 +8833,7 @@ tfoot td {
 }
 
 .farm-work-plan-bar.approved {
-  top: 13px;
+  top: 10px;
   border: 0;
   background: linear-gradient(90deg, rgba(185, 28, 28, .18), rgba(185, 28, 28, .88), rgba(185, 28, 28, .18));
   color: #b91c1c;
@@ -8841,9 +8841,9 @@ tfoot td {
 }
 
 .farm-work-plan-bar.approved.dispatched {
-  background: linear-gradient(90deg, rgba(15, 118, 110, .16), rgba(15, 118, 110, .9), rgba(15, 118, 110, .16));
-  color: #0f766e;
-  box-shadow: 0 0 0 1px rgba(15, 118, 110, .24), 0 4px 10px rgba(15, 118, 110, .14);
+  background: linear-gradient(90deg, rgba(185, 28, 28, .16), rgba(185, 28, 28, .72), rgba(185, 28, 28, .16));
+  color: #b91c1c;
+  box-shadow: 0 0 0 1px rgba(185, 28, 28, .2), 0 4px 10px rgba(185, 28, 28, .12);
 }
 
 .farm-work-plan-bar.approved.rescheduled {
@@ -8857,6 +8857,17 @@ tfoot td {
   background: linear-gradient(90deg, rgba(127, 29, 29, .18), #7f1d1d, rgba(127, 29, 29, .18));
   color: #7f1d1d;
   box-shadow: 0 5px 12px rgba(185, 28, 28, .22);
+}
+
+.farm-work-dispatch-fill {
+  position: absolute;
+  inset: 5px 9px;
+  z-index: 1;
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(20, 184, 166, .22), #0f766e, rgba(20, 184, 166, .22));
+  box-shadow: 0 0 0 1px rgba(15, 118, 110, .22);
+  pointer-events: none;
 }
 
 .farm-work-plan-bar.needs-approval {
@@ -9067,8 +9078,8 @@ tfoot td {
 
 .farm-work-compact .farm-work-plan-bar,
 .farm-work-compact .farm-work-actual-bar {
-  height: 13px;
-  min-height: 13px;
+  height: 16px;
+  min-height: 16px;
   border-radius: 999px;
 }
 
@@ -9086,14 +9097,14 @@ tfoot td {
 }
 
 .farm-work-compact .farm-work-plan-bar.approved {
-  top: 12px;
+  top: 10px;
   border: 0;
   background: linear-gradient(90deg, rgba(185, 28, 28, .18), #c94f3e, rgba(185, 28, 28, .18));
   box-shadow: 0 0 0 1px rgba(120, 29, 24, .18), 0 1px 2px rgba(120, 29, 24, .14);
 }
 
 .farm-work-compact .farm-work-plan-bar.approved.dispatched {
-  background: linear-gradient(90deg, rgba(15, 118, 110, .16), #0f766e, rgba(15, 118, 110, .16));
+  background: linear-gradient(90deg, rgba(185, 28, 28, .16), #c94f3e, rgba(185, 28, 28, .16));
 }
 
 .farm-work-compact .farm-work-plan-bar.approved.rescheduled {
@@ -9102,9 +9113,15 @@ tfoot td {
 
 .farm-work-compact .farm-work-actual-bar {
   top: 25px;
+  height: 11px;
+  min-height: 11px;
   border-width: 0;
   background: linear-gradient(90deg, rgba(127, 29, 29, .18), #7f1d1d, rgba(127, 29, 29, .18));
   box-shadow: 0 1px 0 rgba(120, 29, 24, .35);
+}
+
+.farm-work-compact .farm-work-dispatch-fill {
+  inset: 4px 8px;
 }
 
 .farm-work-compact .farm-work-milestone {
