@@ -16766,7 +16766,7 @@ function farmBudgetBuildRateNote(picks = {}, { originalNote = "", materials = []
   });
 }
 
-const FARM_BUDGET_RATE_UOM_OPTIONS = ["ไร่", "ต้น", "ตัน", "วัน", "ชั่วโมง", "ครั้ง", "หน่วย", "คะแนน"];
+const FARM_BUDGET_RATE_UOM_OPTIONS = ["ไร่", "ต้น", "ตัน", "กระสอบ", "วัน", "ชั่วโมง", "ครั้ง", "หน่วย", "คะแนน"];
 const FARM_BUDGET_USAGE_UNIT_OPTIONS = ["กรัม", "กิโลกรัม", "กก.", "กระสอบ", "ถุง", "ลิตร", "ซีซี", "มิลลิลิตร", "ตัน", "ต้น", "ไร่", "หน่วย"];
 const FARM_BUDGET_USAGE_BASIS_OPTIONS = [
   ["per_tree", "ต่อต้น"],
@@ -16780,7 +16780,7 @@ const FARM_BUDGET_USAGE_BASIS_OPTIONS = [
 function farmBudgetNormalizeRateUom(unit = "") {
   const clean = farmBudgetUnitBaseLabel(unit);
   if (!clean) return "";
-  if (/(กรัม|กิโลกรัม|กก\.?|กระสอบ|ถุง|ลิตร|ซีซี|มิลลิลิตร)/.test(clean)) return "";
+  if (/(กรัม|กิโลกรัม|กก\.?|ถุง|ลิตร|ซีซี|มิลลิลิตร)/.test(clean)) return "";
   return clean;
 }
 
