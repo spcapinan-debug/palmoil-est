@@ -95,6 +95,8 @@
   farmDispatchWorkOrderId: "",
   farmInventoryIssueSelection: "",
   farmDispatchTeamId: "",
+  farmDispatchExtraWorkers: [],
+  farmDispatchExtraMaterials: [],
   farmResultWorkOrderId: "",
   farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {}, materialEntries: {}, machineEntries: {} },
   farmResultRenderTimer: null,
@@ -13478,35 +13480,38 @@ function farmDispatchSelectedOrder() {
 
 function farmDispatchWorkerCandidates(order, teamId = "") {
   const existing = farmRowsByKey("work_order_workers").filter((row) => row.work_order_id === order?.id);
-  if (existing.length) {
-    return existing.map((row) => {
-      const employee = farmLookup("employees", row.employee_id) || {};
-      return {
-        id: row.employee_id,
-        name: farmRecordLabel(farmTableByKey("employees"), employee) || row.employee_id,
-        role: row.role || employee.worker_type || "",
-        checked: true,
-      };
-    }).filter((row) => row.id);
-  }
+  const useTeamRows = Boolean(state.farmDispatchTeamId && state.farmDispatchTeamId !== order?.team_id);
   const teamMembers = farmRowsByKey("team_members").filter((row) => row.team_id === (teamId || order?.team_id));
-  if (teamMembers.length) {
-    return teamMembers.map((row) => {
+  const baseRows = !useTeamRows && existing.length ? existing : teamMembers;
+  if (baseRows.length) {
+    const mapped = baseRows.map((row) => {
       const employee = farmLookup("employees", row.employee_id) || {};
       return {
         id: row.employee_id,
         name: farmRecordLabel(farmTableByKey("employees"), employee) || row.employee_id,
-        role: row.member_role || employee.worker_type || "",
+        role: row.member_role || row.role || employee.worker_type || employee.payment_type || "",
         checked: true,
       };
     }).filter((row) => row.id);
+    for (const employeeId of state.farmDispatchExtraWorkers || []) {
+      if (mapped.some((row) => row.id === employeeId)) continue;
+      const employee = farmLookup("employees", employeeId) || {};
+      mapped.push({
+        id: employeeId,
+        name: farmRecordLabel(farmTableByKey("employees"), employee) || employeeId,
+        role: employee.worker_type || employee.payment_type || "เพิ่มเอง",
+        checked: true,
+      });
+    }
+    return mapped;
   }
-  return farmRowsByKey("employees").slice(0, 12).map((employee, index) => ({
+  const fallback = farmRowsByKey("employees").slice(0, 12).map((employee, index) => ({
     id: employee.id,
     name: farmRecordLabel(farmTableByKey("employees"), employee),
     role: employee.worker_type || "",
     checked: index < 4,
   }));
+  return fallback;
 }
 
 function farmDispatchInventoryItemForMaterial(materialId) {
@@ -13546,8 +13551,26 @@ async function ensureFarmInventoryItemForMaterial(materialId) {
 
 function farmDispatchMaterialCandidates(order) {
   const existing = farmRowsByKey("work_order_materials").filter((row) => row.work_order_id === order?.id);
+  const appendExtraMaterials = (rows) => {
+    const next = [...rows];
+    for (const materialId of state.farmDispatchExtraMaterials || []) {
+      if (next.some((row) => row.material_id === materialId)) continue;
+      const material = farmLookup("materials", materialId) || {};
+      next.push({
+        material_id: materialId,
+        material_name: farmRecordLabel(farmTableByKey("materials"), material) || materialId,
+        planned_quantity: 0,
+        issued_quantity: 0,
+        actual_quantity: 0,
+        waste_quantity: 0,
+        unit_id: material.base_unit_id || "",
+        unit_name: farmLookupLabel("units", material.base_unit_id),
+      });
+    }
+    return next;
+  };
   if (existing.length) {
-    return existing.map((row) => {
+    return appendExtraMaterials(existing.map((row) => {
       const material = farmLookup("materials", row.material_id) || {};
       return {
         material_id: row.material_id,
@@ -13560,11 +13583,11 @@ function farmDispatchMaterialCandidates(order) {
         unit_name: farmLookupLabel("units", row.unit_id || material.base_unit_id),
         note: row.note || "",
       };
-    }).filter((row) => row.material_id);
+    }).filter((row) => row.material_id));
   }
   const planned = farmRowsByKey("planned_work_materials").filter((row) => row.planned_work_item_id === order?.planned_work_item_id);
   if (planned.length) {
-    return planned.map((row) => {
+    return appendExtraMaterials(planned.map((row) => {
       const material = farmLookup("materials", row.material_id) || {};
       return {
         material_id: row.material_id,
@@ -13574,7 +13597,7 @@ function farmDispatchMaterialCandidates(order) {
         unit_id: row.unit_id || material.base_unit_id || "",
         unit_name: farmLookupLabel("units", row.unit_id || material.base_unit_id),
       };
-    }).filter((row) => row.material_id);
+    }).filter((row) => row.material_id));
   }
   const block = order?.block || farmLookup("blocks", order?.block_id) || {};
   const usageRows = farmRowsByKey("activity_material_usage_rates").filter((row) => row.activity_id === order?.activity_id);
@@ -13591,17 +13614,17 @@ function farmDispatchMaterialCandidates(order) {
       unit_name: row.usage_unit || farmLookupLabel("units", material.base_unit_id),
     };
   }).filter((row) => row.material_id);
-  if (rows.length) return rows;
+  if (rows.length) return appendExtraMaterials(rows);
   const picked = farmWorkPlanState().selectedMaterials || [];
   const source = picked.length ? farmRowsByKey("materials").filter((row) => picked.includes(row.id)) : farmRowsByKey("materials").slice(0, 3);
-  return source.map((material) => ({
+  return appendExtraMaterials(source.map((material) => ({
     material_id: material.id,
     material_name: farmRecordLabel(farmTableByKey("materials"), material),
     planned_quantity: 0,
     issued_quantity: 0,
     unit_id: material.base_unit_id || "",
     unit_name: farmLookupLabel("units", material.base_unit_id),
-  }));
+  })));
 }
 
 function farmDispatchMachineCandidates(order) {
@@ -13642,6 +13665,10 @@ function renderFarmDispatchPanel() {
   const workers = farmDispatchWorkerCandidates(order, activeTeamId);
   const materials = farmDispatchMaterialCandidates(order);
   const machines = farmDispatchMachineCandidates(order);
+  const workerIds = new Set(workers.map((row) => row.id));
+  const materialIds = new Set(materials.map((row) => row.material_id));
+  const availableWorkers = farmRowsByKey("employees").filter((row) => row.id && !workerIds.has(row.id));
+  const availableMaterials = farmRowsByKey("materials").filter((row) => row.id && !materialIds.has(row.id));
   const team = teams.find((row) => row.id === activeTeamId) || teams[0] || {};
   const supervisor = farmLookup("employees", team.supervisor_employee_id) || {};
   const dispatchDate = order?.rescheduled_date || order?.scheduled_date || order?.planned_start_date || farmToday();
@@ -13649,6 +13676,7 @@ function renderFarmDispatchPanel() {
   const activityName = farmLookupLabel("activities", order?.activity_id);
   const planRange = [displayDate(order?.planned_start_date || order?.scheduled_date), displayDate(order?.planned_end_date || order?.scheduled_date)].filter(Boolean).join(" ถึง ");
   const orderArea = [order?.plot?.plot_code, order?.block?.block_code || order?.block?.block_name, order?.block?.ap_code || order?.block?.AP_code].filter(Boolean).join(" / ") || "-";
+  const dispatchWorkTitle = [activityName.replace(/^[A-Z0-9]+\s*-\s*/i, ""), farmShortBlockText(order)].filter(Boolean).join(" ");
   const dispatchOrderLabel = (row) => {
     const shortNo = row.shortNo || farmShortWorkOrderNo(row);
     const blockText = farmShortBlockText(row);
@@ -13679,7 +13707,7 @@ function renderFarmDispatchPanel() {
             </label>
           </div>
           <dl class="farm-dispatch-summary">
-            <dt>งาน</dt><dd><strong>${esc(farmShortWorkOrderNo(order))}</strong> ${esc(order?.work_order_title || "-")}</dd>
+            <dt>งาน</dt><dd><strong>${esc(farmShortWorkOrderNo(order))}</strong> ${esc(dispatchWorkTitle || "-")}</dd>
             <dt>กิจกรรม</dt><dd>${esc(activityName)}</dd>
             <dt>พื้นที่</dt><dd>${esc(orderArea)}</dd>
             <dt>ช่วงแผน</dt><dd>${esc(planRange || "-")}</dd>
@@ -13687,7 +13715,16 @@ function renderFarmDispatchPanel() {
           </dl>
         </article>
         <article class="farm-dispatch-card">
-          <h4>คนงาน / ทีมทำงาน</h4>
+          <div class="farm-dispatch-card-head">
+            <h4>คนงาน / ทีมทำงาน</h4>
+            <div class="farm-dispatch-add-control">
+              <select id="farmDispatchAddWorker">
+                <option value="">เพิ่มคน</option>
+                ${availableWorkers.map((row) => `<option value="${esc(row.id)}">${esc(farmRecordLabel(farmTableByKey("employees"), row))}</option>`).join("")}
+              </select>
+              <button type="button" data-farm-dispatch-add-worker>เพิ่ม</button>
+            </div>
+          </div>
           <div class="farm-dispatch-worker-list">
             ${workers.map((row) => `
               <label>
@@ -13697,7 +13734,16 @@ function renderFarmDispatchPanel() {
           </div>
         </article>
         <article class="farm-dispatch-card farm-dispatch-materials">
-          <h4>ใบเบิกพัสดุ / ตัดจ่าย</h4>
+          <div class="farm-dispatch-card-head">
+            <h4>ใบเบิกพัสดุ / ตัดจ่าย</h4>
+            <div class="farm-dispatch-add-control">
+              <select id="farmDispatchAddMaterial">
+                <option value="">เพิ่มพัสดุ</option>
+                ${availableMaterials.map((row) => `<option value="${esc(row.id)}">${esc(farmRecordLabel(farmTableByKey("materials"), row))}</option>`).join("")}
+              </select>
+              <button type="button" data-farm-dispatch-add-material>เพิ่ม</button>
+            </div>
+          </div>
           <div class="table-wrap">
             <table class="mini-table farm-dispatch-table">
               <thead><tr><th>#</th><th>พัสดุ</th><th>แผน</th><th>เบิกจ่าย</th><th>หน่วย</th></tr></thead>
@@ -19883,11 +19929,14 @@ async function init() {
       state.farmDispatchWorkOrderId = e.target.value;
       state.farmWorkDetailId = e.target.value;
       state.farmDispatchTeamId = "";
+      state.farmDispatchExtraWorkers = [];
+      state.farmDispatchExtraMaterials = [];
       render();
       return;
     }
     if (e.target.id === "farmDispatchTeam") {
       state.farmDispatchTeamId = e.target.value;
+      state.farmDispatchExtraWorkers = [];
       render();
       return;
     }
@@ -20605,6 +20654,22 @@ async function init() {
     }
     if (e.target.closest("[data-farm-dispatch-save]")) {
       saveFarmDispatchOrder();
+      return;
+    }
+    if (e.target.closest("[data-farm-dispatch-add-worker]")) {
+      const value = document.querySelector("#farmDispatchAddWorker")?.value || "";
+      if (value && !(state.farmDispatchExtraWorkers || []).includes(value)) {
+        state.farmDispatchExtraWorkers = [...(state.farmDispatchExtraWorkers || []), value];
+        render();
+      }
+      return;
+    }
+    if (e.target.closest("[data-farm-dispatch-add-material]")) {
+      const value = document.querySelector("#farmDispatchAddMaterial")?.value || "";
+      if (value && !(state.farmDispatchExtraMaterials || []).includes(value)) {
+        state.farmDispatchExtraMaterials = [...(state.farmDispatchExtraMaterials || []), value];
+        render();
+      }
       return;
     }
     if (e.target.closest("[data-farm-dispatch-print]")) {
