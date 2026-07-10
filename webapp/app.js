@@ -11939,7 +11939,7 @@ async function ensureFarmWorkOrderQr(order = {}, action = "open") {
   const shortNo = farmShortWorkOrderNo(order);
   const token = `${shortNo}:${order.id}:${action}`;
   const row = {
-    id: `qr-${order.id}`.slice(0, 180),
+    id: farmWorkOrderChildUuid("work_order_qr_codes", (item) => item.work_order_id === order.id && item.qr_token === token),
     moduleId: "farm-work",
     tableId: "work_order_qr_codes",
     work_order_id: order.id,
@@ -12751,6 +12751,20 @@ function farmWorkOrderChildUuid(tableKey, matcher) {
   return existing?.id && farmLooksUuid(existing.id) ? existing.id : farmNewUuid();
 }
 
+function farmResolveRecordId(tableKey, value, fields = []) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const rows = farmRowsByKey(tableKey);
+  const exact = rows.find((row) => String(row.id || "") === raw);
+  if (exact?.id) return exact.id;
+  const normalized = farmNormalizeComparable(raw);
+  const matched = rows.find((row) =>
+    fields.some((field) => farmNormalizeComparable(row[field]) === normalized)
+  );
+  if (matched?.id) return matched.id;
+  return farmLooksUuid(raw) ? raw : "";
+}
+
 function farmWorkPlanEmployeeIdsFromSelection(selectedWorkers = [], teamId = "") {
   const selected = (selectedWorkers || []).filter((value) => !String(value).startsWith("exclude:"));
   const directEmployees = selected
@@ -12764,7 +12778,20 @@ function farmWorkPlanEmployeeIdsFromSelection(selectedWorkers = [], teamId = "")
   const teamEmployees = teamIds.flatMap((id) =>
     farmRowsByKey("team_members").filter((row) => row.team_id === id).map((row) => row.employee_id).filter(Boolean)
   );
-  return farmBudgetUnique([...teamEmployees, ...directEmployees]);
+  return farmBudgetUnique([...teamEmployees, ...directEmployees].map((id) =>
+    farmResolveRecordId("employees", id, ["employee_code", "full_name"])
+  ).filter(Boolean));
+}
+
+async function reconcileFarmWorkOrderChildren(table, orderId, keepIds = new Set(), matchKey = "") {
+  if (!table || !orderId || !matchKey) return;
+  const existingRows = farmRowsByKey(table.key).filter((row) => String(row.work_order_id || "") === String(orderId));
+  for (const row of existingRows) {
+    const keepValue = String(row[matchKey] || "");
+    if (keepIds.has(keepValue)) continue;
+    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && item.id === row.id));
+    if (row.id) await deleteFarmRowFromDatabase(table, row.id);
+  }
 }
 
 async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], selectedVehicles = [], selectedMaterials = [], selectedUsageRate = {}, selectedRate = {}, block = {} } = {}) {
@@ -12774,6 +12801,22 @@ async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], 
   const materialTable = farmTableByKey("work_order_materials");
   const now = new Date().toISOString();
   const employeeIds = farmWorkPlanEmployeeIdsFromSelection(selectedWorkers, order.team_id);
+  const vehicleIds = farmBudgetUnique(selectedVehicles || []).map((id) =>
+    farmResolveRecordId("vehicles", id, ["vehicle_code", "vehicle_name", "plate_no"])
+  ).filter(Boolean);
+  const materialPlanRows = farmWorkOrderMaterialPlanRows({
+    workOrderId: order.id,
+    rate: selectedRate,
+    block,
+    selectedMaterials,
+    selectedUsageRate,
+  }).map((row) => ({
+    ...row,
+    material_id: farmResolveRecordId("materials", row.material_id, ["material_code", "material_name"]),
+  })).filter((row) => row.material_id);
+  await reconcileFarmWorkOrderChildren(workerTable, order.id, new Set(employeeIds), "employee_id");
+  await reconcileFarmWorkOrderChildren(machineTable, order.id, new Set(vehicleIds), "vehicle_id");
+  await reconcileFarmWorkOrderChildren(materialTable, order.id, new Set(materialPlanRows.map((row) => row.material_id)), "material_id");
   if (workerTable) {
     for (const employeeId of employeeIds) {
       const employee = farmLookup("employees", employeeId) || {};
@@ -12794,7 +12837,7 @@ async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], 
     }
   }
   if (machineTable) {
-    for (const vehicleId of farmBudgetUnique(selectedVehicles || [])) {
+    for (const vehicleId of vehicleIds) {
       const vehicle = farmLookup("vehicles", vehicleId) || {};
       const row = {
         id: farmWorkOrderChildUuid("work_order_machines", (item) => item.work_order_id === order.id && item.vehicle_id === vehicleId),
@@ -12814,13 +12857,6 @@ async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], 
     }
   }
   if (materialTable) {
-    const materialPlanRows = farmWorkOrderMaterialPlanRows({
-      workOrderId: order.id,
-      rate: selectedRate,
-      block,
-      selectedMaterials,
-      selectedUsageRate,
-    });
     for (const materialRow of materialPlanRows) {
       const rowWithId = {
         ...materialRow,
