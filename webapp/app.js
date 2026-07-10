@@ -11840,6 +11840,8 @@ function farmShortWorkOrderNo(order = {}) {
   const yearSuffix = farmThaiYearSuffix(date);
   const directShort = sourceNo.match(/^W(\d{2})[-/](\d{1,5})$/i);
   if (directShort) return `W${directShort[1]}-${String(Number(directShort[2]) || directShort[2]).padStart(3, "0")}`;
+  const fertilizerSeries = sourceNo.match(/F(\d{1,3})[-/](\d{1,5})$/i);
+  if (fertilizerSeries) return `W${String(Number(fertilizerSeries[1]) || fertilizerSeries[1]).padStart(2, "0")}-${String(Number(fertilizerSeries[2]) || fertilizerSeries[2]).padStart(3, "0")}`;
   const yearSeq = sourceNo.match(/(?:WO[-/])?(\d{4}|\d{2})(?:[-/]\d{2,8})?[-/](\d{1,5})$/i);
   if (yearSeq) {
     const year = yearSeq[1].length === 4 ? String(yearSeq[1]).slice(-2) : yearSeq[1];
@@ -11848,6 +11850,17 @@ function farmShortWorkOrderNo(order = {}) {
   const tail = sourceNo.match(/(\d{1,5})$/);
   const seq = tail ? tail[1] : "1";
   return `W${yearSuffix}-${String(Number(seq) || seq).padStart(3, "0")}`;
+}
+
+function farmWorkOrderSearchAliases(order = {}) {
+  const sourceNo = String(order.work_order_no || order.orderNo || "").trim();
+  const aliases = new Set([farmShortWorkOrderNo(order), sourceNo]);
+  const fertilizerSeries = sourceNo.match(/F(\d{1,3})[-/](\d{1,5})$/i);
+  if (fertilizerSeries) {
+    aliases.add(`W${String(Number(fertilizerSeries[1]) || fertilizerSeries[1]).padStart(2, "0")}-${String(Number(fertilizerSeries[2]) || fertilizerSeries[2]).padStart(3, "0")}`);
+    aliases.add(`F${String(Number(fertilizerSeries[1]) || fertilizerSeries[1]).padStart(3, "0")}-${String(Number(fertilizerSeries[2]) || fertilizerSeries[2]).padStart(3, "0")}`);
+  }
+  return [...aliases].filter(Boolean);
 }
 
 function farmNextShortWorkOrderNo(dateValue = farmToday(), offset = 0) {
@@ -12117,7 +12130,7 @@ function filteredFarmWorkOrders() {
     const statusKey = row.statusMeta.key;
     const zoneOption = farmWorkTextOption(row, "zone");
     const plotGroupOption = farmWorkTextOption(row, "plotGroup");
-    const text = [row.shortNo, row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.block?.block_code, row.block?.block_name, row.block?.zone_name, row.block?.zone, row.block?.plot_group_code, row.block?.plot_group, zoneOption.label, plotGroupOption.label, row.block?.ap_code || row.block?.AP_code, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
+    const text = [...farmWorkOrderSearchAliases(row), row.shortNo, row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.block?.block_code, row.block?.block_name, row.block?.zone_name, row.block?.zone, row.block?.plot_group_code, row.block?.plot_group, zoneOption.label, plotGroupOption.label, row.block?.ap_code || row.block?.AP_code, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
     return (f.activityGroup === "all" || row.activityGroup?.id === f.activityGroup)
       && (f.team === "all" || row.team?.id === f.team)
       && (f.zone === "all" || zoneOption.value === f.zone || row.zone?.id === f.zone)
@@ -20138,7 +20151,15 @@ async function init() {
       state.farmWorkFilters.query = e.target.value.trim();
       state.farmWorkDetailId = "";
       clearTimeout(state.estSearchTimer);
-      state.estSearchTimer = setTimeout(render, 200);
+      const cursor = e.target.selectionStart ?? e.target.value.length;
+      state.estSearchTimer = setTimeout(() => {
+        render();
+        const nextInput = document.querySelector("#farmWorkSearch");
+        if (nextInput && document.activeElement !== nextInput) {
+          nextInput.focus({ preventScroll: true });
+          nextInput.setSelectionRange?.(cursor, cursor);
+        }
+      }, 650);
       return;
     }
     if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultNote"].includes(e.target.id)) {
