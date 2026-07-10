@@ -9090,6 +9090,13 @@ tfoot td {
   color: transparent;
 }
 
+.farm-work-compact .farm-work-plan-bar::before,
+.farm-work-compact .farm-work-plan-bar::after,
+.farm-work-compact .farm-work-actual-bar::before,
+.farm-work-compact .farm-work-actual-bar::after {
+  display: none;
+}
+
 .farm-work-compact .farm-work-plan-bar.draft {
   top: 2px;
   border-width: 1px;
