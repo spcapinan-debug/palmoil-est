@@ -89,6 +89,7 @@
   },
   farmWorkFilters: { activityGroup: "all", team: "all", zone: "all", plotGroup: "all", status: "all", query: "", startDate: "", endDate: "" },
   farmWorkGroupMode: "activity",
+  farmWorkGroupChecks: { activity: true, zone: true, plotGroup: true },
   farmPlannerTab: "dates",
   farmWorkDetailId: "",
   farmDispatchWorkOrderId: "",
@@ -12195,13 +12196,28 @@ function farmWorkMonthBands(days) {
   return bands;
 }
 
+function farmWorkDayClass(day = "") {
+  const date = new Date(`${day}T00:00:00`);
+  const dayOfWeek = date.getDay();
+  const dayOfMonth = Number(String(day).slice(8, 10));
+  return [
+    day === farmToday() ? "is-today" : "",
+    dayOfWeek === 0 || dayOfWeek === 6 ? "is-weekend" : "is-workday",
+    dayOfWeek === 1 ? "is-week-start" : "",
+    dayOfMonth === 1 ? "is-month-start" : "",
+  ].filter(Boolean).join(" ");
+}
+
 function farmWorkGroupKey(row) {
-  const activityFirst = [
-    row.activityGroup?.group_name || row.activityGroup?.group_code || "ไม่ระบุกลุ่มกิจกรรม",
-    row.plotGroup?.group_name || row.plotGroup?.group_code || "ไม่ระบุกลุ่มแปลง",
-  ];
-  const terrainFirst = [...activityFirst].reverse();
-  return (state.farmWorkGroupMode === "terrain" ? terrainFirst : activityFirst).join(" / ");
+  const checks = state.farmWorkGroupChecks || {};
+  const zoneOption = farmWorkTextOption(row, "zone");
+  const plotGroupOption = farmWorkTextOption(row, "plotGroup");
+  const parts = [
+    checks.activity !== false ? (row.activityGroup?.group_name || row.activityGroup?.group_code || "ไม่ระบุกลุ่มกิจกรรม") : "",
+    checks.zone !== false ? (zoneOption.label || row.zone?.zone_name || row.zone?.zone_code || "ไม่ระบุโซน") : "",
+    checks.plotGroup !== false ? (plotGroupOption.label || row.plotGroup?.group_name || row.plotGroup?.group_code || "ไม่ระบุกลุ่มแปลง") : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" / ") : "Work Order ทั้งหมด";
 }
 
 function farmLooksUuid(value) {
@@ -15637,6 +15653,12 @@ function renderFarmWorkBoard(options = {}) {
     { value: "completed", label: "ทำเสร็จ" },
     { value: "closed", label: "ปิดงาน" },
   ];
+  const groupChecks = state.farmWorkGroupChecks || {};
+  const groupToggle = (key, label) => `
+    <label class="farm-work-group-toggle">
+      <input type="checkbox" data-farm-work-group-check="${esc(key)}" ${groupChecks[key] !== false ? "checked" : ""}>
+      ${esc(label)}
+    </label>`;
   return `
     <section class="farm-work-console${compact ? " farm-work-compact" : ""}">
       <div class="section-head">
@@ -15660,8 +15682,9 @@ function renderFarmWorkBoard(options = {}) {
         <label>ค้นหา<input id="farmWorkSearch" type="search" value="${esc(state.farmWorkFilters.query)}" placeholder="WO, งาน, แปลง, ทีม"></label>
       </div>` : ""}
       <div class="farm-work-legend">
-        <label><input type="radio" name="farmWorkGroupMode" value="activity" ${state.farmWorkGroupMode !== "terrain" ? "checked" : ""}> Group by Activity Group - Terrain - Work Order</label>
-        <label><input type="radio" name="farmWorkGroupMode" value="terrain" ${state.farmWorkGroupMode === "terrain" ? "checked" : ""}> Group by Terrain - Activity Group - Work Order</label>
+        ${groupToggle("activity", "กลุ่มกิจกรรม")}
+        ${groupToggle("zone", "กลุ่มโซน")}
+        ${groupToggle("plotGroup", "กลุ่มแปลง")}
         <span><i class="plan-approved"></i>แผนอนุมัติแล้ว</span>
         <span><i class="plan-dispatched"></i>สั่งงานแล้ว</span>
         <span><i class="actual-done"></i>บันทึกงานจริง / ปิดงาน</span>
@@ -15670,7 +15693,6 @@ function renderFarmWorkBoard(options = {}) {
         <div class="farm-work-gantt" role="region" aria-label="Work Order Gantt Timeline">
           <div class="farm-work-grid-head">
             <div class="farm-work-left-head">
-              <span>WO</span>
               <span>Activity</span>
               <span>Block</span>
               <span>ทีม</span>
@@ -15681,12 +15703,12 @@ function renderFarmWorkBoard(options = {}) {
                 ${monthBands.map((band) => `<span>${esc(band.label)}</span>`).join("")}
               </div>
               <div class="farm-work-days" style="grid-template-columns:repeat(${days.length}, ${dayWidth}px)">
-                ${days.map((day) => `<span class="${day === today ? "is-today" : ""}">${esc(day.slice(8, 10))}<small>${esc(["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"][new Date(`${day}T00:00:00`).getDay()])}</small></span>`).join("")}
+                ${days.map((day) => `<span class="${esc(farmWorkDayClass(day))}">${esc(day.slice(8, 10))}<small>${esc(["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"][new Date(`${day}T00:00:00`).getDay()])}</small></span>`).join("")}
               </div>
             </div>
           </div>
           <div class="farm-work-rows">
-            ${todayIndex >= 0 ? `<i class="farm-work-today-line" style="left:${(compact ? 500 : 540) + todayIndex * dayWidth + Math.floor(dayWidth / 2)}px"></i>` : ""}
+            ${todayIndex >= 0 ? `<i class="farm-work-today-line" style="left:${(compact ? 410 : 460) + todayIndex * dayWidth + Math.floor(dayWidth / 2)}px"></i>` : ""}
             ${groupedRows.map((item) => {
               if (item.type === "group") {
                 return `
@@ -15714,8 +15736,7 @@ function renderFarmWorkBoard(options = {}) {
               return `
                 <div class="farm-work-row status-${esc(row.statusMeta.key)}${selected?.id === row.id ? " active" : ""}" data-farm-work-detail="${esc(row.id)}">
                   <button type="button" class="farm-work-left">
-                    <b>${esc(row.shortNo || farmShortWorkOrderNo(row))}</b>
-                    <strong title="${esc(row.work_order_title || row.activity?.activity_name || "-")}">${esc(activityText)}</strong>
+                    <strong title="${esc(row.work_order_title || row.activity?.activity_name || "-")}"><small>${esc(row.shortNo || farmShortWorkOrderNo(row))}</small>${esc(activityText)}</strong>
                     <span>${esc(blockText)}</span>
                     <span>${esc(teamText)}</span>
                     <i style="--status:${esc(row.statusMeta.color)}">${esc(row.statusMeta.label)}</i>
@@ -19764,6 +19785,15 @@ async function init() {
     }
     if (e.target.name === "farmWorkGroupMode") {
       state.farmWorkGroupMode = e.target.value === "terrain" ? "terrain" : "activity";
+      render();
+      return;
+    }
+    if (e.target.matches("[data-farm-work-group-check]")) {
+      const key = e.target.dataset.farmWorkGroupCheck;
+      state.farmWorkGroupChecks = {
+        ...(state.farmWorkGroupChecks || {}),
+        [key]: e.target.checked,
+      };
       render();
       return;
     }
