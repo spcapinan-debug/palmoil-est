@@ -87,7 +87,7 @@
     endDate: "",
     calcMode: "rate",
   },
-  farmWorkFilters: { activityGroup: "all", team: "all", zone: "all", plotGroup: "all", status: "all", query: "" },
+  farmWorkFilters: { activityGroup: "all", team: "all", zone: "all", plotGroup: "all", status: "all", query: "", startDate: "", endDate: "" },
   farmWorkGroupMode: "activity",
   farmPlannerTab: "dates",
   farmWorkDetailId: "",
@@ -12037,17 +12037,58 @@ function farmWorkFilterOptions(rows, key, labelFallback = "ไม่ระบุ
   return Array.from(map, ([value, label]) => ({ value, label: label || labelFallback }));
 }
 
+function farmWorkTextOption(row = {}, key = "") {
+  if (key === "zone") {
+    const value = farmFirstFilled(row.zone?.id, row.block?.zone_id, row.block?.zone_name, row.block?.zone_code, row.zone_name);
+    const label = farmFirstFilled(row.zone?.zone_name, row.zone?.zone_code, row.block?.zone_name, row.block?.zone_code, value);
+    return { value: farmNormalizeKey(value), label };
+  }
+  if (key === "plotGroup") {
+    const value = farmFirstFilled(row.plotGroup?.id, row.plot?.plot_group_id, row.block?.plot_group_id, row.block?.plot_group_code, row.block?.plot_group_name, row.plot_group_id);
+    const label = farmFirstFilled(row.plotGroup?.group_name, row.plotGroup?.group_code, row.block?.plot_group_name, row.block?.plot_group_code, value);
+    return { value: farmNormalizeKey(value), label };
+  }
+  return { value: "", label: "" };
+}
+
+function farmWorkTextFilterOptions(rows, key, labelFallback = "ไม่ระบุ") {
+  const map = new Map();
+  rows.forEach((row) => {
+    const item = farmWorkTextOption(row, key);
+    if (item.value) map.set(item.value, item.label || labelFallback);
+  });
+  return Array.from(map, ([value, label]) => ({ value, label }))
+    .sort((a, b) => String(a.label).localeCompare(String(b.label), "th", { numeric: true }));
+}
+
+function farmWorkDateRangeMatches(row = {}, startDate = "", endDate = "") {
+  const start = isoDay(startDate);
+  const end = isoDay(endDate);
+  if (!start && !end) return true;
+  const rowStart = isoDay(row.startDate || row.scheduled_date);
+  const rowEnd = isoDay(row.endDate || row.rescheduled_date || row.scheduled_date || rowStart);
+  if (!rowStart && !rowEnd) return false;
+  const rowStartMs = farmDateMs(rowStart || rowEnd);
+  const rowEndMs = farmDateMs(rowEnd || rowStart);
+  if (start && rowEndMs < farmDateMs(start)) return false;
+  if (end && rowStartMs > farmDateMs(end)) return false;
+  return true;
+}
+
 function filteredFarmWorkOrders() {
   const f = state.farmWorkFilters;
   const query = f.query.trim().toLowerCase();
   return farmWorkOrders().filter((row) => {
     const statusKey = row.statusMeta.key;
-    const text = [row.shortNo, row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.block?.block_code, row.block?.block_name, row.block?.ap_code || row.block?.AP_code, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
+    const zoneOption = farmWorkTextOption(row, "zone");
+    const plotGroupOption = farmWorkTextOption(row, "plotGroup");
+    const text = [row.shortNo, row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.block?.block_code, row.block?.block_name, row.block?.zone_name, row.block?.plot_group_code, row.block?.ap_code || row.block?.AP_code, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
     return (f.activityGroup === "all" || row.activityGroup?.id === f.activityGroup)
       && (f.team === "all" || row.team?.id === f.team)
-      && (f.zone === "all" || row.zone?.id === f.zone)
-      && (f.plotGroup === "all" || row.plotGroup?.id === f.plotGroup)
+      && (f.zone === "all" || zoneOption.value === f.zone || row.zone?.id === f.zone)
+      && (f.plotGroup === "all" || plotGroupOption.value === f.plotGroup || row.plotGroup?.id === f.plotGroup)
       && (f.status === "all" || statusKey === f.status || row.status === f.status)
+      && farmWorkDateRangeMatches(row, f.startDate, f.endDate)
       && (!query || text.includes(query));
   });
 }
@@ -15446,8 +15487,11 @@ function renderFarmWorkBoard(options = {}) {
   if (selected && state.farmWorkDetailId !== selected.id) state.farmWorkDetailId = selected.id;
   const minStart = rows.reduce((min, row) => !min || farmDateMs(row.startDate) < farmDateMs(min) ? row.startDate : min, rows[0]?.startDate || farmToday());
   const maxEnd = rows.reduce((max, row) => farmDateMs(row.endDate) > farmDateMs(max) ? row.endDate : max, rows[0]?.endDate || minStart);
-  const timelineStart = farmAddDays(minStart, -2) || farmToday();
-  const maxDays = Math.min(90, Math.max(compact ? 60 : 30, farmDaysBetween(timelineStart, farmAddDays(maxEnd, 3)) + 1));
+  const filterStart = isoDay(state.farmWorkFilters.startDate);
+  const filterEnd = isoDay(state.farmWorkFilters.endDate);
+  const timelineStart = filterStart || farmAddDays(minStart, -2) || farmToday();
+  const timelineEnd = filterEnd || farmAddDays(maxEnd, 3) || farmAddDays(timelineStart, compact ? 59 : 29);
+  const maxDays = Math.min(180, Math.max(compact ? 60 : 30, farmDaysBetween(timelineStart, timelineEnd) + 1));
   const days = Array.from({ length: maxDays }, (_, index) => farmAddDays(timelineStart, index));
   const dayWidth = compact ? 24 : 30;
   const timelineWidth = days.length * dayWidth;
@@ -15476,8 +15520,8 @@ function renderFarmWorkBoard(options = {}) {
   }
   const activityOptions = farmWorkFilterOptions(allRows, "activityGroup");
   const teamOptions = farmWorkFilterOptions(allRows, "team");
-  const zoneOptions = farmWorkFilterOptions(allRows, "zone");
-  const plotGroupOptions = farmWorkFilterOptions(allRows, "plotGroup");
+  const zoneOptions = farmWorkTextFilterOptions(allRows, "zone");
+  const plotGroupOptions = farmWorkTextFilterOptions(allRows, "plotGroup");
   const statusOptions = [
     { value: "planned", label: "แผนงาน" },
     { value: "pending_approval", label: "รออนุมัติ" },
@@ -15501,6 +15545,8 @@ function renderFarmWorkBoard(options = {}) {
         <article><span>ปิดงาน</span><strong>${fmt(closedCount)}</strong><small>งานจบครบกระบวนการ</small></article>
       </div>` : ""}
       ${showFilters ? `<div class="farm-work-filters">
+        <label>วันที่เริ่ม${renderDateInputControl({ id: "farmWorkStartDate", value: state.farmWorkFilters.startDate, ariaLabel: "เลือกวันที่เริ่มค้นหา" })}</label>
+        <label>วันที่สิ้นสุด${renderDateInputControl({ id: "farmWorkEndDate", value: state.farmWorkFilters.endDate, ariaLabel: "เลือกวันที่สิ้นสุดค้นหา" })}</label>
         ${renderFarmWorkSelect("farmWorkActivityGroup", "กลุ่มกิจกรรม", activityOptions, state.farmWorkFilters.activityGroup)}
         ${renderFarmWorkSelect("farmWorkTeam", "ทีมหัวหน้า", teamOptions, state.farmWorkFilters.team)}
         ${renderFarmWorkSelect("farmWorkZone", "โซน", zoneOptions, state.farmWorkFilters.zone)}
@@ -19590,6 +19636,23 @@ async function init() {
     }
     if (e.target.id === "farmWorkStatus") {
       state.farmWorkFilters.status = e.target.value;
+      state.farmWorkDetailId = "";
+      render();
+      return;
+    }
+    if (e.target.id === "farmWorkStartDate") {
+      state.farmWorkFilters.startDate = dateValue(e.target);
+      if (state.farmWorkFilters.endDate && farmDateMs(state.farmWorkFilters.endDate) < farmDateMs(state.farmWorkFilters.startDate)) {
+        state.farmWorkFilters.endDate = state.farmWorkFilters.startDate;
+      }
+      normalizeDateInput(e.target);
+      state.farmWorkDetailId = "";
+      render();
+      return;
+    }
+    if (e.target.id === "farmWorkEndDate") {
+      state.farmWorkFilters.endDate = dateValue(e.target);
+      normalizeDateInput(e.target);
       state.farmWorkDetailId = "";
       render();
       return;

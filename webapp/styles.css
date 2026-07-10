@@ -8440,7 +8440,7 @@ tfoot td {
 
 .farm-work-filters {
   display: grid;
-  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   gap: 10px;
   align-items: end;
 }
@@ -8448,6 +8448,7 @@ tfoot td {
 .farm-work-filters label {
   display: grid;
   gap: 6px;
+  min-width: 0;
   color: var(--ink);
   font-size: 12px;
   font-weight: 800;
@@ -8461,6 +8462,10 @@ tfoot td {
   border-radius: 7px;
   padding: 0 9px;
   background: #fff;
+}
+
+.farm-work-filters .date-input-control {
+  width: 100%;
 }
 
 .farm-work-legend {
