@@ -12036,9 +12036,8 @@ function farmWorkOrders() {
     const scheduledDate = occurrenceDate || isoDay(order.scheduled_date);
     const plannedStartDate = isoDay(noteRange.startDate || order.note_planned_start_date || order.planned_start_date || order.original_scheduled_date);
     const plannedEndDate = isoDay(noteRange.endDate || order.note_planned_end_date || order.planned_end_date || order.rescheduled_date || scheduledDate || plannedStartDate);
-    const useOccurrenceDate = scheduledDate && (occurrenceDate || Number(order.repeat_occurrence_total || 0) > 1);
-    const startDate = useOccurrenceDate ? scheduledDate : (scheduledDate || plannedStartDate);
-    const endDate = useOccurrenceDate ? scheduledDate : (plannedEndDate && farmDateMs(plannedEndDate) >= farmDateMs(startDate) ? plannedEndDate : startDate);
+    const startDate = scheduledDate || plannedStartDate;
+    const endDate = scheduledDate || (plannedEndDate && farmDateMs(plannedEndDate) >= farmDateMs(startDate) ? plannedEndDate : startDate);
     const orderResults = results.filter((row) => row.work_order_id === order.id);
     const resultDates = orderResults.map((row) => isoDay(row.result_date)).filter(Boolean).sort();
     const closedDate = isoDay(order.closed_at);
