@@ -12128,6 +12128,14 @@ function filteredFarmWorkOrders() {
   });
 }
 
+function farmWorkRowsForTimeline() {
+  const filtered = filteredFarmWorkOrders();
+  const selectedId = state.farmWorkDetailId || farmWorkPlanState().referenceOrderId || "";
+  if (!selectedId || filtered.some((row) => row.id === selectedId)) return filtered;
+  const selected = farmWorkOrders().find((row) => row.id === selectedId);
+  return selected ? [selected, ...filtered] : filtered;
+}
+
 function renderFarmWorkSelect(id, label, options, value) {
   return `
     <label>${esc(label)}
@@ -13171,6 +13179,8 @@ async function createFarmWorkPlanFromSelection() {
     state.farmTableId = "work_orders";
     state.farmDetailId = created[0] || "";
     state.farmWorkDetailId = created[0] || "";
+    state.farmWorkFilters.startDate = startDate;
+    state.farmWorkFilters.endDate = endDate;
     state.farmSyncStatus = warnings.length ? "warning" : "ok";
     state.farmSyncMessage = `สร้างแผน Work Order แล้ว ${fmt(created.length)} รายการ${warnings.length ? ` แต่ข้อมูลประกอบบางส่วนยังไม่ครบ: ${warnings.slice(0, 3).join(" | ")}` : ""}`;
   } catch (error) {
@@ -13337,6 +13347,8 @@ async function saveFarmWorkPlanEditFromSelection() {
     state.farmTableId = "work_orders";
     state.farmDetailId = savedIds[0] || currentOrder.id;
     state.farmWorkDetailId = savedIds[0] || currentOrder.id;
+    state.farmWorkFilters.startDate = startDate;
+    state.farmWorkFilters.endDate = endDate;
     state.farmSyncStatus = warnings.length ? "warning" : "ok";
     state.farmSyncMessage = `บันทึกแก้ไขแผนแล้ว ${fmt(savedIds.length)} รายการ${scheduledDates.length > 1 ? " และลงรอบซ้ำใน timeline แล้ว" : ""}${warnings.length ? ` แต่ข้อมูลประกอบบางส่วนยังไม่ครบ: ${warnings.slice(0, 3).join(" | ")}` : ""}`;
   } catch (error) {
@@ -15550,9 +15562,13 @@ function renderFarmWorkBoard(options = {}) {
   const title = options.title || "ตารางการทำงาน / Work Order Timeline";
   const subtitle = options.subtitle || "สีแสดงขั้นตอน เลื่อนวัน และรายการที่ต้องอนุมัติ";
   const allRows = farmWorkOrders();
-  const rows = filteredFarmWorkOrders();
-  const selected = rows.find((row) => row.id === state.farmWorkDetailId) || rows[0] || allRows[0] || null;
-  if (selected && state.farmWorkDetailId !== selected.id) state.farmWorkDetailId = selected.id;
+  const rows = farmWorkRowsForTimeline();
+  const selected = rows.find((row) => row.id === state.farmWorkDetailId)
+    || allRows.find((row) => row.id === state.farmWorkDetailId)
+    || rows[0]
+    || allRows[0]
+    || null;
+  if (!state.farmWorkDetailId && selected?.id) state.farmWorkDetailId = selected.id;
   const minStart = rows.reduce((min, row) => !min || farmDateMs(row.startDate) < farmDateMs(min) ? row.startDate : min, rows[0]?.startDate || farmToday());
   const maxEnd = rows.reduce((max, row) => farmDateMs(row.endDate) > farmDateMs(max) ? row.endDate : max, rows[0]?.endDate || minStart);
   const filterStart = isoDay(state.farmWorkFilters.startDate);
