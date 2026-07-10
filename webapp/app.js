@@ -11959,7 +11959,8 @@ async function ensureFarmWorkOrderQr(order = {}, action = "open") {
 
 function farmDateMs(value) {
   const iso = isoDay(value);
-  return iso ? new Date(`${iso}T00:00:00`).getTime() : 0;
+  const match = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : 0;
 }
 
 function farmAddDays(iso, days) {
@@ -12213,8 +12214,9 @@ function farmWorkMonthBands(days) {
 }
 
 function farmWorkDayClass(day = "") {
-  const date = new Date(`${day}T00:00:00`);
-  const dayOfWeek = date.getDay();
+  const dayMs = farmDateMs(day);
+  const date = dayMs ? new Date(dayMs) : new Date();
+  const dayOfWeek = date.getUTCDay();
   const dayOfMonth = Number(String(day).slice(8, 10));
   return [
     day === farmToday() ? "is-today" : "",
@@ -15719,7 +15721,7 @@ function renderFarmWorkBoard(options = {}) {
                 ${monthBands.map((band) => `<span>${esc(band.label)}</span>`).join("")}
               </div>
               <div class="farm-work-days" style="grid-template-columns:repeat(${days.length}, ${dayWidth}px)">
-                ${days.map((day) => `<span class="${esc(farmWorkDayClass(day))}">${esc(day.slice(8, 10))}<small>${esc(["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"][new Date(`${day}T00:00:00`).getDay()])}</small></span>`).join("")}
+                ${days.map((day) => `<span class="${esc(farmWorkDayClass(day))}">${esc(day.slice(8, 10))}<small>${esc(["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"][new Date(farmDateMs(day)).getUTCDay()])}</small></span>`).join("")}
               </div>
             </div>
           </div>
@@ -15758,9 +15760,9 @@ function renderFarmWorkBoard(options = {}) {
                     <i style="--status:${esc(row.statusMeta.color)}">${esc(row.statusMeta.label)}</i>
                   </button>
                   <div class="farm-work-lane" style="width:${timelineWidth}px;--day-width:${dayWidth}px">
-                    ${showDraftPlan ? `<button class="farm-work-plan-bar draft ${needsApproval ? "needs-approval" : ""}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนก่อนอนุมัติ ${esc(row.original_scheduled_date || row.startDate || "-")} - ${esc(row.planned_end_date || row.endDate || "-")}" style="left:${(originalIndex >= 0 ? originalIndex : startIndex) * dayWidth + 1}px;width:${Math.max(20, (originalIndex >= 0 ? originalSpan : span) * dayWidth - 2)}px"><span>${needsApproval ? "รออนุมัติ" : "แผน"}</span></button>` : ""}
-                    ${hasApprovedPlan ? `<button class="farm-work-plan-bar approved ${esc(planStateClass)}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนอนุมัติแล้ว ${esc(row.startDate || "-")} - ${esc(row.endDate || "-")}${row.repeat_occurrence_total > 1 ? ` · รอบ ${esc(row.repeat_occurrence_no || "-")}/${esc(row.repeat_occurrence_total)}` : ""}" style="left:${startIndex * dayWidth + 1}px;width:${Math.max(20, span * dayWidth - 2)}px">${row.statusMeta.key === "sent_to_mobile" ? `<i class="farm-work-dispatch-fill" aria-hidden="true"></i>` : ""}<span>${row.repeat_occurrence_total > 1 ? `รอบ ${esc(row.repeat_occurrence_no || "-")}/${esc(row.repeat_occurrence_total)}` : row.statusMeta.key === "sent_to_mobile" ? "สั่งงาน" : "อนุมัติ"}</span></button>` : ""}
-                    ${actualIndex >= 0 ? `<button class="farm-work-actual-bar" type="button" data-farm-work-detail="${esc(row.id)}" title="บันทึกงานจริง ${esc(row.actualStartDate || "-")} - ${esc(row.actualEndDate || "-")} (${fmt(row.actualResultCount)} รายการ)" style="left:${actualIndex * dayWidth + 1}px;width:${Math.max(20, actualSpan * dayWidth - 2)}px"><span>${row.statusMeta.key === "closed" ? "ปิดงาน" : "ทำจริง"}</span></button>` : ""}
+                    ${showDraftPlan ? `<button class="farm-work-plan-bar draft ${needsApproval ? "needs-approval" : ""}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนก่อนอนุมัติ ${esc(row.original_scheduled_date || row.startDate || "-")} - ${esc(row.planned_end_date || row.endDate || "-")}" style="left:${(originalIndex >= 0 ? originalIndex : startIndex) * dayWidth}px;width:${Math.max(dayWidth, (originalIndex >= 0 ? originalSpan : span) * dayWidth)}px"><span>${needsApproval ? "รออนุมัติ" : "แผน"}</span></button>` : ""}
+                    ${hasApprovedPlan ? `<button class="farm-work-plan-bar approved ${esc(planStateClass)}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนอนุมัติแล้ว ${esc(row.startDate || "-")} - ${esc(row.endDate || "-")}${row.repeat_occurrence_total > 1 ? ` · รอบ ${esc(row.repeat_occurrence_no || "-")}/${esc(row.repeat_occurrence_total)}` : ""}" style="left:${startIndex * dayWidth}px;width:${Math.max(dayWidth, span * dayWidth)}px">${row.statusMeta.key === "sent_to_mobile" ? `<i class="farm-work-dispatch-fill" aria-hidden="true"></i>` : ""}<span>${row.repeat_occurrence_total > 1 ? `รอบ ${esc(row.repeat_occurrence_no || "-")}/${esc(row.repeat_occurrence_total)}` : row.statusMeta.key === "sent_to_mobile" ? "สั่งงาน" : "อนุมัติ"}</span></button>` : ""}
+                    ${actualIndex >= 0 ? `<button class="farm-work-actual-bar" type="button" data-farm-work-detail="${esc(row.id)}" title="บันทึกงานจริง ${esc(row.actualStartDate || "-")} - ${esc(row.actualEndDate || "-")} (${fmt(row.actualResultCount)} รายการ)" style="left:${actualIndex * dayWidth}px;width:${Math.max(dayWidth, actualSpan * dayWidth)}px"><span>${row.statusMeta.key === "closed" ? "ปิดงาน" : "ทำจริง"}</span></button>` : ""}
                     ${needsApproval ? `<button class="farm-work-milestone approval" type="button" data-farm-work-detail="${esc(row.id)}" title="ต้องอนุมัติ" style="left:${startIndex * dayWidth + Math.max(10, span * dayWidth - 12)}px"></button>` : ""}
                     ${approvedIndex >= 0 ? `<i class="farm-work-milestone approved" title="อนุมัติ ${esc(row.approved_at)}" style="left:${approvedIndex * dayWidth + 10}px"></i>` : ""}
                     ${closedIndex >= 0 ? `<i class="farm-work-milestone closed" title="ปิดงาน ${esc(row.closed_at)}" style="left:${closedIndex * dayWidth + 10}px"></i>` : ""}
