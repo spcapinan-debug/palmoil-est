@@ -3106,8 +3106,13 @@ function normalizeFarmDbRows(tableKey, rows = []) {
     if (tableKey === "work_orders") {
       row.work_order_title = row.work_order_title || row.note || row.work_order_no || row.id;
       const noteRange = farmWorkOrderDateRangeFromNote(row.note);
+      const noteOccurrenceDate = farmWorkOrderOccurrenceDateFromNote(row.note);
+      row.note_planned_start_date = noteRange.startDate || "";
+      row.note_planned_end_date = noteRange.endDate || "";
+      row.note_scheduled_date = noteOccurrenceDate || "";
       row.planned_start_date = row.planned_start_date || noteRange.startDate || row.scheduled_date || "";
       row.planned_end_date = row.planned_end_date || noteRange.endDate || row.scheduled_date || row.planned_start_date || "";
+      row.scheduled_date = row.scheduled_date || noteOccurrenceDate || row.planned_start_date || "";
     }
     return {
       ...row,
@@ -3557,6 +3562,12 @@ function farmWorkOrderDateRangeFromNote(note = "") {
   const match = text.match(/ช่วงแผน\s*:\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\s*ถึง\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
   if (!match) return { startDate: "", endDate: "" };
   return { startDate: isoDay(match[1]), endDate: isoDay(match[2]) };
+}
+
+function farmWorkOrderOccurrenceDateFromNote(note = "") {
+  const text = String(note || "");
+  const match = text.match(/วันที่รอบนี้\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  return match ? isoDay(match[1]) : "";
 }
 
 function millDocKey(value) {
@@ -12020,8 +12031,14 @@ function farmWorkOrders() {
     const group = farmLookup("activity_groups", activity?.activity_group_id);
     const team = farmLookup("teams", order.team_id);
     const plotGroup = farmLookup("plot_groups", order.plot_group_id || plot?.plot_group_id);
-    const startDate = isoDay(order.planned_start_date || order.scheduled_date || order.original_scheduled_date);
-    const endDate = isoDay(order.planned_end_date || order.rescheduled_date || order.scheduled_date || startDate);
+    const noteRange = farmWorkOrderDateRangeFromNote(order.note);
+    const occurrenceDate = farmWorkOrderOccurrenceDateFromNote(order.note) || isoDay(order.note_scheduled_date);
+    const scheduledDate = occurrenceDate || isoDay(order.scheduled_date);
+    const plannedStartDate = isoDay(noteRange.startDate || order.note_planned_start_date || order.planned_start_date || order.original_scheduled_date);
+    const plannedEndDate = isoDay(noteRange.endDate || order.note_planned_end_date || order.planned_end_date || order.rescheduled_date || scheduledDate || plannedStartDate);
+    const useOccurrenceDate = scheduledDate && (occurrenceDate || Number(order.repeat_occurrence_total || 0) > 1);
+    const startDate = useOccurrenceDate ? scheduledDate : (scheduledDate || plannedStartDate);
+    const endDate = useOccurrenceDate ? scheduledDate : (plannedEndDate && farmDateMs(plannedEndDate) >= farmDateMs(startDate) ? plannedEndDate : startDate);
     const orderResults = results.filter((row) => row.work_order_id === order.id);
     const resultDates = orderResults.map((row) => isoDay(row.result_date)).filter(Boolean).sort();
     const closedDate = isoDay(order.closed_at);
@@ -13163,8 +13180,8 @@ async function createFarmWorkPlanFromSelection() {
             activity_id: activity.id,
             team_id: teamId,
             scheduled_date: scheduledDate,
-            planned_start_date: scheduledDate,
-            planned_end_date: scheduledDate,
+            planned_start_date: startDate,
+            planned_end_date: endDate,
             planned_quantity: estimate.quantity,
             planned_unit: estimate.unitName || estimate.unit,
             planned_labor_cost: estimate.amount,
@@ -13331,8 +13348,8 @@ async function saveFarmWorkPlanEditFromSelection() {
             activity_id: activity.id,
             team_id: teamId,
             scheduled_date: scheduledDate,
-            planned_start_date: scheduledDate,
-            planned_end_date: scheduledDate,
+            planned_start_date: startDate,
+            planned_end_date: endDate,
             planned_quantity: estimate.quantity,
             planned_unit: estimate.unitName || estimate.unit,
             planned_labor_cost: estimate.amount,
