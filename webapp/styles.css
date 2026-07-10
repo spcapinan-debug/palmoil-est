@@ -13607,6 +13607,62 @@ td.num,
   background: #d2473e !important;
 }
 
+.farm-work-gantt,
+.farm-work-timeline {
+  border-radius: 0 !important;
+}
+
+.farm-work-grid-head,
+.farm-work-row,
+.farm-work-left-head,
+.farm-work-left,
+.farm-work-lane,
+.farm-work-months span,
+.farm-work-days span {
+  border-radius: 0 !important;
+}
+
+.farm-work-plan-bar,
+.farm-work-actual-bar,
+.farm-work-compact .farm-work-plan-bar,
+.farm-work-compact .farm-work-actual-bar {
+  border-radius: 0 !important;
+}
+
+.farm-work-plan-bar::before,
+.farm-work-plan-bar::after,
+.farm-work-actual-bar::before,
+.farm-work-actual-bar::after {
+  display: none !important;
+}
+
+.farm-work-plan-bar.approved,
+.farm-work-compact .farm-work-plan-bar.approved {
+  background: #cfe7ff !important;
+  border: 1px solid #7fb6e8 !important;
+  box-shadow: inset 0 -1px 0 rgba(30, 64, 175, .16) !important;
+}
+
+.farm-work-plan-bar.approved.dispatched,
+.farm-work-compact .farm-work-plan-bar.approved.dispatched {
+  background: #f28a7f !important;
+  border-color: #c2410c !important;
+  box-shadow: inset 0 -1px 0 rgba(120, 29, 24, .22) !important;
+}
+
+.farm-work-actual-bar,
+.farm-work-compact .farm-work-actual-bar {
+  background: #d2473e !important;
+  border: 1px solid #991b1b !important;
+  box-shadow: inset 0 -1px 0 rgba(127, 29, 29, .28) !important;
+}
+
+.farm-work-dispatch-fill,
+.farm-work-compact .farm-work-dispatch-fill {
+  inset: 3px 4px !important;
+  border-radius: 0 !important;
+}
+
 .farm-work-page .farm-work-layout {
   min-height: clamp(430px, 58vh, 760px);
 }
