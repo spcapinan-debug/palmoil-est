@@ -6790,7 +6790,7 @@ tfoot td {
 
 .farm-dispatch-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 1.05fr) minmax(260px, .75fr);
+  grid-template-columns: minmax(420px, 1.2fr) minmax(300px, .85fr);
   gap: 12px;
   align-items: stretch;
 }
@@ -6819,7 +6819,7 @@ tfoot td {
 
 .farm-dispatch-fields {
   display: grid;
-  grid-template-columns: minmax(220px, 1.3fr) minmax(150px, .8fr) minmax(160px, .9fr);
+  grid-template-columns: minmax(210px, 1.35fr) minmax(132px, .7fr) minmax(132px, .7fr) minmax(170px, .9fr);
   gap: 8px;
   align-items: end;
 }
@@ -6844,6 +6844,10 @@ tfoot td {
   color: var(--ink);
 }
 
+.farm-dispatch-fields select {
+  text-overflow: ellipsis;
+}
+
 .farm-dispatch-fields .date-input-control {
   width: 100%;
   min-width: 0;
@@ -6863,10 +6867,10 @@ tfoot td {
 
 .farm-dispatch-summary {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
-  gap: 6px 10px;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 4px 8px;
   margin: 0;
-  padding: 9px 10px;
+  padding: 8px 10px;
   border-radius: 8px;
   background: #f8fafc;
 }
@@ -6884,13 +6888,14 @@ tfoot td {
   font-size: 12px;
   font-weight: 800;
   overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 
 .farm-dispatch-worker-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
-  max-height: 206px;
+  max-height: 224px;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -6902,7 +6907,8 @@ tfoot td {
   min-width: 0;
   border: 1px solid #edf2f7;
   border-radius: 7px;
-  padding: 6px;
+  min-height: 34px;
+  padding: 5px 6px;
   background: #fbfdff;
 }
 
@@ -6941,7 +6947,7 @@ tfoot td {
 }
 
 .farm-dispatch-materials .table-wrap {
-  max-height: 230px;
+  max-height: 210px;
 }
 
 .farm-dispatch-table th,

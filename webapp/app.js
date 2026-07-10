@@ -11638,6 +11638,14 @@ function farmLookupLabel(tableKey, id) {
   return row ? farmRecordLabel(table, row) : (id || "-");
 }
 
+function farmUnitDisplayName(unitIdOrName = "") {
+  const raw = String(unitIdOrName || "").trim();
+  if (!raw) return "";
+  const unit = farmLookup("units", raw)
+    || farmRowsByKey("units").find((row) => row.unit_code === raw || row.unit_name === raw);
+  return unit?.unit_name || raw.replace(/^[A-Z]-[A-Z0-9-]+\s*[-:]\s*/i, "");
+}
+
 function farmSurveyText(row = {}) {
   return [row.template_code, row.template_name, row.activity_name, row.activity_code, row.file_name, ...(row.keywords || [])]
     .filter(Boolean)
@@ -13637,7 +13645,16 @@ function renderFarmDispatchPanel() {
   const team = teams.find((row) => row.id === activeTeamId) || teams[0] || {};
   const supervisor = farmLookup("employees", team.supervisor_employee_id) || {};
   const dispatchDate = order?.rescheduled_date || order?.scheduled_date || order?.planned_start_date || farmToday();
+  const dispatchEndDate = order?.rescheduled_end_date || order?.planned_end_date || order?.endDate || dispatchDate;
+  const activityName = farmLookupLabel("activities", order?.activity_id);
+  const planRange = [displayDate(order?.planned_start_date || order?.scheduled_date), displayDate(order?.planned_end_date || order?.scheduled_date)].filter(Boolean).join(" ถึง ");
   const orderArea = [order?.plot?.plot_code, order?.block?.block_code || order?.block?.block_name, order?.block?.ap_code || order?.block?.AP_code].filter(Boolean).join(" / ") || "-";
+  const dispatchOrderLabel = (row) => {
+    const shortNo = row.shortNo || farmShortWorkOrderNo(row);
+    const blockText = farmShortBlockText(row);
+    const dateText = [displayDate(row.planned_start_date || row.scheduled_date), displayDate(row.planned_end_date || row.scheduled_date)].filter(Boolean).join("-");
+    return [shortNo, farmLookupLabel("activities", row.activity_id).replace(/^[A-Z0-9]+\s*-\s*/i, ""), blockText, dateText].filter(Boolean).join(" · ");
+  };
   return `
     <section class="farm-dispatch-panel">
       <div class="section-head">
@@ -13650,10 +13667,11 @@ function renderFarmDispatchPanel() {
           <div class="farm-dispatch-fields">
             <label>เลือก Work Order
               <select id="farmDispatchOrderSelect">
-                ${orders.map((row) => `<option value="${esc(row.id)}"${row.id === order?.id ? " selected" : ""}>${esc(row.shortNo || farmShortWorkOrderNo(row))} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("")}
+                ${orders.map((row) => `<option value="${esc(row.id)}"${row.id === order?.id ? " selected" : ""}>${esc(dispatchOrderLabel(row))}</option>`).join("")}
               </select>
             </label>
             <label>วันที่สั่งทำ${renderDateInputControl({ id: "farmDispatchDate", value: dispatchDate, ariaLabel: "เลือกวันที่สั่งงาน" })}</label>
+            <label>ถึงวันที่${renderDateInputControl({ id: "farmDispatchEndDate", value: dispatchEndDate, ariaLabel: "เลือกวันที่สิ้นสุดงาน" })}</label>
             <label>ทีม
               <select id="farmDispatchTeam">
                 ${teams.map((row) => `<option value="${esc(row.id)}"${row.id === (activeTeamId || team.id) ? " selected" : ""}>${esc(farmRecordLabel(farmTableByKey("teams"), row))}</option>`).join("")}
@@ -13661,9 +13679,10 @@ function renderFarmDispatchPanel() {
             </label>
           </div>
           <dl class="farm-dispatch-summary">
-            <dt>งาน</dt><dd>${esc(order?.work_order_title || "-")}</dd>
-            <dt>กิจกรรม</dt><dd>${esc(farmLookupLabel("activities", order?.activity_id))}</dd>
+            <dt>งาน</dt><dd><strong>${esc(farmShortWorkOrderNo(order))}</strong> ${esc(order?.work_order_title || "-")}</dd>
+            <dt>กิจกรรม</dt><dd>${esc(activityName)}</dd>
             <dt>พื้นที่</dt><dd>${esc(orderArea)}</dd>
+            <dt>ช่วงแผน</dt><dd>${esc(planRange || "-")}</dd>
             <dt>หัวหน้าทีม</dt><dd>${esc(farmRecordLabel(farmTableByKey("employees"), supervisor) || farmLookupLabel("employees", team.supervisor_employee_id))}</dd>
           </dl>
         </article>
@@ -13689,7 +13708,7 @@ function renderFarmDispatchPanel() {
                     <td>${esc(row.material_name)}</td>
                     <td class="num">${moneyNf.format(n(row.planned_quantity))}</td>
                     <td><input type="number" min="0" step="0.01" value="${esc(row.issued_quantity || row.planned_quantity || 0)}" data-farm-dispatch-issue-qty></td>
-                    <td>${esc(row.unit_name || farmLookupLabel("units", row.unit_id))}</td>
+                    <td>${esc(farmUnitDisplayName(row.unit_name || row.unit_id))}</td>
                   </tr>`).join("") || `<tr><td colspan="5">ไม่มีรายการพัสดุสำหรับงานนี้</td></tr>`}
               </tbody>
             </table>
@@ -13739,7 +13758,7 @@ function renderFarmDispatchPrintPreview(order, context = {}) {
       <table>
         <thead><tr><th>#</th><th>รายการ</th><th>จำนวนเบิก</th><th>หน่วย</th></tr></thead>
         <tbody>
-          ${materials.map((row, index) => `<tr><td>${index + 1}</td><td>${esc(row.material_name)}</td><td>${moneyNf.format(n(row.issued_quantity || row.planned_quantity))}</td><td>${esc(row.unit_name || farmLookupLabel("units", row.unit_id))}</td></tr>`).join("") || `<tr><td colspan="4">ไม่มีรายการพัสดุ</td></tr>`}
+          ${materials.map((row, index) => `<tr><td>${index + 1}</td><td>${esc(row.material_name)}</td><td>${moneyNf.format(n(row.issued_quantity || row.planned_quantity))}</td><td>${esc(farmUnitDisplayName(row.unit_name || row.unit_id))}</td></tr>`).join("") || `<tr><td colspan="4">ไม่มีรายการพัสดุ</td></tr>`}
         </tbody>
       </table>
       <div class="farm-dispatch-signatures">
@@ -13759,6 +13778,7 @@ async function saveFarmDispatchOrder() {
   const inventoryDocTable = farmTableByKey("inventory_documents");
   const inventoryLineTable = farmTableByKey("inventory_document_lines");
   const date = dateValue(document.querySelector("#farmDispatchDate")) || order.scheduled_date || farmToday();
+  const endDate = dateValue(document.querySelector("#farmDispatchEndDate")) || order.planned_end_date || date;
   const teamId = document.querySelector("#farmDispatchTeam")?.value || order.team_id || "";
   const checkedWorkers = Array.from(document.querySelectorAll("[data-farm-dispatch-worker]:checked")).map((input) => input.value).filter(Boolean);
   const materialRows = Array.from(document.querySelectorAll("[data-farm-dispatch-material]")).map((row, index) => {
@@ -13786,7 +13806,10 @@ async function saveFarmDispatchOrder() {
       team_id: teamId,
       original_scheduled_date: order.original_scheduled_date || order.scheduled_date || order.planned_start_date || "",
       scheduled_date: date,
+      planned_start_date: date,
+      planned_end_date: endDate,
       rescheduled_date: date !== (order.scheduled_date || order.planned_start_date || "") ? date : order.rescheduled_date || "",
+      rescheduled_end_date: endDate !== (order.planned_end_date || order.scheduled_date || "") ? endDate : order.rescheduled_end_date || "",
       rescheduled_by_manager_id: "profile-admin",
       approval_status: "not_required",
       status: "sent_to_mobile",
@@ -13801,7 +13824,7 @@ async function saveFarmDispatchOrder() {
     for (const employeeId of checkedWorkers) {
       const employee = farmLookup("employees", employeeId) || {};
       const row = {
-        id: `dispatch-worker-${order.id}-${employeeId}`.slice(0, 180),
+        id: farmWorkOrderChildUuid("work_order_workers", (item) => item.work_order_id === order.id && item.employee_id === employeeId),
         moduleId: "farm-work",
         tableId: "work_order_workers",
         work_order_id: order.id,
@@ -13818,11 +13841,13 @@ async function saveFarmDispatchOrder() {
 
     let issueDocId = "";
     if (materialRows.length) {
+      const issueDocNo = `GI-${farmShortWorkOrderNo(order).replace(/[^0-9A-Za-z-]/g, "")}-${date.replaceAll("-", "")}`.slice(0, 120);
+      const existingIssueDoc = farmRowsByKey("inventory_documents").find((row) => row.document_no === issueDocNo || row.work_order_id === order.id);
       const issueDoc = {
-        id: `issue-${order.id}-${date}`.slice(0, 180),
+        id: existingIssueDoc?.id && farmLooksUuid(existingIssueDoc.id) ? existingIssueDoc.id : farmNewUuid(),
         moduleId: "farm-inventory",
         tableId: "inventory_documents",
-        document_no: `GI-${farmShortWorkOrderNo(order).replace(/[^0-9A-Za-z-]/g, "")}-${date.replaceAll("-", "")}`.slice(0, 120),
+        document_no: issueDocNo,
         doc_type: "issue",
         doc_date: date,
         work_order_id: order.id,
@@ -13839,7 +13864,7 @@ async function saveFarmDispatchOrder() {
 
     for (const item of materialRows) {
       const materialRow = {
-        id: `dispatch-material-${order.id}-${item.material_id}`.slice(0, 180),
+        id: farmWorkOrderChildUuid("work_order_materials", (row) => row.work_order_id === order.id && row.material_id === item.material_id),
         moduleId: "farm-work",
         tableId: "work_order_materials",
         work_order_id: order.id,
@@ -13854,7 +13879,7 @@ async function saveFarmDispatchOrder() {
       await persistFarmRowToDatabase(materialTable, materialRow);
 
       const line = {
-        id: `issue-line-${order.id}-${item.material_id}`.slice(0, 180),
+        id: farmWorkOrderChildUuid("inventory_document_lines", (row) => row.document_id === issueDocId && row.item_id === farmDispatchInventoryItemForMaterial(item.material_id)),
         moduleId: "farm-inventory",
         tableId: "inventory_document_lines",
         document_id: issueDocId,
@@ -13911,7 +13936,7 @@ function syncFarmDispatchPrintPreviewFromForm() {
     const rows = Array.from(document.querySelectorAll("[data-farm-dispatch-material]")).map((row, index) => {
       const name = row.children?.[1]?.textContent?.trim() || "-";
       const qty = n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value);
-      const unit = row.children?.[4]?.textContent?.trim() || "";
+      const unit = farmUnitDisplayName(row.children?.[4]?.textContent?.trim() || "");
       return { index: index + 1, name, qty, unit };
     }).filter((row) => row.qty > 0);
     body.innerHTML = rows.length
