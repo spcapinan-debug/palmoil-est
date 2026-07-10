@@ -12643,7 +12643,7 @@ function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}
   const rateRows = farmBudgetMaterialUsageRows(rate, [block]);
   if (rateRows.length) {
     return rateRows.map((row, index) => ({
-      id: `wom-${farmBudgetSafeCode(workOrderId).toLowerCase()}-${farmBudgetSafeCode(row.materialId || row.materialName || index).toLowerCase()}`.slice(0, 180),
+      id: "",
       moduleId: "farm-work",
       tableId: "work_order_materials",
       work_order_id: workOrderId,
@@ -12659,7 +12659,7 @@ function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}
   const usageBasis = selectedUsageRate.usage_basis || "manual";
   const materialBase = usageBasis === "per_tree" ? n(block.tree_count) : usageBasis === "per_rai" ? n(block.area_rai) : 1;
   return (selectedMaterials || []).map((material, index) => ({
-    id: `wom-${farmBudgetSafeCode(workOrderId).toLowerCase()}-${farmBudgetSafeCode(material.id || index).toLowerCase()}`.slice(0, 180),
+    id: "",
     moduleId: "farm-work",
     tableId: "work_order_materials",
     work_order_id: workOrderId,
@@ -12671,6 +12671,18 @@ function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}
     status: "planned",
     note: `${material.material_name || material.material_code || ""} · manual`,
   })).filter((row) => row.work_order_id && row.material_id);
+}
+
+function farmNewUuid() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
+    (Number(c) ^ Math.random() * 16 >> Number(c) / 4).toString(16)
+  );
+}
+
+function farmWorkOrderChildUuid(tableKey, matcher) {
+  const existing = farmRowsByKey(tableKey).find(matcher);
+  return existing?.id && farmLooksUuid(existing.id) ? existing.id : farmNewUuid();
 }
 
 function farmWorkPlanEmployeeIdsFromSelection(selectedWorkers = [], teamId = "") {
@@ -12700,7 +12712,7 @@ async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], 
     for (const employeeId of employeeIds) {
       const employee = farmLookup("employees", employeeId) || {};
       const row = {
-        id: `plan-worker-${order.id}-${employeeId}`.slice(0, 180),
+        id: farmWorkOrderChildUuid("work_order_workers", (item) => item.work_order_id === order.id && item.employee_id === employeeId),
         moduleId: "farm-work",
         tableId: "work_order_workers",
         work_order_id: order.id,
@@ -12719,7 +12731,7 @@ async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], 
     for (const vehicleId of farmBudgetUnique(selectedVehicles || [])) {
       const vehicle = farmLookup("vehicles", vehicleId) || {};
       const row = {
-        id: `plan-machine-${order.id}-${vehicleId}`.slice(0, 180),
+        id: farmWorkOrderChildUuid("work_order_machines", (item) => item.work_order_id === order.id && item.vehicle_id === vehicleId),
         moduleId: "farm-work",
         tableId: "work_order_machines",
         work_order_id: order.id,
@@ -12744,7 +12756,11 @@ async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], 
       selectedUsageRate,
     });
     for (const materialRow of materialPlanRows) {
-      const savedMaterial = await persistFarmRowToDatabase(materialTable, materialRow);
+      const rowWithId = {
+        ...materialRow,
+        id: farmWorkOrderChildUuid("work_order_materials", (item) => item.work_order_id === order.id && item.material_id === materialRow.material_id),
+      };
+      const savedMaterial = await persistFarmRowToDatabase(materialTable, rowWithId);
       const finalMaterialRow = { ...materialRow, ...(savedMaterial.row || {}) };
       state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === materialTable.key && item.work_order_id === order.id && item.material_id === finalMaterialRow.material_id));
       state.farmRecords.push(finalMaterialRow);
