@@ -12452,6 +12452,21 @@ function farmSelectedPlanningBlocks(picks = farmWorkPlanState()) {
     .map(farmEnrichPlanningBlock);
 }
 
+function farmPlanningBlockDbId(block = {}) {
+  const enriched = farmEnrichPlanningBlock(block);
+  const candidates = [
+    enriched.source_block_id,
+    enriched.block_id,
+    farmLooksUuid(enriched.id) ? enriched.id : "",
+    farmLooksUuid(enriched.area_id) ? enriched.area_id : "",
+  ].filter(Boolean);
+  for (const id of candidates) {
+    if (farmLooksUuid(id) && farmLookup("blocks", id)) return id;
+  }
+  const matched = farmFindMatchingLegacyBlock(enriched);
+  return matched?.id && farmLooksUuid(matched.id) ? matched.id : "";
+}
+
 function farmRateMatchesBlock(rate, block) {
   if (!rate || !block) return false;
   const enrichedBlock = farmEnrichPlanningBlock(block);
@@ -13062,6 +13077,7 @@ async function createFarmWorkPlanFromSelection() {
             ? rateMaterialUsageRows.reduce((sum, row) => sum + n(row.amount), 0)
             : materialQuantity * n(materialRate?.rate_amount || 0);
           const title = `${activity.activity_name || activity.activity_code || "งาน"} ${block.block_name || block.block_code || block.id}`;
+          const blockDbId = farmPlanningBlockDbId(block);
           const noteLines = [
             title,
             `ช่วงแผน: ${startDate} ถึง ${endDate}`,
@@ -13081,7 +13097,7 @@ async function createFarmWorkPlanFromSelection() {
             work_order_no: farmNextShortWorkOrderNo(scheduledDate, created.length),
             work_order_title: title,
             plot_id: block.plot_id || "",
-            block_id: block.id,
+            block_id: blockDbId || null,
             ap_code: block.ap_code || block.AP_code || "",
             activity_id: activity.id,
             team_id: teamId,
@@ -13221,11 +13237,12 @@ async function saveFarmWorkPlanEditFromSelection() {
             : farmRowsByKey("work_orders").find((row) =>
               row.plan_series_id === planSeriesId
               && Number(row.repeat_occurrence_no) === occurrenceNo
-              && (row.block_id === block.id || farmResolveBlockIdForPlanner(row) === block.id)
+              && (row.block_id === farmPlanningBlockDbId(block) || farmResolveBlockIdForPlanner(row) === block.id)
               && row.activity_id === activity.id
               && (row.id !== currentOrder.id)
             );
           const title = `${activity.activity_name || activity.activity_code || "งาน"} ${block.block_name || block.block_code || block.area_code || block.id}`;
+          const blockDbId = farmPlanningBlockDbId(block);
           const noteLines = [
             title,
             `ช่วงแผน: ${startDate} ถึง ${endDate}`,
@@ -13246,7 +13263,7 @@ async function saveFarmWorkPlanEditFromSelection() {
             work_order_no: baseOrder.work_order_no || farmNextShortWorkOrderNo(scheduledDate, createdOffset++),
             work_order_title: title,
             plot_id: block.plot_id || "",
-            block_id: block.id,
+            block_id: blockDbId || null,
             ap_code: block.ap_code || block.AP_code || "",
             activity_id: activity.id,
             team_id: teamId,
