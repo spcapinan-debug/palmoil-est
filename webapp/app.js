@@ -3104,8 +3104,9 @@ function normalizeFarmDbRows(tableKey, rows = []) {
     }
     if (tableKey === "work_orders") {
       row.work_order_title = row.work_order_title || row.note || row.work_order_no || row.id;
-      row.planned_start_date = row.planned_start_date || row.scheduled_date || "";
-      row.planned_end_date = row.planned_end_date || row.scheduled_date || row.planned_start_date || "";
+      const noteRange = farmWorkOrderDateRangeFromNote(row.note);
+      row.planned_start_date = row.planned_start_date || noteRange.startDate || row.scheduled_date || "";
+      row.planned_end_date = row.planned_end_date || noteRange.endDate || row.scheduled_date || row.planned_start_date || "";
     }
     return {
       ...row,
@@ -3548,6 +3549,13 @@ function isoDay(value) {
     return `${year}-${month}-${day}`;
   }
   return text.slice(0, 10);
+}
+
+function farmWorkOrderDateRangeFromNote(note = "") {
+  const text = String(note || "");
+  const match = text.match(/ช่วงแผน\s*:\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\s*ถึง\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  if (!match) return { startDate: "", endDate: "" };
+  return { startDate: isoDay(match[1]), endDate: isoDay(match[2]) };
 }
 
 function millDocKey(value) {
