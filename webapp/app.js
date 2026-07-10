@@ -12038,6 +12038,8 @@ function farmWorkFilterOptions(rows, key, labelFallback = "ไม่ระบุ
 }
 
 function farmWorkBlockPlotGroupCode(block = {}, plot = {}) {
+  block = block || {};
+  plot = plot || {};
   const direct = farmFirstFilled(
     block.plot_group_code,
     block.plot_group_name,
@@ -12060,6 +12062,7 @@ function farmWorkBlockPlotGroupCode(block = {}, plot = {}) {
 }
 
 function farmWorkZoneFromBlock(block = {}, plotGroupCode = "") {
+  block = block || {};
   const direct = farmFirstFilled(block.zone_name, block.zone_code, block.zone, block.section_name, block.section);
   if (direct) return String(direct).trim();
   const group = String(plotGroupCode || farmWorkBlockPlotGroupCode(block)).trim().toUpperCase();
