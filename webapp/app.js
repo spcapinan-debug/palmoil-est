@@ -15607,7 +15607,7 @@ function renderFarmWorkBoard(options = {}) {
               const blockText = farmShortBlockText(row);
               const teamText = row.team?.team_name || farmLookupLabel("teams", row.team_id) || "-";
               return `
-                <div class="farm-work-row${selected?.id === row.id ? " active" : ""}" data-farm-work-detail="${esc(row.id)}">
+                <div class="farm-work-row status-${esc(row.statusMeta.key)}${selected?.id === row.id ? " active" : ""}" data-farm-work-detail="${esc(row.id)}">
                   <button type="button" class="farm-work-left">
                     <b>${esc(row.shortNo || farmShortWorkOrderNo(row))}</b>
                     <strong title="${esc(row.work_order_title || row.activity?.activity_name || "-")}">${esc(activityText)}</strong>
@@ -15615,7 +15615,7 @@ function renderFarmWorkBoard(options = {}) {
                     <span>${esc(teamText)}</span>
                     <i style="--status:${esc(row.statusMeta.color)}">${esc(row.statusMeta.label)}</i>
                   </button>
-                  <div class="farm-work-lane" style="width:${timelineWidth}px">
+                  <div class="farm-work-lane" style="width:${timelineWidth}px;--day-width:${dayWidth}px">
                     ${showDraftPlan ? `<button class="farm-work-plan-bar draft ${needsApproval ? "needs-approval" : ""}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนก่อนอนุมัติ ${esc(row.original_scheduled_date || row.startDate || "-")} - ${esc(row.planned_end_date || row.endDate || "-")}" style="left:${(originalIndex >= 0 ? originalIndex : startIndex) * dayWidth + 3}px;width:${Math.max(18, (originalIndex >= 0 ? originalSpan : span) * dayWidth - 6)}px"><span>${needsApproval ? "รออนุมัติ" : "แผน"}</span></button>` : ""}
                     ${hasApprovedPlan ? `<button class="farm-work-plan-bar approved ${esc(planStateClass)}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนอนุมัติแล้ว ${esc(row.startDate || "-")} - ${esc(row.endDate || "-")}${row.repeat_occurrence_total > 1 ? ` · รอบ ${esc(row.repeat_occurrence_no || "-")}/${esc(row.repeat_occurrence_total)}` : ""}" style="left:${startIndex * dayWidth + 3}px;width:${Math.max(18, span * dayWidth - 6)}px"><span>${row.repeat_occurrence_total > 1 ? `รอบ ${esc(row.repeat_occurrence_no || "-")}/${esc(row.repeat_occurrence_total)}` : row.statusMeta.key === "sent_to_mobile" ? "สั่งงาน" : "อนุมัติ"}</span></button>` : ""}
                     ${actualIndex >= 0 ? `<button class="farm-work-actual-bar" type="button" data-farm-work-detail="${esc(row.id)}" title="บันทึกงานจริง ${esc(row.actualStartDate || "-")} - ${esc(row.actualEndDate || "-")} (${fmt(row.actualResultCount)} รายการ)" style="left:${actualIndex * dayWidth + 3}px;width:${Math.max(18, actualSpan * dayWidth - 6)}px"><span>${row.statusMeta.key === "closed" ? "ปิดงาน" : "ทำจริง"}</span></button>` : ""}

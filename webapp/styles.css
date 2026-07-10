@@ -8768,15 +8768,18 @@ tfoot td {
 .farm-work-lane {
   position: relative;
   min-height: 42px;
+  --day-width: 30px;
   background-image:
+    repeating-linear-gradient(90deg, rgba(248, 250, 252, .88) 0 var(--day-width), rgba(255, 255, 255, .78) var(--day-width) calc(var(--day-width) * 2)),
     linear-gradient(to right, rgba(203, 213, 225, .82) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 251, 248, .94), rgba(255, 251, 248, .94));
-  background-size: 30px 100%, 100% 100%;
+  background-size: calc(var(--day-width) * 2) 100%, var(--day-width) 100%, 100% 100%;
 }
 
 .farm-work-plan-bar,
 .farm-work-actual-bar {
   position: absolute;
+  isolation: isolate;
   min-height: 16px;
   border-radius: 999px;
   padding: 0;
@@ -8784,6 +8787,33 @@ tfoot td {
   font-weight: 900;
   overflow: hidden;
   cursor: pointer;
+}
+
+.farm-work-plan-bar::before,
+.farm-work-plan-bar::after,
+.farm-work-actual-bar::before,
+.farm-work-actual-bar::after {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 7px;
+  height: 7px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+  transform: translateY(-50%);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, .16);
+}
+
+.farm-work-plan-bar::before,
+.farm-work-actual-bar::before {
+  left: -2px;
+}
+
+.farm-work-plan-bar::after,
+.farm-work-actual-bar::after {
+  right: -2px;
 }
 
 .farm-work-plan-bar span,
@@ -8804,34 +8834,34 @@ tfoot td {
 
 .farm-work-plan-bar.approved {
   top: 13px;
-  border: 1px solid #b91c1c;
-  background: linear-gradient(180deg, #f87171 0%, #dc2626 100%);
-  color: #fff;
-  box-shadow: 0 4px 10px rgba(185, 28, 28, .24);
+  border: 0;
+  background: linear-gradient(90deg, rgba(185, 28, 28, .18), rgba(185, 28, 28, .88), rgba(185, 28, 28, .18));
+  color: #b91c1c;
+  box-shadow: 0 0 0 1px rgba(185, 28, 28, .24), 0 4px 10px rgba(185, 28, 28, .14);
 }
 
 .farm-work-plan-bar.approved.dispatched {
-  border-color: #0f766e;
-  background: linear-gradient(180deg, #2dd4bf 0%, #0f766e 100%);
-  box-shadow: 0 4px 10px rgba(15, 118, 110, .24);
+  background: linear-gradient(90deg, rgba(15, 118, 110, .16), rgba(15, 118, 110, .9), rgba(15, 118, 110, .16));
+  color: #0f766e;
+  box-shadow: 0 0 0 1px rgba(15, 118, 110, .24), 0 4px 10px rgba(15, 118, 110, .14);
 }
 
 .farm-work-plan-bar.approved.rescheduled {
-  border-color: #7c3aed;
-  background: linear-gradient(180deg, #c084fc 0%, #7c3aed 100%);
+  background: linear-gradient(90deg, rgba(124, 58, 237, .16), rgba(124, 58, 237, .9), rgba(124, 58, 237, .16));
+  color: #7c3aed;
 }
 
 .farm-work-actual-bar {
   top: 48px;
-  border: 1px solid #b91c1c;
-  background: #ef4444;
-  color: #fff;
+  border: 0;
+  background: linear-gradient(90deg, rgba(127, 29, 29, .18), #7f1d1d, rgba(127, 29, 29, .18));
+  color: #7f1d1d;
   box-shadow: 0 5px 12px rgba(185, 28, 28, .22);
 }
 
 .farm-work-plan-bar.needs-approval {
-  border-color: #f59e0b;
-  background: rgba(254, 243, 199, .82);
+  border: 1px dashed #f59e0b;
+  background: repeating-linear-gradient(90deg, rgba(251, 191, 36, .28) 0 8px, rgba(251, 191, 36, .06) 8px 14px);
   color: #92400e;
 }
 
@@ -9031,14 +9061,15 @@ tfoot td {
 
 .farm-work-compact .farm-work-lane {
   min-height: 38px;
-  background-size: 24px 100%, 100% 100%;
+  --day-width: 24px;
+  background-size: calc(var(--day-width) * 2) 100%, var(--day-width) 100%, 100% 100%;
 }
 
 .farm-work-compact .farm-work-plan-bar,
 .farm-work-compact .farm-work-actual-bar {
-  height: 11px;
-  min-height: 11px;
-  border-radius: 0;
+  height: 13px;
+  min-height: 13px;
+  border-radius: 999px;
 }
 
 .farm-work-compact .farm-work-plan-bar span,
@@ -9050,31 +9081,29 @@ tfoot td {
 
 .farm-work-compact .farm-work-plan-bar.draft {
   top: 2px;
-  border-width: 1.5px;
-  background: repeating-linear-gradient(90deg, rgba(59, 130, 246, .32) 0 7px, rgba(59, 130, 246, .1) 7px 12px);
+  border-width: 1px;
+  background: repeating-linear-gradient(90deg, rgba(59, 130, 246, .32) 0 7px, rgba(59, 130, 246, .08) 7px 12px);
 }
 
 .farm-work-compact .farm-work-plan-bar.approved {
-  top: 13px;
-  border: 1px solid #a83228;
-  background: linear-gradient(180deg, #ee6b5f 0%, #c94f3e 100%);
-  box-shadow: inset 0 -1px 0 rgba(120, 29, 24, .28), 0 1px 2px rgba(120, 29, 24, .18);
+  top: 12px;
+  border: 0;
+  background: linear-gradient(90deg, rgba(185, 28, 28, .18), #c94f3e, rgba(185, 28, 28, .18));
+  box-shadow: 0 0 0 1px rgba(120, 29, 24, .18), 0 1px 2px rgba(120, 29, 24, .14);
 }
 
 .farm-work-compact .farm-work-plan-bar.approved.dispatched {
-  border-color: #0f766e;
-  background: linear-gradient(180deg, #2dd4bf 0%, #0f766e 100%);
+  background: linear-gradient(90deg, rgba(15, 118, 110, .16), #0f766e, rgba(15, 118, 110, .16));
 }
 
 .farm-work-compact .farm-work-plan-bar.approved.rescheduled {
-  border-color: #7c3aed;
-  background: linear-gradient(180deg, #c084fc 0%, #7c3aed 100%);
+  background: linear-gradient(90deg, rgba(124, 58, 237, .16), #7c3aed, rgba(124, 58, 237, .16));
 }
 
 .farm-work-compact .farm-work-actual-bar {
-  top: 24px;
-  border-width: 1px;
-  background: linear-gradient(180deg, #b94436 0%, #7f1d1d 100%);
+  top: 25px;
+  border-width: 0;
+  background: linear-gradient(90deg, rgba(127, 29, 29, .18), #7f1d1d, rgba(127, 29, 29, .18));
   box-shadow: 0 1px 0 rgba(120, 29, 24, .35);
 }
 
