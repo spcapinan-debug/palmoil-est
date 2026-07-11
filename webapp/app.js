@@ -12835,7 +12835,14 @@ function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}
       used_quantity: "",
       unit_id: "",
       status: "planned",
-      note: `${row.materialName} · ${moneyNf.format(row.usageQuantity)} ${row.usageUnit}/${row.usageBasis === "tree_count" ? "ต้น" : row.usageBasis === "area_rai" ? "ไร่" : "หน่วย"} · ${farmBudgetDisplayRateCode(rate)}`,
+      note: JSON.stringify({
+        material_name: row.materialName,
+        unit_name: row.displayUnit,
+        usage_quantity: row.usageQuantity,
+        usage_unit: row.usageUnit,
+        usage_basis: row.usageBasis,
+        rate_code: farmBudgetDisplayRateCode(rate),
+      }),
     })).filter((row) => row.work_order_id && row.material_id);
     const plannedIds = new Set(plannedRows.map((row) => String(row.material_id || "")));
     const manualRows = (selectedMaterials || [])
@@ -12851,7 +12858,11 @@ function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}
         used_quantity: "",
         unit_id: material.base_unit_id || material.unit_id || "",
         status: "planned",
-        note: `${material.material_name || material.material_code || ""} · เพิ่มจากหน้าแผน`,
+        note: JSON.stringify({
+          material_name: material.material_name || material.material_code || "",
+          unit_name: farmDispatchMaterialUnitName({}, material),
+          source: "manual_plan",
+        }),
       })).filter((row) => row.work_order_id && row.material_id);
     return [...plannedRows, ...manualRows];
   }
@@ -12868,7 +12879,11 @@ function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}
     used_quantity: "",
     unit_id: material.base_unit_id || material.unit_id || "",
     status: "planned",
-    note: `${material.material_name || material.material_code || ""} · manual`,
+    note: JSON.stringify({
+      material_name: material.material_name || material.material_code || "",
+      unit_name: selectedUsageRate.usage_unit || farmDispatchMaterialUnitName({}, material),
+      source: "manual_usage",
+    }),
   })).filter((row) => row.work_order_id && row.material_id);
 }
 
@@ -13819,8 +13834,13 @@ function farmDispatchNoteMeta(note = "") {
 
 function farmDispatchMaterialUnitName(row = {}, material = {}) {
   const noteMeta = farmDispatchNoteMeta(row.note);
+  const noteText = String(row.note || "");
+  if (noteText.includes("กรัม/")) return "กก.";
+  if (/กก\.?|kg/i.test(noteText)) return "กก.";
+  if (noteText.includes("กระสอบ")) return "กระสอบ";
   return row.unit_name
     || noteMeta.unit_name
+    || noteMeta.displayUnit
     || row.usage_unit
     || farmLookupLabel("units", row.unit_id || material.base_unit_id)
     || material.unit_name
