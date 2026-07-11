@@ -12024,8 +12024,50 @@ function farmDaysBetween(startIso, endIso) {
   return Math.round((end - start) / 86400000);
 }
 
+function farmWorkOrderStatusRank(order = {}) {
+  const status = String(order.status || "").toLowerCase();
+  if (status === "closed") return 80;
+  if (status === "completed") return 70;
+  if (status === "in_progress") return 60;
+  if (status === "sent_to_mobile") return 50;
+  if (status === "rescheduled") return 45;
+  if (status === "approved" || String(order.approval_status || "").toLowerCase() === "approved") return 35;
+  if (status === "scheduled" || status === "planned") return 25;
+  return 10;
+}
+
+function farmCanonicalWorkOrderRows(rows = []) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = String(row._overrideOf || row.work_order_no || row.order_no || row.id || "").trim().toLowerCase();
+    if (!key) continue;
+    const previous = groups.get(key);
+    if (!previous) {
+      groups.set(key, { ...row });
+      continue;
+    }
+    const rowRank = farmWorkOrderStatusRank(row);
+    const previousRank = farmWorkOrderStatusRank(previous);
+    const rowUpdated = Date.parse(row.updatedAt || row.updated_at || row.createdAt || row.created_at || "") || 0;
+    const previousUpdated = Date.parse(previous.updatedAt || previous.updated_at || previous.createdAt || previous.created_at || "") || 0;
+    const rowWins = rowRank > previousRank || (rowRank === previousRank && rowUpdated >= previousUpdated);
+    const base = rowWins ? previous : row;
+    const override = rowWins ? row : previous;
+    groups.set(key, {
+      ...base,
+      ...override,
+      original_scheduled_date: override.original_scheduled_date || base.original_scheduled_date || base.scheduled_date || base.planned_start_date || "",
+      note_planned_start_date: override.note_planned_start_date || base.note_planned_start_date || "",
+      note_planned_end_date: override.note_planned_end_date || base.note_planned_end_date || "",
+      work_order_no: override.work_order_no || base.work_order_no,
+      id: override.id || base.id,
+    });
+  }
+  return [...groups.values()];
+}
+
 function farmWorkOrders() {
-  const orders = farmRows(farmTableByKey("work_orders"));
+  const orders = farmCanonicalWorkOrderRows(farmRows(farmTableByKey("work_orders")));
   const blocks = farmRows(farmTableByKey("blocks"));
   const areaBlocks = farmRowsByKey("areas").filter((area) => !area.area_level || area.area_level === "block");
   const results = farmRows(farmTableByKey("work_results"));
@@ -12064,6 +12106,10 @@ function farmWorkOrders() {
       ...order,
       startDate,
       endDate,
+      plannedTimelineStart: plannedStartDate || startDate,
+      plannedTimelineEnd: plannedEndDate || endDate || plannedStartDate || startDate,
+      dispatchTimelineStart: isoDay(order.rescheduled_date || (["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(String(order.status || "")) ? order.scheduled_date : "")),
+      dispatchTimelineEnd: isoDay(order.rescheduled_end_date || (["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(String(order.status || "")) ? order.planned_end_date : "")),
       actualStartDate,
       actualEndDate,
       actualResultCount: orderResults.length,
@@ -12154,14 +12200,14 @@ function farmWorkDateRangeMatches(row = {}, startDate = "", endDate = "") {
   const start = isoDay(startDate);
   const end = isoDay(endDate);
   if (!start && !end) return true;
-  const rowStart = isoDay(row.startDate || row.scheduled_date);
-  const rowEnd = isoDay(row.endDate || row.rescheduled_date || row.scheduled_date || rowStart);
-  if (!rowStart && !rowEnd) return false;
-  const rowStartMs = farmDateMs(rowStart || rowEnd);
-  const rowEndMs = farmDateMs(rowEnd || rowStart);
-  if (start && rowEndMs < farmDateMs(start)) return false;
-  if (end && rowStartMs > farmDateMs(end)) return false;
-  return true;
+  return farmWorkTimelineSegments(row).some((segment) => {
+    const rowStartMs = farmDateMs(segment.start);
+    const rowEndMs = farmDateMs(segment.end || segment.start);
+    if (!rowStartMs && !rowEndMs) return false;
+    if (start && rowEndMs < farmDateMs(start)) return false;
+    if (end && rowStartMs > farmDateMs(end)) return false;
+    return true;
+  });
 }
 
 function filteredFarmWorkOrders() {
@@ -12239,6 +12285,59 @@ function farmWorkDayClass(day = "") {
     dayOfWeek === 1 ? "is-week-start" : "",
     dayOfMonth === 1 ? "is-month-start" : "",
   ].filter(Boolean).join(" ");
+}
+
+function farmWorkTimelineSegments(row = {}) {
+  const planStart = isoDay(row.plannedTimelineStart || row.startDate || row.scheduled_date);
+  let planEnd = isoDay(row.plannedTimelineEnd || row.endDate || planStart);
+  if (planStart && (!planEnd || farmDateMs(planEnd) < farmDateMs(planStart))) planEnd = planStart;
+  const status = String(row.status || "");
+  const hasDispatch = ["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(status) || row.rescheduled_date;
+  const dispatchStart = hasDispatch ? isoDay(row.dispatchTimelineStart || row.rescheduled_date || row.scheduled_date || "") : "";
+  let dispatchEnd = hasDispatch ? isoDay(row.dispatchTimelineEnd || row.rescheduled_end_date || row.planned_end_date || dispatchStart) : "";
+  if (dispatchStart && (!dispatchEnd || farmDateMs(dispatchEnd) < farmDateMs(dispatchStart))) dispatchEnd = dispatchStart;
+  const actualStart = isoDay(row.actualStartDate);
+  let actualEnd = isoDay(row.actualEndDate || actualStart);
+  if (actualStart && (!actualEnd || farmDateMs(actualEnd) < farmDateMs(actualStart))) actualEnd = actualStart;
+  const segments = [];
+  if (planStart) {
+    segments.push({
+      type: "planned",
+      label: "แผน",
+      className: "plan-layer",
+      start: planStart,
+      end: planEnd || planStart,
+      title: `วางแผน ${planStart} - ${planEnd || planStart}`,
+    });
+  }
+  if (dispatchStart) {
+    segments.push({
+      type: "dispatch",
+      label: "สั่งงาน",
+      className: "dispatch-layer",
+      start: dispatchStart,
+      end: dispatchEnd || dispatchStart,
+      title: `สั่งงาน ${dispatchStart} - ${dispatchEnd || dispatchStart}`,
+    });
+  }
+  if (actualStart) {
+    segments.push({
+      type: "actual",
+      label: row.statusMeta?.key === "closed" ? "ปิดงาน" : "ทำจริง",
+      className: "actual-layer",
+      start: actualStart,
+      end: actualEnd || actualStart,
+      title: `บันทึกงานจริง ${actualStart} - ${actualEnd || actualStart} (${fmt(row.actualResultCount || 0)} รายการ)`,
+    });
+  }
+  return segments;
+}
+
+function farmWorkTimelineRange(rows = []) {
+  const dates = rows.flatMap((row) => farmWorkTimelineSegments(row).flatMap((segment) => [segment.start, segment.end])).filter(Boolean);
+  if (!dates.length) return { minStart: farmToday(), maxEnd: farmToday() };
+  dates.sort((a, b) => farmDateMs(a) - farmDateMs(b));
+  return { minStart: dates[0], maxEnd: dates.at(-1) };
 }
 
 function farmWorkGroupKey(row) {
@@ -14003,6 +14102,7 @@ async function saveFarmDispatchOrder() {
   render();
   try {
     const now = new Date().toISOString();
+    const dispatchWarnings = [];
     const nextOrder = {
       ...order,
       id: order.readonly ? `override-${order.id}` : order.id,
@@ -14049,25 +14149,30 @@ async function saveFarmDispatchOrder() {
     await reconcileFarmWorkOrderChildren(materialTable, order.id, new Set(materialRows.map((row) => row.material_id)), "material_id");
     let issueDocId = "";
     if (materialRows.length) {
-      const issueDocNo = `GI-${farmShortWorkOrderNo(order).replace(/[^0-9A-Za-z-]/g, "")}-${date.replaceAll("-", "")}`.slice(0, 120);
-      const existingIssueDoc = farmRowsByKey("inventory_documents").find((row) => row.document_no === issueDocNo || row.work_order_id === order.id);
-      const issueDoc = {
-        id: existingIssueDoc?.id && farmLooksUuid(existingIssueDoc.id) ? existingIssueDoc.id : farmNewUuid(),
-        moduleId: "farm-inventory",
-        tableId: "inventory_documents",
-        document_no: issueDocNo,
-        doc_type: "issue",
-        doc_date: date,
-        work_order_id: order.id,
-        approved_by: "profile-admin",
-        status: "issued",
-        note: "สร้างจากหน้าสั่งงาน",
-        updatedAt: now,
-      };
-      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "inventory_documents" && row.document_no === issueDoc.document_no));
-      state.farmRecords.push(issueDoc);
-      const savedIssue = await persistFarmRowToDatabase(inventoryDocTable, issueDoc);
-      issueDocId = savedIssue.row?.id || issueDoc.id;
+      try {
+        const issueDocNo = `GI-${farmShortWorkOrderNo(order).replace(/[^0-9A-Za-z-]/g, "")}-${date.replaceAll("-", "")}`.slice(0, 120);
+        const existingIssueDoc = farmRowsByKey("inventory_documents").find((row) => row.document_no === issueDocNo || row.work_order_id === order.id);
+        const issueDoc = {
+          id: existingIssueDoc?.id && farmLooksUuid(existingIssueDoc.id) ? existingIssueDoc.id : farmNewUuid(),
+          moduleId: "farm-inventory",
+          tableId: "inventory_documents",
+          document_no: issueDocNo,
+          doc_type: "issue",
+          doc_date: date,
+          work_order_id: order.id,
+          approved_by: "profile-admin",
+          status: "issued",
+          note: "สร้างจากหน้าสั่งงาน",
+          updatedAt: now,
+        };
+        state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "inventory_documents" && row.document_no === issueDoc.document_no));
+        state.farmRecords.push(issueDoc);
+        const savedIssue = await persistFarmRowToDatabase(inventoryDocTable, issueDoc);
+        issueDocId = savedIssue.row?.id || issueDoc.id;
+      } catch (error) {
+        dispatchWarnings.push(`ยังไม่สร้างใบตัดจ่ายพัสดุ: ${error.message}`);
+        issueDocId = "";
+      }
     }
 
     for (const item of materialRows) {
@@ -14086,22 +14191,29 @@ async function saveFarmDispatchOrder() {
       state.farmRecords.push(materialRow);
       await persistFarmRowToDatabase(materialTable, materialRow);
 
-      const line = {
-        id: farmWorkOrderChildUuid("inventory_document_lines", (row) => row.document_id === issueDocId && row.item_id === farmDispatchInventoryItemForMaterial(item.material_id)),
-        moduleId: "farm-inventory",
-        tableId: "inventory_document_lines",
-        document_id: issueDocId,
-        line_no: item.line_no,
-        item_id: await ensureFarmInventoryItemForMaterial(item.material_id),
-        quantity: item.quantity,
-        unit_name: farmLookupLabel("units", item.unit_id),
-        work_order_id: order.id,
-        status: "issued",
-        updatedAt: now,
-      };
-      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "inventory_document_lines" && row.document_id === issueDocId && row.item_id === line.item_id));
-      state.farmRecords.push(line);
-      await persistFarmRowToDatabase(inventoryLineTable, line);
+      if (issueDocId) {
+        try {
+          const line = {
+            id: farmWorkOrderChildUuid("inventory_document_lines", (row) => row.document_id === issueDocId && row.item_id === farmDispatchInventoryItemForMaterial(item.material_id)),
+            moduleId: "farm-inventory",
+            tableId: "inventory_document_lines",
+            document_id: issueDocId,
+            line_no: item.line_no,
+            item_id: await ensureFarmInventoryItemForMaterial(item.material_id),
+            quantity: item.quantity,
+            unit_name: farmLookupLabel("units", item.unit_id),
+            work_order_id: order.id,
+            status: "issued",
+            updatedAt: now,
+          };
+          state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "inventory_document_lines" && row.document_id === issueDocId && row.item_id === line.item_id));
+          state.farmRecords.push(line);
+          await persistFarmRowToDatabase(inventoryLineTable, line);
+        } catch (error) {
+          dispatchWarnings.push(`ยังไม่บันทึกรายการตัดจ่ายพัสดุ: ${error.message}`);
+          issueDocId = "";
+        }
+      }
     }
 
     await reconcileFarmWorkOrderChildren(machineTable, order.id, new Set(machineRows.map((row) => row.vehicle_id)), "vehicle_id");
@@ -14128,8 +14240,8 @@ async function saveFarmDispatchOrder() {
     saveFarmRecords();
     state.farmWorkDetailId = order.id;
     state.farmDispatchWorkOrderId = order.id;
-    state.farmSyncStatus = "success";
-    state.farmSyncMessage = `บันทึกสั่งงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · คนงาน ${fmt(checkedWorkers.length)} คน · พัสดุ ${fmt(materialRows.length)} รายการ · รถ/เครื่องจักร ${fmt(machineRows.length)} รายการ`;
+    state.farmSyncStatus = dispatchWarnings.length ? "warning" : "success";
+    state.farmSyncMessage = `บันทึกสั่งงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · คนงาน ${fmt(checkedWorkers.length)} คน · พัสดุ ${fmt(materialRows.length)} รายการ · รถ/เครื่องจักร ${fmt(machineRows.length)} รายการ${dispatchWarnings.length ? ` · ${dispatchWarnings[0]}` : ""}`;
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `บันทึกสั่งงานไม่สำเร็จ: ${error.message}`;
@@ -15917,8 +16029,7 @@ function renderFarmWorkBoard(options = {}) {
     || allRows[0]
     || null;
   if (!state.farmWorkDetailId && selected?.id) state.farmWorkDetailId = selected.id;
-  const minStart = rows.reduce((min, row) => !min || farmDateMs(row.startDate) < farmDateMs(min) ? row.startDate : min, rows[0]?.startDate || farmToday());
-  const maxEnd = rows.reduce((max, row) => farmDateMs(row.endDate) > farmDateMs(max) ? row.endDate : max, rows[0]?.endDate || minStart);
+  const { minStart, maxEnd } = farmWorkTimelineRange(rows);
   const filterStart = isoDay(state.farmWorkFilters.startDate);
   const filterEnd = isoDay(state.farmWorkFilters.endDate);
   const timelineStart = filterStart || farmAddDays(minStart, -2) || farmToday();
@@ -16029,21 +16140,22 @@ function renderFarmWorkBoard(options = {}) {
                   </div>`;
               }
               const row = item.row;
-              const startIndex = Math.max(0, farmDaysBetween(timelineStart, row.startDate || timelineStart));
-              const span = Math.max(1, farmDaysBetween(row.startDate || timelineStart, row.endDate || row.startDate || timelineStart) + 1);
-              const originalIndex = row.original_scheduled_date ? Math.max(0, farmDaysBetween(timelineStart, row.original_scheduled_date)) : -1;
-              const originalSpan = Math.max(1, farmDaysBetween(row.original_scheduled_date || row.startDate || timelineStart, row.planned_end_date || row.original_scheduled_date || row.startDate || timelineStart) + 1);
+              const segments = farmWorkTimelineSegments(row);
+              const planSegment = segments.find((segment) => segment.type === "planned");
+              const startIndex = Math.max(0, farmDaysBetween(timelineStart, planSegment?.start || row.startDate || timelineStart));
+              const span = Math.max(1, farmDaysBetween(planSegment?.start || row.startDate || timelineStart, planSegment?.end || row.endDate || row.startDate || timelineStart) + 1);
               const approvedIndex = row.approved_at ? Math.max(0, farmDaysBetween(timelineStart, row.approved_at)) : -1;
               const closedIndex = row.closed_at ? Math.max(0, farmDaysBetween(timelineStart, row.closed_at)) : -1;
-              const actualIndex = row.actualStartDate ? Math.max(0, farmDaysBetween(timelineStart, row.actualStartDate)) : -1;
-              const actualSpan = row.actualStartDate ? Math.max(1, farmDaysBetween(row.actualStartDate, row.actualEndDate || row.actualStartDate) + 1) : 0;
               const needsApproval = row.statusMeta.key === "pending_approval";
-              const hasApprovedPlan = true;
-              const showDraftPlan = false;
-              const planStateClass = row.statusMeta.key === "sent_to_mobile" ? "dispatched" : row.statusMeta.key === "rescheduled" ? "rescheduled" : "";
               const activityText = farmShortActivityText(row);
               const blockText = farmShortBlockText(row);
               const teamText = row.team?.team_name || farmLookupLabel("teams", row.team_id) || "-";
+              const segmentBars = segments.map((segment) => {
+                const segmentStartIndex = Math.max(0, farmDaysBetween(timelineStart, segment.start || timelineStart));
+                const segmentSpan = Math.max(1, farmDaysBetween(segment.start || timelineStart, segment.end || segment.start || timelineStart) + 1);
+                const barClass = segment.type === "actual" ? "farm-work-actual-bar" : "farm-work-plan-bar";
+                return `<button class="${barClass} ${esc(segment.className)}" type="button" data-farm-work-detail="${esc(row.id)}" title="${esc(segment.title)}" style="left:${segmentStartIndex * dayWidth}px;width:${Math.max(dayWidth, segmentSpan * dayWidth)}px"><span>${esc(segment.label)}</span></button>`;
+              }).join("");
               return `
                 <div class="farm-work-row status-${esc(row.statusMeta.key)}${selected?.id === row.id ? " active" : ""}" data-farm-work-detail="${esc(row.id)}">
                   <button type="button" class="farm-work-left">
@@ -16053,9 +16165,7 @@ function renderFarmWorkBoard(options = {}) {
                     <i style="--status:${esc(row.statusMeta.color)}">${esc(row.statusMeta.label)}</i>
                   </button>
                   <div class="farm-work-lane" style="width:${timelineWidth}px;--day-width:${dayWidth}px">
-                    ${showDraftPlan ? `<button class="farm-work-plan-bar draft ${needsApproval ? "needs-approval" : ""}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนก่อนอนุมัติ ${esc(row.original_scheduled_date || row.startDate || "-")} - ${esc(row.planned_end_date || row.endDate || "-")}" style="left:${(originalIndex >= 0 ? originalIndex : startIndex) * dayWidth}px;width:${Math.max(dayWidth, (originalIndex >= 0 ? originalSpan : span) * dayWidth)}px"><span>${needsApproval ? "รออนุมัติ" : "แผน"}</span></button>` : ""}
-                    ${hasApprovedPlan ? `<button class="farm-work-plan-bar approved ${esc(planStateClass)}" type="button" data-farm-work-detail="${esc(row.id)}" title="แผนอนุมัติแล้ว ${esc(row.startDate || "-")} - ${esc(row.endDate || "-")}${row.repeat_occurrence_total > 1 ? ` · รอบ ${esc(row.repeat_occurrence_no || "-")}/${esc(row.repeat_occurrence_total)}` : ""}" style="left:${startIndex * dayWidth}px;width:${Math.max(dayWidth, span * dayWidth)}px">${row.statusMeta.key === "sent_to_mobile" ? `<i class="farm-work-dispatch-fill" aria-hidden="true"></i>` : ""}<span>${row.repeat_occurrence_total > 1 ? `รอบ ${esc(row.repeat_occurrence_no || "-")}/${esc(row.repeat_occurrence_total)}` : row.statusMeta.key === "sent_to_mobile" ? "สั่งงาน" : "อนุมัติ"}</span></button>` : ""}
-                    ${actualIndex >= 0 ? `<button class="farm-work-actual-bar" type="button" data-farm-work-detail="${esc(row.id)}" title="บันทึกงานจริง ${esc(row.actualStartDate || "-")} - ${esc(row.actualEndDate || "-")} (${fmt(row.actualResultCount)} รายการ)" style="left:${actualIndex * dayWidth}px;width:${Math.max(dayWidth, actualSpan * dayWidth)}px"><span>${row.statusMeta.key === "closed" ? "ปิดงาน" : "ทำจริง"}</span></button>` : ""}
+                    ${segmentBars}
                     ${needsApproval ? `<button class="farm-work-milestone approval" type="button" data-farm-work-detail="${esc(row.id)}" title="ต้องอนุมัติ" style="left:${startIndex * dayWidth + Math.max(10, span * dayWidth - 12)}px"></button>` : ""}
                     ${approvedIndex >= 0 ? `<i class="farm-work-milestone approved" title="อนุมัติ ${esc(row.approved_at)}" style="left:${approvedIndex * dayWidth + 10}px"></i>` : ""}
                     ${closedIndex >= 0 ? `<i class="farm-work-milestone closed" title="ปิดงาน ${esc(row.closed_at)}" style="left:${closedIndex * dayWidth + 10}px"></i>` : ""}
