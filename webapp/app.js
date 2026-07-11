@@ -12803,13 +12803,15 @@ function farmWorkPlanEmployeeIdsFromSelection(selectedWorkers = [], teamId = "")
     .filter((value) => String(value).startsWith("employee:"))
     .map((value) => String(value).slice(9))
     .filter(Boolean);
-  const teamIds = farmBudgetUnique([
-    teamId,
-    ...selected.filter((value) => String(value).startsWith("team:")).map((value) => String(value).slice(5)),
-  ].filter(Boolean));
+  const selectedTeamIds = selected.filter((value) => String(value).startsWith("team:")).map((value) => String(value).slice(5));
+  const teamIds = farmBudgetUnique((selectedTeamIds.length || directEmployees.length ? selectedTeamIds : [teamId]).filter(Boolean));
+  const excludedEmployees = new Set((selectedWorkers || [])
+    .filter((value) => String(value).startsWith("exclude:"))
+    .map((value) => String(value).split(":")[2])
+    .filter(Boolean));
   const teamEmployees = teamIds.flatMap((id) =>
     farmRowsByKey("team_members").filter((row) => row.team_id === id).map((row) => row.employee_id).filter(Boolean)
-  );
+  ).filter((employeeId) => !excludedEmployees.has(String(employeeId)));
   return farmBudgetUnique([...teamEmployees, ...directEmployees].map((id) =>
     farmResolveRecordId("employees", id, ["employee_code", "full_name"])
   ).filter(Boolean));
@@ -13530,7 +13532,7 @@ function farmDispatchWorkerRow(employeeId = "", sourceRow = {}, preferredTeamId 
 function farmDispatchWorkerCandidates(order, teamId = "") {
   const existingWorkerRows = farmRowsByKey("work_order_workers")
     .filter((row) => String(row.work_order_id || "") === String(order?.id || ""));
-  const machineDriverRows = farmRowsByKey("work_order_machines")
+  const machineDriverRows = existingWorkerRows.length ? [] : farmRowsByKey("work_order_machines")
     .filter((row) => String(row.work_order_id || "") === String(order?.id || "") && row.driver_employee_id)
     .map((row) => ({
       employee_id: row.driver_employee_id,
@@ -17952,6 +17954,7 @@ function renderFarmBudgetWorkerTree(picks = farmBudgetContractState()) {
     if (!teamMatches && !members.length) return "";
     const teamValue = `team:${team.id}`;
     const teamChecked = picks.selectedWorkers.includes(teamValue);
+    const hasSelectedMember = members.some((employee) => picks.selectedWorkers.includes(`employee:${employee.id}`));
     const teamInputId = farmBudgetCheckId("worker", teamValue);
     return `
       <details open>
@@ -17960,7 +17963,7 @@ function renderFarmBudgetWorkerTree(picks = farmBudgetContractState()) {
           <span>${esc(farmBudgetWorkerLabel(team))}</span>
           <small>${fmt(members.length)} คน</small>
         </summary>
-        ${teamChecked ? `<div class="budget-tree-nested">
+        ${teamChecked || hasSelectedMember ? `<div class="budget-tree-nested">
           ${members.map((employee) => renderBudgetTeamMemberCheckbox(team.id, employee, picks.selectedWorkers, employee._memberRole || employee.payment_type || employee.worker_type || "")).join("") || `<div class="budget-tree-empty">ทีมนี้ยังไม่มีสมาชิก</div>`}
         </div>` : ""}
       </details>`;
