@@ -12332,6 +12332,16 @@ function syncFarmWorkOrderToPlanner(order = {}) {
   const orderWorkers = farmRowsByKey("work_order_workers").filter((row) => String(row.work_order_id || "") === String(order.id));
   const rateMaterials = rate ? farmBudgetRateRelations("budget_rate_materials", rate) : [];
   const rateRoles = rate ? farmBudgetRateRelations("budget_rate_roles", rate) : [];
+  const explicitWorkerSelections = farmBudgetUnique([
+    ...orderWorkers.map((row) => row.employee_id ? `employee:${row.employee_id}` : "").filter(Boolean),
+    ...orderMachines.map((row) => row.driver_employee_id ? `employee:${row.driver_employee_id}` : "").filter(Boolean),
+  ].filter(Boolean));
+  const fallbackWorkerSelections = explicitWorkerSelections.length
+    ? []
+    : [
+      order.team_id ? `team:${order.team_id}` : "",
+      ...rateRoles.map(farmBudgetMapWorkerSelection).filter(Boolean),
+    ].filter(Boolean);
   picks.selectedBlocks = farmBudgetUnique((blockId ? [blockId] : rateBlockIds).filter(Boolean));
   picks.selectedActivities = activityId ? [activityId] : [];
   picks.selectedMaterials = farmBudgetUnique([
@@ -12339,12 +12349,7 @@ function syncFarmWorkOrderToPlanner(order = {}) {
     ...rateMaterials.map(farmBudgetMapMaterialSelection).filter(Boolean),
   ]);
   picks.selectedVehicles = farmBudgetUnique(orderMachines.map((row) => row.vehicle_id).filter(Boolean));
-  picks.selectedWorkers = farmBudgetUnique([
-    order.team_id ? `team:${order.team_id}` : "",
-    ...orderWorkers.map((row) => row.employee_id ? `employee:${row.employee_id}` : "").filter(Boolean),
-    ...orderMachines.map((row) => row.driver_employee_id ? `employee:${row.driver_employee_id}` : "").filter(Boolean),
-    ...rateRoles.map(farmBudgetMapWorkerSelection).filter(Boolean),
-  ].filter(Boolean));
+  picks.selectedWorkers = farmBudgetUnique([...explicitWorkerSelections, ...fallbackWorkerSelections].filter(Boolean));
   picks.selectedBudgetRateId = order.budget_rate_id || picks.selectedBudgetRateId || "";
   picks.startDate = order.planned_start_date || order.scheduled_date || order.startDate || picks.startDate || farmToday();
   picks.endDate = order.planned_end_date || order.rescheduled_date || order.endDate || picks.startDate;
@@ -13523,7 +13528,22 @@ function farmDispatchWorkerRow(employeeId = "", sourceRow = {}, preferredTeamId 
 }
 
 function farmDispatchWorkerCandidates(order, teamId = "") {
-  const existing = farmRowsByKey("work_order_workers").filter((row) => row.work_order_id === order?.id);
+  const existingWorkerRows = farmRowsByKey("work_order_workers")
+    .filter((row) => String(row.work_order_id || "") === String(order?.id || ""));
+  const machineDriverRows = farmRowsByKey("work_order_machines")
+    .filter((row) => String(row.work_order_id || "") === String(order?.id || "") && row.driver_employee_id)
+    .map((row) => ({
+      employee_id: row.driver_employee_id,
+      role: row.vehicle_id ? `คนขับรถ · ${farmLookupLabel("vehicles", row.vehicle_id)}` : "คนขับรถ",
+      team_id: teamId || order?.team_id || "",
+    }));
+  const seenExistingWorkers = new Set();
+  const existing = [...existingWorkerRows, ...machineDriverRows].filter((row) => {
+    const employeeId = String(row.employee_id || "");
+    if (!employeeId || seenExistingWorkers.has(employeeId)) return false;
+    seenExistingWorkers.add(employeeId);
+    return true;
+  });
   const useTeamRows = Boolean(state.farmDispatchTeamId && state.farmDispatchTeamId !== order?.team_id);
   const teamMembers = farmRowsByKey("team_members").filter((row) => row.team_id === (teamId || order?.team_id));
   const baseRows = !useTeamRows && existing.length ? existing : teamMembers;
