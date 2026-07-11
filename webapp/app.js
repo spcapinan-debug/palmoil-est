@@ -111,6 +111,16 @@
   sidebarCollapsed: localStorage.getItem("sidebarIconRailExpandedV2") !== "1",
 };
 
+const farmDerivedCache = {
+  workOrders: null,
+  dispatchApprovedOrders: null,
+};
+
+function resetFarmDerivedCaches() {
+  farmDerivedCache.workOrders = null;
+  farmDerivedCache.dispatchApprovedOrders = null;
+}
+
 const els = {
   appShell: document.querySelector(".app-shell"),
   sidebar: document.querySelector("#appSidebar"),
@@ -12069,11 +12079,12 @@ function farmCanonicalWorkOrderRows(rows = []) {
 }
 
 function farmWorkOrders() {
+  if (farmDerivedCache.workOrders) return farmDerivedCache.workOrders;
   const orders = farmCanonicalWorkOrderRows(farmRows(farmTableByKey("work_orders")));
   const blocks = farmRows(farmTableByKey("blocks"));
   const areaBlocks = farmRowsByKey("areas").filter((area) => !area.area_level || area.area_level === "block");
   const results = farmRows(farmTableByKey("work_results"));
-  return orders.map((order) => {
+  farmDerivedCache.workOrders = orders.map((order) => {
     const resolvedBlockId = farmResolveBlockIdForPlanner(order);
     const block = areaBlocks.find((item) => item.id === resolvedBlockId)
       || farmLookup("blocks", resolvedBlockId)
@@ -12127,6 +12138,7 @@ function farmWorkOrders() {
       statusMeta: farmWorkStatusMeta(order),
     };
   }).sort((a, b) => farmDateMs(a.startDate) - farmDateMs(b.startDate));
+  return farmDerivedCache.workOrders;
 }
 
 function farmWorkFilterOptions(rows, key, labelFallback = "ไม่ระบุ") {
@@ -12368,8 +12380,10 @@ function farmDispatchPrintSelectedSet(rows = []) {
 }
 
 function farmDispatchApprovedOrders() {
-  return farmWorkOrders().filter((row) => ["approved", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(row.statusMeta?.key || row.status)
+  if (farmDerivedCache.dispatchApprovedOrders) return farmDerivedCache.dispatchApprovedOrders;
+  farmDerivedCache.dispatchApprovedOrders = farmWorkOrders().filter((row) => ["approved", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(row.statusMeta?.key || row.status)
     || String(row.approval_status || "").toLowerCase() === "approved");
+  return farmDerivedCache.dispatchApprovedOrders;
 }
 
 function farmDispatchListFilterOptions(rows = [], key = "") {
@@ -13707,13 +13721,13 @@ async function saveFarmWorkPlanEditFromSelection() {
 }
 
 function farmDispatchCandidateOrders() {
-  const rows = farmWorkOrders();
+  const approvedRows = farmDispatchApprovedOrders();
+  const rows = approvedRows.length ? approvedRows : farmWorkOrders();
   const preferred = rows.filter((row) => !["closed", "completed", "rejected"].includes(row.statusMeta.key));
-  return preferred.length ? preferred : rows.length ? rows : farmWorkOrders();
+  return preferred.length ? preferred : rows;
 }
 
-function farmDispatchSelectedOrder() {
-  const rows = farmDispatchCandidateOrders();
+function farmDispatchSelectedOrder(rows = farmDispatchCandidateOrders()) {
   const selectedId = state.farmDispatchWorkOrderId || state.farmWorkDetailId;
   const selected = rows.find((row) => row.id === selectedId) || farmWorkOrders().find((row) => row.id === selectedId) || rows[0] || null;
   if (selected && state.farmDispatchWorkOrderId !== selected.id) state.farmDispatchWorkOrderId = selected.id;
@@ -14130,7 +14144,7 @@ function farmDispatchMachineCandidates(order) {
 
 function renderFarmDispatchPanel() {
   const orders = farmDispatchCandidateOrders();
-  const order = farmDispatchSelectedOrder();
+  const order = farmDispatchSelectedOrder(orders);
   const teams = farmRowsByKey("teams");
   const activeTeamId = state.farmDispatchTeamId || order?.team_id || "";
   const workers = farmDispatchWorkerCandidates(order, activeTeamId);
@@ -16490,7 +16504,9 @@ function renderFarmWorkOrderList() {
             ${rows.map((row) => `
               <tr class="farm-editable-row" data-farm-row="${esc(row.id)}" data-farm-work-order-row="${esc(row.id)}" title="ดับเบิลคลิกเพื่อแก้ไข">
                 ${state.view === "farm-dispatch" ? `<td class="farm-check-col"><input type="checkbox" data-farm-dispatch-print-row="${esc(row.id)}" ${selectedPrintRows.has(String(row.id)) ? "checked" : ""}></td>` : ""}
-                <td>${renderFarmQrInline(row, "list")}</td>
+                <td>${state.view === "farm-dispatch"
+                  ? `<strong>${esc(row.shortNo || farmShortWorkOrderNo(row))}</strong><small>${esc(row.work_order_no && row.work_order_no !== (row.shortNo || farmShortWorkOrderNo(row)) ? row.work_order_no : "")}</small>`
+                  : renderFarmQrInline(row, "list")}</td>
                 <td><strong>${esc(farmWorkOrderShortTitle(row))}</strong><small>${esc(row.work_order_title && row.work_order_title !== farmWorkOrderShortTitle(row) ? farmShortWorkOrderNo(row) : "")}</small></td>
                 <td>${esc([row.plot?.plot_code || row.plot_group?.group_code, row.block?.block_code || row.block?.area_code, row.block?.ap_code || row.block?.AP_code].filter(Boolean).join(" / ") || "-")}</td>
                 <td>${esc(row.activity?.activity_name || farmLookupLabel("activities", row.activity_id) || "-")}</td>
@@ -20201,6 +20217,7 @@ function renderClear() {
 }
 
 function render() {
+  resetFarmDerivedCaches();
   syncGlobalFilterBar();
   for (const btn of els.tabs.querySelectorAll("button[data-view]")) {
     btn.classList.toggle("active", btn.dataset.view === state.view);
