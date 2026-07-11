@@ -94,6 +94,8 @@
   farmWorkDetailId: "",
   farmDispatchWorkOrderId: "",
   farmDispatchLastOrderId: "",
+  farmDispatchPrintSelectedIds: [],
+  farmDispatchPrintColumns: { activity: true, zone: true, plotGroup: true, period: true },
   farmInventoryIssueSelection: "",
   farmDispatchTeamId: "",
   farmDispatchExtraWorkers: [],
@@ -12352,6 +12354,65 @@ function farmWorkGroupKey(row) {
   return parts.length ? parts.join(" / ") : "Work Order ทั้งหมด";
 }
 
+function farmWorkOrderShortTitle(row = {}) {
+  const activity = farmShortActivityText(row);
+  const block = farmShortBlockText(row);
+  const zone = farmWorkTextOption(row, "zone").label;
+  const parts = [activity, block && block !== "-" ? block : "", zone && zone !== "-" ? zone : ""].filter(Boolean);
+  return parts.join(" · ") || farmShortWorkOrderNo(row) || "-";
+}
+
+function farmDispatchPrintSelectedSet(rows = []) {
+  const valid = new Set(rows.map((row) => String(row.id || "")));
+  return new Set((state.farmDispatchPrintSelectedIds || []).filter((id) => valid.has(String(id))));
+}
+
+function renderFarmDispatchPrintHeader(rows = []) {
+  if (state.view !== "farm-dispatch") return "";
+  const selected = farmDispatchPrintSelectedSet(rows);
+  const allSelected = rows.length && rows.every((row) => selected.has(String(row.id)));
+  const cols = state.farmDispatchPrintColumns || {};
+  const criterion = (key, label) => `
+    <label class="farm-dispatch-print-criterion">
+      <input type="checkbox" data-farm-dispatch-print-column="${esc(key)}" ${cols[key] !== false ? "checked" : ""}>
+      ${esc(label)}
+    </label>`;
+  return `
+    <div class="farm-dispatch-bulk-print">
+      <div class="farm-dispatch-bulk-left">
+        <label class="farm-dispatch-row-check">
+          <input type="checkbox" data-farm-dispatch-print-all ${allSelected ? "checked" : ""}>
+          เลือกทั้งหมดที่แสดง
+        </label>
+        ${criterion("activity", "กิจกรรม")}
+        ${criterion("zone", "โซน")}
+        ${criterion("plotGroup", "แปลง")}
+        ${criterion("period", "ช่วงเวลา")}
+      </div>
+      <button type="button" data-farm-dispatch-bulk-print ${selected.size ? "" : "disabled"}>พิมพ์ใบสั่งงานที่เลือก ${selected.size ? fmt(selected.size) : ""}</button>
+    </div>`;
+}
+
+function renderFarmDispatchBulkPrint(rows = []) {
+  if (state.view !== "farm-dispatch") return "";
+  const selected = farmDispatchPrintSelectedSet(rows);
+  const selectedRows = rows.filter((row) => selected.has(String(row.id)));
+  if (!selectedRows.length) return `<section class="farm-dispatch-bulk-print-pages" aria-hidden="true"></section>`;
+  return `
+    <section class="farm-dispatch-bulk-print-pages" aria-label="พิมพ์ใบสั่งงานหลายใบ">
+      ${selectedRows.map((order) => {
+        const team = farmLookup("teams", order.team_id) || {};
+        const supervisor = farmLookup("employees", team.supervisor_employee_id) || {};
+        const workers = farmDispatchWorkerCandidates(order, order.team_id);
+        const materials = farmDispatchMaterialCandidates(order);
+        const machines = farmDispatchMachineCandidates(order);
+        const dispatchDate = order.rescheduled_date || order.scheduled_date || order.planned_start_date || farmToday();
+        const orderArea = [order.plot?.plot_code, order.block?.block_code || order.block?.block_name, order.block?.ap_code || order.block?.AP_code].filter(Boolean).join(" / ") || "-";
+        return `<div class="farm-dispatch-print-page">${renderFarmDispatchPrintPreview(order, { team, supervisor, workers, materials, machines, dispatchDate, orderArea })}</div>`;
+      }).join("")}
+    </section>`;
+}
+
 function farmLooksUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 }
@@ -14427,6 +14488,13 @@ function printFarmDispatchOrder() {
   window.setTimeout(() => document.body.classList.remove("print-farm-dispatch"), 400);
 }
 
+function printFarmDispatchBulkOrders() {
+  if (!farmDispatchPrintSelectedSet(farmWorkOrders()).size) return;
+  document.body.classList.add("print-farm-dispatch-bulk");
+  window.print();
+  window.setTimeout(() => document.body.classList.remove("print-farm-dispatch-bulk"), 400);
+}
+
 function syncFarmDispatchPrintPreviewFromForm() {
   const print = document.querySelector(".farm-dispatch-print");
   if (!print) return;
@@ -16352,16 +16420,19 @@ function renderFarmWorkOrderList() {
   const rows = state.view === "farm-dispatch" ? farmWorkOrders()
     : state.view === "farm-result" ? farmResultCandidateOrders()
       : filteredFarmWorkOrders();
+  const selectedPrintRows = farmDispatchPrintSelectedSet(rows);
   return `
     <section class="farm-panel farm-work-order-list">
       <div class="section-head">
         <h3>ตารางรายการ Work Order</h3>
         <span>${fmt(rows.length)} รายการ · ดับเบิลคลิกแถวเพื่อแก้ไข / ลบ</span>
       </div>
+      ${renderFarmDispatchPrintHeader(rows)}
       <div class="table-wrap farm-table-wrap">
         <table class="mini-table farm-table">
           <thead>
             <tr>
+              ${state.view === "farm-dispatch" ? `<th class="farm-check-col">เลือก</th>` : ""}
               <th>WO</th>
               <th>งาน</th>
               <th>พื้นที่</th>
@@ -16377,8 +16448,9 @@ function renderFarmWorkOrderList() {
           <tbody>
             ${rows.map((row) => `
               <tr class="farm-editable-row" data-farm-row="${esc(row.id)}" data-farm-work-order-row="${esc(row.id)}" title="ดับเบิลคลิกเพื่อแก้ไข">
+                ${state.view === "farm-dispatch" ? `<td class="farm-check-col"><input type="checkbox" data-farm-dispatch-print-row="${esc(row.id)}" ${selectedPrintRows.has(String(row.id)) ? "checked" : ""}></td>` : ""}
                 <td>${renderFarmQrInline(row, "list")}</td>
-                <td>${esc(row.work_order_title || "-")}</td>
+                <td><strong>${esc(farmWorkOrderShortTitle(row))}</strong><small>${esc(row.work_order_title && row.work_order_title !== farmWorkOrderShortTitle(row) ? farmShortWorkOrderNo(row) : "")}</small></td>
                 <td>${esc([row.plot?.plot_code || row.plot_group?.group_code, row.block?.block_code || row.block?.area_code, row.block?.ap_code || row.block?.AP_code].filter(Boolean).join(" / ") || "-")}</td>
                 <td>${esc(row.activity?.activity_name || farmLookupLabel("activities", row.activity_id) || "-")}</td>
                 <td>${esc(farmOrderSurveyAttachment(row)?.survey_template_code || farmSurveyForOrder(row)?.template_code || "-")}</td>
@@ -16387,10 +16459,11 @@ function renderFarmWorkOrderList() {
                 <td>${esc(row.scheduled_date || "-")}</td>
                 <td class="num">${fmt(farmWorkProgress(row))}%</td>
                 <td><span class="status-pill" style="border-color:${esc(row.statusMeta.color)};color:${esc(row.statusMeta.color)}">${esc(row.statusMeta.label)}</span></td>
-              </tr>`).join("") || `<tr><td colspan="10">ไม่พบ Work Order ตามตัวกรอง</td></tr>`}
+              </tr>`).join("") || `<tr><td colspan="${state.view === "farm-dispatch" ? 11 : 10}">ไม่พบ Work Order ตามตัวกรอง</td></tr>`}
           </tbody>
         </table>
       </div>
+      ${renderFarmDispatchBulkPrint(rows)}
     </section>`;
 }
 
@@ -21160,6 +21233,36 @@ async function init() {
     }
     if (e.target.closest("[data-farm-dispatch-print]")) {
       printFarmDispatchOrder();
+      return;
+    }
+    const dispatchPrintRow = e.target.closest("[data-farm-dispatch-print-row]");
+    if (dispatchPrintRow) {
+      const id = dispatchPrintRow.dataset.farmDispatchPrintRow;
+      const current = new Set(state.farmDispatchPrintSelectedIds || []);
+      if (dispatchPrintRow.checked) current.add(id);
+      else current.delete(id);
+      state.farmDispatchPrintSelectedIds = [...current];
+      render();
+      return;
+    }
+    const dispatchPrintAll = e.target.closest("[data-farm-dispatch-print-all]");
+    if (dispatchPrintAll) {
+      const ids = (state.view === "farm-dispatch" ? farmWorkOrders() : []).map((row) => row.id).filter(Boolean);
+      state.farmDispatchPrintSelectedIds = dispatchPrintAll.checked ? ids : [];
+      render();
+      return;
+    }
+    const dispatchPrintColumn = e.target.closest("[data-farm-dispatch-print-column]");
+    if (dispatchPrintColumn) {
+      state.farmDispatchPrintColumns = {
+        ...(state.farmDispatchPrintColumns || {}),
+        [dispatchPrintColumn.dataset.farmDispatchPrintColumn]: dispatchPrintColumn.checked,
+      };
+      render();
+      return;
+    }
+    if (e.target.closest("[data-farm-dispatch-bulk-print]")) {
+      printFarmDispatchBulkOrders();
       return;
     }
     if (e.target.closest("[data-farm-survey-print]")) {

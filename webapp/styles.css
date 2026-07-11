@@ -8461,6 +8461,72 @@ tfoot td {
   max-height: 420px;
 }
 
+.farm-dispatch-bulk-print {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.farm-dispatch-bulk-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.farm-dispatch-row-check,
+.farm-dispatch-print-criterion {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.farm-check-col {
+  width: 48px;
+  min-width: 48px;
+  text-align: center !important;
+}
+
+.farm-dispatch-bulk-print button {
+  border: 0;
+  border-radius: 8px;
+  background: var(--navy);
+  color: #fff;
+  padding: 9px 14px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.farm-dispatch-bulk-print button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.farm-work-order-list .farm-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-dispatch-bulk-print-pages {
+  display: none;
+}
+
 .farm-work-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -10345,6 +10411,47 @@ td.num,
 
   body.print-farm-dispatch .farm-dispatch-print table {
     page-break-inside: auto;
+  }
+
+  body.print-farm-dispatch-bulk .sidebar,
+  body.print-farm-dispatch-bulk .content-head,
+  body.print-farm-dispatch-bulk .date-panel,
+  body.print-farm-dispatch-bulk .global-filter-panel,
+  body.print-farm-dispatch-bulk .report-page > *:not(.farm-work-order-list),
+  body.print-farm-dispatch-bulk .farm-work-order-list > *:not(.farm-dispatch-bulk-print-pages) {
+    display: none !important;
+  }
+
+  body.print-farm-dispatch-bulk .content,
+  body.print-farm-dispatch-bulk .report-page,
+  body.print-farm-dispatch-bulk .farm-work-order-list {
+    display: block !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body.print-farm-dispatch-bulk .farm-dispatch-bulk-print-pages {
+    display: block !important;
+  }
+
+  body.print-farm-dispatch-bulk .farm-dispatch-print-page {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  body.print-farm-dispatch-bulk .farm-dispatch-print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  body.print-farm-dispatch-bulk .farm-dispatch-print {
+    display: grid !important;
+    border: 0 !important;
+    padding: 0 !important;
+    color: #000 !important;
   }
 
   body.print-farm-issue .sidebar,
