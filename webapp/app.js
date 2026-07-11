@@ -13717,10 +13717,50 @@ function renderFarmDispatchVehicleOptions(selectedIds = new Set()) {
   return grouped || `<option value="">ไม่มีรถ/เครื่องจักรให้เพิ่ม</option>`;
 }
 
+function renderFarmDispatchVehicleSelectOptions(selectedId = "") {
+  const vehicleTable = farmTableByKey("vehicles");
+  const vehicles = farmRowsByKey("vehicles").filter((row) => row.id);
+  const groups = farmBudgetGroupCount(vehicles, (row) => row.vehicle_type || row.item_type || "ไม่ระบุประเภท");
+  const grouped = groups.map((group) => {
+    const rows = vehicles.filter((vehicle) => (vehicle.vehicle_type || vehicle.item_type || "ไม่ระบุประเภท") === group.label);
+    if (!rows.length) return "";
+    return `<optgroup label="${esc(group.label)}">${rows.map((vehicle) => `<option value="${esc(vehicle.id)}"${String(vehicle.id) === String(selectedId) ? " selected" : ""}>${esc(farmRecordLabel(vehicleTable, vehicle))}</option>`).join("")}</optgroup>`;
+  }).join("");
+  return grouped || `<option value="">ไม่มีรถ/เครื่องจักร</option>`;
+}
+
+function farmDispatchDriverTeamRows() {
+  const teams = farmRowsByKey("teams");
+  const driverTeam = teams.find((team) => farmNormalizeKey(team.team_code) === "b01")
+    || teams.find((team) => String(team.team_type || "").toLowerCase() === "driver")
+    || teams.find((team) => /ทีม.*รถ|คนรถ|รถ/i.test(`${team.team_code || ""} ${team.team_name || ""}`));
+  if (!driverTeam) return [];
+  const employeeTable = farmTableByKey("employees");
+  return farmRowsByKey("team_members")
+    .filter((member) => String(member.team_id || "") === String(driverTeam.id || "") && String(member.is_active) !== "false")
+    .map((member) => farmLookup("employees", member.employee_id))
+    .filter((employee) => employee?.id)
+    .map((employee) => ({ ...employee, _dispatchDriverTeamName: farmRecordLabel(farmTableByKey("teams"), driverTeam), _dispatchDriverLabel: farmRecordLabel(employeeTable, employee) }));
+}
+
+function farmDispatchPreferredDriverId(selectedId = "") {
+  if (selectedId) return selectedId;
+  return farmDispatchDriverTeamRows()[0]?.id || "";
+}
+
 function renderFarmDispatchDriverOptions(selectedId = "") {
   const employeeTable = farmTableByKey("employees");
+  const driverTeamRows = farmDispatchDriverTeamRows();
+  const driverIds = new Set(driverTeamRows.map((row) => row.id));
   const employees = farmRowsByKey("employees").filter((row) => row.id);
-  return `<option value="">เลือกคนขับ</option>${employees.map((employee) => `<option value="${esc(employee.id)}"${String(employee.id) === String(selectedId) ? " selected" : ""}>${esc(farmRecordLabel(employeeTable, employee))}</option>`).join("")}`;
+  const driverTeamHtml = driverTeamRows.length
+    ? `<optgroup label="${esc(driverTeamRows[0]._dispatchDriverTeamName || "ทีมรถ B01")}">${driverTeamRows.map((employee) => `<option value="${esc(employee.id)}"${String(employee.id) === String(selectedId) ? " selected" : ""}>${esc(employee._dispatchDriverLabel || farmRecordLabel(employeeTable, employee))}</option>`).join("")}</optgroup>`
+    : "";
+  const otherEmployees = employees.filter((employee) => !driverIds.has(employee.id));
+  const otherHtml = otherEmployees.length
+    ? `<optgroup label="พนักงานอื่น">${otherEmployees.map((employee) => `<option value="${esc(employee.id)}"${String(employee.id) === String(selectedId) ? " selected" : ""}>${esc(farmRecordLabel(employeeTable, employee))}</option>`).join("")}</optgroup>`
+    : "";
+  return `<option value="">เลือกคนขับ</option>${driverTeamHtml}${otherHtml}`;
 }
 
 function farmMergeDispatchRows(rows = [], keyField = "id") {
@@ -13768,6 +13808,25 @@ function farmDispatchInventoryItemForMaterial(materialId) {
   return inventory?.id || `item-${materialId}`;
 }
 
+function farmDispatchNoteMeta(note = "") {
+  try {
+    const parsed = JSON.parse(note || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function farmDispatchMaterialUnitName(row = {}, material = {}) {
+  const noteMeta = farmDispatchNoteMeta(row.note);
+  return row.unit_name
+    || noteMeta.unit_name
+    || row.usage_unit
+    || farmLookupLabel("units", row.unit_id || material.base_unit_id)
+    || material.unit_name
+    || "";
+}
+
 async function ensureFarmInventoryItemForMaterial(materialId) {
   const existingId = farmDispatchInventoryItemForMaterial(materialId);
   const existing = farmLookup("inventory_master", existingId);
@@ -13783,7 +13842,7 @@ async function ensureFarmInventoryItemForMaterial(materialId) {
     item_name: farmRecordLabel(farmTableByKey("materials"), material) || material.material_name || materialId,
     item_type: "material",
     category_name: farmLookupLabel("material_categories", material.category_id) || material.category_name || "",
-    unit_name: farmLookupLabel("units", material.base_unit_id) || material.unit_name || "",
+    unit_name: farmDispatchMaterialUnitName({}, material),
     status: "active",
     updatedAt: new Date().toISOString(),
   };
@@ -13808,7 +13867,7 @@ function farmDispatchMaterialCandidates(order) {
         actual_quantity: 0,
         waste_quantity: 0,
         unit_id: material.base_unit_id || "",
-        unit_name: farmLookupLabel("units", material.base_unit_id),
+        unit_name: farmDispatchMaterialUnitName({}, material),
       });
     }
     return farmMergeDispatchRows(next, "material_id");
@@ -13824,7 +13883,7 @@ function farmDispatchMaterialCandidates(order) {
         actual_quantity: n(row.actual_quantity),
         waste_quantity: n(row.waste_quantity),
         unit_id: row.unit_id || material.base_unit_id || "",
-        unit_name: farmLookupLabel("units", row.unit_id || material.base_unit_id),
+        unit_name: farmDispatchMaterialUnitName(row, material),
         note: row.note || "",
       };
     }).filter((row) => row.material_id));
@@ -13839,7 +13898,7 @@ function farmDispatchMaterialCandidates(order) {
         planned_quantity: n(row.planned_quantity),
         issued_quantity: n(row.planned_quantity),
         unit_id: row.unit_id || material.base_unit_id || "",
-        unit_name: farmLookupLabel("units", row.unit_id || material.base_unit_id),
+        unit_name: farmDispatchMaterialUnitName(row, material),
       };
     }).filter((row) => row.material_id));
   }
@@ -13855,7 +13914,7 @@ function farmDispatchMaterialCandidates(order) {
       planned_quantity: qty,
       issued_quantity: qty,
       unit_id: material.base_unit_id || "",
-      unit_name: row.usage_unit || farmLookupLabel("units", material.base_unit_id),
+      unit_name: farmDispatchMaterialUnitName(row, material),
     };
   }).filter((row) => row.material_id);
   if (rows.length) return appendExtraMaterials(rows);
@@ -13867,7 +13926,7 @@ function farmDispatchMaterialCandidates(order) {
     planned_quantity: 0,
     issued_quantity: 0,
     unit_id: material.base_unit_id || "",
-    unit_name: farmLookupLabel("units", material.base_unit_id),
+    unit_name: farmDispatchMaterialUnitName({}, material),
   })));
 }
 
@@ -13881,7 +13940,7 @@ function farmDispatchMachineCandidates(order) {
       next.push({
         vehicle_id: vehicleId,
         vehicle_name: farmRecordLabel(farmTableByKey("vehicles"), vehicle) || vehicleId,
-        driver_employee_id: vehicle.default_driver_id || "",
+        driver_employee_id: farmDispatchPreferredDriverId(vehicle.default_driver_id || ""),
         planned_hours: 0,
         fuel_plan_liter: 0,
         fuel_issue_liter: 0,
@@ -13894,7 +13953,7 @@ function farmDispatchMachineCandidates(order) {
     return appendExtraVehicles(existing.map((row) => ({
       vehicle_id: row.vehicle_id,
       vehicle_name: farmLookupLabel("vehicles", row.vehicle_id),
-      driver_employee_id: row.driver_employee_id || "",
+      driver_employee_id: farmDispatchPreferredDriverId(row.driver_employee_id || ""),
       planned_hours: n(row.planned_hours),
       actual_hours: n(row.actual_hours),
       start_hour_meter: row.start_hour_meter || "",
@@ -13912,7 +13971,7 @@ function farmDispatchMachineCandidates(order) {
   return appendExtraVehicles(farmRowsByKey("vehicles").filter((row) => picked.includes(row.id)).map((row) => ({
     vehicle_id: row.id,
     vehicle_name: farmRecordLabel(farmTableByKey("vehicles"), row),
-    driver_employee_id: row.default_driver_id || "",
+    driver_employee_id: farmDispatchPreferredDriverId(row.default_driver_id || ""),
     planned_hours: 0,
     fuel_plan_liter: 0,
   })));
@@ -14009,7 +14068,7 @@ function renderFarmDispatchPanel() {
               <thead><tr><th>#</th><th>พัสดุ</th><th>แผน</th><th>เบิกจ่าย</th><th>หน่วย</th></tr></thead>
               <tbody>
                 ${materials.map((row, index) => `
-                  <tr data-farm-dispatch-material="${esc(row.material_id)}">
+                  <tr data-farm-dispatch-material="${esc(row.material_id)}" data-farm-dispatch-unit-name="${esc(row.unit_name || row.unit_id || "")}">
                     <td>${index + 1}</td>
                     <td>${esc(row.material_name)}</td>
                     <td class="num">${moneyNf.format(n(row.planned_quantity))}</td>
@@ -14038,7 +14097,7 @@ function renderFarmDispatchPanel() {
                 ${machines.map((row, index) => `
                   <tr data-farm-dispatch-machine="${esc(row.vehicle_id)}">
                     <td>${index + 1}</td>
-                    <td>${esc(row.vehicle_name || row.vehicle_id)}</td>
+                    <td><select data-farm-dispatch-machine-vehicle>${renderFarmDispatchVehicleSelectOptions(row.vehicle_id)}</select></td>
                     <td><select data-farm-dispatch-machine-driver>${renderFarmDispatchDriverOptions(row.driver_employee_id)}</select></td>
                     <td><input type="number" min="0" step="0.1" value="${esc(row.planned_hours || "")}" data-farm-dispatch-machine-hours></td>
                     <td><input type="number" min="0" step="0.1" value="${esc(row.fuel_issue_liter || row.fuel_plan_liter || "")}" data-farm-dispatch-machine-fuel></td>
@@ -14121,15 +14180,16 @@ async function saveFarmDispatchOrder() {
       material_id: materialId,
       quantity: n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value),
       unit_id: material.base_unit_id || "",
+      unit_name: row.dataset.farmDispatchUnitName || farmDispatchMaterialUnitName({}, material),
       line_no: index + 1,
     };
   }).filter((row) => row.material_id && row.quantity > 0), "material_id").map((row, index) => ({ ...row, line_no: index + 1, quantity: n(row.quantity || row.issued_quantity) }));
   const machineRows = farmMergeDispatchRows(Array.from(document.querySelectorAll("[data-farm-dispatch-machine]")).map((row) => {
-    const vehicleId = row.dataset.farmDispatchMachine;
+    const vehicleId = row.querySelector("[data-farm-dispatch-machine-vehicle]")?.value || row.dataset.farmDispatchMachine;
     const vehicle = farmLookup("vehicles", vehicleId) || {};
     return {
       vehicle_id: vehicleId,
-      driver_employee_id: row.querySelector("[data-farm-dispatch-machine-driver]")?.value || vehicle.default_driver_id || "",
+      driver_employee_id: farmDispatchPreferredDriverId(row.querySelector("[data-farm-dispatch-machine-driver]")?.value || vehicle.default_driver_id || ""),
       planned_hours: n(row.querySelector("[data-farm-dispatch-machine-hours]")?.value),
       fuel_issue_liter: n(row.querySelector("[data-farm-dispatch-machine-fuel]")?.value),
       fuel_material_id: vehicle.fuel_material_id || "",
@@ -14228,6 +14288,7 @@ async function saveFarmDispatchOrder() {
         planned_quantity: item.quantity,
         issued_quantity: item.quantity,
         unit_id: item.unit_id,
+        note: item.unit_name ? JSON.stringify({ unit_name: item.unit_name }) : "",
         updatedAt: now,
       };
       state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_order_materials" && row.work_order_id === order.id && row.material_id === item.material_id));
@@ -14244,7 +14305,7 @@ async function saveFarmDispatchOrder() {
             line_no: item.line_no,
             item_id: await ensureFarmInventoryItemForMaterial(item.material_id),
             quantity: item.quantity,
-            unit_name: farmLookupLabel("units", item.unit_id),
+            unit_name: item.unit_name || farmLookupLabel("units", item.unit_id),
             work_order_id: order.id,
             status: "issued",
             updatedAt: now,
