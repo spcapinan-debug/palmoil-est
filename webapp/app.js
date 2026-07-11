@@ -95,7 +95,7 @@
   farmDispatchWorkOrderId: "",
   farmDispatchLastOrderId: "",
   farmDispatchPrintSelectedIds: [],
-  farmDispatchPrintColumns: { activity: true, zone: true, plotGroup: true, period: true },
+  farmDispatchListFilters: { activity: "all", zone: "all", plotGroup: "all", startDate: "", endDate: "" },
   farmInventoryIssueSelection: "",
   farmDispatchTeamId: "",
   farmDispatchExtraWorkers: [],
@@ -12367,15 +12367,55 @@ function farmDispatchPrintSelectedSet(rows = []) {
   return new Set((state.farmDispatchPrintSelectedIds || []).filter((id) => valid.has(String(id))));
 }
 
+function farmDispatchApprovedOrders() {
+  return farmWorkOrders().filter((row) => ["approved", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(row.statusMeta?.key || row.status)
+    || String(row.approval_status || "").toLowerCase() === "approved");
+}
+
+function farmDispatchListFilterOptions(rows = [], key = "") {
+  const map = new Map();
+  rows.forEach((row) => {
+    if (key === "activity") {
+      const value = row.activity?.id || row.activity_id;
+      const label = row.activity?.activity_name || farmLookupLabel("activities", row.activity_id);
+      if (value) map.set(value, label || value);
+    } else if (key === "zone") {
+      const item = farmWorkTextOption(row, "zone");
+      if (item.value) map.set(item.value, item.label || item.value);
+    } else if (key === "plotGroup") {
+      const item = farmWorkTextOption(row, "plotGroup");
+      if (item.value) map.set(item.value, item.label || item.value);
+    }
+  });
+  return [...map.entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => String(a.label).localeCompare(String(b.label), "th", { numeric: true }));
+}
+
+function farmDispatchFilteredOrders() {
+  const f = state.farmDispatchListFilters || {};
+  return farmDispatchApprovedOrders().filter((row) => {
+    const zone = farmWorkTextOption(row, "zone");
+    const plotGroup = farmWorkTextOption(row, "plotGroup");
+    return (!f.activity || f.activity === "all" || row.activity?.id === f.activity || row.activity_id === f.activity)
+      && (!f.zone || f.zone === "all" || zone.value === f.zone)
+      && (!f.plotGroup || f.plotGroup === "all" || plotGroup.value === f.plotGroup)
+      && farmWorkDateRangeMatches(row, f.startDate, f.endDate);
+  });
+}
+
 function renderFarmDispatchPrintHeader(rows = []) {
   if (state.view !== "farm-dispatch") return "";
   const selected = farmDispatchPrintSelectedSet(rows);
   const allSelected = rows.length && rows.every((row) => selected.has(String(row.id)));
-  const cols = state.farmDispatchPrintColumns || {};
-  const criterion = (key, label) => `
-    <label class="farm-dispatch-print-criterion">
-      <input type="checkbox" data-farm-dispatch-print-column="${esc(key)}" ${cols[key] !== false ? "checked" : ""}>
-      ${esc(label)}
+  const approvedRows = farmDispatchApprovedOrders();
+  const f = state.farmDispatchListFilters || {};
+  const select = (key, label, options, value) => `
+    <label>${esc(label)}
+      <select data-farm-dispatch-list-filter="${esc(key)}">
+        <option value="all">ทั้งหมด</option>
+        ${options.map((option) => `<option value="${esc(option.value)}"${String(value || "all") === String(option.value) ? " selected" : ""}>${esc(option.label)}</option>`).join("")}
+      </select>
     </label>`;
   return `
     <div class="farm-dispatch-bulk-print">
@@ -12384,10 +12424,11 @@ function renderFarmDispatchPrintHeader(rows = []) {
           <input type="checkbox" data-farm-dispatch-print-all ${allSelected ? "checked" : ""}>
           เลือกทั้งหมดที่แสดง
         </label>
-        ${criterion("activity", "กิจกรรม")}
-        ${criterion("zone", "โซน")}
-        ${criterion("plotGroup", "แปลง")}
-        ${criterion("period", "ช่วงเวลา")}
+        ${select("activity", "กิจกรรม", farmDispatchListFilterOptions(approvedRows, "activity"), f.activity)}
+        ${select("zone", "โซน", farmDispatchListFilterOptions(approvedRows, "zone"), f.zone)}
+        ${select("plotGroup", "แปลง", farmDispatchListFilterOptions(approvedRows, "plotGroup"), f.plotGroup)}
+        <label>วันที่เริ่ม${renderDateInputControl({ id: "farmDispatchListStartDate", value: f.startDate, ariaLabel: "เลือกวันที่เริ่มรายการสั่งงาน" })}</label>
+        <label>วันที่สิ้นสุด${renderDateInputControl({ id: "farmDispatchListEndDate", value: f.endDate, ariaLabel: "เลือกวันที่สิ้นสุดรายการสั่งงาน" })}</label>
       </div>
       <button type="button" data-farm-dispatch-bulk-print ${selected.size ? "" : "disabled"}>พิมพ์ใบสั่งงานที่เลือก ${selected.size ? fmt(selected.size) : ""}</button>
     </div>`;
@@ -16417,7 +16458,7 @@ function renderFarmWorkBoard(options = {}) {
 }
 
 function renderFarmWorkOrderList() {
-  const rows = state.view === "farm-dispatch" ? farmWorkOrders()
+  const rows = state.view === "farm-dispatch" ? farmDispatchFilteredOrders()
     : state.view === "farm-result" ? farmResultCandidateOrders()
       : filteredFarmWorkOrders();
   const selectedPrintRows = farmDispatchPrintSelectedSet(rows);
@@ -20460,6 +20501,24 @@ async function init() {
       render();
       return;
     }
+    if (e.target.id === "farmDispatchListStartDate") {
+      const value = dateValue(e.target);
+      state.farmDispatchListFilters = { ...(state.farmDispatchListFilters || {}), startDate: value };
+      if (state.farmDispatchListFilters.endDate && farmDateMs(state.farmDispatchListFilters.endDate) < farmDateMs(value)) {
+        state.farmDispatchListFilters.endDate = value;
+      }
+      state.farmDispatchPrintSelectedIds = [];
+      normalizeDateInput(e.target);
+      render();
+      return;
+    }
+    if (e.target.id === "farmDispatchListEndDate") {
+      state.farmDispatchListFilters = { ...(state.farmDispatchListFilters || {}), endDate: dateValue(e.target) };
+      state.farmDispatchPrintSelectedIds = [];
+      normalizeDateInput(e.target);
+      render();
+      return;
+    }
     if (e.target.name === "farmWorkGroupMode") {
       state.farmWorkGroupMode = e.target.value === "terrain" ? "terrain" : "activity";
       render();
@@ -21247,17 +21306,18 @@ async function init() {
     }
     const dispatchPrintAll = e.target.closest("[data-farm-dispatch-print-all]");
     if (dispatchPrintAll) {
-      const ids = (state.view === "farm-dispatch" ? farmWorkOrders() : []).map((row) => row.id).filter(Boolean);
+      const ids = (state.view === "farm-dispatch" ? farmDispatchFilteredOrders() : []).map((row) => row.id).filter(Boolean);
       state.farmDispatchPrintSelectedIds = dispatchPrintAll.checked ? ids : [];
       render();
       return;
     }
-    const dispatchPrintColumn = e.target.closest("[data-farm-dispatch-print-column]");
-    if (dispatchPrintColumn) {
-      state.farmDispatchPrintColumns = {
-        ...(state.farmDispatchPrintColumns || {}),
-        [dispatchPrintColumn.dataset.farmDispatchPrintColumn]: dispatchPrintColumn.checked,
+    const dispatchListFilter = e.target.closest("[data-farm-dispatch-list-filter]");
+    if (dispatchListFilter) {
+      state.farmDispatchListFilters = {
+        ...(state.farmDispatchListFilters || {}),
+        [dispatchListFilter.dataset.farmDispatchListFilter]: dispatchListFilter.value || "all",
       };
+      state.farmDispatchPrintSelectedIds = [];
       render();
       return;
     }
