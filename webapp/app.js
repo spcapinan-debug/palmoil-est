@@ -17954,16 +17954,22 @@ function renderFarmBudgetWorkerTree(picks = farmBudgetContractState()) {
     if (!teamMatches && !members.length) return "";
     const teamValue = `team:${team.id}`;
     const teamChecked = picks.selectedWorkers.includes(teamValue);
-    const hasSelectedMember = members.some((employee) => picks.selectedWorkers.includes(`employee:${employee.id}`));
+    const checkedMemberCount = members.filter((employee) => {
+      const employeeValue = `employee:${employee.id}`;
+      const excludeValue = `exclude:${team.id}:${employee.id}`;
+      return picks.selectedWorkers.includes(employeeValue) || (teamChecked && !picks.selectedWorkers.includes(excludeValue));
+    }).length;
+    const teamFullyChecked = members.length > 0 && checkedMemberCount === members.length;
+    const teamPartialChecked = checkedMemberCount > 0 && checkedMemberCount < members.length;
     const teamInputId = farmBudgetCheckId("worker", teamValue);
     return `
       <details open>
         <summary class="budget-team-summary">
-          <input id="${esc(teamInputId)}" type="checkbox" data-budget-pick="worker" value="${esc(teamValue)}"${teamChecked ? " checked" : ""} onclick="event.stopPropagation()">
+          <input id="${esc(teamInputId)}" type="checkbox" data-budget-pick="worker" value="${esc(teamValue)}"${teamFullyChecked ? " checked" : ""}${teamPartialChecked ? ` data-budget-indeterminate="true"` : ""} onclick="event.stopPropagation()">
           <span>${esc(farmBudgetWorkerLabel(team))}</span>
           <small>${fmt(members.length)} คน</small>
         </summary>
-        ${teamChecked || hasSelectedMember ? `<div class="budget-tree-nested">
+        ${teamFullyChecked || teamPartialChecked ? `<div class="budget-tree-nested">
           ${members.map((employee) => renderBudgetTeamMemberCheckbox(team.id, employee, picks.selectedWorkers, employee._memberRole || employee.payment_type || employee.worker_type || "")).join("") || `<div class="budget-tree-empty">ทีมนี้ยังไม่มีสมาชิก</div>`}
         </div>` : ""}
       </details>`;
@@ -19733,6 +19739,13 @@ function render() {
   }
   enhanceTables(els.reportPage);
   enhanceTables(els.clearPage);
+  applyBudgetCheckboxStates();
+}
+
+function applyBudgetCheckboxStates(root = document) {
+  root.querySelectorAll('input[data-budget-indeterminate="true"]').forEach((input) => {
+    input.indeterminate = true;
+  });
 }
 
 function setView(view) {
