@@ -12109,7 +12109,7 @@ function farmWorkOrders() {
       plannedTimelineStart: plannedStartDate || startDate,
       plannedTimelineEnd: plannedEndDate || endDate || plannedStartDate || startDate,
       dispatchTimelineStart: isoDay(order.rescheduled_date || (["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(String(order.status || "")) ? order.scheduled_date : "")),
-      dispatchTimelineEnd: isoDay(order.rescheduled_end_date || (["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(String(order.status || "")) ? order.planned_end_date : "")),
+      dispatchTimelineEnd: isoDay(order.rescheduled_end_date || order.dispatch_end_date || (["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(String(order.status || "")) ? order.scheduled_date : "")),
       actualStartDate,
       actualEndDate,
       actualResultCount: orderResults.length,
@@ -14266,6 +14266,9 @@ async function saveFarmDispatchOrder() {
   try {
     const now = new Date().toISOString();
     const dispatchWarnings = [];
+    const originalPlanStart = isoDay(order.plannedTimelineStart || order.note_planned_start_date || order.planned_start_date || order.original_scheduled_date || order.scheduled_date || date) || date;
+    const originalPlanEnd = isoDay(order.plannedTimelineEnd || order.note_planned_end_date || order.planned_end_date || originalPlanStart) || originalPlanStart;
+    const dispatchChanged = date !== originalPlanStart || endDate !== originalPlanEnd;
     const nextOrder = {
       ...order,
       id: order.readonly ? `override-${order.id}` : order.id,
@@ -14273,12 +14276,12 @@ async function saveFarmDispatchOrder() {
       tableId: "work_orders",
       _overrideOf: order.readonly ? order.id : order._overrideOf,
       team_id: teamId,
-      original_scheduled_date: order.original_scheduled_date || order.scheduled_date || order.planned_start_date || "",
+      original_scheduled_date: order.original_scheduled_date || originalPlanStart || "",
       scheduled_date: date,
-      planned_start_date: date,
-      planned_end_date: endDate,
-      rescheduled_date: date !== (order.scheduled_date || order.planned_start_date || "") ? date : order.rescheduled_date || "",
-      rescheduled_end_date: endDate !== (order.planned_end_date || order.scheduled_date || "") ? endDate : order.rescheduled_end_date || "",
+      planned_start_date: originalPlanStart,
+      planned_end_date: originalPlanEnd,
+      rescheduled_date: dispatchChanged ? date : order.rescheduled_date || "",
+      rescheduled_end_date: dispatchChanged ? endDate : order.rescheduled_end_date || "",
       rescheduled_by_manager_id: "profile-admin",
       approval_status: "not_required",
       status: "sent_to_mobile",
