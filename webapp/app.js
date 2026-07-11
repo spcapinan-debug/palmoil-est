@@ -13847,6 +13847,35 @@ function farmDispatchMaterialUnitName(row = {}, material = {}) {
     || "";
 }
 
+function farmDispatchMaterialPackKg(row = {}, material = {}) {
+  const text = [row.material_name, material.material_name, material.material_code, row.note].filter(Boolean).join(" ");
+  const match = text.match(/(\d+(?:\.\d+)?)\s*(?:kg|กก\.?|กิโล)/i);
+  if (match) return n(match[1]);
+  const unit = farmUnitDisplayName(material.base_unit_id || row.unit_id || row.unit_name || "");
+  if (unit === "กระสอบ") return 25;
+  return 0;
+}
+
+function farmDispatchIssueUnitInfo(row = {}) {
+  const material = farmLookup("materials", row.material_id) || {};
+  const planUnit = farmUnitDisplayName(row.unit_name || row.unit_id);
+  const packKg = farmDispatchMaterialPackKg(row, material);
+  if ((planUnit === "กก." || /กก|kg/i.test(planUnit)) && packKg > 0) {
+    return {
+      planUnit: "กก.",
+      issueUnit: "กระสอบ",
+      factor: packKg,
+      issueQuantity: n(row.issued_quantity || row.planned_quantity) / packKg,
+    };
+  }
+  return {
+    planUnit,
+    issueUnit: planUnit,
+    factor: 1,
+    issueQuantity: n(row.issued_quantity || row.planned_quantity),
+  };
+}
+
 async function ensureFarmInventoryItemForMaterial(materialId) {
   const existingId = farmDispatchInventoryItemForMaterial(materialId);
   const existing = farmLookup("inventory_master", existingId);
@@ -14085,16 +14114,20 @@ function renderFarmDispatchPanel() {
           </div>
           <div class="table-wrap">
             <table class="mini-table farm-dispatch-table">
-              <thead><tr><th>#</th><th>พัสดุ</th><th>แผน</th><th>เบิกจ่าย</th><th>หน่วย</th></tr></thead>
+              <thead><tr><th>#</th><th>พัสดุ</th><th>แผน</th><th>หน่วยแผน</th><th>เบิกจ่ายจริง</th><th>หน่วยจ่าย</th></tr></thead>
               <tbody>
-                ${materials.map((row, index) => `
-                  <tr data-farm-dispatch-material="${esc(row.material_id)}" data-farm-dispatch-unit-name="${esc(row.unit_name || row.unit_id || "")}">
+                ${materials.map((row, index) => {
+                  const issue = farmDispatchIssueUnitInfo(row);
+                  return `
+                  <tr data-farm-dispatch-material="${esc(row.material_id)}" data-farm-dispatch-unit-name="${esc(issue.planUnit || row.unit_name || row.unit_id || "")}" data-farm-dispatch-issue-factor="${esc(issue.factor || 1)}">
                     <td>${index + 1}</td>
                     <td>${esc(row.material_name)}</td>
                     <td class="num">${moneyNf.format(n(row.planned_quantity))}</td>
-                    <td><input type="number" min="0" step="0.01" value="${esc(row.issued_quantity || row.planned_quantity || 0)}" data-farm-dispatch-issue-qty></td>
-                    <td>${esc(farmUnitDisplayName(row.unit_name || row.unit_id))}</td>
-                  </tr>`).join("") || `<tr><td colspan="5">ไม่มีรายการพัสดุสำหรับงานนี้</td></tr>`}
+                    <td>${esc(issue.planUnit || "-")}</td>
+                    <td><input type="number" min="0" step="0.01" value="${esc(issue.issueQuantity || 0)}" data-farm-dispatch-issue-qty></td>
+                    <td>${esc(issue.issueUnit || "-")}</td>
+                  </tr>`;
+                }).join("") || `<tr><td colspan="6">ไม่มีรายการพัสดุสำหรับงานนี้</td></tr>`}
               </tbody>
             </table>
           </div>
@@ -14169,7 +14202,14 @@ function renderFarmDispatchPrintPreview(order, context = {}) {
       <table>
         <thead><tr><th>#</th><th>รายการ</th><th>จำนวนเบิก</th><th>หน่วย</th></tr></thead>
         <tbody>
-          ${materials.map((row, index) => `<tr><td>${index + 1}</td><td>${esc(row.material_name)}</td><td>${moneyNf.format(n(row.issued_quantity || row.planned_quantity))}</td><td>${esc(farmUnitDisplayName(row.unit_name || row.unit_id))}</td></tr>`).join("") || `<tr><td colspan="4">ไม่มีรายการพัสดุ</td></tr>`}
+          ${materials.map((row, index) => {
+            const issue = farmDispatchIssueUnitInfo(row);
+            const planQty = n(row.issued_quantity || row.planned_quantity);
+            const issueText = issue.factor > 1
+              ? `${moneyNf.format(issue.issueQuantity)} ${issue.issueUnit} (${moneyNf.format(planQty)} ${issue.planUnit})`
+              : `${moneyNf.format(planQty)} ${issue.planUnit || ""}`;
+            return `<tr><td>${index + 1}</td><td>${esc(row.material_name)}</td><td>${esc(issueText)}</td><td>${esc(issue.issueUnit || issue.planUnit || "-")}</td></tr>`;
+          }).join("") || `<tr><td colspan="4">ไม่มีรายการพัสดุ</td></tr>`}
         </tbody>
       </table>
       <div class="farm-dispatch-signatures">
@@ -14196,9 +14236,11 @@ async function saveFarmDispatchOrder() {
   const materialRows = farmMergeDispatchRows(Array.from(document.querySelectorAll("[data-farm-dispatch-material]")).map((row, index) => {
     const materialId = row.dataset.farmDispatchMaterial;
     const material = farmLookup("materials", materialId) || {};
+    const issueFactor = n(row.dataset.farmDispatchIssueFactor || 1) || 1;
+    const issueQuantity = n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value) * issueFactor;
     return {
       material_id: materialId,
-      quantity: n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value),
+      quantity: issueQuantity,
       unit_id: material.base_unit_id || "",
       unit_name: row.dataset.farmDispatchUnitName || farmDispatchMaterialUnitName({}, material),
       line_no: index + 1,
