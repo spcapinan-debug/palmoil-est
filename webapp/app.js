@@ -93,6 +93,7 @@
   farmPlannerTab: "dates",
   farmWorkDetailId: "",
   farmDispatchWorkOrderId: "",
+  farmDispatchLastOrderId: "",
   farmInventoryIssueSelection: "",
   farmDispatchTeamId: "",
   farmDispatchExtraWorkers: [],
@@ -13499,6 +13500,11 @@ function farmDispatchSelectedOrder() {
   const selectedId = state.farmDispatchWorkOrderId || state.farmWorkDetailId;
   const selected = rows.find((row) => row.id === selectedId) || farmWorkOrders().find((row) => row.id === selectedId) || rows[0] || null;
   if (selected && state.farmDispatchWorkOrderId !== selected.id) state.farmDispatchWorkOrderId = selected.id;
+  if (selected && state.farmDispatchLastOrderId !== selected.id) {
+    state.farmDispatchLastOrderId = selected.id;
+    state.farmDispatchExtraWorkers = [];
+    state.farmDispatchExtraMaterials = [];
+  }
   return selected;
 }
 
@@ -13546,9 +13552,8 @@ function farmDispatchWorkerCandidates(order, teamId = "") {
     seenExistingWorkers.add(employeeId);
     return true;
   });
-  const useTeamRows = Boolean(state.farmDispatchTeamId && state.farmDispatchTeamId !== order?.team_id);
   const teamMembers = farmRowsByKey("team_members").filter((row) => row.team_id === (teamId || order?.team_id));
-  const baseRows = !useTeamRows && existing.length ? existing : teamMembers;
+  const baseRows = existing.length ? existing : teamMembers;
   if (baseRows.length) {
     const mapped = baseRows.map((row) => farmDispatchWorkerRow(row.employee_id, row, teamId || order?.team_id)).filter((row) => row?.id);
     for (const employeeId of state.farmDispatchExtraWorkers || []) {
@@ -13950,6 +13955,7 @@ async function saveFarmDispatchOrder() {
     await persistFarmRowToDatabase(workOrderTable, nextOrder);
     await ensureFarmWorkOrderQr(nextOrder, "dispatch");
 
+    await reconcileFarmWorkOrderChildren(workerTable, order.id, new Set(checkedWorkers), "employee_id");
     for (const employeeId of checkedWorkers) {
       const employee = farmLookup("employees", employeeId) || {};
       const row = {
