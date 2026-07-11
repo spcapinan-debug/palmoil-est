@@ -12718,7 +12718,7 @@ function farmBudgetMaterialUsageSummary(rows = []) {
 function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}, selectedMaterials = [], selectedUsageRate = {} } = {}) {
   const rateRows = farmBudgetMaterialUsageRows(rate, [block]);
   if (rateRows.length) {
-    return rateRows.map((row, index) => ({
+    const plannedRows = rateRows.map((row, index) => ({
       id: "",
       moduleId: "farm-work",
       tableId: "work_order_materials",
@@ -12731,6 +12731,23 @@ function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}
       status: "planned",
       note: `${row.materialName} · ${moneyNf.format(row.usageQuantity)} ${row.usageUnit}/${row.usageBasis === "tree_count" ? "ต้น" : row.usageBasis === "area_rai" ? "ไร่" : "หน่วย"} · ${farmBudgetDisplayRateCode(rate)}`,
     })).filter((row) => row.work_order_id && row.material_id);
+    const plannedIds = new Set(plannedRows.map((row) => String(row.material_id || "")));
+    const manualRows = (selectedMaterials || [])
+      .filter((material) => material?.id && !plannedIds.has(String(material.id)))
+      .map((material) => ({
+        id: "",
+        moduleId: "farm-work",
+        tableId: "work_order_materials",
+        work_order_id: workOrderId,
+        material_id: material.id,
+        planned_quantity: 0,
+        issued_quantity: 0,
+        used_quantity: "",
+        unit_id: material.base_unit_id || material.unit_id || "",
+        status: "planned",
+        note: `${material.material_name || material.material_code || ""} · เพิ่มจากหน้าแผน`,
+      })).filter((row) => row.work_order_id && row.material_id);
+    return [...plannedRows, ...manualRows];
   }
   const usageBasis = selectedUsageRate.usage_basis || "manual";
   const materialBase = usageBasis === "per_tree" ? n(block.tree_count) : usageBasis === "per_rai" ? n(block.area_rai) : 1;
@@ -13478,40 +13495,86 @@ function farmDispatchSelectedOrder() {
   return selected;
 }
 
+function farmTeamForEmployee(employeeId = "", preferredTeamId = "") {
+  const teams = farmRowsByKey("teams");
+  const memberships = farmRowsByKey("team_members").filter((row) => String(row.employee_id || "") === String(employeeId || ""));
+  const preferred = preferredTeamId
+    ? memberships.find((row) => String(row.team_id || "") === String(preferredTeamId))
+    : null;
+  const membership = preferred || memberships[0] || {};
+  return teams.find((row) => String(row.id || "") === String(membership.team_id || "")) || {};
+}
+
+function farmDispatchWorkerRow(employeeId = "", sourceRow = {}, preferredTeamId = "") {
+  if (!employeeId) return null;
+  const employee = farmLookup("employees", employeeId) || {};
+  const team = sourceRow.team_id ? (farmLookup("teams", sourceRow.team_id) || {}) : farmTeamForEmployee(employeeId, preferredTeamId);
+  const teams = farmRowsByKey("teams");
+  const teamIndex = Math.max(0, teams.findIndex((row) => String(row.id || "") === String(team.id || "")));
+  return {
+    id: employeeId,
+    name: farmRecordLabel(farmTableByKey("employees"), employee) || employeeId,
+    role: sourceRow.member_role || sourceRow.role || employee.worker_type || employee.payment_type || "",
+    teamId: team.id || "",
+    teamName: farmRecordLabel(farmTableByKey("teams"), team) || "ไม่ระบุทีม",
+    teamColor: teamIndex % 6,
+    checked: true,
+  };
+}
+
 function farmDispatchWorkerCandidates(order, teamId = "") {
   const existing = farmRowsByKey("work_order_workers").filter((row) => row.work_order_id === order?.id);
   const useTeamRows = Boolean(state.farmDispatchTeamId && state.farmDispatchTeamId !== order?.team_id);
   const teamMembers = farmRowsByKey("team_members").filter((row) => row.team_id === (teamId || order?.team_id));
   const baseRows = !useTeamRows && existing.length ? existing : teamMembers;
   if (baseRows.length) {
-    const mapped = baseRows.map((row) => {
-      const employee = farmLookup("employees", row.employee_id) || {};
-      return {
-        id: row.employee_id,
-        name: farmRecordLabel(farmTableByKey("employees"), employee) || row.employee_id,
-        role: row.member_role || row.role || employee.worker_type || employee.payment_type || "",
-        checked: true,
-      };
-    }).filter((row) => row.id);
+    const mapped = baseRows.map((row) => farmDispatchWorkerRow(row.employee_id, row, teamId || order?.team_id)).filter((row) => row?.id);
     for (const employeeId of state.farmDispatchExtraWorkers || []) {
       if (mapped.some((row) => row.id === employeeId)) continue;
-      const employee = farmLookup("employees", employeeId) || {};
-      mapped.push({
-        id: employeeId,
-        name: farmRecordLabel(farmTableByKey("employees"), employee) || employeeId,
-        role: employee.worker_type || employee.payment_type || "เพิ่มเอง",
-        checked: true,
-      });
+      const extraRow = farmDispatchWorkerRow(employeeId, { role: "เพิ่มเอง" }, teamId || order?.team_id);
+      if (extraRow) mapped.push(extraRow);
     }
     return mapped;
   }
-  const fallback = farmRowsByKey("employees").slice(0, 12).map((employee, index) => ({
-    id: employee.id,
-    name: farmRecordLabel(farmTableByKey("employees"), employee),
-    role: employee.worker_type || "",
-    checked: index < 4,
-  }));
-  return fallback;
+  return (state.farmDispatchExtraWorkers || []).map((employeeId) => farmDispatchWorkerRow(employeeId, { role: "เพิ่มเอง" }, teamId || order?.team_id)).filter(Boolean);
+}
+
+function renderFarmDispatchWorkerOptions(selectedIds = new Set()) {
+  const employeeTable = farmTableByKey("employees");
+  const teamTable = farmTableByKey("teams");
+  const used = new Set(selectedIds);
+  const seen = new Set();
+  const groups = farmRowsByKey("teams").map((team) => {
+    const members = farmRowsByKey("team_members")
+      .filter((row) => String(row.team_id || "") === String(team.id || ""))
+      .map((row) => farmLookup("employees", row.employee_id))
+      .filter((employee) => employee?.id && !used.has(employee.id) && !seen.has(employee.id));
+    members.forEach((employee) => seen.add(employee.id));
+    if (!members.length) return "";
+    return `<optgroup label="${esc(farmRecordLabel(teamTable, team) || team.id)}">${members.map((employee) => `<option value="${esc(employee.id)}">${esc(farmRecordLabel(employeeTable, employee))}</option>`).join("")}</optgroup>`;
+  }).join("");
+  const ungrouped = farmRowsByKey("employees").filter((employee) => employee.id && !used.has(employee.id) && !seen.has(employee.id));
+  const ungroupedHtml = ungrouped.length
+    ? `<optgroup label="ไม่ระบุทีม">${ungrouped.map((employee) => `<option value="${esc(employee.id)}">${esc(farmRecordLabel(employeeTable, employee))}</option>`).join("")}</optgroup>`
+    : "";
+  return groups || ungroupedHtml ? `${groups}${ungroupedHtml}` : `<option value="">ไม่มีคนให้เพิ่ม</option>`;
+}
+
+function renderFarmDispatchMaterialOptions(selectedIds = new Set()) {
+  const materialTable = farmTableByKey("materials");
+  const categoryTable = farmTableByKey("material_categories");
+  const materials = farmRowsByKey("materials").filter((row) => row.id && !selectedIds.has(row.id));
+  const grouped = farmRowsByKey("material_categories").map((category) => {
+    const rows = materials.filter((material) => String(material.category_id || "") === String(category.id || ""));
+    if (!rows.length) return "";
+    return `<optgroup label="${esc(farmRecordLabel(categoryTable, category) || category.category_name || category.id)}">${rows.map((material) => `<option value="${esc(material.id)}">${esc(farmRecordLabel(materialTable, material))}</option>`).join("")}</optgroup>`;
+  }).join("");
+  const groupedIds = new Set(farmRowsByKey("material_categories").flatMap((category) => materials.filter((material) => String(material.category_id || "") === String(category.id || "")).map((material) => material.id)));
+  const ungrouped = materials.filter((material) => !groupedIds.has(material.id));
+  const ungroupedHtml = ungrouped.length
+    ? `<optgroup label="ไม่ระบุหมวด">${ungrouped.map((material) => `<option value="${esc(material.id)}">${esc(farmRecordLabel(materialTable, material))}</option>`).join("")}</optgroup>`
+    : "";
+  return grouped || ungroupedHtml ? `${grouped}${ungroupedHtml}` : `<option value="">ไม่มีพัสดุให้เพิ่ม</option>`;
 }
 
 function farmDispatchInventoryItemForMaterial(materialId) {
@@ -13667,8 +13730,6 @@ function renderFarmDispatchPanel() {
   const machines = farmDispatchMachineCandidates(order);
   const workerIds = new Set(workers.map((row) => row.id));
   const materialIds = new Set(materials.map((row) => row.material_id));
-  const availableWorkers = farmRowsByKey("employees").filter((row) => row.id && !workerIds.has(row.id));
-  const availableMaterials = farmRowsByKey("materials").filter((row) => row.id && !materialIds.has(row.id));
   const team = teams.find((row) => row.id === activeTeamId) || teams[0] || {};
   const supervisor = farmLookup("employees", team.supervisor_employee_id) || {};
   const dispatchDate = order?.rescheduled_date || order?.scheduled_date || order?.planned_start_date || farmToday();
@@ -13720,16 +13781,16 @@ function renderFarmDispatchPanel() {
             <div class="farm-dispatch-add-control">
               <select id="farmDispatchAddWorker">
                 <option value="">เพิ่มคน</option>
-                ${availableWorkers.map((row) => `<option value="${esc(row.id)}">${esc(farmRecordLabel(farmTableByKey("employees"), row))}</option>`).join("")}
+                ${renderFarmDispatchWorkerOptions(workerIds)}
               </select>
               <button type="button" data-farm-dispatch-add-worker>เพิ่ม</button>
             </div>
           </div>
           <div class="farm-dispatch-worker-list">
             ${workers.map((row) => `
-              <label>
+              <label class="farm-dispatch-worker-team farm-team-color-${esc(row.teamColor)}">
                 <input type="checkbox" data-farm-dispatch-worker value="${esc(row.id)}" ${row.checked ? "checked" : ""}>
-                <span><strong>${esc(row.name)}</strong><small>${esc(row.role || "คนงาน")}</small></span>
+                <span><strong>${esc(row.name)}</strong><small>${esc([row.teamName, row.role || "คนงาน"].filter(Boolean).join(" · "))}</small></span>
               </label>`).join("") || `<p>ยังไม่มีรายชื่อคนงานในทีมนี้</p>`}
           </div>
         </article>
@@ -13739,7 +13800,7 @@ function renderFarmDispatchPanel() {
             <div class="farm-dispatch-add-control">
               <select id="farmDispatchAddMaterial">
                 <option value="">เพิ่มพัสดุ</option>
-                ${availableMaterials.map((row) => `<option value="${esc(row.id)}">${esc(farmRecordLabel(farmTableByKey("materials"), row))}</option>`).join("")}
+                ${renderFarmDispatchMaterialOptions(materialIds)}
               </select>
               <button type="button" data-farm-dispatch-add-material>เพิ่ม</button>
             </div>

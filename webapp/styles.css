@@ -8513,6 +8513,17 @@ tfoot td {
   background: #fff;
 }
 
+.farm-dispatch-worker-list label.farm-dispatch-worker-team {
+  border-left-width: 4px;
+}
+
+.farm-team-color-0 { border-left-color: #2f6f68 !important; background: #f5fbf9 !important; }
+.farm-team-color-1 { border-left-color: #b85f3d !important; background: #fff7f3 !important; }
+.farm-team-color-2 { border-left-color: #426b9f !important; background: #f5f8ff !important; }
+.farm-team-color-3 { border-left-color: #8a6f32 !important; background: #fffaf0 !important; }
+.farm-team-color-4 { border-left-color: #8b5fa8 !important; background: #fbf7ff !important; }
+.farm-team-color-5 { border-left-color: #4f7d4a !important; background: #f7fbf3 !important; }
+
 .farm-work-filters .date-input-control {
   width: 100%;
 }
