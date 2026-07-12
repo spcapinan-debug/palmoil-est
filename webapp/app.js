@@ -14577,36 +14577,40 @@ async function saveFarmDispatchOrder() {
     if (!nextOrder._overrideOf) delete nextOrder._overrideOf;
     state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (row.id === nextOrder.id || row.id === order.id || row._overrideOf === order.id)));
     state.farmRecords.push(nextOrder);
-    await persistFarmRowToDatabase(workOrderTable, nextOrder);
-    await ensureFarmWorkOrderQr(nextOrder, "dispatch");
+    const savedOrderPayload = await persistFarmRowToDatabase(workOrderTable, nextOrder);
+    const savedOrder = { ...nextOrder, ...(savedOrderPayload.row || {}) };
+    const savedOrderId = savedOrder.id || nextOrder.id || order.id;
+    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (row.id === nextOrder.id || row.id === order.id || row.id === savedOrderId || row._overrideOf === order.id)));
+    state.farmRecords.push({ ...savedOrder, moduleId: "farm-work", tableId: "work_orders" });
+    await ensureFarmWorkOrderQr(savedOrder, "dispatch");
 
-    await reconcileFarmWorkOrderChildren(workerTable, order.id, new Set(workerIdsToSave), "employee_id");
+    await reconcileFarmWorkOrderChildren(workerTable, savedOrderId, new Set(workerIdsToSave), "employee_id");
     for (const employeeId of workerIdsToSave) {
       const employee = farmLookup("employees", employeeId) || {};
       const driverVehicle = machineRows.find((row) => row.driver_employee_id === employeeId);
       const driverRate = driverVehicle ? farmDispatchDriverRateForOrder(order) : 0;
       const row = {
-        id: farmWorkOrderChildUuid("work_order_workers", (item) => item.work_order_id === order.id && item.employee_id === employeeId),
+        id: farmWorkOrderChildUuid("work_order_workers", (item) => String(item.work_order_id || "") === String(savedOrderId) && item.employee_id === employeeId),
         moduleId: "farm-work",
         tableId: "work_order_workers",
-        work_order_id: order.id,
+        work_order_id: savedOrderId,
         employee_id: employeeId,
         role: driverVehicle ? `driver:${driverVehicle.vehicle_id}` : (employee.worker_type || "worker"),
         planned_hours: "8",
         rate: driverRate || employee.daily_wage || employee.hourly_wage_rate || "",
         updatedAt: now,
       };
-      state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_order_workers" && item.work_order_id === order.id && item.employee_id === employeeId));
+      state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_order_workers" && String(item.work_order_id || "") === String(savedOrderId) && item.employee_id === employeeId));
       state.farmRecords.push(row);
       await persistFarmRowToDatabase(workerTable, row);
     }
 
-    await reconcileFarmWorkOrderChildren(materialTable, order.id, new Set(materialRows.map((row) => row.material_id)), "material_id");
+    await reconcileFarmWorkOrderChildren(materialTable, savedOrderId, new Set(materialRows.map((row) => row.material_id)), "material_id");
     let issueDocId = "";
     if (materialRows.length) {
       try {
-        const issueDocNo = `GI-${farmShortWorkOrderNo(order).replace(/[^0-9A-Za-z-]/g, "")}-${date.replaceAll("-", "")}`.slice(0, 120);
-        const existingIssueDoc = farmRowsByKey("inventory_documents").find((row) => row.document_no === issueDocNo || row.work_order_id === order.id);
+        const issueDocNo = `GI-${farmShortWorkOrderNo(savedOrder).replace(/[^0-9A-Za-z-]/g, "")}-${date.replaceAll("-", "")}`.slice(0, 120);
+        const existingIssueDoc = farmRowsByKey("inventory_documents").find((row) => row.document_no === issueDocNo || String(row.work_order_id || "") === String(savedOrderId));
         const issueDoc = {
           id: existingIssueDoc?.id && farmLooksUuid(existingIssueDoc.id) ? existingIssueDoc.id : farmNewUuid(),
           moduleId: "farm-inventory",
@@ -14614,7 +14618,7 @@ async function saveFarmDispatchOrder() {
           document_no: issueDocNo,
           doc_type: "issue",
           doc_date: date,
-          work_order_id: order.id,
+          work_order_id: savedOrderId,
           approved_by: "profile-admin",
           status: "issued",
           note: "สร้างจากหน้าสั่งงาน",
@@ -14632,10 +14636,10 @@ async function saveFarmDispatchOrder() {
 
     for (const item of materialRows) {
       const materialRow = {
-        id: farmWorkOrderChildUuid("work_order_materials", (row) => row.work_order_id === order.id && row.material_id === item.material_id),
+        id: farmWorkOrderChildUuid("work_order_materials", (row) => String(row.work_order_id || "") === String(savedOrderId) && row.material_id === item.material_id),
         moduleId: "farm-work",
         tableId: "work_order_materials",
-        work_order_id: order.id,
+        work_order_id: savedOrderId,
         material_id: item.material_id,
         planned_quantity: item.planned_quantity,
         issued_quantity: item.quantity,
@@ -14643,7 +14647,7 @@ async function saveFarmDispatchOrder() {
         note: item.unit_name ? JSON.stringify({ unit_name: item.unit_name }) : "",
         updatedAt: now,
       };
-      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_order_materials" && row.work_order_id === order.id && row.material_id === item.material_id));
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_order_materials" && String(row.work_order_id || "") === String(savedOrderId) && row.material_id === item.material_id));
       state.farmRecords.push(materialRow);
       await persistFarmRowToDatabase(materialTable, materialRow);
 
@@ -14658,7 +14662,7 @@ async function saveFarmDispatchOrder() {
             item_id: await ensureFarmInventoryItemForMaterial(item.material_id),
             quantity: item.quantity,
             unit_name: item.unit_name || farmLookupLabel("units", item.unit_id),
-            work_order_id: order.id,
+            work_order_id: savedOrderId,
             status: "issued",
             updatedAt: now,
           };
@@ -14672,13 +14676,13 @@ async function saveFarmDispatchOrder() {
       }
     }
 
-    await reconcileFarmWorkOrderChildren(machineTable, order.id, new Set(machineRows.map((row) => row.vehicle_id)), "vehicle_id");
+    await reconcileFarmWorkOrderChildren(machineTable, savedOrderId, new Set(machineRows.map((row) => row.vehicle_id)), "vehicle_id");
     for (const machine of machineRows) {
       const row = {
-        id: farmWorkOrderChildUuid("work_order_machines", (item) => item.work_order_id === order.id && item.vehicle_id === machine.vehicle_id),
+        id: farmWorkOrderChildUuid("work_order_machines", (item) => String(item.work_order_id || "") === String(savedOrderId) && item.vehicle_id === machine.vehicle_id),
         moduleId: "farm-work",
         tableId: "work_order_machines",
-        work_order_id: order.id,
+        work_order_id: savedOrderId,
         vehicle_id: machine.vehicle_id,
         driver_employee_id: machine.driver_employee_id,
         planned_hours: machine.planned_hours,
@@ -14688,18 +14692,19 @@ async function saveFarmDispatchOrder() {
         note: machine.note,
         updatedAt: now,
       };
-      state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_order_machines" && item.work_order_id === order.id && item.vehicle_id === machine.vehicle_id));
+      state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_order_machines" && String(item.work_order_id || "") === String(savedOrderId) && item.vehicle_id === machine.vehicle_id));
       state.farmRecords.push(row);
       await persistFarmRowToDatabase(machineTable, row);
     }
 
     saveFarmRecords();
     resetFarmDerivedCaches();
-    state.farmWorkDetailId = nextOrder.id;
-    state.farmDispatchWorkOrderId = nextOrder.id;
+    state.farmWorkDetailId = savedOrderId;
+    state.farmDispatchWorkOrderId = savedOrderId;
     state.farmSyncStatus = dispatchWarnings.length ? "warning" : "success";
     state.farmSyncMessage = `บันทึกสั่งงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · คนงาน ${fmt(workerIdsToSave.length)} คน · พัสดุ ${fmt(materialRows.length)} รายการ · รถ/เครื่องจักร ${fmt(machineRows.length)} รายการ${dispatchWarnings.length ? ` · ระบบยังไม่ตัดสต๊อกเพราะยังไม่มีตาราง inventory_documents` : ""}`;
   } catch (error) {
+    resetFarmDerivedCaches();
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `บันทึกสั่งงานไม่สำเร็จ: ${error.message}`;
   } finally {
@@ -14711,8 +14716,16 @@ async function saveFarmDispatchOrder() {
 function printFarmDispatchOrder() {
   syncFarmDispatchPrintPreviewFromForm();
   document.body.classList.add("print-farm-dispatch");
-  window.print();
-  window.setTimeout(() => document.body.classList.remove("print-farm-dispatch"), 400);
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    document.body.classList.remove("print-farm-dispatch");
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup, { once: true });
+  window.setTimeout(() => window.print(), 30);
+  window.setTimeout(cleanup, 5000);
 }
 
 function printFarmDispatchBulkOrders() {
@@ -14725,8 +14738,16 @@ function printFarmDispatchBulkOrders() {
     if (next) target.replaceWith(next);
   }
   document.body.classList.add("print-farm-dispatch-bulk");
-  window.print();
-  window.setTimeout(() => document.body.classList.remove("print-farm-dispatch-bulk"), 400);
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    document.body.classList.remove("print-farm-dispatch-bulk");
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup, { once: true });
+  window.setTimeout(() => window.print(), 30);
+  window.setTimeout(cleanup, 5000);
 }
 
 function syncFarmDispatchPrintPreviewFromForm() {
