@@ -12499,7 +12499,7 @@ function renderFarmDispatchBulkPrint(rows = []) {
         const machines = farmDispatchMachineCandidates(order);
         const dispatchDate = order.rescheduled_date || order.scheduled_date || order.planned_start_date || farmToday();
         const orderArea = [order.plot?.plot_code, order.block?.block_code || order.block?.block_name, order.block?.ap_code || order.block?.AP_code].filter(Boolean).join(" / ") || "-";
-        return `<div class="farm-dispatch-print-page">${renderFarmDispatchPrintPreview(order, { team, supervisor, workers, materials, machines, dispatchDate, orderArea })}</div>`;
+        return `<div class="farm-dispatch-print-page">${renderFarmDispatchPrintPreview(order, { team, supervisor, workers, materials, machines, dispatchDate, dispatchEndDate: order.rescheduled_end_date || order.dispatch_end_date || order.planned_end_date || order.endDate || dispatchDate, orderArea })}</div>`;
       }).join("")}
     </section>`;
 }
@@ -14325,55 +14325,152 @@ function renderFarmDispatchPanel() {
           <button type="button" class="ghost" data-farm-dispatch-print ${!order ? "disabled" : ""}>พิมพ์ใบสั่งงาน / ใบเบิก</button>
         </article>
       </div>
-      ${renderFarmDispatchPrintPreview(order, { team, supervisor, workers, materials, machines, dispatchDate, orderArea })}
+      ${renderFarmDispatchPrintPreview(order, { team, supervisor, workers, materials, machines, dispatchDate, dispatchEndDate, orderArea })}
     </section>`;
+}
+
+function farmDispatchPrintDates(startDate = "", endDate = "") {
+  const start = isoDay(startDate) || farmToday();
+  const end = isoDay(endDate) || start;
+  const dates = [];
+  for (let current = start, guard = 0; current && farmDateMs(current) <= farmDateMs(end) && guard < 7; guard += 1) {
+    dates.push(current);
+    current = farmAddDays(current, 1);
+  }
+  return dates.length ? dates : [start];
+}
+
+function farmDispatchPrintActivityName(order = {}) {
+  return (farmLookupLabel("activities", order.activity_id) || order.work_order_title || "-").replace(/^[A-Z0-9]+\s*-\s*/i, "");
+}
+
+function farmDispatchPrintMetricLabel(order = {}) {
+  const text = [farmDispatchPrintActivityName(order), order.work_order_title, farmLookupLabel("activity_groups", order.activity_group_id)].join(" ").toLowerCase();
+  if (text.includes("ปุ๋ย") || text.includes("fert")) return "ผลงานใส่ปุ๋ย";
+  if (text.includes("ตัดปาล์ม") || text.includes("เก็บเกี่ยว") || text.includes("harvest")) return "ผลผลิต";
+  if (text.includes("พ่น") || text.includes("ยา")) return "พื้นที่พ่น";
+  if (text.includes("ถาง") || text.includes("แหวก") || text.includes("ตัดหญ้า")) return "พื้นที่ทำงาน";
+  return "ผลงาน";
 }
 
 function renderFarmDispatchPrintPreview(order, context = {}) {
   if (!order) return "";
-  const checkedWorkers = context.workers || [];
+  const checkedWorkers = (context.workers || []).filter((row) => row.checked !== false);
   const materials = context.materials || [];
+  const machines = context.machines || [];
   const shortNo = farmShortWorkOrderNo(order);
+  const activityName = farmDispatchPrintActivityName(order);
+  const metricLabel = farmDispatchPrintMetricLabel(order);
+  const printDates = farmDispatchPrintDates(context.dispatchDate || order.scheduled_date, context.dispatchEndDate || context.dispatchDate || order.planned_end_date);
+  const dateHeads = printDates.map((date) => `<th>${esc(displayDate(date).slice(0, 5))}</th>`).join("");
+  const dateCells = printDates.map(() => `<td class="farm-print-fill"></td>`).join("");
+  const teamName = farmRecordLabel(farmTableByKey("teams"), context.team) || "-";
+  const supervisorName = farmRecordLabel(farmTableByKey("employees"), context.supervisor) || "-";
+  const planRange = [displayDate(order.planned_start_date || order.original_scheduled_date || order.scheduled_date), displayDate(order.planned_end_date || order.scheduled_date)].filter(Boolean).join(" - ");
+  const dispatchRange = [displayDate(context.dispatchDate), displayDate(context.dispatchEndDate || context.dispatchDate)].filter(Boolean).join(" - ");
   return `
     <section class="farm-dispatch-print" aria-label="ใบสั่งงานและใบเบิกพัสดุ">
       <div class="farm-dispatch-print-head">
-        <div>
-          <h3>ใบสั่งงาน / ใบเบิกพัสดุ</h3>
-          <p>ระบบบริหารงานสวนปาล์มคีรีรัฐ</p>
+        <div class="farm-print-title">
+          <strong>ระบบบริหารงานสวนปาล์มคีรีรัฐ</strong>
+          <h3>ใบสั่งงาน / ใบเบิกพัสดุ / บันทึกผลงานเบื้องต้น</h3>
+          <p>ใช้เอกสารนี้สำหรับส่งงาน เบิกพัสดุ และกรอกผลงานหลายวันใน Work Order เดียว</p>
+        </div>
+        <div class="farm-print-meta">
+          <span>WO</span><b>${esc(shortNo)}</b>
+          <span>วันที่สั่งงาน</span><b data-dispatch-print-date>${esc(displayDate(context.dispatchDate) || "-")}</b>
+          <span>ช่วงทำงาน</span><b>${esc(dispatchRange || "-")}</b>
         </div>
         <div class="farm-print-qr">
           <img src="${esc(farmWorkOrderQrUrl(order, "print", 112))}" alt="QR ${esc(shortNo)}">
-          <strong>${esc(shortNo)}</strong>
+          <strong>Scan บันทึกงาน</strong>
         </div>
       </div>
-      <dl>
-        <dt>วันที่สั่งทำ</dt><dd data-dispatch-print-date>${esc(displayDate(context.dispatchDate) || "-")}</dd>
-        <dt>งาน</dt><dd>${esc(order.work_order_title || "-")}</dd>
-        <dt>กิจกรรม</dt><dd>${esc(farmLookupLabel("activities", order.activity_id))}</dd>
-        <dt>พื้นที่</dt><dd>${esc(context.orderArea || "-")}</dd>
-        <dt>ทีม</dt><dd>${esc(farmRecordLabel(farmTableByKey("teams"), context.team) || "-")}</dd>
-        <dt>หัวหน้าทีม</dt><dd>${esc(farmRecordLabel(farmTableByKey("employees"), context.supervisor) || "-")}</dd>
-      </dl>
-      <h4>รายชื่อคนงาน</h4>
-      <div class="farm-dispatch-print-tags">${checkedWorkers.map((row) => `<span>${esc(row.name)}</span>`).join("") || "<span>-</span>"}</div>
-      <h4>รายการพัสดุเบิกจ่าย</h4>
-      <table>
-        <thead><tr><th>#</th><th>รายการ</th><th>จำนวนเบิก</th><th>หน่วย</th></tr></thead>
+      <div class="farm-print-work-grid">
+        <div><span>กิจกรรม</span><b>${esc(activityName)}</b></div>
+        <div><span>พื้นที่ / Block</span><b>${esc(context.orderArea || "-")}</b></div>
+        <div><span>ทีม</span><b>${esc(teamName)}</b></div>
+        <div><span>หัวหน้าทีม</span><b>${esc(supervisorName)}</b></div>
+        <div><span>ช่วงแผนเดิม</span><b>${esc(planRange || "-")}</b></div>
+        <div><span>สถานะ</span><b>${esc(farmWorkStatusMeta(order).label || "-")}</b></div>
+      </div>
+
+      <div class="farm-print-two-col">
+        <div>
+          <h4>บันทึกผลงานรายคน</h4>
+          <table class="farm-print-worker-table">
+            <thead><tr><th>รหัส</th><th>ชื่อ</th><th>หน้าที่</th>${dateHeads}<th>รวม</th><th>หมายเหตุ</th></tr></thead>
+            <tbody>
+              ${checkedWorkers.map((row) => `
+                <tr>
+                  <td>${esc(row.employee_code || row.code || row.id || "")}</td>
+                  <td>${esc(row.name || "-")}</td>
+                  <td>${esc(row.role || "คนงาน")}</td>
+                  ${dateCells}
+                  <td class="farm-print-fill"></td>
+                  <td class="farm-print-fill"></td>
+                </tr>`).join("") || `<tr><td colspan="${5 + printDates.length}">ยังไม่มีรายชื่อคนงาน</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <h4>สรุปผลงานรวมรายวัน</h4>
+          <table class="farm-print-summary-table">
+            <thead><tr><th>รายการ</th>${dateHeads}<th>รวม</th><th>หน่วย</th></tr></thead>
+            <tbody>
+              <tr><td>${esc(metricLabel)}</td>${dateCells}<td class="farm-print-fill"></td><td></td></tr>
+              <tr><td>จำนวนคน</td>${dateCells}<td class="farm-print-fill"></td><td>คน</td></tr>
+              <tr><td>เวลาเริ่ม-เลิก</td>${dateCells}<td class="farm-print-fill"></td><td></td></tr>
+              <tr><td>หมายเหตุงาน</td>${dateCells}<td class="farm-print-fill"></td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <h4>ใบเบิกพัสดุ / ตัดจ่าย</h4>
+      <table class="farm-print-material-table">
+        <thead><tr><th>#</th><th>พัสดุ</th><th>แผน</th><th>หน่วยแผน</th><th>เบิกตามแผน</th><th>เบิกจริง</th><th>หน่วยจ่าย</th><th>ผู้รับ</th></tr></thead>
         <tbody>
           ${materials.map((row, index) => {
             const issue = farmDispatchIssueUnitInfo(row);
-            const planQty = n(row.issued_quantity || row.planned_quantity);
-            const issueText = issue.factor > 1
-              ? `${moneyNf.format(issue.issueQuantity)} ${issue.issueUnit} (${moneyNf.format(planQty)} ${issue.planUnit})`
-              : `${moneyNf.format(planQty)} ${issue.planUnit || ""}`;
-            return `<tr><td>${index + 1}</td><td>${esc(row.material_name)}</td><td>${esc(issueText)}</td><td>${esc(issue.issueUnit || issue.planUnit || "-")}</td></tr>`;
-          }).join("") || `<tr><td colspan="4">ไม่มีรายการพัสดุ</td></tr>`}
+            return `<tr>
+              <td>${index + 1}</td>
+              <td>${esc(row.material_name)}</td>
+              <td class="num">${moneyNf.format(n(row.planned_quantity))}</td>
+              <td>${esc(issue.planUnit || "-")}</td>
+              <td class="num">${moneyNf.format(issue.plannedIssueQuantity || 0)}</td>
+              <td class="farm-print-fill"></td>
+              <td>${esc(issue.issueUnit || issue.planUnit || "-")}</td>
+              <td class="farm-print-fill"></td>
+            </tr>`;
+          }).join("") || `<tr><td colspan="8">ไม่มีรายการพัสดุ</td></tr>`}
         </tbody>
       </table>
+
+      <h4>รถ / เครื่องจักร / น้ำมัน</h4>
+      <table class="farm-print-machine-table">
+        <thead><tr><th>#</th><th>รถ/เครื่องจักร</th><th>คนขับ</th><th>ชม.เริ่ม</th><th>ชม.จบ</th><th>กม.เริ่ม</th><th>กม.จบ</th><th>น้ำมันเบิก</th><th>หมายเหตุ</th></tr></thead>
+        <tbody>
+          ${machines.map((row, index) => {
+            const vehicle = farmLookup("vehicles", row.vehicle_id) || {};
+            const driver = farmLookup("employees", row.driver_employee_id) || {};
+            return `<tr>
+              <td>${index + 1}</td>
+              <td>${esc(farmRecordLabel(farmTableByKey("vehicles"), vehicle) || row.vehicle_id || "-")}</td>
+              <td>${esc(farmRecordLabel(farmTableByKey("employees"), driver) || row.driver_employee_id || "-")}</td>
+              <td class="farm-print-fill"></td><td class="farm-print-fill"></td><td class="farm-print-fill"></td><td class="farm-print-fill"></td>
+              <td class="num">${n(row.fuel_issue_liter || row.fuel_plan_liter) ? moneyNf.format(n(row.fuel_issue_liter || row.fuel_plan_liter)) : ""}</td>
+              <td class="farm-print-fill"></td>
+            </tr>`;
+          }).join("") || `<tr><td colspan="9">ไม่มีรายการรถ/เครื่องจักร</td></tr>`}
+        </tbody>
+      </table>
+
       <div class="farm-dispatch-signatures">
         <span>ผู้จัดการสั่งงาน</span>
         <span>ผู้จ่ายพัสดุ</span>
-        <span>หัวหน้าทีมรับงาน</span>
+        <span>หัวหน้าทีมรับงาน/รายงานผล</span>
+        <span>ผู้ตรวจ/รับทราบ</span>
       </div>
     </section>`;
 }
@@ -14616,17 +14713,20 @@ function syncFarmDispatchPrintPreviewFromForm() {
     }).filter(Boolean);
     workerBox.innerHTML = workers.length ? workers.map((name) => `<span>${esc(name)}</span>`).join("") : "<span>-</span>";
   }
-  const body = print.querySelector("table tbody");
+  const body = print.querySelector(".farm-print-material-table tbody");
   if (body) {
     const rows = Array.from(document.querySelectorAll("[data-farm-dispatch-material]")).map((row, index) => {
       const name = row.children?.[1]?.textContent?.trim() || "-";
-      const qty = n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value);
-      const unit = farmUnitDisplayName(row.children?.[6]?.textContent?.trim() || "");
-      return { index: index + 1, name, qty, unit };
-    }).filter((row) => row.qty > 0);
+      const planQty = n(row.dataset.farmDispatchPlannedQuantity || row.children?.[2]?.textContent || 0);
+      const planUnit = row.children?.[3]?.textContent?.trim() || "-";
+      const planIssueQty = n(row.children?.[4]?.textContent?.trim() || 0);
+      const issueQty = n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value);
+      const issueUnit = farmUnitDisplayName(row.children?.[6]?.textContent?.trim() || "");
+      return { index: index + 1, name, planQty, planUnit, planIssueQty, issueQty, issueUnit };
+    }).filter((row) => row.planQty > 0 || row.issueQty > 0);
     body.innerHTML = rows.length
-      ? rows.map((row) => `<tr><td>${row.index}</td><td>${esc(row.name)}</td><td>${moneyNf.format(row.qty)}</td><td>${esc(row.unit)}</td></tr>`).join("")
-      : `<tr><td colspan="4">ไม่มีรายการพัสดุ</td></tr>`;
+      ? rows.map((row) => `<tr><td>${row.index}</td><td>${esc(row.name)}</td><td class="num">${moneyNf.format(row.planQty)}</td><td>${esc(row.planUnit)}</td><td class="num">${moneyNf.format(row.planIssueQty)}</td><td class="farm-print-fill">${moneyNf.format(row.issueQty)}</td><td>${esc(row.issueUnit)}</td><td class="farm-print-fill"></td></tr>`).join("")
+      : `<tr><td colspan="8">ไม่มีรายการพัสดุ</td></tr>`;
   }
 }
 

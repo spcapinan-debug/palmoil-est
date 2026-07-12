@@ -7125,39 +7125,69 @@ tfoot td {
 
 .farm-dispatch-print {
   display: grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 7px;
+  padding: 10px;
   border: 1px solid #dbe5f2;
   border-radius: 8px;
   background: #fff;
+  color: #111827;
 }
 
 .farm-dispatch-print-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(180px, .8fr) 88px;
+  gap: 10px;
   align-items: start;
   border-bottom: 1px solid #dbe5f2;
-  padding-bottom: 8px;
+  padding-bottom: 6px;
+}
+
+.farm-print-title strong {
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.farm-print-title p {
+  margin-top: 2px;
+}
+
+.farm-print-meta {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 2px 8px;
+  font-size: 11px;
+}
+
+.farm-print-meta span,
+.farm-print-work-grid span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.farm-print-meta b,
+.farm-print-work-grid b {
+  color: var(--ink);
+  font-weight: 950;
 }
 
 .farm-print-qr {
   display: grid;
   justify-items: center;
-  gap: 4px;
-  min-width: 92px;
+  gap: 2px;
+  min-width: 80px;
 }
 
 .farm-print-qr img {
-  width: 86px;
-  height: 86px;
+  width: 72px;
+  height: 72px;
   border: 1px solid #dbe5f2;
   border-radius: 4px;
 }
 
 .farm-print-qr strong {
   color: var(--navy);
-  font-size: 16px;
+  font-size: 10px;
   font-weight: 950;
 }
 
@@ -7169,74 +7199,89 @@ tfoot td {
 
 .farm-dispatch-print h3 {
   color: var(--navy);
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .farm-dispatch-print p,
 .farm-dispatch-print dt {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
 }
 
-.farm-dispatch-print dl {
+.farm-print-work-grid {
   display: grid;
-  grid-template-columns: 100px minmax(0, 1fr) 100px minmax(0, 1fr);
-  gap: 6px 10px;
-  margin: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
 }
 
-.farm-dispatch-print dd {
-  margin: 0;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.farm-dispatch-print-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.farm-dispatch-print-tags span {
+.farm-print-work-grid > div {
   border: 1px solid #dbe5f2;
-  border-radius: 999px;
-  padding: 4px 8px;
-  color: var(--ink);
-  font-size: 11px;
-  font-weight: 800;
+  border-radius: 4px;
+  padding: 4px 6px;
+  display: grid;
+  gap: 1px;
+  font-size: 10px;
+}
+
+.farm-print-two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr);
+  gap: 7px;
 }
 
 .farm-dispatch-print table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 10px;
+  line-height: 1.22;
 }
 
 .farm-dispatch-print th,
 .farm-dispatch-print td {
   border: 1px solid #dbe5f2;
-  padding: 7px 8px;
+  padding: 3px 4px;
   text-align: left;
+  vertical-align: middle;
 }
 
 .farm-dispatch-print th {
   background: #f8fafc;
+  text-align: center;
+  font-weight: 950;
+}
+
+.farm-dispatch-print td.num,
+.farm-dispatch-print .num {
+  text-align: right;
+}
+
+.farm-print-fill {
+  min-width: 28px;
+  height: 18px;
+}
+
+.farm-print-worker-table th:nth-child(2),
+.farm-print-worker-table td:nth-child(2) {
+  min-width: 108px;
+}
+
+.farm-print-material-table td:nth-child(2) {
+  min-width: 120px;
 }
 
 .farm-dispatch-signatures {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-  padding-top: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 14px;
 }
 
 .farm-dispatch-signatures span {
   border-top: 1px solid #94a3b8;
-  padding-top: 8px;
+  padding-top: 5px;
   color: var(--ink);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 900;
   text-align: center;
 }
@@ -10420,10 +10465,32 @@ td.num,
     border: 0 !important;
     padding: 0 !important;
     color: #000 !important;
+    gap: 5px !important;
+    font-size: 9px !important;
   }
 
   body.print-farm-dispatch .farm-dispatch-print table {
     page-break-inside: auto;
+  }
+
+  body.print-farm-dispatch .farm-dispatch-print th,
+  body.print-farm-dispatch .farm-dispatch-print td,
+  body.print-farm-dispatch-bulk .farm-dispatch-print th,
+  body.print-farm-dispatch-bulk .farm-dispatch-print td {
+    border-color: #333 !important;
+    padding: 2px 3px !important;
+  }
+
+  body.print-farm-dispatch .farm-print-qr img,
+  body.print-farm-dispatch-bulk .farm-print-qr img {
+    width: 68px !important;
+    height: 68px !important;
+  }
+
+  body.print-farm-dispatch .farm-print-two-col,
+  body.print-farm-dispatch-bulk .farm-print-two-col {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 5px !important;
   }
 
   body.print-farm-dispatch-bulk .sidebar,
@@ -10465,6 +10532,8 @@ td.num,
     border: 0 !important;
     padding: 0 !important;
     color: #000 !important;
+    gap: 5px !important;
+    font-size: 9px !important;
   }
 
   body.print-farm-issue .sidebar,
