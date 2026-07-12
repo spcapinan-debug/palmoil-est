@@ -10548,6 +10548,21 @@ function farmToday() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function farmDispatchDefaultDateRange() {
+  const startDate = farmToday();
+  return { startDate, endDate: farmAddDays(startDate, 7) };
+}
+
+function ensureFarmDispatchFastDefaults(force = false) {
+  if (state.view !== "farm-dispatch") return;
+  const range = farmDispatchDefaultDateRange();
+  if (force || !state.farmWorkFilters.startDate) state.farmWorkFilters.startDate = range.startDate;
+  if (force || !state.farmWorkFilters.endDate) state.farmWorkFilters.endDate = range.endDate;
+  if (force || !state.farmDispatchListFilters.startDate) state.farmDispatchListFilters.startDate = state.farmWorkFilters.startDate;
+  if (force || !state.farmDispatchListFilters.endDate) state.farmDispatchListFilters.endDate = state.farmWorkFilters.endDate;
+  if (force || !state.farmWorkFilters.status || state.farmWorkFilters.status === "all") state.farmWorkFilters.status = "approved";
+}
+
 function farmTableFieldByKey(table, key) {
   return (table?.fields || []).find((field) => farmFieldKey(field) === key);
 }
@@ -12446,6 +12461,27 @@ function renderFarmDispatchPrintHeader(rows = []) {
       </div>
       <button type="button" data-farm-dispatch-bulk-print ${selected.size ? "" : "disabled"}>พิมพ์ใบสั่งงานที่เลือก ${selected.size ? fmt(selected.size) : ""}</button>
     </div>`;
+}
+
+function syncFarmDispatchPrintSelectionUi() {
+  const visibleInputs = Array.from(document.querySelectorAll("[data-farm-dispatch-print-row]"));
+  const selected = new Set((state.farmDispatchPrintSelectedIds || []).map((id) => String(id)));
+  let visibleSelected = 0;
+  visibleInputs.forEach((input) => {
+    const checked = selected.has(String(input.dataset.farmDispatchPrintRow || ""));
+    input.checked = checked;
+    if (checked) visibleSelected += 1;
+  });
+  const allInput = document.querySelector("[data-farm-dispatch-print-all]");
+  if (allInput) {
+    allInput.checked = Boolean(visibleInputs.length && visibleSelected === visibleInputs.length);
+    allInput.indeterminate = Boolean(visibleSelected && visibleSelected < visibleInputs.length);
+  }
+  const printButton = document.querySelector("[data-farm-dispatch-bulk-print]");
+  if (printButton) {
+    printButton.disabled = selected.size === 0;
+    printButton.textContent = `พิมพ์ใบสั่งงานที่เลือก ${selected.size ? fmt(selected.size) : ""}`;
+  }
 }
 
 function renderFarmDispatchBulkPrint(rows = []) {
@@ -14545,6 +14581,13 @@ function printFarmDispatchOrder() {
 
 function printFarmDispatchBulkOrders() {
   if (!farmDispatchPrintSelectedSet(farmWorkOrders()).size) return;
+  const target = document.querySelector(".farm-dispatch-bulk-print-pages");
+  if (target) {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = renderFarmDispatchBulkPrint(farmDispatchFilteredOrders()).trim();
+    const next = wrapper.firstElementChild;
+    if (next) target.replaceWith(next);
+  }
   document.body.classList.add("print-farm-dispatch-bulk");
   window.print();
   window.setTimeout(() => document.body.classList.remove("print-farm-dispatch-bulk"), 400);
@@ -20218,6 +20261,7 @@ function renderClear() {
 
 function render() {
   resetFarmDerivedCaches();
+  ensureFarmDispatchFastDefaults();
   syncGlobalFilterBar();
   for (const btn of els.tabs.querySelectorAll("button[data-view]")) {
     btn.classList.toggle("active", btn.dataset.view === state.view);
@@ -20261,6 +20305,7 @@ function applyBudgetCheckboxStates(root = document) {
 function setView(view) {
   state.view = view;
   ensureFarmViewState(view);
+  ensureFarmDispatchFastDefaults();
   for (const btn of els.tabs.querySelectorAll("button")) btn.classList.toggle("active", btn.dataset.view === view);
   render();
   const viewTables = farmDatabaseTablesForView(view);
@@ -21318,14 +21363,16 @@ async function init() {
       if (dispatchPrintRow.checked) current.add(id);
       else current.delete(id);
       state.farmDispatchPrintSelectedIds = [...current];
-      render();
+      syncFarmDispatchPrintSelectionUi();
       return;
     }
     const dispatchPrintAll = e.target.closest("[data-farm-dispatch-print-all]");
     if (dispatchPrintAll) {
-      const ids = (state.view === "farm-dispatch" ? farmDispatchFilteredOrders() : []).map((row) => row.id).filter(Boolean);
-      state.farmDispatchPrintSelectedIds = dispatchPrintAll.checked ? ids : [];
-      render();
+      const visibleIds = Array.from(document.querySelectorAll("[data-farm-dispatch-print-row]"))
+        .map((input) => input.dataset.farmDispatchPrintRow)
+        .filter(Boolean);
+      state.farmDispatchPrintSelectedIds = dispatchPrintAll.checked ? visibleIds : [];
+      syncFarmDispatchPrintSelectionUi();
       return;
     }
     const dispatchListFilter = e.target.closest("[data-farm-dispatch-list-filter]");
