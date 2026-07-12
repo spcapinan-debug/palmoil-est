@@ -14012,19 +14012,23 @@ function farmDispatchIssueUnitInfo(row = {}) {
   const material = farmLookup("materials", row.material_id) || {};
   const planUnit = farmUnitDisplayName(row.unit_name || row.unit_id);
   const packKg = farmDispatchMaterialPackKg(row, material);
+  const plannedQuantity = n(row.planned_quantity);
+  const issuedQuantity = n(row.issued_quantity || row.planned_quantity);
   if ((planUnit === "กก." || /กก|kg/i.test(planUnit)) && packKg > 0) {
     return {
       planUnit: "กก.",
       issueUnit: "กระสอบ",
       factor: packKg,
-      issueQuantity: n(row.issued_quantity || row.planned_quantity) / packKg,
+      plannedIssueQuantity: plannedQuantity / packKg,
+      issueQuantity: issuedQuantity / packKg,
     };
   }
   return {
     planUnit,
     issueUnit: planUnit,
     factor: 1,
-    issueQuantity: n(row.issued_quantity || row.planned_quantity),
+    plannedIssueQuantity: plannedQuantity,
+    issueQuantity: issuedQuantity,
   };
 }
 
@@ -14266,7 +14270,7 @@ function renderFarmDispatchPanel() {
           </div>
           <div class="table-wrap">
             <table class="mini-table farm-dispatch-table">
-              <thead><tr><th>#</th><th>พัสดุ</th><th>แผน</th><th>หน่วยแผน</th><th>เบิกจ่ายจริง</th><th>หน่วยจ่าย</th></tr></thead>
+              <thead><tr><th>#</th><th>พัสดุ</th><th>แผน</th><th>หน่วยแผน</th><th>เบิกตามแผน</th><th>เบิกจ่ายจริง</th><th>หน่วยจ่าย</th></tr></thead>
               <tbody>
                 ${materials.map((row, index) => {
                   const issue = farmDispatchIssueUnitInfo(row);
@@ -14276,10 +14280,11 @@ function renderFarmDispatchPanel() {
                     <td>${esc(row.material_name)}</td>
                     <td class="num">${moneyNf.format(n(row.planned_quantity))}</td>
                     <td>${esc(issue.planUnit || "-")}</td>
+                    <td class="num">${moneyNf.format(issue.plannedIssueQuantity || 0)}</td>
                     <td><input type="number" min="0" step="0.01" value="${esc(issue.issueQuantity || 0)}" data-farm-dispatch-issue-qty></td>
                     <td>${esc(issue.issueUnit || "-")}</td>
                   </tr>`;
-                }).join("") || `<tr><td colspan="6">ไม่มีรายการพัสดุสำหรับงานนี้</td></tr>`}
+                }).join("") || `<tr><td colspan="7">ไม่มีรายการพัสดุสำหรับงานนี้</td></tr>`}
               </tbody>
             </table>
           </div>
@@ -14612,7 +14617,7 @@ function syncFarmDispatchPrintPreviewFromForm() {
     const rows = Array.from(document.querySelectorAll("[data-farm-dispatch-material]")).map((row, index) => {
       const name = row.children?.[1]?.textContent?.trim() || "-";
       const qty = n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value);
-      const unit = farmUnitDisplayName(row.children?.[4]?.textContent?.trim() || "");
+      const unit = farmUnitDisplayName(row.children?.[6]?.textContent?.trim() || "");
       return { index: index + 1, name, qty, unit };
     }).filter((row) => row.qty > 0);
     body.innerHTML = rows.length
