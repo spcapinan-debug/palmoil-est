@@ -7124,7 +7124,7 @@ tfoot td {
 }
 
 .farm-dispatch-print {
-  display: grid;
+  display: none;
   gap: 7px;
   padding: 10px;
   border: 1px solid #dbe5f2;
@@ -7228,6 +7228,18 @@ tfoot td {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr);
   gap: 7px;
+}
+
+.farm-print-worker-split {
+  display: grid;
+  gap: 6px;
+}
+
+.farm-print-worker-section h5 {
+  margin: 0 0 3px;
+  color: var(--navy);
+  font-size: 10px;
+  font-weight: 950;
 }
 
 .farm-dispatch-print table {

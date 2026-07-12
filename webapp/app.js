@@ -14353,6 +14353,30 @@ function farmDispatchPrintMetricLabel(order = {}) {
   return "ผลงาน";
 }
 
+function farmDispatchPrintWorkerTable(title, workers = [], printDates = [], emptyText = "ไม่มีรายชื่อ") {
+  const dateHeads = printDates.map((date) => `<th>${esc(displayDate(date).slice(0, 5))}</th>`).join("");
+  const dateCells = printDates.map(() => `<td class="farm-print-fill"></td>`).join("");
+  const colspan = 5 + printDates.length;
+  return `
+    <div class="farm-print-worker-section">
+      <h5>${esc(title)}</h5>
+      <table class="farm-print-worker-table">
+        <thead><tr><th>#</th><th>ชื่อ</th><th>หน้าที่</th>${dateHeads}<th>รวม</th><th>หมายเหตุ</th></tr></thead>
+        <tbody>
+          ${workers.map((row, index) => `
+            <tr>
+              <td class="num">${index + 1}</td>
+              <td>${esc(row.name || "-")}</td>
+              <td>${esc(row.role || title || "-")}</td>
+              ${dateCells}
+              <td class="farm-print-fill"></td>
+              <td class="farm-print-fill"></td>
+            </tr>`).join("") || `<tr><td colspan="${colspan}">${esc(emptyText)}</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+}
+
 function renderFarmDispatchPrintPreview(order, context = {}) {
   if (!order) return "";
   const checkedWorkers = (context.workers || []).filter((row) => row.checked !== false);
@@ -14368,6 +14392,22 @@ function renderFarmDispatchPrintPreview(order, context = {}) {
   const supervisorName = farmRecordLabel(farmTableByKey("employees"), context.supervisor) || "-";
   const planRange = [displayDate(order.planned_start_date || order.original_scheduled_date || order.scheduled_date), displayDate(order.planned_end_date || order.scheduled_date)].filter(Boolean).join(" - ");
   const dispatchRange = [displayDate(context.dispatchDate), displayDate(context.dispatchEndDate || context.dispatchDate)].filter(Boolean).join(" - ");
+  const driverIds = new Set(machines.map((row) => String(row.driver_employee_id || "")).filter(Boolean));
+  const driverRowsFromWorkers = checkedWorkers
+    .filter((row) => driverIds.has(String(row.id || row.employee_id || "")))
+    .map((row) => ({ ...row, role: row.role || "คนรถ" }));
+  const driverRowsFromMachines = machines
+    .map((row) => {
+      const vehicle = farmLookup("vehicles", row.vehicle_id) || {};
+      const driver = farmLookup("employees", row.driver_employee_id) || {};
+      const name = farmRecordLabel(farmTableByKey("employees"), driver) || row.driver_name || row.driver_employee_id || "";
+      const role = farmRecordLabel(farmTableByKey("vehicles"), vehicle) || row.vehicle_name || row.vehicle_id || "คนรถ";
+      return row.driver_employee_id ? { id: row.driver_employee_id, name, role } : null;
+    })
+    .filter(Boolean)
+    .filter((row) => !driverRowsFromWorkers.some((worker) => String(worker.id || worker.employee_id || "") === String(row.id)));
+  const driverWorkers = [...driverRowsFromWorkers, ...driverRowsFromMachines];
+  const laborWorkers = checkedWorkers.filter((row) => !driverIds.has(String(row.id || row.employee_id || "")));
   return `
     <section class="farm-dispatch-print" aria-label="ใบสั่งงานและใบเบิกพัสดุ">
       <div class="farm-dispatch-print-head">
@@ -14398,20 +14438,10 @@ function renderFarmDispatchPrintPreview(order, context = {}) {
       <div class="farm-print-two-col">
         <div>
           <h4>บันทึกผลงานรายคน</h4>
-          <table class="farm-print-worker-table">
-            <thead><tr><th>รหัส</th><th>ชื่อ</th><th>หน้าที่</th>${dateHeads}<th>รวม</th><th>หมายเหตุ</th></tr></thead>
-            <tbody>
-              ${checkedWorkers.map((row) => `
-                <tr>
-                  <td>${esc(row.employee_code || row.code || row.id || "")}</td>
-                  <td>${esc(row.name || "-")}</td>
-                  <td>${esc(row.role || "คนงาน")}</td>
-                  ${dateCells}
-                  <td class="farm-print-fill"></td>
-                  <td class="farm-print-fill"></td>
-                </tr>`).join("") || `<tr><td colspan="${5 + printDates.length}">ยังไม่มีรายชื่อคนงาน</td></tr>`}
-            </tbody>
-          </table>
+          <div class="farm-print-worker-split">
+            ${farmDispatchPrintWorkerTable("คนงาน", laborWorkers, printDates, "ไม่มีรายชื่อคนงาน")}
+            ${farmDispatchPrintWorkerTable("คนรถ", driverWorkers, printDates, "ไม่มีรายชื่อคนรถ")}
+          </div>
         </div>
         <div>
           <h4>สรุปผลงานรวมรายวัน</h4>
