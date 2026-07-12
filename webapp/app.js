@@ -14014,13 +14014,14 @@ function farmDispatchIssueUnitInfo(row = {}) {
   const packKg = farmDispatchMaterialPackKg(row, material);
   const plannedQuantity = n(row.planned_quantity);
   const issuedQuantity = n(row.issued_quantity || row.planned_quantity);
+  const normalizeIssueQuantity = (quantity, unit) => unit === "กระสอบ" && quantity > 0 ? Math.ceil(quantity) : quantity;
   if ((planUnit === "กก." || /กก|kg/i.test(planUnit)) && packKg > 0) {
     return {
       planUnit: "กก.",
       issueUnit: "กระสอบ",
       factor: packKg,
-      plannedIssueQuantity: plannedQuantity / packKg,
-      issueQuantity: issuedQuantity / packKg,
+      plannedIssueQuantity: normalizeIssueQuantity(plannedQuantity / packKg, "กระสอบ"),
+      issueQuantity: normalizeIssueQuantity(issuedQuantity / packKg, "กระสอบ"),
     };
   }
   return {
@@ -14275,7 +14276,7 @@ function renderFarmDispatchPanel() {
                 ${materials.map((row, index) => {
                   const issue = farmDispatchIssueUnitInfo(row);
                   return `
-                  <tr data-farm-dispatch-material="${esc(row.material_id)}" data-farm-dispatch-unit-name="${esc(issue.planUnit || row.unit_name || row.unit_id || "")}" data-farm-dispatch-issue-factor="${esc(issue.factor || 1)}">
+                  <tr data-farm-dispatch-material="${esc(row.material_id)}" data-farm-dispatch-unit-name="${esc(issue.planUnit || row.unit_name || row.unit_id || "")}" data-farm-dispatch-issue-factor="${esc(issue.factor || 1)}" data-farm-dispatch-planned-quantity="${esc(n(row.planned_quantity))}">
                     <td>${index + 1}</td>
                     <td>${esc(row.material_name)}</td>
                     <td class="num">${moneyNf.format(n(row.planned_quantity))}</td>
@@ -14394,15 +14395,17 @@ async function saveFarmDispatchOrder() {
     const materialId = row.dataset.farmDispatchMaterial;
     const material = farmLookup("materials", materialId) || {};
     const issueFactor = n(row.dataset.farmDispatchIssueFactor || 1) || 1;
+    const plannedQuantity = n(row.dataset.farmDispatchPlannedQuantity || row.children?.[2]?.textContent || 0);
     const issueQuantity = n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value) * issueFactor;
     return {
       material_id: materialId,
+      planned_quantity: plannedQuantity,
       quantity: issueQuantity,
       unit_id: material.base_unit_id || "",
       unit_name: row.dataset.farmDispatchUnitName || farmDispatchMaterialUnitName({}, material),
       line_no: index + 1,
     };
-  }).filter((row) => row.material_id && row.quantity > 0), "material_id").map((row, index) => ({ ...row, line_no: index + 1, quantity: n(row.quantity || row.issued_quantity) }));
+  }).filter((row) => row.material_id && (row.quantity > 0 || row.planned_quantity > 0)), "material_id").map((row, index) => ({ ...row, line_no: index + 1, quantity: n(row.quantity || row.issued_quantity), planned_quantity: n(row.planned_quantity) }));
   const machineRows = farmMergeDispatchRows(Array.from(document.querySelectorAll("[data-farm-dispatch-machine]")).map((row) => {
     const vehicleId = row.querySelector("[data-farm-dispatch-machine-vehicle]")?.value || row.dataset.farmDispatchMachine;
     const vehicle = farmLookup("vehicles", vehicleId) || {};
@@ -14507,7 +14510,7 @@ async function saveFarmDispatchOrder() {
         tableId: "work_order_materials",
         work_order_id: order.id,
         material_id: item.material_id,
-        planned_quantity: item.quantity,
+        planned_quantity: item.planned_quantity,
         issued_quantity: item.quantity,
         unit_id: item.unit_id,
         note: item.unit_name ? JSON.stringify({ unit_name: item.unit_name }) : "",
@@ -14564,8 +14567,9 @@ async function saveFarmDispatchOrder() {
     }
 
     saveFarmRecords();
-    state.farmWorkDetailId = order.id;
-    state.farmDispatchWorkOrderId = order.id;
+    resetFarmDerivedCaches();
+    state.farmWorkDetailId = nextOrder.id;
+    state.farmDispatchWorkOrderId = nextOrder.id;
     state.farmSyncStatus = dispatchWarnings.length ? "warning" : "success";
     state.farmSyncMessage = `บันทึกสั่งงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · คนงาน ${fmt(workerIdsToSave.length)} คน · พัสดุ ${fmt(materialRows.length)} รายการ · รถ/เครื่องจักร ${fmt(machineRows.length)} รายการ${dispatchWarnings.length ? ` · ระบบยังไม่ตัดสต๊อกเพราะยังไม่มีตาราง inventory_documents` : ""}`;
   } catch (error) {
