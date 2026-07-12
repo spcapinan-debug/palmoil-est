@@ -8531,7 +8531,7 @@ tfoot td {
 
 .farm-dispatch-bulk-left {
   display: grid;
-  grid-template-columns: minmax(150px, auto) repeat(3, minmax(130px, 1fr)) repeat(2, minmax(150px, 1fr));
+  grid-template-columns: minmax(92px, 110px) repeat(3, minmax(130px, 1fr)) repeat(2, minmax(150px, 1fr));
   align-items: end;
   gap: 8px 10px;
   flex: 1;
@@ -8551,13 +8551,21 @@ tfoot td {
 }
 
 .farm-dispatch-row-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  display: grid !important;
+  align-content: end;
+  justify-items: start;
+  gap: 4px;
   color: var(--ink);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 850;
-  white-space: nowrap;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.farm-dispatch-row-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
 }
 
 .farm-check-col {
@@ -8579,6 +8587,22 @@ tfoot td {
 .farm-dispatch-bulk-print button:disabled {
   opacity: .45;
   cursor: not-allowed;
+}
+
+.farm-row-print-button {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--navy);
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.farm-row-print-button:hover {
+  border-color: var(--navy);
+  background: #f8fafc;
 }
 
 .farm-work-order-list .farm-table td small {

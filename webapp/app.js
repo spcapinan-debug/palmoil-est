@@ -11881,8 +11881,8 @@ function farmWorkStatusMeta(order) {
   if (status === "closed") return { key: "closed", label: "ปิดงาน", color: "#0f172a", tone: "done" };
   if (status === "completed") return { key: "completed", label: "ทำเสร็จ", color: "#16a34a", tone: "done" };
   if (status === "in_progress") return { key: "in_progress", label: "กำลังทำ", color: "#2563eb", tone: "active" };
-  if (isRescheduled || status === "rescheduled") return { key: "rescheduled", label: "เลื่อนวัน", color: "#a855f7", tone: "shift" };
   if (status === "sent_to_mobile") return { key: "sent_to_mobile", label: "ส่งเข้ามือถือ", color: "#06b6d4", tone: "active" };
+  if (isRescheduled || status === "rescheduled") return { key: "rescheduled", label: "เลื่อนวัน", color: "#a855f7", tone: "shift" };
   if (approval === "approved" || status === "approved" || status === "scheduled" || status === "planned" || status === "draft") return { key: "approved", label: "อนุมัติแล้ว", color: "#22c55e", tone: "done" };
   return { key: status, label: status || "ไม่ระบุ", color: "#64748b", tone: "neutral" };
 }
@@ -12063,10 +12063,16 @@ function farmWorkOrderStatusRank(order = {}) {
   return 10;
 }
 
+function farmWorkOrderCanonicalKey(row = {}) {
+  const rawNo = String(row.work_order_no || row.order_no || row.orderNo || "").trim();
+  if (rawNo) return farmShortWorkOrderNo(row).toLowerCase();
+  return String(row._overrideOf || row.id || "").trim().toLowerCase();
+}
+
 function farmCanonicalWorkOrderRows(rows = []) {
   const groups = new Map();
   for (const row of rows) {
-    const key = String(row._overrideOf || row.work_order_no || row.order_no || row.id || "").trim().toLowerCase();
+    const key = farmWorkOrderCanonicalKey(row);
     if (!key) continue;
     const previous = groups.get(key);
     if (!previous) {
@@ -12086,6 +12092,9 @@ function farmCanonicalWorkOrderRows(rows = []) {
       original_scheduled_date: override.original_scheduled_date || base.original_scheduled_date || base.scheduled_date || base.planned_start_date || "",
       note_planned_start_date: override.note_planned_start_date || base.note_planned_start_date || "",
       note_planned_end_date: override.note_planned_end_date || base.note_planned_end_date || "",
+      scheduled_date: override.scheduled_date || base.scheduled_date || "",
+      rescheduled_date: override.rescheduled_date || base.rescheduled_date || "",
+      rescheduled_end_date: override.rescheduled_end_date || base.rescheduled_end_date || "",
       work_order_no: override.work_order_no || base.work_order_no,
       id: override.id || base.id,
     });
@@ -12239,11 +12248,21 @@ function farmWorkDateRangeMatches(row = {}, startDate = "", endDate = "") {
   });
 }
 
+function farmWorkStatusFilterMatches(row = {}, selectedStatus = "all") {
+  if (!selectedStatus || selectedStatus === "all") return true;
+  const statusKey = row.statusMeta?.key || row.status || "";
+  if (statusKey === selectedStatus || row.status === selectedStatus) return true;
+  if (selectedStatus === "approved") {
+    return ["sent_to_mobile", "rescheduled", "in_progress"].includes(statusKey)
+      || ["approved", "not_required"].includes(String(row.approval_status || "").toLowerCase());
+  }
+  return false;
+}
+
 function filteredFarmWorkOrders() {
   const f = state.farmWorkFilters;
   const query = f.query.trim().toLowerCase();
   return farmWorkOrders().filter((row) => {
-    const statusKey = row.statusMeta.key;
     const zoneOption = farmWorkTextOption(row, "zone");
     const plotGroupOption = farmWorkTextOption(row, "plotGroup");
     const text = [...farmWorkOrderSearchAliases(row), row.shortNo, row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.block?.block_code, row.block?.block_name, row.block?.zone_name, row.block?.zone, row.block?.plot_group_code, row.block?.plot_group, zoneOption.label, plotGroupOption.label, row.block?.ap_code || row.block?.AP_code, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
@@ -12251,7 +12270,7 @@ function filteredFarmWorkOrders() {
       && (f.team === "all" || row.team?.id === f.team)
       && (f.zone === "all" || zoneOption.value === f.zone || row.zone?.id === f.zone)
       && (f.plotGroup === "all" || plotGroupOption.value === f.plotGroup || row.plotGroup?.id === f.plotGroup)
-      && (f.status === "all" || statusKey === f.status || row.status === f.status)
+      && farmWorkStatusFilterMatches(row, f.status)
       && farmWorkDateRangeMatches(row, f.startDate, f.endDate)
       && (!query || text.includes(query));
   });
@@ -12450,8 +12469,8 @@ function renderFarmDispatchPrintHeader(rows = []) {
     <div class="farm-dispatch-bulk-print">
       <div class="farm-dispatch-bulk-left">
         <label class="farm-dispatch-row-check">
+          <span>เลือกทั้งหมดที่แสดง</span>
           <input type="checkbox" data-farm-dispatch-print-all ${allSelected ? "checked" : ""}>
-          เลือกทั้งหมดที่แสดง
         </label>
         ${select("activity", "กิจกรรม", farmDispatchListFilterOptions(approvedRows, "activity"), f.activity)}
         ${select("zone", "โซน", farmDispatchListFilterOptions(approvedRows, "zone"), f.zone)}
@@ -14572,6 +14591,10 @@ async function saveFarmDispatchOrder() {
       rescheduled_by_manager_id: "profile-admin",
       approval_status: "not_required",
       status: "sent_to_mobile",
+      dispatch_date: date,
+      dispatch_start_date: date,
+      dispatch_end_date: endDate,
+      dispatch_status: "sent_to_mobile",
       updatedAt: now,
     };
     if (!nextOrder._overrideOf) delete nextOrder._overrideOf;
@@ -14748,6 +14771,14 @@ function printFarmDispatchBulkOrders() {
   window.addEventListener("afterprint", cleanup, { once: true });
   window.setTimeout(() => window.print(), 30);
   window.setTimeout(cleanup, 5000);
+}
+
+function printFarmDispatchSingleOrder(orderId) {
+  if (!orderId) return;
+  state.farmDispatchWorkOrderId = orderId;
+  state.farmWorkDetailId = orderId;
+  render();
+  window.setTimeout(printFarmDispatchOrder, 60);
 }
 
 function syncFarmDispatchPrintPreviewFromForm() {
@@ -16701,6 +16732,7 @@ function renderFarmWorkOrderList() {
               <th>วันทำงาน</th>
               <th>%</th>
               <th>สถานะ</th>
+              ${state.view === "farm-dispatch" ? `<th>พิมพ์</th>` : ""}
             </tr>
           </thead>
           <tbody>
@@ -16719,7 +16751,8 @@ function renderFarmWorkOrderList() {
                 <td>${esc(row.scheduled_date || "-")}</td>
                 <td class="num">${fmt(farmWorkProgress(row))}%</td>
                 <td><span class="status-pill" style="border-color:${esc(row.statusMeta.color)};color:${esc(row.statusMeta.color)}">${esc(row.statusMeta.label)}</span></td>
-              </tr>`).join("") || `<tr><td colspan="${state.view === "farm-dispatch" ? 11 : 10}">ไม่พบ Work Order ตามตัวกรอง</td></tr>`}
+                ${state.view === "farm-dispatch" ? `<td><button type="button" class="farm-row-print-button" data-farm-dispatch-print-single="${esc(row.id)}">พิมพ์</button></td>` : ""}
+              </tr>`).join("") || `<tr><td colspan="${state.view === "farm-dispatch" ? 12 : 10}">ไม่พบ Work Order ตามตัวกรอง</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -21514,6 +21547,11 @@ async function init() {
     }
     if (e.target.closest("[data-farm-dispatch-print]")) {
       printFarmDispatchOrder();
+      return;
+    }
+    const dispatchPrintSingle = e.target.closest("[data-farm-dispatch-print-single]");
+    if (dispatchPrintSingle) {
+      printFarmDispatchSingleOrder(dispatchPrintSingle.dataset.farmDispatchPrintSingle);
       return;
     }
     const dispatchPrintRow = e.target.closest("[data-farm-dispatch-print-row]");
