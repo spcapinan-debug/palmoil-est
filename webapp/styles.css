@@ -7402,6 +7402,28 @@ tfoot td {
   font-weight: 800;
 }
 
+.farm-issue-job-cell {
+  max-width: 220px;
+  min-width: 150px;
+}
+
+.farm-issue-job-cell strong {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--navy);
+  font-weight: 900;
+}
+
+.farm-issue-job-cell small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .farm-issue-status {
   display: inline-flex;
   align-items: center;

@@ -14933,8 +14933,11 @@ function farmIssueMaterialCandidatesForOrder(order) {
 function farmInventoryIssueRows() {
   const docs = farmRowsByKey("inventory_documents").filter((row) => String(row.doc_type || "").toLowerCase() === "issue");
   const lines = farmRowsByKey("inventory_document_lines");
+  const visibleStatuses = new Set(["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"]);
   return farmWorkOrders().flatMap((order) => {
     const doc = docs.find((row) => row.work_order_id === order.id);
+    const statusKey = order.statusMeta?.key || order.status || "";
+    if (!doc && !visibleStatuses.has(statusKey)) return [];
     const area = [order.plot?.plot_code, order.block?.block_code || order.block?.block_name, order.block?.ap_code || order.block?.AP_code].filter(Boolean).join(" / ") || "-";
     return farmIssueMaterialCandidatesForOrder(order).map((item) => {
       const inventoryItemId = farmDispatchInventoryItemForMaterial(item.material_id);
@@ -14961,6 +14964,17 @@ function farmInventoryIssueRows() {
     || String(a.order.shortNo || farmShortWorkOrderNo(a.order)).localeCompare(String(b.order.shortNo || farmShortWorkOrderNo(b.order)), "th"));
 }
 
+function farmInventoryIssueJobSummary(row) {
+  const order = row?.order || {};
+  const activity = farmShortActivityText(order);
+  const block = farmShortBlockText(order);
+  const zone = order.block?.zone_name || order.block?.zone || order.zone?.zone_name || "";
+  return {
+    title: activity || order.work_order_title || "-",
+    detail: [block, zone].filter(Boolean).join(" · ") || row.area || "-",
+  };
+}
+
 function renderFarmInventoryIssueQueue() {
   const allRows = farmInventoryIssueRows();
   const query = String(state.farmInventoryIssueQuery || "").trim().toLowerCase();
@@ -14985,17 +14999,17 @@ function renderFarmInventoryIssueQueue() {
   const totalPlanned = rows.reduce((sum, row) => sum + row.planned, 0);
   const totalRemaining = rows.reduce((sum, row) => sum + row.remaining, 0);
   const canUseInventoryDocs = farmDbTableAvailable("inventory_documents") && farmDbTableAvailable("inventory_document_lines");
-  const statusLabel = (status) => status === "issued" ? "จ่ายแล้ว" : status === "ready" ? "พร้อมจ่าย" : "รอสั่งงาน";
+  const statusLabel = (status) => status === "issued" ? "จ่ายแล้ว" : status === "ready" ? "ส่งเข้ามือถือ" : "รอสั่งงาน";
   const statusClass = (status) => status === "issued" ? "done" : status === "ready" ? "ready" : "waiting";
   return `
     <section class="farm-inventory-issue-page">
       <div class="section-head">
         <h3>คิวจ่ายพัสดุตามใบงาน</h3>
-        <span>ฝ่ายพัสดุเห็นรายการที่มาจากแผนและใบสั่งงาน โดยไม่ต้องเข้าเมนูวางแผนหรือสั่งงาน</span>
+        <span>แสดงเฉพาะงานที่ส่งเข้ามือถือแล้ว หรือรายการที่เคยจ่ายพัสดุแล้ว</span>
       </div>
       <div class="farm-issue-kpis">
         <article><span>Work Order ที่มีพัสดุ</span><strong>${fmt(new Set(rows.map((row) => row.order.id)).size)}</strong><small>จากแผนและใบสั่งงาน</small></article>
-        <article><span>พร้อมจ่าย</span><strong>${fmt(readyRows.length)}</strong><small>สถานะส่งเข้ามือถือแล้ว</small></article>
+        <article><span>ส่งเข้ามือถือ</span><strong>${fmt(readyRows.length)}</strong><small>รอฝ่ายพัสดุเบิกจ่าย</small></article>
         <article><span>จ่ายแล้ว</span><strong>${fmt(issuedRows.length)}</strong><small>มีเอกสาร issue หรือ issued qty</small></article>
         <article><span>คงค้าง</span><strong>${moneyNf.format(totalRemaining)}</strong><small>จากแผน ${moneyNf.format(totalPlanned)}</small></article>
       </div>
@@ -15027,11 +15041,13 @@ function renderFarmInventoryIssueQueue() {
             </tr>
           </thead>
           <tbody>
-            ${rows.map((row) => `
+            ${rows.map((row) => {
+              const job = farmInventoryIssueJobSummary(row);
+              return `
               <tr data-farm-issue-row="${esc(row.id)}" title="ดับเบิลคลิกเพื่อเปิดหน้าเบิกจ่ายพัสดุ">
                 <td>${esc(displayDate(row.document?.doc_date || row.order.scheduled_date || row.order.startDate) || "-")}</td>
                 <td>${renderFarmQrInline(row.order, "issue")}<small>${esc(row.document?.document_no || "")}</small></td>
-                <td>${esc(row.order.work_order_title || "-")}<small>${esc(row.area)}</small></td>
+                <td class="farm-issue-job-cell"><strong>${esc(job.title)}</strong><small>${esc(job.detail)}</small></td>
                 <td>${esc(row.material.material_name || "-")}</td>
                 <td class="num">${moneyNf.format(row.planned)}</td>
                 <td class="num">${moneyNf.format(row.issued)}</td>
@@ -15040,7 +15056,8 @@ function renderFarmInventoryIssueQueue() {
                 <td>${esc(row.material.source === "work_order" ? "ใบสั่งงาน" : row.material.source === "planned" ? "แผนงาน" : "อัตรากิจกรรม")}</td>
                 <td><span class="farm-issue-status ${statusClass(row.status)}">${statusLabel(row.status)}</span></td>
                 <td><button type="button" class="ghost compact" data-farm-issue-open="${esc(row.id)}">เบิก</button></td>
-              </tr>`).join("") || `<tr><td colspan="11">ยังไม่มีรายการพัสดุที่ผูกกับแผนหรือใบสั่งงาน</td></tr>`}
+              </tr>`;
+            }).join("") || `<tr><td colspan="11">ยังไม่มีรายการพัสดุที่ส่งเข้ามือถือสำหรับเบิกจ่าย</td></tr>`}
           </tbody>
         </table>
       </div>
