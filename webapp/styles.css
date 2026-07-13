@@ -8994,13 +8994,25 @@ tfoot td {
   font-weight: 900;
 }
 
+.farm-work-days span.is-week-band-a {
+  background: #fffdfb;
+}
+
+.farm-work-days span.is-week-band-b {
+  background: #f3f7fb;
+}
+
 .farm-work-days span.is-today {
   background: #fff7ed;
   color: #c2410c;
 }
 
-.farm-work-days span.is-weekend {
-  background: rgba(248, 244, 241, .9);
+.farm-work-days span.is-weekend.is-week-band-a {
+  background: #f8f1ed;
+}
+
+.farm-work-days span.is-weekend.is-week-band-b {
+  background: #edf3f8;
 }
 
 .farm-work-days span.is-week-start {
@@ -9104,10 +9116,10 @@ tfoot td {
   min-height: 42px;
   --day-width: 30px;
   background-image:
-    repeating-linear-gradient(90deg, rgba(246, 240, 237, .82) 0 calc(var(--day-width) * 2), rgba(255, 255, 255, .76) calc(var(--day-width) * 2) calc(var(--day-width) * 7)),
+    repeating-linear-gradient(90deg, rgba(255, 253, 251, .96) 0 calc(var(--day-width) * 7), rgba(243, 247, 251, .96) calc(var(--day-width) * 7) calc(var(--day-width) * 14)),
     linear-gradient(to right, rgba(203, 213, 225, .82) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 251, 248, .94), rgba(255, 251, 248, .94));
-  background-size: calc(var(--day-width) * 7) 100%, var(--day-width) 100%, 100% 100%;
+  background-size: calc(var(--day-width) * 14) 100%, var(--day-width) 100%, 100% 100%;
 }
 
 .farm-work-plan-bar,

@@ -3591,7 +3591,7 @@ function isoDay(value) {
 
 function farmWorkOrderDateRangeFromNote(note = "") {
   const text = String(note || "");
-  const match = text.match(/ช่วงแผน\s*:\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\s*ถึง\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  const match = text.match(/(?:ช่วงแผน|plan_range)\s*:\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\s*(?:ถึง|to|-)\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
   if (!match) return { startDate: "", endDate: "" };
   return { startDate: isoDay(match[1]), endDate: isoDay(match[2]) };
 }
@@ -3607,6 +3607,16 @@ function farmWorkOrderDispatchRangeFromNote(note = "") {
   const match = text.match(/(?:ช่วงสั่งงาน|dispatch_range)\s*:\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\s*(?:ถึง|to|-)\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
   if (!match) return { startDate: "", endDate: "" };
   return { startDate: isoDay(match[1]), endDate: isoDay(match[2]) };
+}
+
+function farmWorkOrderNoteWithPlanRange(note = "", startDate = "", endDate = "") {
+  const start = isoDay(startDate);
+  const end = isoDay(endDate) || start;
+  const lines = String(note || "")
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(ช่วงแผน|plan_range)\s*:/i.test(line));
+  if (start) lines.push(`plan_range: ${start} to ${end}`);
+  return lines.join("\n").trim();
 }
 
 function farmWorkOrderNoteWithDispatchRange(note = "", startDate = "", endDate = "") {
@@ -12409,6 +12419,13 @@ function farmWorkDayClass(day = "") {
   ].filter(Boolean).join(" ");
 }
 
+function farmWorkTimelineDayClass(day = "", timelineStart = "") {
+  const base = farmWorkDayClass(day);
+  const diff = Math.max(0, farmDaysBetween(timelineStart || day, day));
+  const weekClass = Math.floor(diff / 7) % 2 === 0 ? "is-week-band-a" : "is-week-band-b";
+  return [base, weekClass].filter(Boolean).join(" ");
+}
+
 function farmWorkTimelineSegments(row = {}) {
   const planStart = isoDay(row.plannedTimelineStart || row.startDate || row.scheduled_date);
   let planEnd = isoDay(row.plannedTimelineEnd || row.endDate || planStart);
@@ -14663,6 +14680,12 @@ async function saveFarmDispatchOrder() {
     const persistedOrder = farmPersistedWorkOrderFor(order);
     const originalPlanStart = isoDay(order.plannedTimelineStart || order.note_planned_start_date || order.planned_start_date || order.original_scheduled_date || order.scheduled_date || date) || date;
     const originalPlanEnd = isoDay(order.plannedTimelineEnd || order.note_planned_end_date || order.planned_end_date || originalPlanStart) || originalPlanStart;
+    const persistedNote = order.note || persistedOrder?.note || "";
+    const nextNote = farmWorkOrderNoteWithDispatchRange(
+      farmWorkOrderNoteWithPlanRange(persistedNote, originalPlanStart, originalPlanEnd),
+      date,
+      endDate,
+    );
     const nextOrder = {
       ...(persistedOrder || {}),
       ...order,
@@ -14684,7 +14707,7 @@ async function saveFarmDispatchOrder() {
       dispatch_start_date: date,
       dispatch_end_date: endDate,
       dispatch_status: "sent_to_mobile",
-      note: farmWorkOrderNoteWithDispatchRange(order.note || persistedOrder?.note || "", date, endDate),
+      note: nextNote,
       updatedAt: now,
     };
     delete nextOrder._overrideOf;
@@ -16863,7 +16886,7 @@ function renderFarmWorkBoard(options = {}) {
                 ${monthBands.map((band) => `<span>${esc(band.label)}</span>`).join("")}
               </div>
               <div class="farm-work-days" style="grid-template-columns:repeat(${days.length}, ${dayWidth}px)">
-                ${days.map((day) => `<span class="${esc(farmWorkDayClass(day))}">${esc(day.slice(8, 10))}<small>${esc(["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"][new Date(farmDateMs(day)).getUTCDay()])}</small></span>`).join("")}
+                ${days.map((day) => `<span class="${esc(farmWorkTimelineDayClass(day, timelineStart))}">${esc(day.slice(8, 10))}<small>${esc(["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"][new Date(farmDateMs(day)).getUTCDay()])}</small></span>`).join("")}
               </div>
             </div>
           </div>
