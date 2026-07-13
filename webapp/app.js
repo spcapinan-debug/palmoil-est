@@ -11887,6 +11887,7 @@ function farmDisplayValue(field, row) {
 
 function farmWorkStatusMeta(order) {
   const status = String(order.status || "planned");
+  const dispatch = String(order.dispatch_status || "");
   const approval = String(order.approval_status || "");
   const isRescheduled = !!order.rescheduled_date || (!!order.original_scheduled_date && order.original_scheduled_date !== order.scheduled_date);
   if (approval === "pending" || status === "pending_approval") return { key: "pending_approval", label: "รออนุมัติ", color: "#f59e0b", tone: "warning" };
@@ -11894,7 +11895,7 @@ function farmWorkStatusMeta(order) {
   if (status === "closed") return { key: "closed", label: "ปิดงาน", color: "#0f172a", tone: "done" };
   if (status === "completed") return { key: "completed", label: "ทำเสร็จ", color: "#16a34a", tone: "done" };
   if (status === "in_progress") return { key: "in_progress", label: "กำลังทำ", color: "#2563eb", tone: "active" };
-  if (status === "sent_to_mobile") return { key: "sent_to_mobile", label: "ส่งเข้ามือถือ", color: "#06b6d4", tone: "active" };
+  if (status === "sent_to_mobile" || dispatch === "sent_to_mobile") return { key: "sent_to_mobile", label: "ส่งเข้ามือถือ", color: "#06b6d4", tone: "active" };
   if (isRescheduled || status === "rescheduled") return { key: "rescheduled", label: "เลื่อนวัน", color: "#a855f7", tone: "shift" };
   if (approval === "approved" || status === "approved" || status === "scheduled" || status === "planned" || status === "draft") return { key: "approved", label: "อนุมัติแล้ว", color: "#22c55e", tone: "done" };
   return { key: status, label: status || "ไม่ระบุ", color: "#64748b", tone: "neutral" };
@@ -12152,14 +12153,27 @@ function farmWorkOrders() {
     const actualFallback = (["completed", "closed"].includes(String(order.status || "")) && (closedDate || isoDay(order.rescheduled_date || order.scheduled_date || order.planned_end_date || startDate))) || "";
     const actualStartDate = resultDates[0] || actualFallback;
     const actualEndDate = resultDates.at(-1) || closedDate || actualStartDate;
+    const statusMeta = farmWorkStatusMeta(order);
+    const dispatchedStatuses = ["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"];
+    const hasDispatchTimeline = dispatchedStatuses.includes(statusMeta.key)
+      || dispatchedStatuses.includes(String(order.dispatch_status || ""))
+      || !!order.dispatch_date
+      || !!order.dispatch_start_date
+      || !!order.rescheduled_date;
+    const dispatchTimelineStart = hasDispatchTimeline
+      ? isoDay(order.dispatch_start_date || order.dispatch_date || order.rescheduled_date || order.scheduled_date || startDate)
+      : "";
+    const dispatchTimelineEnd = hasDispatchTimeline
+      ? isoDay(order.dispatch_end_date || order.rescheduled_end_date || order.dispatch_date || order.scheduled_date || dispatchTimelineStart)
+      : "";
     return {
       ...order,
       startDate,
       endDate,
       plannedTimelineStart: plannedStartDate || startDate,
       plannedTimelineEnd: plannedEndDate || endDate || plannedStartDate || startDate,
-      dispatchTimelineStart: isoDay(order.rescheduled_date || (["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(String(order.status || "")) ? order.scheduled_date : "")),
-      dispatchTimelineEnd: isoDay(order.rescheduled_end_date || order.dispatch_end_date || (["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(String(order.status || "")) ? order.scheduled_date : "")),
+      dispatchTimelineStart,
+      dispatchTimelineEnd,
       actualStartDate,
       actualEndDate,
       actualResultCount: orderResults.length,
@@ -12172,7 +12186,7 @@ function farmWorkOrders() {
       team,
       plotGroup,
       shortNo: farmShortWorkOrderNo(order),
-      statusMeta: farmWorkStatusMeta(order),
+      statusMeta,
     };
   }).sort((a, b) => farmDateMs(a.startDate) - farmDateMs(b.startDate));
   return farmDerivedCache.workOrders;
@@ -12352,10 +12366,16 @@ function farmWorkTimelineSegments(row = {}) {
   const planStart = isoDay(row.plannedTimelineStart || row.startDate || row.scheduled_date);
   let planEnd = isoDay(row.plannedTimelineEnd || row.endDate || planStart);
   if (planStart && (!planEnd || farmDateMs(planEnd) < farmDateMs(planStart))) planEnd = planStart;
-  const status = String(row.status || "");
-  const hasDispatch = ["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(status) || row.rescheduled_date;
-  const dispatchStart = hasDispatch ? isoDay(row.dispatchTimelineStart || row.rescheduled_date || row.scheduled_date || "") : "";
-  let dispatchEnd = hasDispatch ? isoDay(row.dispatchTimelineEnd || row.rescheduled_end_date || row.planned_end_date || dispatchStart) : "";
+  const status = String(row.statusMeta?.key || farmWorkStatusMeta(row).key || row.status || "");
+  const dispatchStatus = String(row.dispatch_status || "");
+  const hasDispatch = ["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(status)
+    || ["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(dispatchStatus)
+    || !!row.dispatchTimelineStart
+    || !!row.dispatch_date
+    || !!row.dispatch_start_date
+    || !!row.rescheduled_date;
+  const dispatchStart = hasDispatch ? isoDay(row.dispatchTimelineStart || row.dispatch_start_date || row.dispatch_date || row.rescheduled_date || row.scheduled_date || "") : "";
+  let dispatchEnd = hasDispatch ? isoDay(row.dispatchTimelineEnd || row.dispatch_end_date || row.rescheduled_end_date || row.dispatch_date || dispatchStart) : "";
   if (dispatchStart && (!dispatchEnd || farmDateMs(dispatchEnd) < farmDateMs(dispatchStart))) dispatchEnd = dispatchStart;
   const actualStart = isoDay(row.actualStartDate);
   let actualEnd = isoDay(row.actualEndDate || actualStart);
@@ -14040,20 +14060,28 @@ function farmDispatchMaterialPackKg(row = {}, material = {}) {
   return 0;
 }
 
+function farmRoundDispatchIssueQuantity(value) {
+  const qty = n(value);
+  if (!qty) return 0;
+  const base = Math.floor(qty);
+  const fraction = qty - base;
+  return fraction < 0.5 ? base : base + 1;
+}
+
 function farmDispatchIssueUnitInfo(row = {}) {
   const material = farmLookup("materials", row.material_id) || {};
   const planUnit = farmUnitDisplayName(row.unit_name || row.unit_id);
   const packKg = farmDispatchMaterialPackKg(row, material);
   const plannedQuantity = n(row.planned_quantity);
   const issuedQuantity = n(row.issued_quantity || row.planned_quantity);
-  const normalizeIssueQuantity = (quantity, unit) => unit === "กระสอบ" && quantity > 0 ? Math.ceil(quantity) : quantity;
   if ((planUnit === "กก." || /กก|kg/i.test(planUnit)) && packKg > 0) {
+    const plannedIssueQuantity = plannedQuantity / packKg;
     return {
       planUnit: "กก.",
       issueUnit: "กระสอบ",
       factor: packKg,
-      plannedIssueQuantity: normalizeIssueQuantity(plannedQuantity / packKg, "กระสอบ"),
-      issueQuantity: normalizeIssueQuantity(issuedQuantity / packKg, "กระสอบ"),
+      plannedIssueQuantity,
+      issueQuantity: farmRoundDispatchIssueQuantity(issuedQuantity / packKg),
     };
   }
   return {
@@ -14228,8 +14256,8 @@ function renderFarmDispatchPanel() {
   const vehicleIds = new Set(machines.map((row) => row.vehicle_id));
   const team = teams.find((row) => row.id === activeTeamId) || teams[0] || {};
   const supervisor = farmLookup("employees", team.supervisor_employee_id) || {};
-  const dispatchDate = order?.rescheduled_date || order?.scheduled_date || order?.planned_start_date || farmToday();
-  const dispatchEndDate = order?.rescheduled_end_date || order?.planned_end_date || order?.endDate || dispatchDate;
+  const dispatchDate = order?.dispatch_start_date || order?.dispatch_date || order?.rescheduled_date || order?.scheduled_date || order?.planned_start_date || farmToday();
+  const dispatchEndDate = order?.dispatch_end_date || order?.rescheduled_end_date || order?.dispatch_date || order?.planned_end_date || order?.endDate || dispatchDate;
   const activityName = farmLookupLabel("activities", order?.activity_id);
   const planRange = [displayDate(order?.planned_start_date || order?.scheduled_date), displayDate(order?.planned_end_date || order?.scheduled_date)].filter(Boolean).join(" ถึง ");
   const orderArea = [order?.plot?.plot_code, order?.block?.block_code || order?.block?.block_name, order?.block?.ap_code || order?.block?.AP_code].filter(Boolean).join(" / ") || "-";
