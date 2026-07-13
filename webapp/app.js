@@ -14789,15 +14789,26 @@ function prepareFarmDispatchPrintHost() {
   return host;
 }
 
+function farmDispatchPrintDocumentTitle() {
+  const order = farmDispatchSelectedOrder();
+  const shortNo = farmShortWorkOrderNo(order).replace(/[^0-9A-Za-z-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "WO";
+  const date = isoDay(dateValue(document.querySelector("#farmDispatchDate")) || order?.dispatch_date || order?.scheduled_date || order?.planned_start_date || farmToday()) || farmToday();
+  const shortDate = `${date.slice(8, 10)}${date.slice(5, 7)}${date.slice(2, 4)}`;
+  return `${shortNo}-${shortDate}`;
+}
+
 function printFarmDispatchOrder() {
   const printHost = prepareFarmDispatchPrintHost();
   if (!printHost) return;
+  const previousTitle = document.title;
+  document.title = farmDispatchPrintDocumentTitle();
   document.body.classList.add("print-farm-dispatch");
   let cleaned = false;
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
     document.body.classList.remove("print-farm-dispatch");
+    document.title = previousTitle;
     printHost.remove();
     window.removeEventListener("afterprint", cleanup);
   };

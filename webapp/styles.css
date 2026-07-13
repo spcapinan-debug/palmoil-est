@@ -10377,7 +10377,7 @@ td.num,
 @media print {
   @page {
     size: A4 landscape;
-    margin: 4mm;
+    margin: 3mm;
   }
 
   * {
@@ -10479,6 +10479,7 @@ td.num,
   body.print-farm-dispatch,
   body.print-farm-dispatch-bulk {
     background: #fff !important;
+    margin: 0 !important;
   }
 
   body.print-farm-dispatch::before,
@@ -10495,6 +10496,7 @@ td.num,
     display: block !important;
     margin: 0 !important;
     padding: 0 !important;
+    width: 100% !important;
     background: #fff !important;
   }
 
@@ -10503,8 +10505,22 @@ td.num,
     border: 0 !important;
     padding: 0 !important;
     color: #000 !important;
-    gap: 5px !important;
-    font-size: 9px !important;
+    gap: 3px !important;
+    font-size: 7.6px !important;
+    line-height: 1.08 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  body.print-farm-dispatch .table-export-bar,
+  body.print-farm-dispatch .table-export-actions,
+  body.print-farm-dispatch .table-actions,
+  body.print-farm-dispatch button,
+  body.print-farm-dispatch-bulk .table-export-bar,
+  body.print-farm-dispatch-bulk .table-export-actions,
+  body.print-farm-dispatch-bulk .table-actions,
+  body.print-farm-dispatch-bulk button {
+    display: none !important;
   }
 
   body.print-farm-dispatch .sidebar,
@@ -10536,12 +10552,18 @@ td.num,
     border: 0 !important;
     padding: 0 !important;
     color: #000 !important;
-    gap: 5px !important;
-    font-size: 9px !important;
+    gap: 3px !important;
+    font-size: 7.6px !important;
+    line-height: 1.08 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   body.print-farm-dispatch .farm-dispatch-print table {
-    page-break-inside: auto;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    font-size: 7.2px !important;
+    line-height: 1.05 !important;
   }
 
   body.print-farm-dispatch .farm-dispatch-print th,
@@ -10549,19 +10571,92 @@ td.num,
   body.print-farm-dispatch-bulk .farm-dispatch-print th,
   body.print-farm-dispatch-bulk .farm-dispatch-print td {
     border-color: #333 !important;
-    padding: 2px 3px !important;
+    padding: 1px 2px !important;
   }
 
   body.print-farm-dispatch .farm-print-qr img,
   body.print-farm-dispatch-bulk .farm-print-qr img {
-    width: 68px !important;
-    height: 68px !important;
+    width: 54px !important;
+    height: 54px !important;
+  }
+
+  body.print-farm-dispatch .farm-dispatch-print-head,
+  body.print-farm-dispatch-bulk .farm-dispatch-print-head {
+    grid-template-columns: minmax(0, 1.6fr) minmax(150px, .75fr) 62px !important;
+    gap: 5px !important;
+    padding-bottom: 3px !important;
+  }
+
+  body.print-farm-dispatch .farm-dispatch-print h3,
+  body.print-farm-dispatch-bulk .farm-dispatch-print h3 {
+    font-size: 10.5px !important;
+    line-height: 1.1 !important;
+  }
+
+  body.print-farm-dispatch .farm-dispatch-print h4,
+  body.print-farm-dispatch-bulk .farm-dispatch-print h4,
+  body.print-farm-dispatch .farm-print-worker-section h5,
+  body.print-farm-dispatch-bulk .farm-print-worker-section h5 {
+    font-size: 7.8px !important;
+    margin: 0 !important;
+  }
+
+  body.print-farm-dispatch .farm-dispatch-print p,
+  body.print-farm-dispatch-bulk .farm-dispatch-print p,
+  body.print-farm-dispatch .farm-print-title strong,
+  body.print-farm-dispatch-bulk .farm-print-title strong,
+  body.print-farm-dispatch .farm-print-qr strong,
+  body.print-farm-dispatch-bulk .farm-print-qr strong {
+    font-size: 6.8px !important;
+    line-height: 1.05 !important;
+  }
+
+  body.print-farm-dispatch .farm-print-meta,
+  body.print-farm-dispatch-bulk .farm-print-meta {
+    grid-template-columns: 54px minmax(0, 1fr) !important;
+    gap: 0 4px !important;
+    font-size: 7px !important;
+  }
+
+  body.print-farm-dispatch .farm-print-work-grid,
+  body.print-farm-dispatch-bulk .farm-print-work-grid {
+    gap: 2px !important;
+  }
+
+  body.print-farm-dispatch .farm-print-work-grid > div,
+  body.print-farm-dispatch-bulk .farm-print-work-grid > div {
+    padding: 2px 4px !important;
+    gap: 0 !important;
+    font-size: 7px !important;
   }
 
   body.print-farm-dispatch .farm-print-two-col,
   body.print-farm-dispatch-bulk .farm-print-two-col {
-    grid-template-columns: minmax(0, 1fr) !important;
-    gap: 5px !important;
+    grid-template-columns: minmax(0, 1.15fr) minmax(230px, .85fr) !important;
+    gap: 4px !important;
+  }
+
+  body.print-farm-dispatch .farm-print-worker-split,
+  body.print-farm-dispatch-bulk .farm-print-worker-split {
+    gap: 2px !important;
+  }
+
+  body.print-farm-dispatch .farm-print-fill,
+  body.print-farm-dispatch-bulk .farm-print-fill {
+    min-width: 18px !important;
+    height: 11px !important;
+  }
+
+  body.print-farm-dispatch .farm-dispatch-signatures,
+  body.print-farm-dispatch-bulk .farm-dispatch-signatures {
+    gap: 6px !important;
+    padding-top: 8px !important;
+  }
+
+  body.print-farm-dispatch .farm-dispatch-signatures span,
+  body.print-farm-dispatch-bulk .farm-dispatch-signatures span {
+    font-size: 7px !important;
+    padding-top: 3px !important;
   }
 
   body.print-farm-dispatch-bulk .sidebar,
