@@ -7357,7 +7357,7 @@ tfoot td {
 
 .farm-issue-kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
 }
 
@@ -7479,8 +7479,13 @@ tfoot td {
 }
 
 .farm-issue-status.ready {
-  background: #dcfce7;
-  color: #166534;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.farm-issue-status.partial {
+  background: #ffedd5;
+  color: #9a3412;
 }
 
 .farm-issue-table tr[data-farm-issue-row] {
@@ -7833,13 +7838,8 @@ tfoot td {
 }
 
 .farm-issue-status.done {
-  background: #e0f2fe;
-  color: #075985;
-}
-
-.farm-issue-status.waiting {
-  background: #fef3c7;
-  color: #92400e;
+  background: #dcfce7;
+  color: #166534;
 }
 
 .farm-result-page {

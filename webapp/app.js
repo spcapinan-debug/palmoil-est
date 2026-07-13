@@ -3253,12 +3253,14 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null } = {}
     state.farmDbRows = isPartial ? { ...(state.farmDbRows || {}), ...nextRows } : nextRows;
     state.farmDbSource = payload.source || null;
     state.farmDbErrors = isPartial ? { ...(state.farmDbErrors || {}), ...(payload.errors || {}) } : (payload.errors || {});
+    state.farmDbWarnings = isPartial ? { ...(state.farmDbWarnings || {}), ...(payload.warnings || {}) } : (payload.warnings || {});
     if (silent) render();
     return true;
   } catch (error) {
     if (!isPartial) state.farmDbRows = {};
     state.farmDbSource = { mode: "supabase-real-only", error: error.message };
     state.farmDbErrors = { ...(state.farmDbErrors || {}), api: error.message };
+    state.farmDbWarnings = state.farmDbWarnings || {};
     return false;
   }
 }
@@ -3296,7 +3298,8 @@ function farmDbTableAvailable(tableKey) {
   const table = farmTableByKey(tableKey);
   if (!table) return false;
   const error = state.farmDbErrors?.[tableKey];
-  return !farmIsMissingDbTableError(error);
+  const warning = state.farmDbWarnings?.[tableKey];
+  return !farmIsMissingDbTableError(error) && !farmIsMissingDbTableError(warning);
 }
 
 async function deleteFarmRowFromDatabase(table, id) {
@@ -11719,7 +11722,17 @@ function farmUnitDisplayName(unitIdOrName = "") {
   if (!raw) return "";
   const unit = farmLookup("units", raw)
     || farmRowsByKey("units").find((row) => row.unit_code === raw || row.unit_name === raw);
-  return unit?.unit_name || raw.replace(/^[A-Z]-[A-Z0-9-]+\s*[-:]\s*/i, "");
+  return farmCleanUnitDisplay(unit?.unit_name || raw);
+}
+
+function farmCleanUnitDisplay(unitValue = "") {
+  const raw = String(unitValue || "").trim();
+  if (!raw) return "";
+  return raw
+    .replace(/^(?:U|UNIT)-[A-Z0-9]+(?:-[A-Z0-9]+)?\s*[-:]\s*/i, "")
+    .replace(/^[A-Z]-[A-Z0-9-]+\s*[-:]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function farmSurveyText(row = {}) {
@@ -14100,19 +14113,59 @@ function farmDispatchNoteMeta(note = "") {
   }
 }
 
+function farmInventoryMaterialNoteMeta(note = "") {
+  const raw = String(note || "").trim();
+  const parsed = farmDispatchNoteMeta(raw);
+  const hasJson = parsed && typeof parsed === "object" && Object.keys(parsed).length > 0;
+  const meta = hasJson ? { ...parsed } : {};
+  if (!hasJson && raw) meta.legacy_note = raw;
+  if (!Array.isArray(meta.issue_logs)) meta.issue_logs = [];
+  return meta;
+}
+
+function farmInventoryMaterialIssueLogs(note = "") {
+  return farmInventoryMaterialNoteMeta(note).issue_logs
+    .filter((log) => log && typeof log === "object")
+    .map((log) => ({
+      ...log,
+      quantity: n(log.quantity),
+      unit_name: farmCleanUnitDisplay(log.unit_name || log.unit || ""),
+      date: isoDay(log.date || log.doc_date || log.document_date || ""),
+      document_no: log.document_no || "",
+    }))
+    .filter((log) => log.quantity > 0);
+}
+
+function farmInventoryMaterialIssuedFromRow(row = {}, issueInfo = {}) {
+  const logs = farmInventoryMaterialIssueLogs(row.note);
+  if (logs.length) return logs.reduce((sum, log) => sum + n(log.quantity), 0);
+  const actualQuantity = n(row.actual_quantity);
+  if (actualQuantity > 0) return actualQuantity;
+  const issuedQuantity = n(row.issued_quantity);
+  const status = String(row.status || "").toLowerCase();
+  if (issuedQuantity > 0 && ["partial", "issued", "เบิกบางส่วน", "เบิกแล้ว"].includes(status)) return issuedQuantity;
+  return 0;
+}
+
+function farmInventoryMaterialNextNote(existingNote = "", patch = {}) {
+  const meta = farmInventoryMaterialNoteMeta(existingNote);
+  return JSON.stringify({ ...meta, ...patch });
+}
+
 function farmDispatchMaterialUnitName(row = {}, material = {}) {
   const noteMeta = farmDispatchNoteMeta(row.note);
   const noteText = String(row.note || "");
   if (noteText.includes("กรัม/")) return "กก.";
   if (/กก\.?|kg/i.test(noteText)) return "กก.";
   if (noteText.includes("กระสอบ")) return "กระสอบ";
-  return row.unit_name
+  return farmCleanUnitDisplay(row.unit_name
     || noteMeta.unit_name
+    || noteMeta.issue_unit_name
     || noteMeta.displayUnit
     || row.usage_unit
     || farmLookupLabel("units", row.unit_id || material.base_unit_id)
     || material.unit_name
-    || "";
+    || "");
 }
 
 function farmDispatchMaterialPackKg(row = {}, material = {}) {
@@ -14138,7 +14191,7 @@ function farmDispatchIssueUnitInfo(row = {}) {
   const packKg = farmDispatchMaterialPackKg(row, material);
   const plannedQuantity = n(row.planned_quantity);
   const issuedQuantity = n(row.issued_quantity || row.planned_quantity);
-  if ((planUnit === "กก." || /กก|kg/i.test(planUnit)) && packKg > 0) {
+  if ((planUnit === "กก." || /กก|kg|กิโล/i.test(planUnit)) && packKg > 0) {
     const plannedIssueQuantity = plannedQuantity / packKg;
     return {
       planUnit: "กก.",
@@ -14401,7 +14454,7 @@ function renderFarmDispatchPanel() {
                 ${materials.map((row, index) => {
                   const issue = farmDispatchIssueUnitInfo(row);
                   return `
-                  <tr data-farm-dispatch-material="${esc(row.material_id)}" data-farm-dispatch-unit-name="${esc(issue.planUnit || row.unit_name || row.unit_id || "")}" data-farm-dispatch-issue-factor="${esc(issue.factor || 1)}" data-farm-dispatch-planned-quantity="${esc(n(row.planned_quantity))}">
+                  <tr data-farm-dispatch-material="${esc(row.material_id)}" data-farm-dispatch-unit-name="${esc(issue.issueUnit || issue.planUnit || row.unit_name || row.unit_id || "")}" data-farm-dispatch-plan-unit-name="${esc(issue.planUnit || row.unit_name || row.unit_id || "")}" data-farm-dispatch-issue-factor="${esc(issue.factor || 1)}" data-farm-dispatch-planned-quantity="${esc(n(row.planned_quantity))}">
                     <td>${index + 1}</td>
                     <td>${esc(row.material_name)}</td>
                     <td class="num">${moneyNf.format(n(row.planned_quantity))}</td>
@@ -14648,13 +14701,16 @@ async function saveFarmDispatchOrder() {
     const material = farmLookup("materials", materialId) || {};
     const issueFactor = n(row.dataset.farmDispatchIssueFactor || 1) || 1;
     const plannedQuantity = n(row.dataset.farmDispatchPlannedQuantity || row.children?.[2]?.textContent || 0);
-    const issueQuantity = n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value) * issueFactor;
+    const issueQuantity = n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value);
     return {
       material_id: materialId,
       planned_quantity: plannedQuantity,
-      quantity: issueQuantity,
+      quantity: issueQuantity * issueFactor,
+      issue_quantity: issueQuantity,
+      issue_factor: issueFactor,
       unit_id: material.base_unit_id || "",
-      unit_name: row.dataset.farmDispatchUnitName || farmDispatchMaterialUnitName({}, material),
+      plan_unit_name: farmCleanUnitDisplay(row.dataset.farmDispatchPlanUnitName || farmLookupLabel("units", material.base_unit_id)),
+      unit_name: farmCleanUnitDisplay(row.dataset.farmDispatchUnitName || farmDispatchMaterialUnitName({}, material)),
       line_no: index + 1,
     };
   }).filter((row) => row.material_id && (row.quantity > 0 || row.planned_quantity > 0)), "material_id").map((row, index) => ({ ...row, line_no: index + 1, quantity: n(row.quantity || row.issued_quantity), planned_quantity: n(row.planned_quantity) }));
@@ -14763,7 +14819,7 @@ async function saveFarmDispatchOrder() {
 
     await reconcileFarmWorkOrderChildren(materialTable, savedOrderId, new Set(materialRows.map((row) => row.material_id)), "material_id");
     let issueDocId = "";
-    const canCreateInventoryIssue = materialRows.length && farmDbTableAvailable("inventory_documents") && farmDbTableAvailable("inventory_document_lines");
+    const canCreateInventoryIssue = false;
     if (canCreateInventoryIssue) {
       try {
         const issueDocNo = `GI-${farmShortWorkOrderNo(savedOrder).replace(/[^0-9A-Za-z-]/g, "")}-${date.replaceAll("-", "")}`.slice(0, 120);
@@ -14803,9 +14859,16 @@ async function saveFarmDispatchOrder() {
         work_order_id: savedOrderId,
         material_id: item.material_id,
         planned_quantity: item.planned_quantity,
-        issued_quantity: item.quantity,
+        issued_quantity: 0,
         unit_id: item.unit_id,
-        note: item.unit_name ? JSON.stringify({ unit_name: item.unit_name }) : "",
+        status: "planned",
+        note: JSON.stringify({
+          unit_name: item.unit_name || "",
+          issue_unit_name: item.unit_name || "",
+          plan_unit_name: item.plan_unit_name || "",
+          issue_factor: item.issue_factor || 1,
+          planned_issue_quantity: item.issue_quantity || 0,
+        }),
         updatedAt: now,
       };
       state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_order_materials" && String(row.work_order_id || "") === String(savedOrderId) && row.material_id === item.material_id));
@@ -15004,13 +15067,20 @@ function farmIssueMaterialCandidatesForOrder(order) {
   if (existing.length) {
     return existing.map((row) => {
       const material = farmLookup("materials", row.material_id) || {};
+      const issueInfo = farmInventoryIssuePlanInfo(row, material);
+      const actualIssued = farmInventoryMaterialIssuedFromRow(row, issueInfo);
       return {
         material_id: row.material_id,
         material_name: farmRecordLabel(farmTableByKey("materials"), material) || row.material_id,
-        planned_quantity: n(row.planned_quantity),
-        issued_quantity: n(row.issued_quantity),
+        planned_quantity: issueInfo.plannedIssueQuantity,
+        base_planned_quantity: issueInfo.basePlannedQuantity,
+        base_issued_quantity: n(row.issued_quantity),
+        actual_issue_quantity: actualIssued,
+        issue_factor: issueInfo.factor,
         unit_id: row.unit_id || material.base_unit_id || "",
-        unit_name: farmLookupLabel("units", row.unit_id || material.base_unit_id),
+        base_unit_name: issueInfo.planUnit,
+        unit_name: issueInfo.issueUnit,
+        note: row.note || "",
         source: "work_order",
       };
     }).filter((row) => row.material_id);
@@ -15050,22 +15120,121 @@ function farmIssueMaterialCandidatesForOrder(order) {
     .filter((row) => row.material_id);
 }
 
+function farmInventoryIssuePlanInfo(row = {}, material = {}) {
+  const meta = farmInventoryMaterialNoteMeta(row.note);
+  const basePlannedQuantity = n(row.planned_quantity);
+  const baseIssuedQuantity = n(row.issued_quantity || row.planned_quantity);
+  const metaUnit = farmCleanUnitDisplay(meta.unit_name || "");
+  const planUnit = farmCleanUnitDisplay(meta.plan_unit_name || (/กก|kg|กิโล/i.test(metaUnit) ? metaUnit : "") || farmLookupLabel("units", row.unit_id || material.base_unit_id) || row.unit_name || material.unit_name || "");
+  const inferred = farmDispatchIssueUnitInfo({
+    ...row,
+    planned_quantity: basePlannedQuantity,
+    issued_quantity: baseIssuedQuantity,
+    unit_name: planUnit,
+  });
+  const factor = n(meta.issue_factor || row.issue_factor || inferred.factor || 1) || 1;
+  const storedUnit = metaUnit;
+  let issueUnit = farmCleanUnitDisplay(meta.issue_unit_name || row.issue_unit_name || "");
+  if (!issueUnit) {
+    const storedIsPlanUnit = storedUnit && (farmNormalizeKey(storedUnit) === farmNormalizeKey(planUnit) || /กก|kg|กิโล/i.test(storedUnit));
+    issueUnit = storedIsPlanUnit && inferred.issueUnit && farmNormalizeKey(inferred.issueUnit) !== farmNormalizeKey(planUnit)
+      ? farmCleanUnitDisplay(inferred.issueUnit)
+      : farmCleanUnitDisplay(storedUnit || inferred.issueUnit || farmDispatchMaterialUnitName(row, material) || planUnit);
+  }
+  let plannedIssueQuantity = n(meta.planned_issue_quantity || row.issue_quantity || 0);
+  if (!plannedIssueQuantity) {
+    plannedIssueQuantity = factor > 1 && basePlannedQuantity
+      ? farmRoundDispatchIssueQuantity(basePlannedQuantity / factor)
+      : n(inferred.plannedIssueQuantity || basePlannedQuantity);
+  }
+  return {
+    basePlannedQuantity,
+    planUnit,
+    issueUnit: issueUnit || planUnit,
+    factor,
+    plannedIssueQuantity,
+  };
+}
+
+function farmInventoryIssueDocIsActual(doc = {}) {
+  const note = String(doc.note || "");
+  if (/สร้างจากหน้าสั่งงาน|created from dispatch|dispatch/i.test(note)) return false;
+  const status = String(doc.status || "").toLowerCase();
+  return !status || ["issued", "partial", "completed", "closed"].includes(status);
+}
+
+function farmInventoryIssueLineQuantity(line = {}, issueInfo = {}) {
+  const quantity = n(line.quantity || line.issued_quantity);
+  if (!quantity) return 0;
+  const unit = farmCleanUnitDisplay(line.unit_name || line.unit || farmLookupLabel("units", line.unit_id) || "");
+  const issueUnit = farmCleanUnitDisplay(issueInfo.issueUnit || "");
+  const planUnit = farmCleanUnitDisplay(issueInfo.planUnit || "");
+  const factor = n(issueInfo.factor || 1) || 1;
+  const planIssueQty = n(issueInfo.plannedIssueQuantity);
+  if (factor > 1 && /กก|kg|กิโล/i.test(unit || planUnit)) {
+    return farmRoundDispatchIssueQuantity(quantity / factor);
+  }
+  if (factor > 1 && issueUnit && farmNormalizeKey(unit) === farmNormalizeKey(issueUnit) && planIssueQty && quantity > planIssueQty * 2) {
+    return farmRoundDispatchIssueQuantity(quantity / factor);
+  }
+  return quantity;
+}
+
+function farmInventoryIssueWarehouseRows() {
+  const rows = farmRowsByKey("warehouses").map((row) => ({
+    id: row.id || row.warehouse_id || row.warehouse_code || "",
+    label: farmRecordLabel(farmTableByKey("warehouses"), row) || row.warehouse_name || row.warehouse_code || row.id || "",
+  })).filter((row) => row.label);
+  const seen = new Set(rows.map((row) => row.id || row.label));
+  farmRowsByKey("inventory_master").forEach((item) => {
+    const id = item.warehouse_id || "";
+    const label = item.warehouse_name || farmLookupLabel("warehouses", id);
+    const key = id || label;
+    if (label && !seen.has(key) && label !== "-") {
+      seen.add(key);
+      rows.push({ id, label });
+    }
+  });
+  if (!rows.length) rows.push({ id: "", label: "คลังกลาง" });
+  return rows;
+}
+
 function farmInventoryIssueRows() {
   const docs = farmRowsByKey("inventory_documents").filter((row) => String(row.doc_type || "").toLowerCase() === "issue");
   const lines = farmRowsByKey("inventory_document_lines");
   const visibleStatuses = new Set(["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"]);
   return farmWorkOrders().flatMap((order) => {
-    const doc = docs.find((row) => row.work_order_id === order.id);
+    const orderDocs = docs.filter((row) => row.work_order_id === order.id);
+    const actualDocs = orderDocs.filter(farmInventoryIssueDocIsActual);
+    const actualDocIds = new Set(actualDocs.map((row) => row.id));
     const statusKey = order.statusMeta?.key || order.status || "";
-    if (!doc && !visibleStatuses.has(statusKey)) return [];
+    if (!orderDocs.length && !visibleStatuses.has(statusKey)) return [];
     const area = [order.plot?.plot_code, order.block?.block_code || order.block?.block_name, order.block?.ap_code || order.block?.AP_code].filter(Boolean).join(" / ") || "-";
     return farmIssueMaterialCandidatesForOrder(order).map((item) => {
       const inventoryItemId = farmDispatchInventoryItemForMaterial(item.material_id);
-      const issuedLine = doc ? lines.find((line) => line.document_id === doc.id && (line.item_id === inventoryItemId || line.material_id === item.material_id)) : null;
-      const issued = n(issuedLine?.quantity || item.issued_quantity);
+      const issueInfo = {
+        plannedIssueQuantity: n(item.planned_quantity),
+        issueUnit: item.unit_name,
+        planUnit: item.base_unit_name,
+        factor: item.issue_factor,
+      };
+      const itemLines = lines.filter((line) =>
+        (actualDocIds.has(line.document_id) || line.work_order_id === order.id)
+        && (line.item_id === inventoryItemId || line.material_id === item.material_id)
+        && farmInventoryIssueDocIsActual(docs.find((docRow) => docRow.id === line.document_id) || { status: line.status })
+      );
+      const issuedLine = itemLines.slice().sort((a, b) => String(b.updatedAt || b.created_at || "").localeCompare(String(a.updatedAt || a.created_at || "")))[0] || null;
+      const noteLogs = farmInventoryMaterialIssueLogs(item.note);
+      const lastLog = noteLogs.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0] || null;
+      const doc = issuedLine ? docs.find((row) => row.id === issuedLine.document_id)
+        : orderDocs.slice().sort((a, b) => String(b.doc_date || "").localeCompare(String(a.doc_date || "")))[0]
+          || (lastLog ? { id: "", document_no: lastLog.document_no, doc_date: lastLog.date, warehouse_id: lastLog.warehouse_id || "", note: lastLog.note || "" } : null);
+      const issued = itemLines.length
+        ? itemLines.reduce((sum, line) => sum + farmInventoryIssueLineQuantity(line, issueInfo), 0)
+        : n(item.actual_issue_quantity);
       const planned = n(item.planned_quantity);
       const remaining = Math.max(0, planned - issued);
-      const isIssued = String(issuedLine?.status || "").toLowerCase() === "issued" || issued >= planned && planned > 0;
+      const status = planned > 0 && issued >= planned ? "issued" : issued > 0 ? "partial" : "ready";
       return {
         id: `${order.id}:${item.material_id}`,
         order,
@@ -15077,7 +15246,7 @@ function farmInventoryIssueRows() {
         planned,
         issued,
         remaining,
-        status: isIssued ? "issued" : order.statusMeta.key === "sent_to_mobile" || doc ? "ready" : "waiting_dispatch",
+        status,
       };
     });
   }).sort((a, b) => farmDateMs(a.order.scheduled_date || a.order.startDate) - farmDateMs(b.order.scheduled_date || b.order.startDate)
@@ -15115,12 +15284,13 @@ function renderFarmInventoryIssueQueue() {
     return text.includes(query);
   }) : allRows;
   const readyRows = rows.filter((row) => row.status === "ready");
+  const partialRows = rows.filter((row) => row.status === "partial");
   const issuedRows = rows.filter((row) => row.status === "issued");
   const totalPlanned = rows.reduce((sum, row) => sum + row.planned, 0);
   const totalRemaining = rows.reduce((sum, row) => sum + row.remaining, 0);
   const canUseInventoryDocs = farmDbTableAvailable("inventory_documents") && farmDbTableAvailable("inventory_document_lines");
-  const statusLabel = (status) => status === "issued" ? "จ่ายแล้ว" : status === "ready" ? "ส่งเข้ามือถือ" : "รอสั่งงาน";
-  const statusClass = (status) => status === "issued" ? "done" : status === "ready" ? "ready" : "waiting";
+  const statusLabel = (status) => status === "issued" ? "เบิกแล้ว" : status === "partial" ? "เหลือเบิก" : "รอเบิก";
+  const statusClass = (status) => status === "issued" ? "done" : status === "partial" ? "partial" : "ready";
   return `
     <section class="farm-inventory-issue-page">
       <div class="section-head">
@@ -15129,8 +15299,9 @@ function renderFarmInventoryIssueQueue() {
       </div>
       <div class="farm-issue-kpis">
         <article><span>Work Order ที่มีพัสดุ</span><strong>${fmt(new Set(rows.map((row) => row.order.id)).size)}</strong><small>จากแผนและใบสั่งงาน</small></article>
-        <article><span>ส่งเข้ามือถือ</span><strong>${fmt(readyRows.length)}</strong><small>รอฝ่ายพัสดุเบิกจ่าย</small></article>
-        <article><span>จ่ายแล้ว</span><strong>${fmt(issuedRows.length)}</strong><small>มีเอกสาร issue หรือ issued qty</small></article>
+        <article><span>รอเบิก</span><strong>${fmt(readyRows.length)}</strong><small>ยังไม่เริ่มจ่ายพัสดุ</small></article>
+        <article><span>เหลือเบิก</span><strong>${fmt(partialRows.length)}</strong><small>จ่ายบางส่วนแล้ว</small></article>
+        <article><span>เบิกแล้ว</span><strong>${fmt(issuedRows.length)}</strong><small>จ่ายครบตามหน่วยจ่าย</small></article>
         <article><span>คงค้าง</span><strong>${moneyNf.format(totalRemaining)}</strong><small>จากแผน ${moneyNf.format(totalPlanned)}</small></article>
       </div>
       <div class="farm-issue-toolbar">
@@ -15172,7 +15343,7 @@ function renderFarmInventoryIssueQueue() {
                 <td class="num">${moneyNf.format(row.planned)}</td>
                 <td class="num">${moneyNf.format(row.issued)}</td>
                 <td class="num">${moneyNf.format(row.remaining)}</td>
-                <td>${esc(row.material.unit_name || "-")}</td>
+                <td>${esc(farmCleanUnitDisplay(row.material.unit_name) || "-")}</td>
                 <td>${esc(row.material.source === "work_order" ? "ใบสั่งงาน" : row.material.source === "planned" ? "แผนงาน" : "อัตรากิจกรรม")}</td>
                 <td><span class="farm-issue-status ${statusClass(row.status)}">${statusLabel(row.status)}</span></td>
                 <td><button type="button" class="ghost compact" data-farm-issue-open="${esc(row.id)}">เบิก</button></td>
@@ -15197,7 +15368,9 @@ function renderFarmInventoryIssueModal() {
   const docDate = row.document?.doc_date || order.scheduled_date || order.startDate || farmToday();
   const shortNo = farmShortWorkOrderNo(order);
   const defaultDocNo = `GI-${shortNo.replace(/[^0-9A-Za-z-]/g, "")}-${String(docDate).replaceAll("-", "")}`.slice(0, 120);
-  const warehouses = farmRowsByKey("warehouses");
+  const warehouses = farmInventoryIssueWarehouseRows();
+  const job = farmInventoryIssueJobSummary(row);
+  const issueUnit = farmCleanUnitDisplay(row.material.unit_name || row.documentLine?.unit_name || "");
   return `
     <div class="farm-issue-modal" role="dialog" aria-modal="true">
       <div class="farm-issue-modal-card">
@@ -15212,9 +15385,10 @@ function renderFarmInventoryIssueModal() {
           <aside class="farm-issue-modal-qr">
             ${renderFarmQrCard(order, "QR ใบงาน / ใบเบิก", "issue")}
             <dl>
-              <dt>งาน</dt><dd>${esc(order.work_order_title || "-")}</dd>
-              <dt>กิจกรรม</dt><dd>${esc(farmLookupLabel("activities", order.activity_id) || "-")}</dd>
-              <dt>พื้นที่</dt><dd>${esc(row.area || "-")}</dd>
+              <dt>งาน</dt><dd>${esc(`${shortNo} · ${job.title}`)}</dd>
+              <dt>พื้นที่</dt><dd>${esc(job.detail || row.area || "-")}</dd>
+              <dt>แผนเบิก</dt><dd>${esc(`${moneyNf.format(row.planned)} ${issueUnit || ""}`.trim())}</dd>
+              <dt>คงจ่าย</dt><dd>${esc(`${moneyNf.format(row.remaining)} ${issueUnit || ""}`.trim())}</dd>
               <dt>สถานะ</dt><dd>${esc(farmTranslateValue(order.statusMeta?.key || order.status) || "-")}</dd>
             </dl>
           </aside>
@@ -15228,23 +15402,23 @@ function renderFarmInventoryIssueModal() {
             <label>คลัง
               <select id="farmIssueWarehouse">
                 <option value="">เลือกคลัง</option>
-                ${warehouses.map((warehouse) => `<option value="${esc(warehouse.id)}"${warehouse.id === row.document?.warehouse_id ? " selected" : ""}>${esc(farmRecordLabel(farmTableByKey("warehouses"), warehouse))}</option>`).join("")}
+                ${warehouses.map((warehouse) => `<option value="${esc(warehouse.id)}"${warehouse.id === row.document?.warehouse_id ? " selected" : ""}>${esc(warehouse.label)}</option>`).join("")}
               </select>
             </label>
             <label>พัสดุ
               <input type="text" value="${esc(row.material.material_name || "-")}" disabled>
             </label>
             <label>แผนเบิก
-              <input type="text" value="${esc(moneyNf.format(row.planned))} ${esc(row.material.unit_name || "")}" disabled>
+              <input type="text" value="${esc(moneyNf.format(row.planned))} ${esc(issueUnit)}" disabled>
             </label>
             <label>จ่ายแล้ว
-              <input type="text" value="${esc(moneyNf.format(row.issued))} ${esc(row.material.unit_name || "")}" disabled>
+              <input type="text" value="${esc(moneyNf.format(row.issued))} ${esc(issueUnit)}" disabled>
             </label>
             <label>จำนวนจ่ายจริง
-              <input id="farmIssueQuantity" type="number" min="0" step="0.01" value="${esc(row.issued || row.remaining || row.planned || 0)}">
+              <input id="farmIssueQuantity" type="number" min="0" step="0.01" value="${esc(row.remaining || row.planned || 0)}">
             </label>
             <label>หน่วย
-              <input id="farmIssueUnit" type="text" value="${esc(row.material.unit_name || row.documentLine?.unit_name || "")}">
+              <input id="farmIssueUnit" type="text" value="${esc(issueUnit)}">
             </label>
             <label class="farm-issue-modal-note">หมายเหตุ
               <textarea id="farmIssueNote" rows="3" placeholder="หมายเหตุการจ่ายพัสดุ">${esc(row.document?.note || "")}</textarea>
@@ -15276,7 +15450,7 @@ async function saveFarmInventoryIssueFromQueue() {
   const now = new Date().toISOString();
   const docDate = dateValue(document.querySelector("#farmIssueDocDate")) || farmToday();
   const quantity = n(document.querySelector("#farmIssueQuantity")?.value);
-  const unitName = document.querySelector("#farmIssueUnit")?.value || row.material.unit_name || "";
+  const unitName = farmCleanUnitDisplay(document.querySelector("#farmIssueUnit")?.value || row.material.unit_name || "");
   const warehouseId = document.querySelector("#farmIssueWarehouse")?.value || row.document?.warehouse_id || "";
   const note = document.querySelector("#farmIssueNote")?.value || "บันทึกจากหน้าจ่ายพัสดุตามใบงาน";
   const documentNo = (document.querySelector("#farmIssueDocNo")?.value || "").trim()
@@ -15293,17 +15467,25 @@ async function saveFarmInventoryIssueFromQueue() {
     if (canCreateInventoryDoc) {
       try {
         const itemId = await ensureFarmInventoryItemForMaterial(row.material.material_id);
+        const existingIssueDoc = farmRowsByKey("inventory_documents").find((item) =>
+          String(item.document_no || "") === documentNo
+          || (String(item.work_order_id || "") === String(order.id)
+            && isoDay(item.doc_date) === isoDay(docDate)
+            && farmInventoryIssueDocIsActual(item))
+        );
+        const nextIssued = row.issued + quantity;
+        const documentStatus = row.planned > 0 && nextIssued >= row.planned ? "issued" : "partial";
         const issueDoc = {
-          ...(row.document || {}),
-          id: row.document?.id || `issue-${order.id}-${docDate}`.slice(0, 180),
+          ...(existingIssueDoc || {}),
+          id: existingIssueDoc?.id && farmLooksUuid(existingIssueDoc.id) ? existingIssueDoc.id : farmNewUuid(),
           moduleId: "farm-inventory",
           tableId: "inventory_documents",
           document_no: documentNo,
           doc_type: "issue",
           doc_date: docDate,
-          warehouse_id: warehouseId,
+          warehouse_id: warehouseId || null,
           work_order_id: order.id,
-          status: "issued",
+          status: documentStatus,
           note,
           updatedAt: now,
         };
@@ -15312,19 +15494,23 @@ async function saveFarmInventoryIssueFromQueue() {
         const savedIssue = await persistFarmRowToDatabase(inventoryDocTable, issueDoc);
         savedIssueDocId = savedIssue.row?.id || issueDoc.id;
 
+        const existingLine = farmRowsByKey("inventory_document_lines").find((item) =>
+          String(item.document_id || "") === String(savedIssueDocId)
+          && (item.item_id === itemId || item.material_id === row.material.material_id)
+        );
         const line = {
-          ...(row.documentLine || {}),
-          id: row.documentLine?.id || `issue-line-${order.id}-${row.material.material_id}`.slice(0, 180),
+          ...(existingLine || {}),
+          id: existingLine?.id && farmLooksUuid(existingLine.id) ? existingLine.id : farmNewUuid(),
           moduleId: "farm-inventory",
           tableId: "inventory_document_lines",
           document_id: savedIssueDocId,
-          line_no: row.documentLine?.line_no || 1,
+          line_no: existingLine?.line_no || 1,
           item_id: itemId,
           material_id: row.material.material_id,
           quantity,
           unit_name: unitName,
           work_order_id: order.id,
-          status: "issued",
+          status: documentStatus,
           updatedAt: now,
         };
         state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "inventory_document_lines" && (item.id === line.id || item.document_id === savedIssueDocId && (item.item_id === line.item_id || item.material_id === line.material_id))));
@@ -15347,6 +15533,22 @@ async function saveFarmInventoryIssueFromQueue() {
     }
 
     const existingMaterial = farmRowsByKey("work_order_materials").find((item) => item.work_order_id === order.id && item.material_id === row.material.material_id);
+    const baseNote = existingMaterial?.note || row.material.note || "";
+    const noteMeta = farmInventoryMaterialNoteMeta(baseNote);
+    const issueLogs = [
+      ...(noteMeta.issue_logs || []),
+      {
+        date: docDate,
+        document_no: documentNo,
+        quantity,
+        unit_name: unitName,
+        warehouse_id: warehouseId || "",
+        note,
+        created_at: now,
+      },
+    ];
+    const nextIssued = row.issued + quantity;
+    const nextStatus = row.planned > 0 && nextIssued >= row.planned ? "issued" : nextIssued > 0 ? "partial" : (existingMaterial?.status || "planned");
     const materialRow = {
       ...(existingMaterial || {}),
       id: existingMaterial?.id || `dispatch-material-${order.id}-${row.material.material_id}`.slice(0, 180),
@@ -15354,10 +15556,18 @@ async function saveFarmInventoryIssueFromQueue() {
       tableId: "work_order_materials",
       work_order_id: order.id,
       material_id: row.material.material_id,
-      planned_quantity: row.planned || quantity,
-      issued_quantity: quantity,
+      planned_quantity: row.material.base_planned_quantity || existingMaterial?.planned_quantity || row.planned || quantity,
+      issued_quantity: nextIssued,
+      actual_quantity: nextIssued,
       unit_id: row.material.unit_id || existingMaterial?.unit_id || "",
-      note: note || existingMaterial?.note || "",
+      status: nextStatus,
+      note: farmInventoryMaterialNextNote(baseNote, {
+        issue_unit_name: unitName,
+        plan_unit_name: row.material.base_unit_name || noteMeta.plan_unit_name || "",
+        issue_factor: row.material.issue_factor || noteMeta.issue_factor || 1,
+        planned_issue_quantity: row.planned,
+        issue_logs: issueLogs,
+      }),
       updatedAt: now,
     };
     state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_order_materials" && item.work_order_id === order.id && item.material_id === row.material.material_id));
