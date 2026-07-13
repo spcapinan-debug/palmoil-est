@@ -7346,6 +7346,26 @@ tfoot td {
   align-items: center;
 }
 
+.farm-issue-search {
+  display: grid;
+  gap: 4px;
+  min-width: min(280px, 100%);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-issue-search input {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0 10px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  background: #fff;
+}
+
 .farm-issue-toolbar button {
   min-height: 34px;
   border: 1px solid var(--primary);
@@ -7357,9 +7377,17 @@ tfoot td {
   font-weight: 900;
 }
 
-.farm-issue-toolbar button:first-child {
+.farm-issue-toolbar button[data-view-jump] {
   background: var(--primary);
   color: #fff;
+}
+
+.farm-issue-table button.compact {
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 11px;
+  line-height: 1;
 }
 
 .farm-issue-table-wrap {

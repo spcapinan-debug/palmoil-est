@@ -97,6 +97,7 @@
   farmDispatchPrintSelectedIds: [],
   farmDispatchListFilters: { activity: "all", zone: "all", plotGroup: "all", startDate: "", endDate: "" },
   farmInventoryIssueSelection: "",
+  farmInventoryIssueQuery: "",
   farmDispatchTeamId: "",
   farmDispatchExtraWorkers: [],
   farmDispatchExtraMaterials: [],
@@ -14961,11 +14962,29 @@ function farmInventoryIssueRows() {
 }
 
 function renderFarmInventoryIssueQueue() {
-  const rows = farmInventoryIssueRows();
+  const allRows = farmInventoryIssueRows();
+  const query = String(state.farmInventoryIssueQuery || "").trim().toLowerCase();
+  const rows = query ? allRows.filter((row) => {
+    const order = row.order || {};
+    const text = [
+      farmShortWorkOrderNo(order),
+      order.work_order_no,
+      order.work_order_code,
+      order.external_id,
+      order.work_order_title,
+      farmLookupLabel("activities", order.activity_id),
+      row.area,
+      row.material?.material_name,
+      row.material?.material_code,
+      row.document?.document_no,
+    ].filter(Boolean).join(" ").toLowerCase();
+    return text.includes(query);
+  }) : allRows;
   const readyRows = rows.filter((row) => row.status === "ready");
   const issuedRows = rows.filter((row) => row.status === "issued");
   const totalPlanned = rows.reduce((sum, row) => sum + row.planned, 0);
   const totalRemaining = rows.reduce((sum, row) => sum + row.remaining, 0);
+  const canUseInventoryDocs = farmDbTableAvailable("inventory_documents") && farmDbTableAvailable("inventory_document_lines");
   const statusLabel = (status) => status === "issued" ? "จ่ายแล้ว" : status === "ready" ? "พร้อมจ่าย" : "รอสั่งงาน";
   const statusClass = (status) => status === "issued" ? "done" : status === "ready" ? "ready" : "waiting";
   return `
@@ -14981,9 +15000,14 @@ function renderFarmInventoryIssueQueue() {
         <article><span>คงค้าง</span><strong>${moneyNf.format(totalRemaining)}</strong><small>จากแผน ${moneyNf.format(totalPlanned)}</small></article>
       </div>
       <div class="farm-issue-toolbar">
+        <label class="farm-issue-search">ค้นหา
+          <input id="farmIssueSearch" type="search" value="${esc(state.farmInventoryIssueQuery || "")}" placeholder="ค้นหา WO เช่น W07-031">
+        </label>
         <button type="button" data-view-jump="farm-dispatch">ไปหน้าสั่งงาน</button>
-        <button type="button" data-farm-open-table="inventory_documents">เปิดเอกสารพัสดุ</button>
-        <button type="button" data-farm-open-table="inventory_document_lines">เปิดรายการตัดจ่าย</button>
+        ${canUseInventoryDocs ? `
+          <button type="button" data-farm-open-table="inventory_documents">เปิดเอกสารพัสดุ</button>
+          <button type="button" data-farm-open-table="inventory_document_lines">เปิดรายการตัดจ่าย</button>
+        ` : ""}
       </div>
       <div class="table-wrap farm-issue-table-wrap">
         <table class="mini-table farm-table farm-issue-table">
@@ -14999,6 +15023,7 @@ function renderFarmInventoryIssueQueue() {
               <th>หน่วย</th>
               <th>ที่มา</th>
               <th>สถานะ</th>
+              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -15014,7 +15039,8 @@ function renderFarmInventoryIssueQueue() {
                 <td>${esc(row.material.unit_name || "-")}</td>
                 <td>${esc(row.material.source === "work_order" ? "ใบสั่งงาน" : row.material.source === "planned" ? "แผนงาน" : "อัตรากิจกรรม")}</td>
                 <td><span class="farm-issue-status ${statusClass(row.status)}">${statusLabel(row.status)}</span></td>
-              </tr>`).join("") || `<tr><td colspan="10">ยังไม่มีรายการพัสดุที่ผูกกับแผนหรือใบสั่งงาน</td></tr>`}
+                <td><button type="button" class="ghost compact" data-farm-issue-open="${esc(row.id)}">เบิก</button></td>
+              </tr>`).join("") || `<tr><td colspan="11">ยังไม่มีรายการพัสดุที่ผูกกับแผนหรือใบสั่งงาน</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -15103,7 +15129,12 @@ async function saveFarmInventoryIssueFromQueue() {
   const inventoryDocTable = farmTableByKey("inventory_documents");
   const inventoryLineTable = farmTableByKey("inventory_document_lines");
   const materialTable = farmTableByKey("work_order_materials");
-  if (!inventoryDocTable || !inventoryLineTable) return;
+  if (!materialTable) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "บันทึกจ่ายพัสดุไม่สำเร็จ: ไม่พบตารางรายการวัสดุของ Work Order";
+    render();
+    return;
+  }
   const order = row.order;
   const now = new Date().toISOString();
   const docDate = dateValue(document.querySelector("#farmIssueDocDate")) || farmToday();
@@ -15118,68 +15149,89 @@ async function saveFarmInventoryIssueFromQueue() {
   state.farmSyncMessage = "กำลังบันทึกเบิกจ่ายพัสดุตามใบงาน...";
   render();
   try {
-    const itemId = await ensureFarmInventoryItemForMaterial(row.material.material_id);
-    const issueDoc = {
-      ...(row.document || {}),
-      id: row.document?.id || `issue-${order.id}-${docDate}`.slice(0, 180),
-      moduleId: "farm-inventory",
-      tableId: "inventory_documents",
-      document_no: documentNo,
-      doc_type: "issue",
-      doc_date: docDate,
-      warehouse_id: warehouseId,
-      work_order_id: order.id,
-      status: "issued",
-      note,
-      updatedAt: now,
-    };
-    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "inventory_documents" && (item.id === issueDoc.id || item.document_no === issueDoc.document_no)));
-    state.farmRecords.push(issueDoc);
-    const savedIssue = await persistFarmRowToDatabase(inventoryDocTable, issueDoc);
-    const issueDocId = savedIssue.row?.id || issueDoc.id;
+    const canCreateInventoryDoc = inventoryDocTable && inventoryLineTable
+      && farmDbTableAvailable("inventory_documents")
+      && farmDbTableAvailable("inventory_document_lines");
+    let savedIssueDocId = row.document?.id || "";
+    if (canCreateInventoryDoc) {
+      try {
+        const itemId = await ensureFarmInventoryItemForMaterial(row.material.material_id);
+        const issueDoc = {
+          ...(row.document || {}),
+          id: row.document?.id || `issue-${order.id}-${docDate}`.slice(0, 180),
+          moduleId: "farm-inventory",
+          tableId: "inventory_documents",
+          document_no: documentNo,
+          doc_type: "issue",
+          doc_date: docDate,
+          warehouse_id: warehouseId,
+          work_order_id: order.id,
+          status: "issued",
+          note,
+          updatedAt: now,
+        };
+        state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "inventory_documents" && (item.id === issueDoc.id || item.document_no === issueDoc.document_no)));
+        state.farmRecords.push(issueDoc);
+        const savedIssue = await persistFarmRowToDatabase(inventoryDocTable, issueDoc);
+        savedIssueDocId = savedIssue.row?.id || issueDoc.id;
 
-    const line = {
-      ...(row.documentLine || {}),
-      id: row.documentLine?.id || `issue-line-${order.id}-${row.material.material_id}`.slice(0, 180),
-      moduleId: "farm-inventory",
-      tableId: "inventory_document_lines",
-      document_id: issueDocId,
-      line_no: row.documentLine?.line_no || 1,
-      item_id: itemId,
-      quantity,
-      unit_name: unitName,
-      work_order_id: order.id,
-      status: "issued",
-      updatedAt: now,
-    };
-    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "inventory_document_lines" && (item.id === line.id || item.document_id === issueDocId && item.item_id === line.item_id)));
-    state.farmRecords.push(line);
-    await persistFarmRowToDatabase(inventoryLineTable, line);
-
-    if (materialTable) {
-      const existingMaterial = farmRowsByKey("work_order_materials").find((item) => item.work_order_id === order.id && item.material_id === row.material.material_id);
-      const materialRow = {
-        ...(existingMaterial || {}),
-        id: existingMaterial?.id || `dispatch-material-${order.id}-${row.material.material_id}`.slice(0, 180),
-        moduleId: "farm-work",
-        tableId: "work_order_materials",
-        work_order_id: order.id,
-        material_id: row.material.material_id,
-        planned_quantity: row.planned || quantity,
-        issued_quantity: quantity,
-        unit_id: row.material.unit_id || "",
-        updatedAt: now,
-      };
-      state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_order_materials" && item.work_order_id === order.id && item.material_id === row.material.material_id));
-      state.farmRecords.push(materialRow);
-      await persistFarmRowToDatabase(materialTable, materialRow);
+        const line = {
+          ...(row.documentLine || {}),
+          id: row.documentLine?.id || `issue-line-${order.id}-${row.material.material_id}`.slice(0, 180),
+          moduleId: "farm-inventory",
+          tableId: "inventory_document_lines",
+          document_id: savedIssueDocId,
+          line_no: row.documentLine?.line_no || 1,
+          item_id: itemId,
+          material_id: row.material.material_id,
+          quantity,
+          unit_name: unitName,
+          work_order_id: order.id,
+          status: "issued",
+          updatedAt: now,
+        };
+        state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "inventory_document_lines" && (item.id === line.id || item.document_id === savedIssueDocId && (item.item_id === line.item_id || item.material_id === line.material_id))));
+        state.farmRecords.push(line);
+        await persistFarmRowToDatabase(inventoryLineTable, line);
+      } catch (error) {
+        if (!farmIsMissingDbTableError(error)) throw error;
+        state.farmRecords = state.farmRecords.filter((item) => !(
+          item.tableId === "inventory_documents" && item.work_order_id === order.id && item.document_no === documentNo
+        ) && !(
+          item.tableId === "inventory_document_lines" && item.work_order_id === order.id && item.material_id === row.material.material_id
+        ));
+        state.farmDbErrors = {
+          ...(state.farmDbErrors || {}),
+          inventory_documents: error.message,
+          inventory_document_lines: error.message,
+        };
+        savedIssueDocId = "";
+      }
     }
+
+    const existingMaterial = farmRowsByKey("work_order_materials").find((item) => item.work_order_id === order.id && item.material_id === row.material.material_id);
+    const materialRow = {
+      ...(existingMaterial || {}),
+      id: existingMaterial?.id || `dispatch-material-${order.id}-${row.material.material_id}`.slice(0, 180),
+      moduleId: "farm-work",
+      tableId: "work_order_materials",
+      work_order_id: order.id,
+      material_id: row.material.material_id,
+      planned_quantity: row.planned || quantity,
+      issued_quantity: quantity,
+      unit_id: row.material.unit_id || existingMaterial?.unit_id || "",
+      note: note || existingMaterial?.note || "",
+      updatedAt: now,
+    };
+    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_order_materials" && item.work_order_id === order.id && item.material_id === row.material.material_id));
+    state.farmRecords.push(materialRow);
+    await persistFarmRowToDatabase(materialTable, materialRow);
 
     await ensureFarmWorkOrderQr(order, "issue");
     saveFarmRecords();
     state.farmInventoryIssueSelection = "";
     state.farmSyncStatus = "success";
-    state.farmSyncMessage = `บันทึกจ่ายพัสดุแล้ว: ${esc(farmShortWorkOrderNo(order))} · ${esc(row.material.material_name || "")} ${moneyNf.format(quantity)} ${esc(unitName)}`;
+    state.farmSyncMessage = `บันทึกจ่ายพัสดุแล้ว: ${farmShortWorkOrderNo(order)} · ${row.material.material_name || ""} ${moneyNf.format(quantity)} ${unitName}`;
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `บันทึกจ่ายพัสดุไม่สำเร็จ: ${error.message}`;
@@ -21262,6 +21314,20 @@ async function init() {
       }, 650);
       return;
     }
+    if (e.target.id === "farmIssueSearch") {
+      state.farmInventoryIssueQuery = e.target.value.trim();
+      clearTimeout(state.estSearchTimer);
+      const cursor = e.target.selectionStart ?? e.target.value.length;
+      state.estSearchTimer = setTimeout(() => {
+        render();
+        const nextInput = document.querySelector("#farmIssueSearch");
+        if (nextInput) {
+          nextInput.focus({ preventScroll: true });
+          nextInput.setSelectionRange?.(cursor, cursor);
+        }
+      }, 220);
+      return;
+    }
     if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultNote"].includes(e.target.id)) {
       syncFarmResultDraftFromForm();
       clearTimeout(state.farmResultRenderTimer);
@@ -21498,6 +21564,12 @@ async function init() {
     }
     if (e.target.closest("[data-farm-issue-close]")) {
       state.farmInventoryIssueSelection = "";
+      render();
+      return;
+    }
+    const issueOpen = e.target.closest("[data-farm-issue-open]");
+    if (issueOpen) {
+      state.farmInventoryIssueSelection = issueOpen.dataset.farmIssueOpen || "";
       render();
       return;
     }
