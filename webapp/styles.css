@@ -7625,6 +7625,40 @@ tfoot td {
   grid-column: 1 / -1;
 }
 
+.farm-issue-history {
+  grid-column: 1 / -1;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.farm-issue-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.farm-issue-history-head h4 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 14px;
+}
+
+.farm-issue-history-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farm-issue-history .mini-table {
+  border: 0;
+  border-radius: 0;
+}
+
 .farm-issue-modal-actions {
   justify-content: flex-end;
   border-top: 1px solid var(--line);

@@ -14136,6 +14136,34 @@ function farmInventoryMaterialIssueLogs(note = "") {
     .filter((log) => log.quantity > 0);
 }
 
+function farmInventoryIssueLogTime(log = {}) {
+  return farmDateMs(log.date) || Date.parse(log.created_at || log.updatedAt || log.updated_at || "") || 0;
+}
+
+function farmInventoryIssueLatestLog(logs = []) {
+  return logs.slice().sort((a, b) =>
+    farmInventoryIssueLogTime(b) - farmInventoryIssueLogTime(a)
+    || String(b.document_no || "").localeCompare(String(a.document_no || ""), "th")
+  )[0] || null;
+}
+
+function farmInventoryIssueUniqueLogs(logs = []) {
+  const seen = new Set();
+  return logs.filter((log) => {
+    const key = [
+      isoDay(log.date || ""),
+      log.document_no || "",
+      n(log.quantity),
+      farmNormalizeKey(log.unit_name || log.unit || ""),
+      log.created_at || "",
+      log.requester_id || "",
+    ].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function farmInventoryMaterialIssuedFromRow(row = {}, issueInfo = {}) {
   const logs = farmInventoryMaterialIssueLogs(row.note);
   if (logs.length) return logs.reduce((sum, log) => sum + n(log.quantity), 0);
@@ -14150,6 +14178,51 @@ function farmInventoryMaterialIssuedFromRow(row = {}, issueInfo = {}) {
 function farmInventoryMaterialNextNote(existingNote = "", patch = {}) {
   const meta = farmInventoryMaterialNoteMeta(existingNote);
   return JSON.stringify({ ...meta, ...patch });
+}
+
+function farmInventoryMaterialRowMs(row = {}) {
+  return Date.parse(row.updatedAt || row.updated_at || row.createdAt || row.created_at || "") || 0;
+}
+
+function farmInventoryMergeMaterialRows(rows = [], material = {}) {
+  const prepared = rows.map((row) => {
+    const issueInfo = farmInventoryIssuePlanInfo(row, material);
+    return {
+      row,
+      issueInfo,
+      logs: farmInventoryMaterialIssueLogs(row.note),
+      issued: farmInventoryMaterialIssuedFromRow(row, issueInfo),
+    };
+  });
+  const primary = prepared.slice().sort((a, b) => {
+    const aHasIssue = a.logs.length || a.issued > 0 ? 1 : 0;
+    const bHasIssue = b.logs.length || b.issued > 0 ? 1 : 0;
+    return bHasIssue - aHasIssue
+      || farmInventoryMaterialRowMs(b.row) - farmInventoryMaterialRowMs(a.row);
+  })[0] || { row: rows[0] || {}, issueInfo: farmInventoryIssuePlanInfo(rows[0] || {}, material), logs: [], issued: 0 };
+  const logs = farmInventoryIssueUniqueLogs(prepared.flatMap((item) => item.logs));
+  const plannedIssueQuantity = Math.max(...prepared.map((item) => n(item.issueInfo.plannedIssueQuantity)), 0);
+  const basePlannedQuantity = Math.max(...prepared.map((item) => n(item.issueInfo.basePlannedQuantity)), 0);
+  const actualIssueQuantity = logs.length
+    ? logs.reduce((sum, log) => sum + n(log.quantity), 0)
+    : Math.max(...prepared.map((item) => n(item.issued)), 0);
+  const note = farmInventoryMaterialNextNote(primary.row.note || "", {
+    issue_logs: logs,
+    issue_unit_name: primary.issueInfo.issueUnit || "",
+    plan_unit_name: primary.issueInfo.planUnit || "",
+    issue_factor: primary.issueInfo.factor || 1,
+    planned_issue_quantity: plannedIssueQuantity || primary.issueInfo.plannedIssueQuantity || 0,
+  });
+  return {
+    primaryRow: primary.row,
+    issueInfo: {
+      ...primary.issueInfo,
+      plannedIssueQuantity: plannedIssueQuantity || primary.issueInfo.plannedIssueQuantity || 0,
+      basePlannedQuantity: basePlannedQuantity || primary.issueInfo.basePlannedQuantity || 0,
+    },
+    actualIssueQuantity,
+    note,
+  };
 }
 
 function farmDispatchMaterialUnitName(row = {}, material = {}) {
@@ -15065,22 +15138,30 @@ function syncFarmDispatchPrintPreviewFromForm() {
 function farmIssueMaterialCandidatesForOrder(order) {
   const existing = farmRowsByKey("work_order_materials").filter((row) => row.work_order_id === order?.id);
   if (existing.length) {
-    return existing.map((row) => {
-      const material = farmLookup("materials", row.material_id) || {};
-      const issueInfo = farmInventoryIssuePlanInfo(row, material);
-      const actualIssued = farmInventoryMaterialIssuedFromRow(row, issueInfo);
+    const grouped = new Map();
+    existing.forEach((row) => {
+      const key = String(row.material_id || "").trim();
+      if (!key) return;
+      grouped.set(key, [...(grouped.get(key) || []), row]);
+    });
+    return [...grouped.entries()].map(([materialId, rows]) => {
+      const material = farmLookup("materials", materialId) || {};
+      const merged = farmInventoryMergeMaterialRows(rows, material);
+      const row = merged.primaryRow || rows[0] || {};
+      const issueInfo = merged.issueInfo || farmInventoryIssuePlanInfo(row, material);
       return {
+        row_id: row.id || "",
         material_id: row.material_id,
         material_name: farmRecordLabel(farmTableByKey("materials"), material) || row.material_id,
         planned_quantity: issueInfo.plannedIssueQuantity,
         base_planned_quantity: issueInfo.basePlannedQuantity,
-        base_issued_quantity: n(row.issued_quantity),
-        actual_issue_quantity: actualIssued,
+        base_issued_quantity: Math.max(...rows.map((item) => n(item.issued_quantity)), 0),
+        actual_issue_quantity: merged.actualIssueQuantity,
         issue_factor: issueInfo.factor,
         unit_id: row.unit_id || material.base_unit_id || "",
         base_unit_name: issueInfo.planUnit,
         unit_name: issueInfo.issueUnit,
-        note: row.note || "",
+        note: merged.note,
         source: "work_order",
       };
     }).filter((row) => row.material_id);
@@ -15225,7 +15306,7 @@ function farmInventoryIssueRows() {
       );
       const issuedLine = itemLines.slice().sort((a, b) => String(b.updatedAt || b.created_at || "").localeCompare(String(a.updatedAt || a.created_at || "")))[0] || null;
       const noteLogs = farmInventoryMaterialIssueLogs(item.note);
-      const lastLog = noteLogs.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0] || null;
+      const lastLog = farmInventoryIssueLatestLog(noteLogs);
       const doc = issuedLine ? docs.find((row) => row.id === issuedLine.document_id)
         : orderDocs.slice().sort((a, b) => String(b.doc_date || "").localeCompare(String(a.doc_date || "")))[0]
           || (lastLog ? { id: "", document_no: lastLog.document_no, doc_date: lastLog.date, warehouse_id: lastLog.warehouse_id || "", note: lastLog.note || "" } : null);
@@ -15262,6 +15343,66 @@ function farmInventoryIssueJobSummary(row) {
     title: activity || order.work_order_title || "-",
     detail: [block, zone].filter(Boolean).join(" · ") || row.area || "-",
   };
+}
+
+function farmInventoryIssueRequesterOptions(order = {}) {
+  const employeeTable = farmTableByKey("employees");
+  const teamId = order.team_id || "";
+  const candidates = farmDispatchWorkerCandidates(order, teamId);
+  const map = new Map();
+  const pushEmployee = (employeeId, source = {}) => {
+    if (!employeeId || map.has(employeeId)) return;
+    const employee = farmLookup("employees", employeeId) || {};
+    const label = farmRecordLabel(employeeTable, employee) || source.name || employeeId;
+    const teamLabel = source.teamName || farmLookupLabel("teams", source.teamId || teamId);
+    map.set(employeeId, {
+      id: employeeId,
+      label,
+      teamLabel: teamLabel || "ทีมงาน",
+    });
+  };
+  candidates.forEach((row) => pushEmployee(row.id || row.employee_id, row));
+  farmRowsByKey("work_order_workers")
+    .filter((row) => String(row.work_order_id || "") === String(order.id || ""))
+    .forEach((row) => pushEmployee(row.employee_id, row));
+  return [...map.values()];
+}
+
+function renderFarmInventoryIssueHistory(row) {
+  const logs = farmInventoryMaterialIssueLogs(row?.material?.note || "")
+    .slice()
+    .sort((a, b) => farmInventoryIssueLogTime(b) - farmInventoryIssueLogTime(a));
+  return `
+    <div class="farm-issue-history">
+      <div class="farm-issue-history-head">
+        <h4>ประวัติการเบิก</h4>
+        <span>${fmt(logs.length)} ครั้ง</span>
+      </div>
+      <table class="mini-table farm-table">
+        <thead>
+          <tr>
+            <th>วันที่</th>
+            <th>เอกสาร</th>
+            <th>ผู้เบิก</th>
+            <th>จำนวน</th>
+            <th>คลัง</th>
+            <th>หมายเหตุ</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${logs.map((log) => `
+            <tr>
+              <td>${esc(displayDate(log.date) || "-")}</td>
+              <td>${esc(log.document_no || "-")}</td>
+              <td>${esc(log.requester_name || farmLookupLabel("employees", log.requester_id) || "-")}</td>
+              <td class="num">${moneyNf.format(n(log.quantity))} ${esc(farmCleanUnitDisplay(log.unit_name) || "")}</td>
+              <td>${esc(farmLookupLabel("warehouses", log.warehouse_id) || log.warehouse_name || "-")}</td>
+              <td>${esc(log.note || "-")}</td>
+            </tr>
+          `).join("") || `<tr><td colspan="6">ยังไม่มีประวัติการเบิก</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function renderFarmInventoryIssueQueue() {
@@ -15371,6 +15512,10 @@ function renderFarmInventoryIssueModal() {
   const warehouses = farmInventoryIssueWarehouseRows();
   const job = farmInventoryIssueJobSummary(row);
   const issueUnit = farmCleanUnitDisplay(row.material.unit_name || row.documentLine?.unit_name || "");
+  const issueLogs = farmInventoryMaterialIssueLogs(row.material.note || "");
+  const latestLog = farmInventoryIssueLatestLog(issueLogs);
+  const requesterOptions = farmInventoryIssueRequesterOptions(order);
+  const selectedRequesterId = latestLog?.requester_id || row.document?.requester_id || "";
   return `
     <div class="farm-issue-modal" role="dialog" aria-modal="true">
       <div class="farm-issue-modal-card">
@@ -15405,6 +15550,12 @@ function renderFarmInventoryIssueModal() {
                 ${warehouses.map((warehouse) => `<option value="${esc(warehouse.id)}"${warehouse.id === row.document?.warehouse_id ? " selected" : ""}>${esc(warehouse.label)}</option>`).join("")}
               </select>
             </label>
+            <label>ผู้เบิก
+              <select id="farmIssueRequester">
+                <option value="">เลือกผู้เบิกจากทีมงาน</option>
+                ${requesterOptions.map((worker) => `<option value="${esc(worker.id)}"${String(worker.id) === String(selectedRequesterId) ? " selected" : ""}>${esc(worker.label)}${worker.teamLabel ? ` · ${esc(worker.teamLabel)}` : ""}</option>`).join("")}
+              </select>
+            </label>
             <label>พัสดุ
               <input type="text" value="${esc(row.material.material_name || "-")}" disabled>
             </label>
@@ -15424,6 +15575,7 @@ function renderFarmInventoryIssueModal() {
               <textarea id="farmIssueNote" rows="3" placeholder="หมายเหตุการจ่ายพัสดุ">${esc(row.document?.note || "")}</textarea>
             </label>
           </form>
+          ${renderFarmInventoryIssueHistory(row)}
         </div>
         <div class="farm-issue-modal-actions">
           <button type="button" data-farm-issue-save ${state.farmSyncBusy ? "disabled" : ""}>${state.farmSyncBusy ? "กำลังบันทึก..." : "บันทึกการจ่าย"}</button>
@@ -15452,6 +15604,8 @@ async function saveFarmInventoryIssueFromQueue() {
   const quantity = n(document.querySelector("#farmIssueQuantity")?.value);
   const unitName = farmCleanUnitDisplay(document.querySelector("#farmIssueUnit")?.value || row.material.unit_name || "");
   const warehouseId = document.querySelector("#farmIssueWarehouse")?.value || row.document?.warehouse_id || "";
+  const requesterId = document.querySelector("#farmIssueRequester")?.value || "";
+  const requesterName = requesterId ? farmLookupLabel("employees", requesterId) : "";
   const note = document.querySelector("#farmIssueNote")?.value || "บันทึกจากหน้าจ่ายพัสดุตามใบงาน";
   const documentNo = (document.querySelector("#farmIssueDocNo")?.value || "").trim()
     || `GI-${farmShortWorkOrderNo(order).replace(/[^0-9A-Za-z-]/g, "")}-${docDate.replaceAll("-", "")}`.slice(0, 120);
@@ -15532,8 +15686,10 @@ async function saveFarmInventoryIssueFromQueue() {
       }
     }
 
-    const existingMaterial = farmRowsByKey("work_order_materials").find((item) => item.work_order_id === order.id && item.material_id === row.material.material_id);
-    const baseNote = existingMaterial?.note || row.material.note || "";
+    const existingMaterial = farmRowsByKey("work_order_materials").find((item) => row.material.row_id && item.id === row.material.row_id)
+      || farmRowsByKey("work_order_materials").find((item) => item.work_order_id === order.id && item.material_id === row.material.material_id && farmInventoryMaterialIssueLogs(item.note).length)
+      || farmRowsByKey("work_order_materials").find((item) => item.work_order_id === order.id && item.material_id === row.material.material_id);
+    const baseNote = row.material.note || existingMaterial?.note || "";
     const noteMeta = farmInventoryMaterialNoteMeta(baseNote);
     const issueLogs = [
       ...(noteMeta.issue_logs || []),
@@ -15543,6 +15699,9 @@ async function saveFarmInventoryIssueFromQueue() {
         quantity,
         unit_name: unitName,
         warehouse_id: warehouseId || "",
+        warehouse_name: farmLookupLabel("warehouses", warehouseId) || "",
+        requester_id: requesterId,
+        requester_name: requesterName,
         note,
         created_at: now,
       },
@@ -15570,7 +15729,7 @@ async function saveFarmInventoryIssueFromQueue() {
       }),
       updatedAt: now,
     };
-    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_order_materials" && item.work_order_id === order.id && item.material_id === row.material.material_id));
+    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_order_materials" && item.id === materialRow.id));
     state.farmRecords.push(materialRow);
     await persistFarmRowToDatabase(materialTable, materialRow);
 
