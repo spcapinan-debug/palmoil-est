@@ -14320,8 +14320,9 @@ function renderFarmDispatchPanel() {
   const vehicleIds = new Set(machines.map((row) => row.vehicle_id));
   const team = teams.find((row) => row.id === activeTeamId) || teams[0] || {};
   const supervisor = farmLookup("employees", team.supervisor_employee_id) || {};
-  const dispatchDate = order?.dispatch_start_date || order?.dispatch_date || order?.rescheduled_date || order?.scheduled_date || order?.planned_start_date || farmToday();
-  const dispatchEndDate = order?.dispatch_end_date || order?.rescheduled_end_date || order?.dispatch_date || order?.planned_end_date || order?.endDate || dispatchDate;
+  const noteDispatchRange = farmWorkOrderDispatchRangeFromNote(order?.note);
+  const dispatchDate = order?.dispatchTimelineStart || noteDispatchRange.startDate || order?.note_dispatch_start_date || order?.dispatch_start_date || order?.dispatch_date || order?.rescheduled_date || order?.scheduled_date || order?.planned_start_date || farmToday();
+  const dispatchEndDate = order?.dispatchTimelineEnd || noteDispatchRange.endDate || order?.note_dispatch_end_date || order?.dispatch_end_date || order?.rescheduled_end_date || order?.dispatch_date || order?.planned_end_date || order?.endDate || dispatchDate;
   const activityName = farmLookupLabel("activities", order?.activity_id);
   const planRange = [displayDate(order?.planned_start_date || order?.scheduled_date), displayDate(order?.planned_end_date || order?.scheduled_date)].filter(Boolean).join(" ถึง ");
   const orderArea = [order?.plot?.plot_code, order?.block?.block_code || order?.block?.block_name, order?.block?.ap_code || order?.block?.AP_code].filter(Boolean).join(" / ") || "-";
@@ -14714,10 +14715,29 @@ async function saveFarmDispatchOrder() {
     state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (farmSameWorkOrderIdentity(row, nextOrder) || row.id === order.id || row.id === nextOrder.id || row._overrideOf === order.id)));
     state.farmRecords.push(nextOrder);
     const savedOrderPayload = await persistFarmRowToDatabase(workOrderTable, nextOrder);
-    const savedOrder = { ...nextOrder, ...(savedOrderPayload.row || {}) };
+    const savedOrder = {
+      ...nextOrder,
+      ...(savedOrderPayload.row || {}),
+      scheduled_date: date,
+      rescheduled_date: date,
+      rescheduled_end_date: endDate,
+      dispatch_date: date,
+      dispatch_start_date: date,
+      dispatch_end_date: endDate,
+      dispatch_status: "sent_to_mobile",
+      note_dispatch_start_date: date,
+      note_dispatch_end_date: endDate,
+      dispatchTimelineStart: date,
+      dispatchTimelineEnd: endDate,
+      plannedTimelineStart: originalPlanStart,
+      plannedTimelineEnd: originalPlanEnd,
+      note: nextNote,
+      updatedAt: now,
+    };
     const savedOrderId = savedOrder.id || nextOrder.id || order.id;
     state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (farmSameWorkOrderIdentity(row, savedOrder) || row.id === nextOrder.id || row.id === order.id || row.id === savedOrderId || row._overrideOf === order.id)));
     state.farmRecords.push({ ...savedOrder, moduleId: "farm-work", tableId: "work_orders" });
+    mergeFarmDbRow("work_orders", { ...savedOrder, moduleId: "farm-work", tableId: "work_orders" });
     await ensureFarmWorkOrderQr(savedOrder, "dispatch");
 
     await reconcileFarmWorkOrderChildren(workerTable, savedOrderId, new Set(workerIdsToSave), "employee_id");
