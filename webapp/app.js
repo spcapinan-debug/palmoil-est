@@ -3283,6 +3283,18 @@ async function persistFarmRowToDatabase(table, row) {
   return { ...payload, row: saved || payload.row || row };
 }
 
+function farmIsMissingDbTableError(error) {
+  const message = String(error?.message || error || "");
+  return /could not find the table|schema cache|relation .* does not exist|table .* does not exist|not found/i.test(message);
+}
+
+function farmDbTableAvailable(tableKey) {
+  const table = farmTableByKey(tableKey);
+  if (!table) return false;
+  const error = state.farmDbErrors?.[tableKey];
+  return !farmIsMissingDbTableError(error);
+}
+
 async function deleteFarmRowFromDatabase(table, id) {
   const res = await fetch(FARM_TABLES_API, {
     method: "DELETE",
@@ -14339,7 +14351,7 @@ function renderFarmDispatchPanel() {
         <article class="farm-dispatch-card farm-dispatch-actions">
           <h4>ส่งงานให้หัวหน้าทีม</h4>
           ${renderFarmQrCard(order, "QR สำหรับหัวหน้าทีม", "dispatch")}
-          <p>เมื่อบันทึก ระบบจะตั้งสถานะใบงานเป็น “ส่งเข้ามือถือ” และสร้างเอกสาร issue สำหรับพัสดุที่ระบุไว้</p>
+          <p>เมื่อบันทึก ระบบจะตั้งสถานะใบงานเป็น “ส่งเข้ามือถือ” และบันทึกรายการพัสดุ รถ และคนงานไว้กับใบงาน</p>
           <button type="button" data-farm-dispatch-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกสั่งงาน</button>
           <button type="button" class="ghost" data-farm-dispatch-print ${!order ? "disabled" : ""}>พิมพ์ใบสั่งงาน / ใบเบิก</button>
         </article>
@@ -14630,7 +14642,8 @@ async function saveFarmDispatchOrder() {
 
     await reconcileFarmWorkOrderChildren(materialTable, savedOrderId, new Set(materialRows.map((row) => row.material_id)), "material_id");
     let issueDocId = "";
-    if (materialRows.length) {
+    const canCreateInventoryIssue = materialRows.length && farmDbTableAvailable("inventory_documents") && farmDbTableAvailable("inventory_document_lines");
+    if (canCreateInventoryIssue) {
       try {
         const issueDocNo = `GI-${farmShortWorkOrderNo(savedOrder).replace(/[^0-9A-Za-z-]/g, "")}-${date.replaceAll("-", "")}`.slice(0, 120);
         const existingIssueDoc = farmRowsByKey("inventory_documents").find((row) => row.document_no === issueDocNo || String(row.work_order_id || "") === String(savedOrderId));
@@ -14652,7 +14665,11 @@ async function saveFarmDispatchOrder() {
         const savedIssue = await persistFarmRowToDatabase(inventoryDocTable, issueDoc);
         issueDocId = savedIssue.row?.id || issueDoc.id;
       } catch (error) {
-        dispatchWarnings.push(`ยังไม่สร้างใบตัดจ่ายพัสดุ: ${error.message}`);
+        if (farmIsMissingDbTableError(error)) {
+          state.farmDbErrors = { ...(state.farmDbErrors || {}), inventory_documents: error.message };
+        } else {
+          dispatchWarnings.push(`ยังไม่สร้างใบตัดจ่ายพัสดุ: ${error.message}`);
+        }
         issueDocId = "";
       }
     }
@@ -14693,7 +14710,11 @@ async function saveFarmDispatchOrder() {
           state.farmRecords.push(line);
           await persistFarmRowToDatabase(inventoryLineTable, line);
         } catch (error) {
-          dispatchWarnings.push(`ยังไม่บันทึกรายการตัดจ่ายพัสดุ: ${error.message}`);
+          if (farmIsMissingDbTableError(error)) {
+            state.farmDbErrors = { ...(state.farmDbErrors || {}), inventory_document_lines: error.message };
+          } else {
+            dispatchWarnings.push(`ยังไม่บันทึกรายการตัดจ่ายพัสดุ: ${error.message}`);
+          }
           issueDocId = "";
         }
       }
@@ -14725,7 +14746,7 @@ async function saveFarmDispatchOrder() {
     state.farmWorkDetailId = savedOrderId;
     state.farmDispatchWorkOrderId = savedOrderId;
     state.farmSyncStatus = dispatchWarnings.length ? "warning" : "success";
-    state.farmSyncMessage = `บันทึกสั่งงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · คนงาน ${fmt(workerIdsToSave.length)} คน · พัสดุ ${fmt(materialRows.length)} รายการ · รถ/เครื่องจักร ${fmt(machineRows.length)} รายการ${dispatchWarnings.length ? ` · ระบบยังไม่ตัดสต๊อกเพราะยังไม่มีตาราง inventory_documents` : ""}`;
+    state.farmSyncMessage = `บันทึกสั่งงานแล้ว: ${farmShortWorkOrderNo(order)} · คนงาน ${fmt(workerIdsToSave.length)} คน · พัสดุ ${fmt(materialRows.length)} รายการ · รถ/เครื่องจักร ${fmt(machineRows.length)} รายการ${dispatchWarnings.length ? ` · ${dispatchWarnings.join(" · ")}` : ""}`;
   } catch (error) {
     resetFarmDerivedCaches();
     state.farmSyncStatus = "error";
@@ -14736,14 +14757,48 @@ async function saveFarmDispatchOrder() {
   }
 }
 
-function printFarmDispatchOrder() {
+function farmDispatchPrintHtmlForCurrentOrder() {
+  document.querySelectorAll(".farm-dispatch-print-host").forEach((node) => node.remove());
+  document.body.classList.add("print-farm-dispatch");
   syncFarmDispatchPrintPreviewFromForm();
+  document.body.classList.remove("print-farm-dispatch");
+  const existingPrint = document.querySelector(".farm-dispatch-panel > .farm-dispatch-print");
+  if (existingPrint?.outerHTML) return existingPrint.outerHTML;
+  const order = farmDispatchSelectedOrder();
+  if (!order) return "";
+  const activeTeamId = document.querySelector("#farmDispatchTeam")?.value || order.team_id || "";
+  const team = farmLookup("teams", activeTeamId) || farmLookup("teams", order.team_id) || {};
+  const supervisor = farmLookup("employees", team.supervisor_employee_id) || {};
+  const workers = farmDispatchWorkerCandidates(order, activeTeamId);
+  const materials = farmDispatchMaterialCandidates(order);
+  const machines = farmDispatchMachineCandidates(order);
+  const dispatchDate = dateValue(document.querySelector("#farmDispatchDate")) || order.rescheduled_date || order.dispatch_date || order.scheduled_date || order.planned_start_date || farmToday();
+  const dispatchEndDate = dateValue(document.querySelector("#farmDispatchEndDate")) || order.rescheduled_end_date || order.dispatch_end_date || order.planned_end_date || order.endDate || dispatchDate;
+  const orderArea = [order.plot?.plot_code, order.block?.block_code || order.block?.block_name, order.block?.ap_code || order.block?.AP_code].filter(Boolean).join(" / ") || "-";
+  return renderFarmDispatchPrintPreview(order, { team, supervisor, workers, materials, machines, dispatchDate, dispatchEndDate, orderArea });
+}
+
+function prepareFarmDispatchPrintHost() {
+  document.querySelectorAll(".farm-dispatch-print-host").forEach((node) => node.remove());
+  const printHtml = farmDispatchPrintHtmlForCurrentOrder();
+  if (!printHtml) return null;
+  const host = document.createElement("div");
+  host.className = "farm-dispatch-print-host";
+  host.innerHTML = printHtml;
+  document.body.appendChild(host);
+  return host;
+}
+
+function printFarmDispatchOrder() {
+  const printHost = prepareFarmDispatchPrintHost();
+  if (!printHost) return;
   document.body.classList.add("print-farm-dispatch");
   let cleaned = false;
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
     document.body.classList.remove("print-farm-dispatch");
+    printHost.remove();
     window.removeEventListener("afterprint", cleanup);
   };
   window.addEventListener("afterprint", cleanup, { once: true });

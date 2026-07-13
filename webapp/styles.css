@@ -7133,6 +7133,10 @@ tfoot td {
   color: #111827;
 }
 
+.farm-dispatch-print-host {
+  display: none;
+}
+
 .farm-dispatch-print-head {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(180px, .8fr) 88px;
@@ -10470,6 +10474,37 @@ td.num,
     gap: 16px;
     margin-top: 18px;
     font-weight: 800;
+  }
+
+  body.print-farm-dispatch,
+  body.print-farm-dispatch-bulk {
+    background: #fff !important;
+  }
+
+  body.print-farm-dispatch::before,
+  body.print-farm-dispatch-bulk::before {
+    content: none !important;
+    display: none !important;
+  }
+
+  body.print-farm-dispatch .app-shell {
+    display: none !important;
+  }
+
+  body.print-farm-dispatch .farm-dispatch-print-host {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body.print-farm-dispatch .farm-dispatch-print-host .farm-dispatch-print {
+    display: grid !important;
+    border: 0 !important;
+    padding: 0 !important;
+    color: #000 !important;
+    gap: 5px !important;
+    font-size: 9px !important;
   }
 
   body.print-farm-dispatch .sidebar,
