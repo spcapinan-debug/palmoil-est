@@ -103,6 +103,7 @@
   farmDispatchExtraMaterials: [],
   farmDispatchExtraVehicles: [],
   farmResultWorkOrderId: "",
+  farmResultFilters: { query: "", activity: "all", status: "all" },
   farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {}, materialEntries: {}, machineEntries: {} },
   farmResultRenderTimer: null,
   farmTableId: "",
@@ -16070,6 +16071,133 @@ function farmResultSelectedOrder() {
   return selected;
 }
 
+function farmResultFilterState() {
+  if (!state.farmResultFilters) state.farmResultFilters = { query: "", activity: "all", status: "all" };
+  return state.farmResultFilters;
+}
+
+function farmResultOrderDateLabel(order = {}) {
+  const start = order.rescheduled_date || order.dispatch_date || order.scheduled_date || order.planned_start_date || "";
+  const end = order.rescheduled_end_date || order.dispatch_end_date || order.planned_end_date || order.endDate || start;
+  if (!start && !end) return "-";
+  if (!end || end === start) return displayDate(start);
+  return `${displayDate(start)} - ${displayDate(end)}`;
+}
+
+function farmResultOrderSearchText(order = {}) {
+  return [
+    farmShortWorkOrderNo(order),
+    order.work_order_no,
+    order.work_order_title,
+    order.activity_id,
+    order.activity?.activity_code,
+    order.activity?.activity_name,
+    farmShortActivityText(order),
+    farmShortBlockText(order),
+    order.block?.block_code,
+    order.block?.block_name,
+    order.block?.ap_code,
+    order.block?.AP_code,
+    order.plot?.plot_code,
+    farmLookupLabel("teams", order.team_id),
+    order.statusMeta?.label,
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function farmResultFilteredOrders() {
+  const filters = farmResultFilterState();
+  const query = String(filters.query || "").trim().toLowerCase();
+  return farmResultCandidateOrders().filter((order) => {
+    const activityOk = filters.activity === "all" || String(order.activity_id || "") === String(filters.activity);
+    const statusOk = filters.status === "all" || String(order.statusMeta?.key || order.status || "") === String(filters.status);
+    const queryOk = !query || farmResultOrderSearchText(order).includes(query);
+    return activityOk && statusOk && queryOk;
+  });
+}
+
+function farmResultActivityFilterOptions(rows = farmResultCandidateOrders()) {
+  const map = new Map();
+  rows.forEach((order) => {
+    const id = String(order.activity_id || "").trim();
+    if (!id || map.has(id)) return;
+    map.set(id, farmShortActivityText(order));
+  });
+  return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "th"));
+}
+
+function farmResultStatusFilterOptions(rows = farmResultCandidateOrders()) {
+  const map = new Map();
+  rows.forEach((order) => {
+    const key = String(order.statusMeta?.key || order.status || "").trim();
+    if (!key || map.has(key)) return;
+    map.set(key, order.statusMeta?.label || key);
+  });
+  return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "th"));
+}
+
+function renderFarmResultWorkSearch(order, allOrders = farmResultCandidateOrders()) {
+  const filters = farmResultFilterState();
+  const filtered = farmResultFilteredOrders();
+  const rows = filtered.slice(0, 18);
+  const activityOptions = farmResultActivityFilterOptions(allOrders);
+  const statusOptions = farmResultStatusFilterOptions(allOrders);
+  const selectedTitle = order ? `${farmShortWorkOrderNo(order)} · ${farmShortActivityText(order)} · ${farmShortBlockText(order)}` : "ยังไม่ได้เลือกใบสั่งงาน";
+  const selectedMeta = order ? [
+    farmResultOrderDateLabel(order),
+    farmLookupLabel("teams", order.team_id) || "-",
+    order.statusMeta?.label || "-",
+  ].filter(Boolean).join(" · ") : "ค้นหาแล้วคลิกเลือกงานที่ต้องการบันทึก";
+  return `
+    <section class="farm-result-search-panel">
+      <div class="farm-result-search-head">
+        <div>
+          <h4>ค้นหาใบสั่งงานเพื่อบันทึกงาน</h4>
+          <p>ค้นหาจาก WO, กิจกรรม, Block, ทีม หรือกรองตามกิจกรรมก่อนบันทึกผลงานจริง</p>
+        </div>
+        ${order ? `<button type="button" data-farm-result-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกงาน</button>` : ""}
+      </div>
+      <div class="farm-result-search-controls">
+        <label>ค้นหา
+          <input id="farmResultWorkSearch" type="search" value="${esc(filters.query || "")}" placeholder="เช่น W07-031, ใส่ปุ๋ย, 67-D06-R, ทีม">
+        </label>
+        <label>กิจกรรม
+          <select id="farmResultActivityFilter">
+            <option value="all">ทั้งหมด</option>
+            ${activityOptions.map(([id, label]) => `<option value="${esc(id)}"${String(filters.activity) === String(id) ? " selected" : ""}>${esc(label)}</option>`).join("")}
+          </select>
+        </label>
+        <label>สถานะ
+          <select id="farmResultStatusFilter">
+            <option value="all">ทั้งหมด</option>
+            ${statusOptions.map(([id, label]) => `<option value="${esc(id)}"${String(filters.status) === String(id) ? " selected" : ""}>${esc(label)}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+      <div class="farm-result-selected-work">
+        <div>
+          <span>ใบสั่งงานที่เลือก</span>
+          <strong>${esc(selectedTitle)}</strong>
+          <small>${esc(selectedMeta)}</small>
+        </div>
+        ${renderFarmQrInline(order, "result")}
+      </div>
+      <div class="farm-result-search-results" role="listbox" aria-label="รายการใบสั่งงาน">
+        ${rows.map((row) => {
+          const selected = row.id === order?.id;
+          return `
+            <button type="button" class="farm-result-order-card${selected ? " is-selected" : ""}" data-farm-result-order-pick="${esc(row.id)}" role="option" aria-selected="${selected ? "true" : "false"}">
+              <span class="farm-result-order-no">${esc(farmShortWorkOrderNo(row))}</span>
+              <span class="farm-result-order-main">${esc(farmShortActivityText(row))}</span>
+              <span>${esc(farmShortBlockText(row))}</span>
+              <span>${esc(farmLookupLabel("teams", row.team_id) || "-")}</span>
+              <span>${esc(farmResultOrderDateLabel(row))}</span>
+              <em>${esc(row.statusMeta?.label || "-")}</em>
+            </button>`;
+        }).join("") || `<div class="farm-result-order-empty">ไม่พบใบสั่งงานตามเงื่อนไข</div>`}
+      </div>
+    </section>`;
+}
+
 function farmResultDraftState(order = farmResultSelectedOrder()) {
   const draft = state.farmResultDraft || {};
   const activity = order?.activity || {};
@@ -16459,19 +16587,7 @@ function renderFarmResultPanel() {
         <h3>บันทึกงานประจำวัน</h3>
         <span>หัวหน้าทีมบันทึกผลงานจริง รายชื่อคนทำงาน และค่าแรงรายคนจากใบสั่งงานเดียว</span>
       </div>
-      <div class="farm-result-workbar">
-        <label>เลือกใบสั่งงาน
-          <select id="farmResultOrderSelect">
-            ${orders.map((row) => `<option value="${esc(row.id)}"${row.id === order?.id ? " selected" : ""}>${esc(row.shortNo || farmShortWorkOrderNo(row))} · ${esc(row.work_order_title || row.activity?.activity_name || "")}</option>`).join("")}
-          </select>
-        </label>
-        <div>
-          <strong>${esc(order?.shortNo || farmShortWorkOrderNo(order || {}))}</strong>
-          <span>${esc(order?.work_order_title || "-")}</span>
-        </div>
-        ${renderFarmQrInline(order, "result")}
-        <button type="button" data-farm-result-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกงาน</button>
-      </div>
+      ${renderFarmResultWorkSearch(order, orders)}
       <div class="farm-result-summary-strip">
         <article><span>กิจกรรม</span><strong>${esc(farmLookupLabel("activities", order?.activity_id) || "-")}</strong><small>${esc(area)}</small></article>
         <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(order?.statusMeta?.label || "-")}</small></article>
@@ -21436,6 +21552,13 @@ async function init() {
       render();
       return;
     }
+    if (e.target.id === "farmResultActivityFilter" || e.target.id === "farmResultStatusFilter") {
+      const filters = farmResultFilterState();
+      if (e.target.id === "farmResultActivityFilter") filters.activity = e.target.value || "all";
+      if (e.target.id === "farmResultStatusFilter") filters.status = e.target.value || "all";
+      render();
+      return;
+    }
     if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultNote"].includes(e.target.id)) {
       syncFarmResultDraftFromForm();
       render();
@@ -21832,6 +21955,20 @@ async function init() {
           nextInput.setSelectionRange?.(cursor, cursor);
         }
       }, 220);
+      return;
+    }
+    if (e.target.id === "farmResultWorkSearch") {
+      farmResultFilterState().query = e.target.value.trim();
+      clearTimeout(state.farmResultRenderTimer);
+      const cursor = e.target.selectionStart ?? e.target.value.length;
+      state.farmResultRenderTimer = setTimeout(() => {
+        render();
+        const nextInput = document.querySelector("#farmResultWorkSearch");
+        if (nextInput) {
+          nextInput.focus({ preventScroll: true });
+          nextInput.setSelectionRange?.(cursor, cursor);
+        }
+      }, 180);
       return;
     }
     if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultNote"].includes(e.target.id)) {
@@ -22245,6 +22382,16 @@ async function init() {
     }
     if (e.target.closest("[data-farm-result-clear-worker]")) {
       clearFarmResultWorkerDraft();
+      return;
+    }
+    const resultOrderPick = e.target.closest("[data-farm-result-order-pick]");
+    if (resultOrderPick) {
+      const id = resultOrderPick.dataset.farmResultOrderPick;
+      state.farmResultWorkOrderId = id;
+      state.farmWorkDetailId = id;
+      state.farmDispatchWorkOrderId = id;
+      state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {}, materialEntries: {}, machineEntries: {} };
+      render();
       return;
     }
     const plannerTab = e.target.closest("[data-farm-planner-tab]");
