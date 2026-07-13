@@ -7006,6 +7006,49 @@ tfoot td {
   text-align: right;
 }
 
+.farm-dispatch-machine-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.farm-dispatch-machine-table th,
+.farm-dispatch-machine-table td {
+  padding-inline: 6px;
+}
+
+.farm-dispatch-machine-table th:nth-child(1),
+.farm-dispatch-machine-table td:nth-child(1) {
+  width: 34px;
+}
+
+.farm-dispatch-machine-table th:nth-child(2),
+.farm-dispatch-machine-table td:nth-child(2),
+.farm-dispatch-machine-table th:nth-child(3),
+.farm-dispatch-machine-table td:nth-child(3) {
+  width: 31%;
+}
+
+.farm-dispatch-machine-table th:nth-child(4),
+.farm-dispatch-machine-table td:nth-child(4),
+.farm-dispatch-machine-table th:nth-child(5),
+.farm-dispatch-machine-table td:nth-child(5) {
+  width: 16%;
+}
+
+.farm-dispatch-machine-table select,
+.farm-dispatch-machine-table input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 7px;
+  color: var(--ink);
+  background: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .farm-dispatch-machine-note {
   border-left: 3px solid #14b8a6;
   padding: 5px 8px;

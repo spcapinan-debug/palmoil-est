@@ -7546,15 +7546,17 @@ function enhanceTables(root = document) {
     }
     if (toolbar) {
       toolbar.className = "table-export-bar";
+      const exportActions = table.dataset.noExport === "true" ? "" : `
+        <div class="table-export-actions">
+          <button type="button" data-table-export="excel" data-table-id="${id}">Excel</button>
+          <button type="button" data-table-export="pdf" data-table-id="${id}">PDF</button>
+        </div>`;
       toolbar.innerHTML = `
         <div>
           <strong>${esc(tableTitle(table))}</strong>
           <span>${esc(tableSummary(table))}</span>
         </div>
-        <div class="table-export-actions">
-          <button type="button" data-table-export="excel" data-table-id="${id}">Excel</button>
-          <button type="button" data-table-export="pdf" data-table-id="${id}">PDF</button>
-        </div>`;
+        ${exportActions}`;
     }
     const headerRow = table.tHead?.rows?.[table.tHead.rows.length - 1];
     if (!headerRow) return;
@@ -14330,7 +14332,7 @@ function renderFarmDispatchPanel() {
             </div>
           </div>
           <div class="table-wrap">
-            <table class="mini-table farm-dispatch-table">
+            <table class="mini-table farm-dispatch-table" data-no-export="true">
               <thead><tr><th>#</th><th>พัสดุ</th><th>แผน</th><th>หน่วยแผน</th><th>เบิกตามแผน</th><th>เบิกจ่ายจริง</th><th>หน่วยจ่าย</th></tr></thead>
               <tbody>
                 ${materials.map((row, index) => {
@@ -14362,7 +14364,7 @@ function renderFarmDispatchPanel() {
             </div>
           </div>
           <div class="table-wrap">
-            <table class="mini-table farm-dispatch-table">
+            <table class="mini-table farm-dispatch-table farm-dispatch-machine-table" data-no-export="true">
               <thead><tr><th>#</th><th>รถ/เครื่องจักร</th><th>คนขับ</th><th>ชั่วโมงแผน</th><th>น้ำมันเบิก</th></tr></thead>
               <tbody>
                 ${machines.map((row, index) => `
