@@ -176,6 +176,9 @@ const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_wei
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
 const FARM_BUDGET_SYNC_API = window.__FARM_BUDGET_SYNC_API__ || "/api/farm-budget-sync";
+const FARM_DB_TABLE_CACHE_MS = 30 * 1000;
+const farmDbTableLoadedAt = new Map();
+const farmDbTableInflight = new Map();
 const MASTER_FOLDER_DATA_URL = window.__MASTER_FOLDER_DATA_URL__ || "./data/master_data_full.json";
 const FARM_BUDGET_RATE_DATA_URL = "";
 const TRANSPORT_VIEWS = new Set(["dashboard", "stock", "mill", "rspo", "daily", "summary", "clear"]);
@@ -3236,33 +3239,94 @@ function farmDatabaseTablesForView(view = state.view) {
       "work_attendance",
     ].forEach((key) => tableSet.add(key));
   }
+  if (view === "farm-dispatch") {
+    [
+      "inventory_documents",
+      "inventory_document_lines",
+      "planned_work_materials",
+    ].forEach((key) => tableSet.add(key));
+  }
+  if (view === "farm-result") {
+    [
+      "payroll_periods",
+      "payroll_period_lines",
+      "cost_entries",
+    ].forEach((key) => tableSet.add(key));
+  }
   return [...tableSet].filter((key) => FARM_TABLE_SCHEMAS[key]);
 }
 
-async function loadFarmTablesFromDatabase({ silent = false, tables = null } = {}) {
-  const tableKeys = (Array.isArray(tables) && tables.length ? [...new Set(tables)] : Object.keys(FARM_TABLE_SCHEMAS))
-    .filter((key) => FARM_TABLE_SCHEMAS[key]);
+function farmTableRequestKey(tableKeys = []) {
+  return [...new Set(tableKeys)].filter((key) => FARM_TABLE_SCHEMAS[key]).sort().join(",");
+}
+
+function farmMarkTablesLoaded(tableKeys = [], loadedAt = Date.now()) {
+  for (const tableKey of tableKeys) {
+    if (FARM_TABLE_SCHEMAS[tableKey]) farmDbTableLoadedAt.set(tableKey, loadedAt);
+  }
+}
+
+function farmViewTableKeys(view = state.view, extraTables = []) {
+  const tableSet = new Set(farmDatabaseTablesForView(view));
+  for (const tableKey of extraTables || []) tableSet.add(tableKey);
+  return [...tableSet].filter((key) => FARM_TABLE_SCHEMAS[key]);
+}
+
+async function loadFarmCurrentViewTables({ silent = false, force = false, extraTables = [] } = {}) {
+  const tableKeys = farmViewTableKeys(state.view, extraTables);
   if (!tableKeys.length) return false;
-  const isPartial = tableKeys.length !== Object.keys(FARM_TABLE_SCHEMAS).length;
-  try {
+  return loadFarmTablesFromDatabase({ silent, force, tables: tableKeys });
+}
+
+function farmFilterFreshTableKeys(tableKeys = [], force = false) {
+  if (force) return tableKeys;
+  const now = Date.now();
+  return tableKeys.filter((tableKey) => {
+    const hasRows = Array.isArray(state.farmDbRows?.[tableKey]);
+    const loadedAt = farmDbTableLoadedAt.get(tableKey) || 0;
+    return !hasRows || now - loadedAt > FARM_DB_TABLE_CACHE_MS;
+  });
+}
+
+async function loadFarmTablesFromDatabase({ silent = false, tables = null, force = false } = {}) {
+  const allTableKeys = Object.keys(FARM_TABLE_SCHEMAS);
+  const scopedTables = Array.isArray(tables) && tables.length ? tables : farmDatabaseTablesForView(state.view);
+  const requestedKeys = [...new Set(scopedTables)]
+    .filter((key) => FARM_TABLE_SCHEMAS[key]);
+  if (!requestedKeys.length) return false;
+  const tableKeys = farmFilterFreshTableKeys(requestedKeys, force);
+  if (!tableKeys.length) return false;
+  const replacesAll = tableKeys.length === allTableKeys.length && requestedKeys.length === allTableKeys.length;
+  const requestKey = `${force ? "force:" : ""}${farmTableRequestKey(tableKeys)}`;
+  if (farmDbTableInflight.has(requestKey)) return farmDbTableInflight.get(requestKey);
+
+  const request = (async () => {
     const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(tableKeys.join(","))}&t=${Date.now()}`;
     const payload = await fetch(url, { cache: "no-store" }).then((res) => res.json());
     if (!payload || !payload.tables) throw new Error(payload?.error || "No farm table payload");
     const nextRows = Object.fromEntries(
       Object.entries(payload.tables).map(([tableKey, rows]) => [tableKey, normalizeFarmDbRows(tableKey, Array.isArray(rows) ? rows : [])])
     );
-    state.farmDbRows = isPartial ? { ...(state.farmDbRows || {}), ...nextRows } : nextRows;
+    state.farmDbRows = replacesAll ? nextRows : { ...(state.farmDbRows || {}), ...nextRows };
     state.farmDbSource = payload.source || null;
-    state.farmDbErrors = isPartial ? { ...(state.farmDbErrors || {}), ...(payload.errors || {}) } : (payload.errors || {});
-    state.farmDbWarnings = isPartial ? { ...(state.farmDbWarnings || {}), ...(payload.warnings || {}) } : (payload.warnings || {});
+    state.farmDbErrors = replacesAll ? (payload.errors || {}) : { ...(state.farmDbErrors || {}), ...(payload.errors || {}) };
+    state.farmDbWarnings = replacesAll ? (payload.warnings || {}) : { ...(state.farmDbWarnings || {}), ...(payload.warnings || {}) };
+    farmMarkTablesLoaded(Object.keys(nextRows));
     if (silent) render();
     return true;
+  })();
+
+  farmDbTableInflight.set(requestKey, request);
+  try {
+    return await request;
   } catch (error) {
-    if (!isPartial) state.farmDbRows = {};
+    if (replacesAll) state.farmDbRows = {};
     state.farmDbSource = { mode: "supabase-real-only", error: error.message };
     state.farmDbErrors = { ...(state.farmDbErrors || {}), api: error.message };
     state.farmDbWarnings = state.farmDbWarnings || {};
     return false;
+  } finally {
+    if (farmDbTableInflight.get(requestKey) === request) farmDbTableInflight.delete(requestKey);
   }
 }
 
@@ -3274,6 +3338,7 @@ function mergeFarmDbRow(tableKey, row) {
   if (index >= 0) rows[index] = { ...rows[index], ...normalized };
   else rows.push(normalized);
   state.farmDbRows = { ...state.farmDbRows, [tableKey]: rows };
+  farmMarkTablesLoaded([tableKey]);
   return normalized;
 }
 
@@ -3332,7 +3397,7 @@ async function syncFarmBudgetRatesToDatabase() {
     const counts = payload.counts || {};
     state.farmSyncStatus = payload.mode === "fallback" ? "warning" : "success";
     state.farmSyncMessage = `บันทึกชุดงบประมาณเข้า DB แล้ว: ปีงบประมาณ ${fmt(counts.budget_years || 0)}, Rate ${fmt(counts.budget_activity_rates || 0)}, Block ${fmt(counts.budget_rate_blocks || 0)}, วัสดุ ${fmt(counts.budget_rate_materials || 0)}, อัตราในสัญญา ${fmt(counts.budget_rate_roles || 0)}`;
-    await loadFarmTablesFromDatabase({ silent: false });
+    await loadFarmTablesFromDatabase({ silent: false, force: true, tables: farmDatabaseTablesForView("farm-budget") });
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `บันทึกชุดงบประมาณไม่สำเร็จ: ${error.message}`;
@@ -10796,7 +10861,7 @@ async function saveFarmRow() {
     state.farmSyncMessage = saved.warning
       ? `บันทึกแล้วใน fallback: ${saved.warning}`
       : "บันทึกฐานข้อมูลแล้ว";
-    await loadFarmTablesFromDatabase({ silent: false });
+    await loadFarmCurrentViewTables({ silent: false, extraTables: [table.key] });
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `บันทึกไม่สำเร็จ: ${error.message}`;
@@ -11217,7 +11282,7 @@ async function moveFarmActivityToGroup(activityId, groupId) {
     state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "activities" && (item.id === localRow.id || item._overrideOf === activityId)));
     state.farmSyncStatus = saved.mode === "farm-master-fallback" ? "warning" : "success";
     state.farmSyncMessage = saved.warning ? `บันทึกแล้วใน fallback: ${saved.warning}` : "บันทึกการย้ายกลุ่มแล้ว";
-    await loadFarmTablesFromDatabase({ silent: false });
+    await loadFarmCurrentViewTables({ silent: false, extraTables: [table.key] });
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `บันทึกการย้ายกลุ่มไม่สำเร็จ: ${error.message}`;
@@ -11271,7 +11336,7 @@ async function addFarmEmployeeToTeam(employeeId, teamId) {
     state.farmSyncStatus = saved.mode === "farm-master-fallback" ? "warning" : "success";
     state.farmSyncMessage = saved.warning ? `บันทึกแล้วใน fallback: ${saved.warning}` : `เพิ่มสมาชิกทีมแล้ว: ${farmTeamEmployeeLabel(employee)} -> ${farmTeamLabel(team)}`;
     saveFarmRecords();
-    await loadFarmTablesFromDatabase({ silent: false });
+    await loadFarmCurrentViewTables({ silent: false, extraTables: [table.key] });
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `เพิ่มสมาชิกทีมไม่สำเร็จ: ${error.message}`;
@@ -11306,7 +11371,7 @@ async function setFarmInactive(id) {
     state.farmSyncMessage = saved.warning
       ? `บันทึกแล้วใน fallback: ${saved.warning}`
       : "บันทึกสถานะแล้ว";
-    await loadFarmTablesFromDatabase({ silent: false });
+    await loadFarmCurrentViewTables({ silent: false, extraTables: [table.key] });
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `บันทึกไม่สำเร็จ: ${error.message}`;
@@ -11361,7 +11426,7 @@ async function deleteFarmRow(id = state.farmEditId, tableKey = state.farmActivit
     };
     state.farmSyncStatus = "success";
     state.farmSyncMessage = `ลบข้อมูลแล้ว: ${label}`;
-    await loadFarmTablesFromDatabase({ silent: false });
+    await loadFarmCurrentViewTables({ silent: false, extraTables: [table.key] });
   } catch (error) {
     state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && item._deleted && (item.id === row.id || item._overrideOf === row.id)));
     saveFarmRecords();
@@ -11465,7 +11530,7 @@ async function deleteFarmWorkOrderFromPlanner(id = "") {
     saveFarmRecords();
     state.farmSyncStatus = "success";
     state.farmSyncMessage = `ลบ Work Order แล้ว: ${label}`;
-    await loadFarmTablesFromDatabase({ silent: false });
+    await loadFarmCurrentViewTables({ silent: false, extraTables: ["work_orders", ...related.map(({ table: childTable }) => childTable.key)] });
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `ลบ Work Order ไม่สำเร็จ: ${error.message}`;
@@ -11627,7 +11692,7 @@ async function importFarmCsvToDatabase(file) {
     state.farmSyncMessage = warningCount
       ? `Update แล้ว ${fmt(savedCount)} rows แต่มี fallback ${fmt(warningCount)} rows`
       : `Update ฐานข้อมูลแล้ว ${fmt(savedCount)} rows`;
-    await loadFarmTablesFromDatabase({ silent: false });
+    await loadFarmCurrentViewTables({ silent: false, extraTables: [table.key] });
   } catch (error) {
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `Update ไม่สำเร็จ: ${error.message}`;
@@ -21390,8 +21455,7 @@ function setView(view) {
   ensureFarmDispatchFastDefaults();
   for (const btn of els.tabs.querySelectorAll("button")) btn.classList.toggle("active", btn.dataset.view === view);
   render();
-  const viewTables = farmDatabaseTablesForView(view);
-  if (viewTables.length) loadFarmTablesFromDatabase({ silent: true, tables: viewTables });
+  loadFarmCurrentViewTables({ silent: true });
 }
 
 function ensureFarmViewState(view = state.view) {
@@ -21466,7 +21530,6 @@ async function init() {
   setDateValue(els.clearDate, state.payload.source.dateMax);
   const priorityFarmTables = farmDatabaseTablesForView(state.view);
   if (priorityFarmTables.length) await loadFarmTablesFromDatabase({ silent: false, tables: priorityFarmTables });
-  loadFarmTablesFromDatabase({ silent: true });
 
   els.startDate.addEventListener("input", () => {
     syncDatePickerFromText(els.startDate);
@@ -22240,7 +22303,7 @@ async function init() {
     }
     if (e.target.closest("[data-farm-db-refresh]")) {
       const viewTables = farmDatabaseTablesForView(state.view);
-      loadFarmTablesFromDatabase({ silent: true, tables: viewTables.length ? viewTables : null });
+      loadFarmTablesFromDatabase({ silent: true, force: true, tables: viewTables.length ? viewTables : null });
       return;
     }
     if (e.target.closest("[data-farm-budget-sync]")) {
