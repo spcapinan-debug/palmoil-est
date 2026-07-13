@@ -8607,6 +8607,54 @@ tfoot td {
   padding-top: 12px;
 }
 
+.farm-result-rate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 12px 9px;
+}
+
+.farm-result-rate-card {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid #dbe7f3;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f8fbff;
+}
+
+.farm-result-rate-card.driver {
+  background: #eff8ff;
+  border-color: #bfdbfe;
+}
+
+.farm-result-rate-card.contractor {
+  background: #fff8e6;
+  border-color: #fde68a;
+}
+
+.farm-result-rate-card.muted {
+  opacity: 0.62;
+}
+
+.farm-result-rate-card span,
+.farm-result-rate-card small,
+.farm-result-rate-tag {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.farm-result-rate-card strong {
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .farm-result-worker-tools {
   display: flex;
   gap: 8px;
@@ -8693,6 +8741,15 @@ tfoot td {
 .farm-result-role-pill.contractor {
   background: #fef3c7;
   color: #92400e;
+}
+
+.farm-result-rate-tag {
+  display: block;
+  margin-top: 4px;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .farm-result-worker-table input,
@@ -10522,6 +10579,7 @@ td.num,
   .farm-result-grid,
   .farm-result-workbar,
   .farm-result-summary-strip,
+  .farm-result-rate-grid,
   .farm-result-entry-grid,
   .farm-result-fields,
   .farm-survey-control-grid,
@@ -10645,6 +10703,7 @@ td.num,
   .farm-issue-kpis,
   .farm-result-workbar,
   .farm-result-summary-strip,
+  .farm-result-rate-grid,
   .farm-result-entry-grid,
   .farm-result-fields,
   .farm-survey-control-grid,

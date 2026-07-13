@@ -16242,7 +16242,7 @@ function farmResultWorkers(order) {
 
 function farmResultWorkerRoleGroup(worker = {}) {
   const text = `${worker.role || ""} ${worker.employee?.worker_type || ""} ${worker.employee?.position || ""}`.toLowerCase();
-  if (text.includes("driver") || text.includes("คนขับ") || text.includes("ขับ")) return "driver";
+  if (text.includes("driver") || text.includes("คนขับ") || text.includes("คนรถ") || text.includes("ขับ")) return "driver";
   if (text.includes("contractor") || text.includes("ผู้รับเหมา")) return "contractor";
   return "worker";
 }
@@ -16306,6 +16306,114 @@ function farmResultRateForOrder(order) {
   return farmRowsByKey("payroll_rates").find((row) => row.activity_id === order?.activity_id && (!row.team_id || row.team_id === order?.team_id) && String(row.status || "active") !== "inactive") || {};
 }
 
+function farmResultBasisFromMethod(method = "", fallback = "manual_qty") {
+  const map = {
+    per_ton: "weight_ton",
+    per_tree: "tree_count",
+    per_rai: "area_rai",
+    per_bag: "bag_count",
+    per_day: "day_count",
+    per_hour: "hour_count",
+    per_trip: "trip_count",
+    fixed: "work_order",
+    per_unit: "manual_qty",
+  };
+  return map[String(method || "").trim()] || fallback || "manual_qty";
+}
+
+function farmResultBasisLabel(basis = "") {
+  const labels = {
+    weight_ton: "ตัน",
+    tree_count: "ต้น",
+    area_rai: "ไร่",
+    bag_count: "กระสอบ",
+    day_count: "วัน",
+    hour_count: "ชั่วโมง",
+    trip_count: "เที่ยว",
+    work_order: "งาน",
+    manual_qty: "หน่วย",
+  };
+  return labels[basis] || basis || "หน่วย";
+}
+
+function farmResultRoleRateAmount(row = {}) {
+  for (const key of ["rate_amount", "rate", "unit_rate", "rate_snapshot"]) {
+    if (String(row[key] ?? "").trim() !== "") return n(row[key]);
+  }
+  return null;
+}
+
+function farmResultRoleRateText(row = {}) {
+  return [row.rate_category, row.payee_type, row.role_name, row.worker_group_name, row.rate_text, row.line_type]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function farmResultRoleRateMatches(row = {}, group = "worker") {
+  const text = farmResultRoleRateText(row);
+  const isDriver = text.includes("driver") || text.includes("คนขับ") || text.includes("คนรถ") || text.includes("ขับรถ") || text.includes("machine_operator");
+  const isContractor = text.includes("contractor") || text.includes("ผู้รับเหมา") || text.includes("เหมา");
+  if (group === "driver") return isDriver;
+  if (group === "contractor") return isContractor;
+  return !isDriver && !isContractor && (
+    text.includes("worker")
+    || text.includes("คนงาน")
+    || text.includes("แรงงาน")
+    || text.includes("daily_worker")
+    || text.includes("monthly_employee")
+    || text.includes("team")
+    || text.includes("base")
+    || text.includes("all")
+  );
+}
+
+function farmResultRateLabel(amount, unit, basis) {
+  const unitLabel = farmBudgetUnitBaseLabel(unit || "") || farmResultBasisLabel(basis);
+  return `${farmBudgetRateNumberLabel(amount)} / ${unitLabel}`;
+}
+
+function farmResultRoleRateForGroup(rate = {}, group = "worker", fallback = {}) {
+  const fallbackAmount = n(fallback.rateAmount);
+  const fallbackBasis = fallback.basis || farmResultBasisFromMethod(fallback.method || rate.calculation_method, "manual_qty");
+  const fallbackUnit = farmBudgetUnitBaseLabel(fallback.unit || rate.unit_name || "") || farmResultBasisLabel(fallbackBasis);
+  const roleRows = rate?.id
+    ? farmBudgetRateRelations("budget_rate_roles", rate).filter((row) => {
+      const lineType = String(row.line_type || "wage").toLowerCase();
+      const active = String(row.status || "active").toLowerCase() !== "inactive";
+      const affectsPayroll = String(row.affects_payroll ?? "true").toLowerCase() !== "false";
+      return active && affectsPayroll && (!lineType || lineType === "wage");
+    })
+    : [];
+  const explicit = roleRows.find((row) => farmResultRoleRateMatches(row, group));
+  const base = roleRows.find((row) => farmResultRoleRateMatches(row, "worker"))
+    || roleRows.find((row) => ["base", "all", "team"].some((token) => farmResultRoleRateText(row).includes(token)));
+  const row = explicit || (group === "worker" ? base : null);
+  const amount = farmResultRoleRateAmount(row || {});
+  const method = row?.calculation_method || fallback.method || rate.calculation_method || "per_unit";
+  const basis = farmResultBasisFromMethod(method, fallbackBasis);
+  const unit = farmBudgetUnitBaseLabel(row?.uom || row?.unit_name || fallbackUnit) || farmResultBasisLabel(basis);
+  const rateAmount = amount !== null ? amount : fallbackAmount;
+  return {
+    row,
+    group,
+    rateAmount,
+    basis,
+    method,
+    unit,
+    label: farmResultRateLabel(rateAmount, unit, basis),
+    source: row?.id ? "role" : "main",
+  };
+}
+
+function farmResultLineBasisQuantity({ rateInfo, basis, actualUnit, lineQuantity, worker }) {
+  const roleBasis = rateInfo?.basis || basis || "manual_qty";
+  if (roleBasis === "hour_count") return Math.max(0, n(worker.workHours) + n(worker.otHours));
+  if (roleBasis === "day_count") return worker.attendanceStatus === "half_day" ? 0.5 : worker.attendanceStatus === "absent" ? 0 : 1;
+  if (roleBasis === "weight_ton") return actualUnit === "ตัน" ? n(lineQuantity) : n(lineQuantity) / 1000;
+  return n(lineQuantity);
+}
+
 function farmResultTicketTokens(text) {
   return String(text || "").split(/[\s,;，]+/).map((item) => millDocKey(item)).filter(Boolean);
 }
@@ -16347,6 +16455,7 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
     ? (actualUnit === "ตัน" && !ticketKg ? manualQty : actualQuantity / 1000)
     : actualQuantity;
   const rateAmount = n(rate.rate_amount || rate.rate_snapshot || 0);
+  const fallbackRate = { rateAmount, basis, method, unit: rate.unit_name || actualUnit };
   const totalWage = calculationQuantity * rateAmount;
   const workerCount = workers.length || 1;
   const shareQuantity = actualQuantity / workerCount;
@@ -16356,20 +16465,31 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
     const entry = entries[worker.id] || {};
     const hasCustomQuantity = entry.actualQuantity !== undefined && entry.actualQuantity !== "";
     const attendanceStatus = entry.status || "present";
+    const roleGroup = farmResultWorkerRoleGroup(worker);
+    const rateInfo = farmResultRoleRateForGroup(rate, roleGroup, fallbackRate);
     const lineQuantity = attendanceStatus === "absent" ? 0 : hasCustomQuantity ? n(entry.actualQuantity) : shareQuantity;
-    const lineBasisQuantity = basis === "weight_ton" ? (actualUnit === "ตัน" && hasCustomQuantity ? lineQuantity : lineQuantity / 1000) : lineQuantity;
-    const wageAmount = attendanceStatus === "absent" ? 0 : rateAmount ? lineBasisQuantity * rateAmount : shareWage;
+    const workerHours = n(entry.workHours || worker.plannedHours || 8);
+    const workerForBasis = { ...worker, attendanceStatus, workHours: workerHours, otHours: n(entry.otHours) };
+    const lineBasisQuantity = farmResultLineBasisQuantity({ rateInfo, basis, actualUnit, lineQuantity, worker: workerForBasis });
+    const wageAmount = attendanceStatus === "absent" ? 0 : lineBasisQuantity * n(rateInfo.rateAmount);
     const allowance = n(entry.allowance);
     const deduction = n(entry.deduction);
     const grossAmount = wageAmount + allowance - deduction;
     return {
       ...worker,
+      roleGroup,
+      rateInfo,
+      rateAmount: rateInfo.rateAmount,
+      rateLabel: rateInfo.label,
+      rateBasis: rateInfo.basis,
+      rateUnit: rateInfo.unit,
       attendanceStatus,
       checkIn: entry.checkIn || "08:00",
       checkOut: entry.checkOut || "17:00",
-      workHours: n(entry.workHours || worker.plannedHours || 8),
+      workHours: workerHours,
       otHours: n(entry.otHours),
       actualQuantity: lineQuantity,
+      lineBasisQuantity,
       hasCustomQuantity,
       allowance,
       deduction,
@@ -16378,11 +16498,25 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
       note: entry.note || "",
     };
   });
+  const roleSummary = ["driver", "worker", "contractor"].map((group) => {
+    const lines = workerLines.filter((row) => row.roleGroup === group);
+    const rateInfo = farmResultRoleRateForGroup(rate, group, fallbackRate);
+    return {
+      group,
+      label: farmResultRoleLabel(group),
+      count: lines.length,
+      rateInfo,
+      quantity: lines.reduce((sum, row) => sum + n(row.lineBasisQuantity), 0),
+      wageAmount: lines.reduce((sum, row) => sum + n(row.wageAmount), 0),
+      grossAmount: lines.reduce((sum, row) => sum + n(row.grossAmount), 0),
+    };
+  }).filter((row) => row.count || row.group !== "contractor");
+  const wageTotal = workerLines.reduce((sum, row) => sum + row.wageAmount, 0);
   const payrollTotal = workerLines.reduce((sum, row) => sum + row.grossAmount, 0);
   const materialActualTotal = materialLines.reduce((sum, row) => sum + n(row.actualQuantity), 0);
   const fuelIssueTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_issue_liter), 0);
   const machineHoursTotal = machineLines.reduce((sum, row) => sum + n(row.actual_hours || row.planned_hours), 0);
-  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, payrollTotal, workerCount, shareQuantity, shareWage, materialActualTotal, fuelIssueTotal, machineHoursTotal };
+  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, wageTotal, payrollTotal, workerCount, shareQuantity, shareWage, roleSummary, materialActualTotal, fuelIssueTotal, machineHoursTotal };
 }
 
 function farmResultPayrollPeriodForDate(date) {
@@ -16579,8 +16713,15 @@ function renderFarmResultPanel() {
   }, {});
   const roleTabs = ["driver", "worker", "contractor"]
     .filter((group) => groupedWorkers[group]?.length)
-    .map((group) => `<span><b>${esc(farmResultRoleLabel(group))}</b>${fmt(groupedWorkers[group].length)} คน</span>`)
+    .map((group) => {
+      const summary = calc.roleSummary.find((row) => row.group === group);
+      return `<span><b>${esc(farmResultRoleLabel(group))}</b>${fmt(groupedWorkers[group].length)} คน · ${esc(summary?.rateInfo?.label || "-")}</span>`;
+    })
     .join("");
+  const roleRateSummary = calc.roleSummary
+    .filter((row) => row.count)
+    .map((row) => `${row.label}: ${row.rateInfo.label}`)
+    .join(" | ");
   return `
     <section class="farm-result-page">
       <div class="section-head">
@@ -16591,7 +16732,7 @@ function renderFarmResultPanel() {
       <div class="farm-result-summary-strip">
         <article><span>กิจกรรม</span><strong>${esc(farmLookupLabel("activities", order?.activity_id) || "-")}</strong><small>${esc(area)}</small></article>
         <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(order?.statusMeta?.label || "-")}</small></article>
-        <article><span>เรทค่าแรง</span><strong>${moneyNf.format(calc.rateAmount)}</strong><small>${esc(calc.basis || "-")}</small></article>
+        <article><span>เรทตามบทบาท</span><strong>${fmt(calc.roleSummary.filter((row) => row.count).length || 1)} ชุด</strong><small>${esc(roleRateSummary || rateLabel)}</small></article>
         <article><span>ค่าแรงรวม</span><strong>${moneyNf.format(calc.payrollTotal || calc.totalWage)}</strong><small>ล็อก snapshot หลังบันทึก</small></article>
         <article><span>วัสดุ / น้ำมัน</span><strong>${fmt(calc.materialLines.length)} / ${fmt(calc.machineLines.length)}</strong><small>น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร</small></article>
         <article><span>แบบตรวจงาน</span><strong>${esc(survey?.template_code || "-")}</strong><small>${esc(surveyAttachment?.file_name || survey?.template_name || "ไม่พบแบบตรวจ")}</small></article>
@@ -16636,11 +16777,19 @@ function renderFarmResultPanel() {
       </section>
       <article class="farm-result-card farm-result-worker-card">
         <div class="section-head">
-          <h3>คนขับ / คนงาน</h3>
-          <span>งานเดียวรองรับหลายบทบาท แก้เวลา ผลงาน OT เงินเพิ่ม/หัก แล้วส่งเข้าค่าแรง</span>
+          <h3>บันทึกแรงงานตามบทบาท</h3>
+          <span>คนงานและคนขับใช้ rate แยกจากอัตรางบประมาณ แล้วล็อกค่าแรงเป็น snapshot หลังบันทึก</span>
+        </div>
+        <div class="farm-result-rate-grid">
+          ${calc.roleSummary.map((row) => `
+            <div class="farm-result-rate-card ${esc(row.group)}${row.count ? "" : " muted"}">
+              <span>${esc(row.label)}</span>
+              <strong>${esc(row.rateInfo.label)}</strong>
+              <small>${fmt(row.count)} คน · ค่าแรง ${moneyNf.format(row.wageAmount)}</small>
+            </div>`).join("")}
         </div>
         <div class="farm-result-worker-tools">
-          <span>ค่าเริ่มต้น: เฉลี่ยผลงาน ${moneyNf.format(calc.shareQuantity)} ${esc(calc.actualUnit)} / คน</span>
+          <span>ค่าเริ่มต้น: กระจายผลงาน ${moneyNf.format(calc.shareQuantity)} ${esc(calc.actualUnit)} / คน และคำนวณตาม rate ของแต่ละบทบาท</span>
           <button type="button" data-farm-result-fill-share>ใส่ค่าเฉลี่ยทุกคน</button>
           <button type="button" data-farm-result-clear-worker>ล้างแก้ไขรายคน</button>
         </div>
@@ -16667,7 +16816,7 @@ function renderFarmResultPanel() {
               ${calc.workerLines.map((row) => `
                 <tr data-farm-result-worker="${esc(row.id)}">
                   <td><strong>${esc(row.name)}</strong><small>${esc(row.role || row.employee.payment_type || "-")}</small></td>
-                  <td><span class="farm-result-role-pill ${esc(farmResultWorkerRoleGroup(row))}">${esc(farmResultRoleLabel(farmResultWorkerRoleGroup(row)))}</span></td>
+                  <td><span class="farm-result-role-pill ${esc(row.roleGroup)}">${esc(farmResultRoleLabel(row.roleGroup))}</span><small class="farm-result-rate-tag">${esc(row.rateLabel)}</small></td>
                   <td><select data-farm-result-worker-field="status">${["present", "late", "half_day", "absent"].map((status) => `<option value="${status}"${row.attendanceStatus === status ? " selected" : ""}>${status === "present" ? "มาทำงาน" : status === "late" ? "สาย" : status === "half_day" ? "ครึ่งวัน" : "ขาด"}</option>`).join("")}</select></td>
                   <td><input type="time" value="${esc(row.checkIn)}" data-farm-result-worker-field="checkIn"></td>
                   <td><input type="time" value="${esc(row.checkOut)}" data-farm-result-worker-field="checkOut"></td>
@@ -16755,7 +16904,7 @@ function renderFarmResultPanel() {
           <div class="farm-result-review-list">
             <p><strong>ผลงานรวม</strong><span>${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)}</span></p>
             <p><strong>ฐานคำนวณ</strong><span>${moneyNf.format(calc.calculationQuantity)} · ${esc(calc.basis)}</span></p>
-            <p><strong>ค่าแรงตามเรท</strong><span>${moneyNf.format(calc.totalWage)} บาท</span></p>
+            <p><strong>ค่าแรงตามเรทบทบาท</strong><span>${moneyNf.format(calc.wageTotal)} บาท</span></p>
             <p><strong>สุทธิรายคนรวม</strong><span>${moneyNf.format(calc.payrollTotal)} บาท</span></p>
           </div>
           <button type="button" class="farm-result-primary-save" data-farm-result-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกงานและสร้างค่าแรงรายคน</button>
@@ -16911,7 +17060,7 @@ async function saveFarmResultEntry() {
     rate_snapshot: calc.rateAmount,
     worker_count: calc.workerCount,
     share_quantity: calc.shareQuantity,
-    total_wage_amount: calc.totalWage,
+    total_wage_amount: calc.wageTotal,
     note: calc.draft.note || "",
     updatedAt: now,
   };
@@ -16978,7 +17127,7 @@ async function saveFarmResultEntry() {
         payee_snapshot_name: worker.name,
         nationality_snapshot: employee.nationality || "",
         payment_type_snapshot: employee.payment_type || "รายวัน",
-        rate_snapshot: calc.rateAmount,
+        rate_snapshot: worker.rateAmount,
         normal_hours_snapshot: employee.normal_hours_per_day || worker.workHours || 8,
         calculated_at: resultDate,
         is_locked: "true",
@@ -16986,7 +17135,7 @@ async function saveFarmResultEntry() {
         net_amount: Math.round(n(worker.grossAmount) * 100) / 100,
         status: "calculated",
         result_quantity_snapshot: Math.round(n(worker.actualQuantity) * 1000) / 1000,
-        result_unit_snapshot: calc.actualUnit,
+        result_unit_snapshot: worker.rateUnit || calc.actualUnit,
         attendance_status_snapshot: worker.attendanceStatus || "present",
         base_wage_amount: Math.round(n(worker.wageAmount) * 100) / 100,
         allowance_amount: Math.round(n(worker.allowance) * 100) / 100,
