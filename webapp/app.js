@@ -3124,9 +3124,12 @@ function normalizeFarmDbRows(tableKey, rows = []) {
       row.work_order_title = row.work_order_title || row.note || row.work_order_no || row.id;
       const noteRange = farmWorkOrderDateRangeFromNote(row.note);
       const noteOccurrenceDate = farmWorkOrderOccurrenceDateFromNote(row.note);
+      const noteDispatchRange = farmWorkOrderDispatchRangeFromNote(row.note);
       row.note_planned_start_date = noteRange.startDate || "";
       row.note_planned_end_date = noteRange.endDate || "";
       row.note_scheduled_date = noteOccurrenceDate || "";
+      row.note_dispatch_start_date = noteDispatchRange.startDate || "";
+      row.note_dispatch_end_date = noteDispatchRange.endDate || "";
       row.planned_start_date = row.planned_start_date || noteRange.startDate || row.scheduled_date || "";
       row.planned_end_date = row.planned_end_date || noteRange.endDate || row.scheduled_date || row.planned_start_date || "";
       row.scheduled_date = row.scheduled_date || noteOccurrenceDate || row.planned_start_date || "";
@@ -3597,6 +3600,23 @@ function farmWorkOrderOccurrenceDateFromNote(note = "") {
   const text = String(note || "");
   const match = text.match(/วันที่รอบนี้\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
   return match ? isoDay(match[1]) : "";
+}
+
+function farmWorkOrderDispatchRangeFromNote(note = "") {
+  const text = String(note || "");
+  const match = text.match(/(?:ช่วงสั่งงาน|dispatch_range)\s*:\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})\s*(?:ถึง|to|-)\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  if (!match) return { startDate: "", endDate: "" };
+  return { startDate: isoDay(match[1]), endDate: isoDay(match[2]) };
+}
+
+function farmWorkOrderNoteWithDispatchRange(note = "", startDate = "", endDate = "") {
+  const start = isoDay(startDate);
+  const end = isoDay(endDate) || start;
+  const lines = String(note || "")
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(ช่วงสั่งงาน|dispatch_range)\s*:/i.test(line));
+  if (start) lines.push(`dispatch_range: ${start} to ${end}`);
+  return lines.join("\n").trim();
 }
 
 function millDocKey(value) {
@@ -12069,11 +12089,12 @@ function farmDaysBetween(startIso, endIso) {
 
 function farmWorkOrderStatusRank(order = {}) {
   const status = String(order.status || "").toLowerCase();
+  const dispatch = String(order.dispatch_status || "").toLowerCase();
   if (status === "closed") return 80;
   if (status === "completed") return 70;
   if (status === "in_progress") return 60;
-  if (status === "sent_to_mobile") return 50;
-  if (status === "rescheduled") return 45;
+  if (status === "sent_to_mobile" || dispatch === "sent_to_mobile") return 50;
+  if (status === "rescheduled" || dispatch === "rescheduled" || order.rescheduled_date) return 45;
   if (status === "approved" || String(order.approval_status || "").toLowerCase() === "approved") return 35;
   if (status === "scheduled" || status === "planned") return 25;
   return 10;
@@ -12083,6 +12104,29 @@ function farmWorkOrderCanonicalKey(row = {}) {
   const rawNo = String(row.work_order_no || row.order_no || row.orderNo || "").trim();
   if (rawNo) return farmShortWorkOrderNo(row).toLowerCase();
   return String(row._overrideOf || row.id || "").trim().toLowerCase();
+}
+
+function farmSameWorkOrderIdentity(a = {}, b = {}) {
+  const aKey = farmWorkOrderCanonicalKey(a);
+  const bKey = farmWorkOrderCanonicalKey(b);
+  if (aKey && bKey && aKey === bKey) return true;
+  const aNo = String(a.work_order_no || a.order_no || a.orderNo || "").trim().toLowerCase();
+  const bNo = String(b.work_order_no || b.order_no || b.orderNo || "").trim().toLowerCase();
+  if (aNo && bNo && aNo === bNo) return true;
+  const aId = String(a.id || "").trim();
+  const bId = String(b.id || "").trim();
+  return Boolean(aId && bId && aId === bId);
+}
+
+function farmPersistedWorkOrderFor(order = {}) {
+  const rows = [
+    ...(Array.isArray(state.farmDbRows?.work_orders) ? state.farmDbRows.work_orders : []),
+    ...farmRows(farmTableByKey("work_orders")),
+  ];
+  return rows.find((row) => farmLooksUuid(row.id) && farmSameWorkOrderIdentity(row, order))
+    || rows.find((row) => farmLooksUuid(row.id) && String(row.work_order_no || "").trim() === String(order.work_order_no || "").trim())
+    || rows.find((row) => farmLooksUuid(row.id) && farmWorkOrderCanonicalKey(row) === farmWorkOrderCanonicalKey(order))
+    || null;
 }
 
 function farmCanonicalWorkOrderRows(rows = []) {
@@ -12140,6 +12184,7 @@ function farmWorkOrders() {
     const team = farmLookup("teams", order.team_id);
     const plotGroup = farmLookup("plot_groups", order.plot_group_id || plot?.plot_group_id);
     const noteRange = farmWorkOrderDateRangeFromNote(order.note);
+    const noteDispatchRange = farmWorkOrderDispatchRangeFromNote(order.note);
     const occurrenceDate = farmWorkOrderOccurrenceDateFromNote(order.note) || isoDay(order.note_scheduled_date);
     const scheduledDate = occurrenceDate || isoDay(order.scheduled_date);
     const plannedStartDate = isoDay(noteRange.startDate || order.note_planned_start_date || order.planned_start_date || order.original_scheduled_date);
@@ -12163,10 +12208,10 @@ function farmWorkOrders() {
       || !!order.dispatch_start_date
       || !!order.rescheduled_date;
     const dispatchTimelineStart = hasDispatchTimeline
-      ? isoDay(order.dispatch_start_date || order.dispatch_date || order.rescheduled_date || order.scheduled_date || startDate)
+      ? isoDay(noteDispatchRange.startDate || order.note_dispatch_start_date || order.dispatch_start_date || order.dispatch_date || order.rescheduled_date || order.scheduled_date || startDate)
       : "";
     const dispatchTimelineEnd = hasDispatchTimeline
-      ? isoDay(order.dispatch_end_date || order.rescheduled_end_date || order.dispatch_date || order.scheduled_date || dispatchTimelineStart)
+      ? isoDay(noteDispatchRange.endDate || order.note_dispatch_end_date || order.dispatch_end_date || order.rescheduled_end_date || order.dispatch_date || order.planned_end_date || endDate || dispatchTimelineStart)
       : "";
     return {
       ...order,
@@ -12377,7 +12422,7 @@ function farmWorkTimelineSegments(row = {}) {
     || !!row.dispatch_start_date
     || !!row.rescheduled_date;
   const dispatchStart = hasDispatch ? isoDay(row.dispatchTimelineStart || row.dispatch_start_date || row.dispatch_date || row.rescheduled_date || row.scheduled_date || "") : "";
-  let dispatchEnd = hasDispatch ? isoDay(row.dispatchTimelineEnd || row.dispatch_end_date || row.rescheduled_end_date || row.dispatch_date || dispatchStart) : "";
+  let dispatchEnd = hasDispatch ? isoDay(row.dispatchTimelineEnd || row.dispatch_end_date || row.rescheduled_end_date || row.dispatch_date || row.planned_end_date || row.endDate || dispatchStart) : "";
   if (dispatchStart && (!dispatchEnd || farmDateMs(dispatchEnd) < farmDateMs(dispatchStart))) dispatchEnd = dispatchStart;
   const actualStart = isoDay(row.actualStartDate);
   let actualEnd = isoDay(row.actualEndDate || actualStart);
@@ -14615,38 +14660,40 @@ async function saveFarmDispatchOrder() {
   try {
     const now = new Date().toISOString();
     const dispatchWarnings = [];
+    const persistedOrder = farmPersistedWorkOrderFor(order);
     const originalPlanStart = isoDay(order.plannedTimelineStart || order.note_planned_start_date || order.planned_start_date || order.original_scheduled_date || order.scheduled_date || date) || date;
     const originalPlanEnd = isoDay(order.plannedTimelineEnd || order.note_planned_end_date || order.planned_end_date || originalPlanStart) || originalPlanStart;
-    const dispatchChanged = date !== originalPlanStart || endDate !== originalPlanEnd;
     const nextOrder = {
+      ...(persistedOrder || {}),
       ...order,
-      id: order.readonly ? `override-${order.id}` : order.id,
+      id: persistedOrder?.id || (farmLooksUuid(order.id) ? order.id : farmNewUuid()),
       moduleId: "farm-work",
       tableId: "work_orders",
-      _overrideOf: order.readonly ? order.id : order._overrideOf,
+      work_order_no: persistedOrder?.work_order_no || order.work_order_no || farmShortWorkOrderNo(order),
       team_id: teamId,
       original_scheduled_date: order.original_scheduled_date || originalPlanStart || "",
       scheduled_date: date,
       planned_start_date: originalPlanStart,
       planned_end_date: originalPlanEnd,
-      rescheduled_date: dispatchChanged ? date : order.rescheduled_date || "",
-      rescheduled_end_date: dispatchChanged ? endDate : order.rescheduled_end_date || "",
-      rescheduled_by_manager_id: "profile-admin",
-      approval_status: "not_required",
+      rescheduled_date: date,
+      rescheduled_end_date: endDate,
+      rescheduled_by_manager_id: farmLooksUuid(order.rescheduled_by_manager_id) ? order.rescheduled_by_manager_id : "",
+      approval_status: "approved",
       status: "sent_to_mobile",
       dispatch_date: date,
       dispatch_start_date: date,
       dispatch_end_date: endDate,
       dispatch_status: "sent_to_mobile",
+      note: farmWorkOrderNoteWithDispatchRange(order.note || persistedOrder?.note || "", date, endDate),
       updatedAt: now,
     };
-    if (!nextOrder._overrideOf) delete nextOrder._overrideOf;
-    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (row.id === nextOrder.id || row.id === order.id || row._overrideOf === order.id)));
+    delete nextOrder._overrideOf;
+    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (farmSameWorkOrderIdentity(row, nextOrder) || row.id === order.id || row.id === nextOrder.id || row._overrideOf === order.id)));
     state.farmRecords.push(nextOrder);
     const savedOrderPayload = await persistFarmRowToDatabase(workOrderTable, nextOrder);
     const savedOrder = { ...nextOrder, ...(savedOrderPayload.row || {}) };
     const savedOrderId = savedOrder.id || nextOrder.id || order.id;
-    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (row.id === nextOrder.id || row.id === order.id || row.id === savedOrderId || row._overrideOf === order.id)));
+    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (farmSameWorkOrderIdentity(row, savedOrder) || row.id === nextOrder.id || row.id === order.id || row.id === savedOrderId || row._overrideOf === order.id)));
     state.farmRecords.push({ ...savedOrder, moduleId: "farm-work", tableId: "work_orders" });
     await ensureFarmWorkOrderQr(savedOrder, "dispatch");
 
