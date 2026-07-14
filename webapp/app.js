@@ -114,13 +114,21 @@
 };
 
 const farmDerivedCache = {
+  rowsByKey: new Map(),
+  lookupByTable: new Map(),
   workOrders: null,
   dispatchApprovedOrders: null,
+  resultCandidateOrders: null,
+  workOrderWorkerIds: null,
 };
 
 function resetFarmDerivedCaches() {
+  farmDerivedCache.rowsByKey.clear();
+  farmDerivedCache.lookupByTable.clear();
   farmDerivedCache.workOrders = null;
   farmDerivedCache.dispatchApprovedOrders = null;
+  farmDerivedCache.resultCandidateOrders = null;
+  farmDerivedCache.workOrderWorkerIds = null;
 }
 
 const els = {
@@ -3308,6 +3316,7 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
       Object.entries(payload.tables).map(([tableKey, rows]) => [tableKey, normalizeFarmDbRows(tableKey, Array.isArray(rows) ? rows : [])])
     );
     state.farmDbRows = replacesAll ? nextRows : { ...(state.farmDbRows || {}), ...nextRows };
+    resetFarmDerivedCaches();
     state.farmDbSource = payload.source || null;
     state.farmDbErrors = replacesAll ? (payload.errors || {}) : { ...(state.farmDbErrors || {}), ...(payload.errors || {}) };
     state.farmDbWarnings = replacesAll ? (payload.warnings || {}) : { ...(state.farmDbWarnings || {}), ...(payload.warnings || {}) };
@@ -3320,7 +3329,10 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
   try {
     return await request;
   } catch (error) {
-    if (replacesAll) state.farmDbRows = {};
+    if (replacesAll) {
+      state.farmDbRows = {};
+      resetFarmDerivedCaches();
+    }
     state.farmDbSource = { mode: "supabase-real-only", error: error.message };
     state.farmDbErrors = { ...(state.farmDbErrors || {}), api: error.message };
     state.farmDbWarnings = state.farmDbWarnings || {};
@@ -3338,6 +3350,7 @@ function mergeFarmDbRow(tableKey, row) {
   if (index >= 0) rows[index] = { ...rows[index], ...normalized };
   else rows.push(normalized);
   state.farmDbRows = { ...state.farmDbRows, [tableKey]: rows };
+  resetFarmDerivedCaches();
   farmMarkTablesLoaded([tableKey]);
   return normalized;
 }
@@ -4322,6 +4335,7 @@ async function loadSummaryPalmoilAreas() {
     .catch(() => ({ source: null, records: [] }));
   state.summaryPalmoilSource = payload.source || null;
   state.summaryPalmoilAreas = Array.isArray(payload.records) ? payload.records : [];
+  resetFarmDerivedCaches();
 }
 
 async function loadFarmBudgetRateData() {
@@ -10029,11 +10043,13 @@ function mergeFarmBudgetSourceRows(tableId, seedRows = [], databaseRows = []) {
 
 function farmRows(table = selectedFarmTable()) {
   const tableId = table.key;
+  if (farmDerivedCache.rowsByKey.has(tableId)) return farmDerivedCache.rowsByKey.get(tableId);
   const databaseRows = Array.isArray(state.farmDbRows?.[tableId]) ? state.farmDbRows[tableId] : [];
   const rows = databaseRows.map((row) => ({ ...row, readonly: false }));
   const cleanRows = farmCleanRows(tableId, rows);
-  if (cleanRows) return cleanRows;
-  return rows;
+  const finalRows = cleanRows || rows;
+  farmDerivedCache.rowsByKey.set(tableId, finalRows);
+  return finalRows;
 }
 
 function farmRowsByKey(tableKey) {
@@ -11424,6 +11440,7 @@ async function deleteFarmRow(id = state.farmEditId, tableKey = state.farmActivit
       ...state.farmDbRows,
       [table.key]: (state.farmDbRows?.[table.key] || []).filter((item) => item.id !== row.id && item.databaseId !== row.databaseId),
     };
+    resetFarmDerivedCaches();
     state.farmSyncStatus = "success";
     state.farmSyncMessage = `ลบข้อมูลแล้ว: ${label}`;
     await loadFarmCurrentViewTables({ silent: false, extraTables: [table.key] });
@@ -11524,6 +11541,7 @@ async function deleteFarmWorkOrderFromPlanner(id = "") {
     for (const { table: childTable, row } of related) {
       state.farmDbRows[childTable.key] = (state.farmDbRows?.[childTable.key] || []).filter((item) => item.id !== row.id);
     }
+    resetFarmDerivedCaches();
     state.farmWorkDetailId = "";
     state.farmDetailId = "";
     state.farmEditId = "";
@@ -11771,10 +11789,25 @@ function farmTableByKey(tableKey) {
   return schema ? { key: tableKey, ...schema } : null;
 }
 
+function farmLookupMap(tableKey) {
+  if (!FARM_TABLE_SCHEMAS[tableKey]) return null;
+  if (farmDerivedCache.lookupByTable.has(tableKey)) return farmDerivedCache.lookupByTable.get(tableKey);
+  const map = new Map();
+  for (const row of farmRowsByKey(tableKey)) {
+    if (row?.id !== undefined && row.id !== null && row.id !== "") {
+      map.set(row.id, row);
+      map.set(String(row.id), row);
+    }
+    if (row?.databaseId && !map.has(row.databaseId)) map.set(row.databaseId, row);
+  }
+  farmDerivedCache.lookupByTable.set(tableKey, map);
+  return map;
+}
+
 function farmLookup(tableKey, id) {
-  const table = farmTableByKey(tableKey);
-  if (!table || !id) return null;
-  return farmRows(table).find((row) => row.id === id) || null;
+  if (!id) return null;
+  const map = farmLookupMap(tableKey);
+  return map?.get(id) || map?.get(String(id)) || null;
 }
 
 function farmLookupLabel(tableKey, id) {
@@ -12257,13 +12290,31 @@ function farmWorkOrders() {
   const blocks = farmRows(farmTableByKey("blocks"));
   const areaBlocks = farmRowsByKey("areas").filter((area) => !area.area_level || area.area_level === "block");
   const results = farmRows(farmTableByKey("work_results"));
+  const areaBlocksById = new Map(areaBlocks.filter((row) => row.id).map((row) => [String(row.id), row]));
+  const blockAliasMap = new Map();
+  for (const block of blocks) {
+    for (const key of [block.id, block.block_code, block.block_name, block.area_code].filter(Boolean)) {
+      if (!blockAliasMap.has(String(key))) blockAliasMap.set(String(key), block);
+    }
+  }
+  for (const block of areaBlocks) {
+    for (const key of [block.id, block.block_code, block.block_name, block.area_code, block.area_name].filter(Boolean)) {
+      if (!blockAliasMap.has(String(key))) blockAliasMap.set(String(key), block);
+    }
+  }
+  const resultsByOrderId = new Map();
+  for (const row of results) {
+    const key = String(row.work_order_id || "");
+    if (!key) continue;
+    if (!resultsByOrderId.has(key)) resultsByOrderId.set(key, []);
+    resultsByOrderId.get(key).push(row);
+  }
   farmDerivedCache.workOrders = orders.map((order) => {
     const resolvedBlockId = farmResolveBlockIdForPlanner(order);
-    const block = areaBlocks.find((item) => item.id === resolvedBlockId)
+    const block = areaBlocksById.get(String(resolvedBlockId || ""))
       || farmLookup("blocks", resolvedBlockId)
       || farmLookup("blocks", order.block_id)
-      || blocks.find((item) => [item.block_code, item.block_name, item.area_code].filter(Boolean).includes(order.block_id))
-      || areaBlocks.find((item) => [item.block_code, item.block_name, item.area_code, item.area_name].filter(Boolean).includes(order.block_id))
+      || blockAliasMap.get(String(order.block_id || ""))
       || blocks.find((item) => item.plot_id === order.plot_id && (!order.ap_code || item.ap_code === order.ap_code || item.AP_code === order.ap_code))
       || null;
     const plot = farmLookup("plots", order.plot_id || block?.plot_id);
@@ -12283,7 +12334,7 @@ function farmWorkOrders() {
     const endDate = useOccurrenceDate
       ? scheduledDate
       : (plannedEndDate && farmDateMs(plannedEndDate) >= farmDateMs(startDate) ? plannedEndDate : (scheduledDate || startDate));
-    const orderResults = results.filter((row) => row.work_order_id === order.id);
+    const orderResults = resultsByOrderId.get(String(order.id || "")) || [];
     const resultDates = orderResults.map((row) => isoDay(row.result_date)).filter(Boolean).sort();
     const closedDate = isoDay(order.closed_at);
     const actualFallback = (["completed", "closed"].includes(String(order.status || "")) && (closedDate || isoDay(order.rescheduled_date || order.scheduled_date || order.planned_end_date || startDate))) || "";
@@ -15919,7 +15970,7 @@ function renderFarmInventoryBoard() {
   if (!FARM_INVENTORY_TABLES.includes(state.farmTableId)) state.farmTableId = "inventory_master";
   const items = farmRowsByKey("inventory_master");
   const warehouses = farmRowsByKey("warehouses");
-  const docs = farmRowsByKey("inventory_documents").sort((a, b) => String(b.doc_date || "").localeCompare(String(a.doc_date || "")));
+  const docs = [...farmRowsByKey("inventory_documents")].sort((a, b) => String(b.doc_date || "").localeCompare(String(a.doc_date || "")));
   const lines = farmRowsByKey("inventory_document_lines");
   const categories = farmRowsByKey("material_categories");
   const conversions = farmRowsByKey("unit_conversions");
@@ -16122,10 +16173,17 @@ function renderFarmInventoryBoard() {
 }
 
 function farmResultCandidateOrders() {
+  if (farmDerivedCache.resultCandidateOrders) return farmDerivedCache.resultCandidateOrders;
   const rows = farmWorkOrders();
   const allowed = new Set(["sent_to_mobile", "in_progress", "rescheduled", "approved", "completed"]);
-  const preferred = rows.filter((row) => allowed.has(row.statusMeta.key) || farmRowsByKey("work_order_workers").some((worker) => worker.work_order_id === row.id));
-  return preferred.length ? preferred : rows.filter((row) => !["closed", "rejected"].includes(row.statusMeta.key));
+  if (!farmDerivedCache.workOrderWorkerIds) {
+    farmDerivedCache.workOrderWorkerIds = new Set(
+      farmRowsByKey("work_order_workers").map((worker) => String(worker.work_order_id || "")).filter(Boolean)
+    );
+  }
+  const preferred = rows.filter((row) => allowed.has(row.statusMeta.key) || farmDerivedCache.workOrderWorkerIds.has(String(row.id || "")));
+  farmDerivedCache.resultCandidateOrders = preferred.length ? preferred : rows.filter((row) => !["closed", "rejected"].includes(row.statusMeta.key));
+  return farmDerivedCache.resultCandidateOrders;
 }
 
 function farmResultSelectedOrder() {
@@ -19090,6 +19148,7 @@ async function deleteFarmBudgetRelationsForRate(rate = {}, savedRateId = "", mat
   state.farmDbRows.budget_rate_materials = (state.farmDbRows.budget_rate_materials || []).filter((row) => !rateIds.has(String(row.budget_rate_id || "")));
   state.farmDbRows.budget_rate_roles = (state.farmDbRows.budget_rate_roles || []).filter((row) => !rateIds.has(String(row.budget_rate_id || "")));
   state.farmRecords = state.farmRecords.filter((row) => !["budget_rate_blocks", "budget_rate_materials", "budget_rate_roles"].includes(row.tableId) || !rateIds.has(String(row.budget_rate_id || "")));
+  resetFarmDerivedCaches();
 }
 
 async function deleteFarmBudgetDuplicateRateRowsForGroup(rate = {}, keepRateId = "", rateTable = farmTableByKey("budget_activity_rates")) {
@@ -19105,6 +19164,7 @@ async function deleteFarmBudgetDuplicateRateRowsForGroup(rate = {}, keepRateId =
   state.farmDbRows = state.farmDbRows || {};
   state.farmDbRows.budget_activity_rates = (state.farmDbRows.budget_activity_rates || []).filter((row) => !staleIds.has(String(row.id)));
   state.farmRecords = state.farmRecords.filter((row) => row.tableId !== "budget_activity_rates" || !staleIds.has(String(row.id)));
+  resetFarmDerivedCaches();
 }
 
 async function deleteFarmBudgetRateWithRelations(rateId = "") {
@@ -19131,6 +19191,7 @@ async function deleteFarmBudgetRateWithRelations(rateId = "") {
     state.farmDbRows = state.farmDbRows || {};
     state.farmDbRows.budget_activity_rates = (state.farmDbRows.budget_activity_rates || []).filter((row) => !rateIds.has(String(row.id)));
     state.farmRecords = state.farmRecords.filter((row) => row.tableId !== "budget_activity_rates" || !rateIds.has(String(row.id)));
+    resetFarmDerivedCaches();
     state.farmBudgetEditingRateId = "";
     state.farmDetailId = "";
     state.farmSyncStatus = "success";
@@ -20023,7 +20084,7 @@ function renderFarmBudgetEditPanel() {
 
 function renderFarmBudgetYearSettings() {
   const picks = farmBudgetContractState();
-  const years = farmRowsByKey("budget_years").sort((a, b) => String(b.fiscal_year || "").localeCompare(String(a.fiscal_year || "")));
+  const years = [...farmRowsByKey("budget_years")].sort((a, b) => String(b.fiscal_year || "").localeCompare(String(a.fiscal_year || "")));
   return `
     <article class="farm-budget-year-settings">
       <div class="section-head">
@@ -21407,7 +21468,6 @@ function renderClear() {
 }
 
 function render() {
-  resetFarmDerivedCaches();
   ensureFarmDispatchFastDefaults();
   syncGlobalFilterBar();
   for (const btn of els.tabs.querySelectorAll("button[data-view]")) {
@@ -21778,12 +21838,10 @@ async function init() {
     }
     if (e.target.matches("[data-farm-result-worker-field]")) {
       syncFarmResultWorkerDraftFromTable();
-      render();
       return;
     }
     if (e.target.matches("[data-farm-result-material-field], [data-farm-result-machine-field]")) {
       syncFarmResultWorkerDraftFromTable();
-      render();
       return;
     }
     if (e.target.id === "farmTableSelect") {
@@ -22180,31 +22238,23 @@ async function init() {
           nextInput.focus({ preventScroll: true });
           nextInput.setSelectionRange?.(cursor, cursor);
         }
-      }, 180);
+      }, 350);
       return;
     }
     if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultNote"].includes(e.target.id)) {
       syncFarmResultDraftFromForm();
-      clearTimeout(state.farmResultRenderTimer);
-      state.farmResultRenderTimer = setTimeout(render, 180);
       return;
     }
     if (e.target.matches?.("[data-farm-survey-answer]")) {
       syncFarmResultDraftFromForm();
-      clearTimeout(state.farmResultRenderTimer);
-      state.farmResultRenderTimer = setTimeout(render, 180);
       return;
     }
     if (e.target.matches("[data-farm-result-worker-field]")) {
       syncFarmResultWorkerDraftFromTable();
-      clearTimeout(state.farmResultRenderTimer);
-      state.farmResultRenderTimer = setTimeout(render, 180);
       return;
     }
     if (e.target.matches("[data-farm-result-material-field], [data-farm-result-machine-field]")) {
       syncFarmResultWorkerDraftFromTable();
-      clearTimeout(state.farmResultRenderTimer);
-      state.farmResultRenderTimer = setTimeout(render, 180);
       return;
     }
     if (e.target.id === "farmSearch") {
