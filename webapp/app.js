@@ -104,6 +104,7 @@
   farmDispatchExtraVehicles: [],
   farmResultWorkOrderId: "",
   farmResultFilters: { query: "", activity: "all", status: "all" },
+  farmResultRoleTab: "",
   farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {}, materialEntries: {}, machineEntries: {} },
   farmResultRenderTimer: null,
   farmTableId: "",
@@ -16834,7 +16835,19 @@ function renderFarmResultPanel() {
     map[group].push(row);
     return map;
   }, {});
-  const roleTabs = ["driver", "worker", "contractor"]
+  const roleGroups = ["driver", "worker", "contractor"].filter((group) => groupedWorkers[group]?.length);
+  const activeRoleGroup = roleGroups.includes(state.farmResultRoleTab) ? state.farmResultRoleTab : (roleGroups[0] || "worker");
+  state.farmResultRoleTab = activeRoleGroup;
+  const activeWorkerLines = groupedWorkers[activeRoleGroup] || calc.workerLines;
+  const activeRoleSummary = calc.roleSummary.find((row) => row.group === activeRoleGroup) || {};
+  const activeWorkerTotals = activeWorkerLines.reduce((totals, row) => ({
+    quantity: totals.quantity + n(row.actualQuantity),
+    wage: totals.wage + n(row.wageAmount),
+    allowance: totals.allowance + n(row.allowance),
+    deduction: totals.deduction + n(row.deduction),
+    gross: totals.gross + n(row.grossAmount),
+  }), { quantity: 0, wage: 0, allowance: 0, deduction: 0, gross: 0 });
+  const roleTabs = roleGroups
     .filter((group) => groupedWorkers[group]?.length)
     .map((group) => {
       const summary = calc.roleSummary.find((row) => row.group === group);
@@ -16903,6 +16916,17 @@ function renderFarmResultPanel() {
           <h3>บันทึกแรงงานตามบทบาท</h3>
           <span>คนงานและคนขับใช้ rate แยกจากอัตรางบประมาณ แล้วล็อกค่าแรงเป็น snapshot หลังบันทึก</span>
         </div>
+        <div class="farm-result-worker-tabs" role="tablist" aria-label="เลือกบทบาทเพื่อบันทึกแรงงาน">
+          ${roleGroups.map((group) => {
+            const summary = calc.roleSummary.find((row) => row.group === group);
+            const active = group === activeRoleGroup;
+            return `
+              <button type="button" class="${active ? "active" : ""}" data-farm-result-role-tab="${esc(group)}" role="tab" aria-selected="${active ? "true" : "false"}">
+                <strong>${esc(farmResultRoleLabel(group))}</strong>
+                <span>${fmt(groupedWorkers[group]?.length || 0)} คน · ${esc(summary?.rateInfo?.label || "-")}</span>
+              </button>`;
+          }).join("") || `<button type="button" class="active" disabled><strong>ทีมงาน</strong><span>ยังไม่มีรายชื่อ</span></button>`}
+        </div>
         <div class="farm-result-rate-grid">
           ${calc.roleSummary.map((row) => `
             <div class="farm-result-rate-card ${esc(row.group)}${row.count ? "" : " muted"}">
@@ -16912,9 +16936,9 @@ function renderFarmResultPanel() {
             </div>`).join("")}
         </div>
         <div class="farm-result-worker-tools">
-          <span>ค่าเริ่มต้น: กระจายผลงาน ${moneyNf.format(calc.shareQuantity)} ${esc(calc.actualUnit)} / คน และคำนวณตาม rate ของแต่ละบทบาท</span>
-          <button type="button" data-farm-result-fill-share>ใส่ค่าเฉลี่ยทุกคน</button>
-          <button type="button" data-farm-result-clear-worker>ล้างแก้ไขรายคน</button>
+          <span>กำลังบันทึก: ${esc(farmResultRoleLabel(activeRoleGroup))} ${fmt(activeWorkerLines.length)} คน · ${esc(activeRoleSummary?.rateInfo?.label || "-")}</span>
+          <button type="button" data-farm-result-fill-share>ใส่ค่าเฉลี่ยแท็บนี้</button>
+          <button type="button" data-farm-result-clear-worker>ล้างแก้ไขแท็บนี้</button>
         </div>
         <div class="table-wrap farm-result-worker-wrap">
           <table class="mini-table farm-table farm-result-worker-table">
@@ -16936,7 +16960,7 @@ function renderFarmResultPanel() {
               </tr>
             </thead>
             <tbody>
-              ${calc.workerLines.map((row) => `
+              ${activeWorkerLines.map((row) => `
                 <tr data-farm-result-worker="${esc(row.id)}">
                   <td><strong>${esc(row.name)}</strong><small>${esc(row.role || row.employee.payment_type || "-")}</small></td>
                   <td><span class="farm-result-role-pill ${esc(row.roleGroup)}">${esc(farmResultRoleLabel(row.roleGroup))}</span><small class="farm-result-rate-tag">${esc(row.rateLabel)}</small></td>
@@ -16954,7 +16978,7 @@ function renderFarmResultPanel() {
                 </tr>`).join("") || `<tr><td colspan="13">ยังไม่มีคนงานในใบสั่งงาน ให้ผู้จัดการสั่งงานและเลือกทีมก่อน</td></tr>`}
             </tbody>
             <tfoot>
-              <tr><td colspan="7">รวม</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.actualQuantity, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.wageAmount, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.allowance, 0))}</td><td class="num">${moneyNf.format(calc.workerLines.reduce((sum, row) => sum + row.deduction, 0))}</td><td class="num strong">${moneyNf.format(calc.payrollTotal)}</td><td></td></tr>
+              <tr><td colspan="7">รวม ${esc(farmResultRoleLabel(activeRoleGroup))}</td><td class="num">${moneyNf.format(activeWorkerTotals.quantity)}</td><td class="num">${moneyNf.format(activeWorkerTotals.wage)}</td><td class="num">${moneyNf.format(activeWorkerTotals.allowance)}</td><td class="num">${moneyNf.format(activeWorkerTotals.deduction)}</td><td class="num strong">${moneyNf.format(activeWorkerTotals.gross)}</td><td></td></tr>
             </tfoot>
           </table>
         </div>
@@ -17063,9 +17087,9 @@ function syncFarmResultDraftFromForm() {
 
 function syncFarmResultWorkerDraftFromTable() {
   syncFarmResultDraftFromForm();
-  const workerEntries = {};
-  const materialEntries = {};
-  const machineEntries = {};
+  const workerEntries = { ...(state.farmResultDraft?.workerEntries || {}) };
+  const materialEntries = { ...(state.farmResultDraft?.materialEntries || {}) };
+  const machineEntries = { ...(state.farmResultDraft?.machineEntries || {}) };
   document.querySelectorAll("[data-farm-result-worker]").forEach((row) => {
     const workerId = row.dataset.farmResultWorker;
     workerEntries[workerId] = {};
@@ -17094,10 +17118,11 @@ function syncFarmResultWorkerDraftFromTable() {
 
 function setFarmResultWorkerShareQuantities() {
   const order = farmResultSelectedOrder();
-  syncFarmResultDraftFromForm();
+  syncFarmResultWorkerDraftFromTable();
   const calc = farmResultCalculation(order);
   const entries = { ...(state.farmResultDraft.workerEntries || {}) };
-  calc.workers.forEach((worker) => {
+  const activeRoleGroup = state.farmResultRoleTab || "worker";
+  calc.workerLines.filter((worker) => worker.roleGroup === activeRoleGroup).forEach((worker) => {
     entries[worker.id] = {
       ...(entries[worker.id] || {}),
       actualQuantity: Math.round(calc.shareQuantity * 1000) / 1000,
@@ -17110,10 +17135,13 @@ function setFarmResultWorkerShareQuantities() {
 }
 
 function clearFarmResultWorkerDraft() {
-  syncFarmResultDraftFromForm();
-  state.farmResultDraft.workerEntries = {};
-  state.farmResultDraft.materialEntries = {};
-  state.farmResultDraft.machineEntries = {};
+  syncFarmResultWorkerDraftFromTable();
+  const activeRoleGroup = state.farmResultRoleTab || "worker";
+  const calc = farmResultCalculation(farmResultSelectedOrder());
+  const activeWorkerIds = new Set(calc.workerLines.filter((row) => row.roleGroup === activeRoleGroup).map((row) => row.id));
+  const workerEntries = { ...(state.farmResultDraft.workerEntries || {}) };
+  for (const id of activeWorkerIds) delete workerEntries[id];
+  state.farmResultDraft.workerEntries = workerEntries;
   render();
 }
 
@@ -22646,12 +22674,20 @@ async function init() {
       clearFarmResultWorkerDraft();
       return;
     }
+    const resultRoleTab = e.target.closest("[data-farm-result-role-tab]");
+    if (resultRoleTab) {
+      syncFarmResultWorkerDraftFromTable();
+      state.farmResultRoleTab = resultRoleTab.dataset.farmResultRoleTab || "";
+      render();
+      return;
+    }
     const resultOrderPick = e.target.closest("[data-farm-result-order-pick]");
     if (resultOrderPick) {
       const id = resultOrderPick.dataset.farmResultOrderPick;
       state.farmResultWorkOrderId = id;
       state.farmWorkDetailId = id;
       state.farmDispatchWorkOrderId = id;
+      state.farmResultRoleTab = "";
       state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {}, materialEntries: {}, machineEntries: {} };
       render();
       return;

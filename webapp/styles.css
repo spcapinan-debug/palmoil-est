@@ -8607,6 +8607,47 @@ tfoot td {
   padding-top: 12px;
 }
 
+.farm-result-worker-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  padding: 0 12px 9px;
+}
+
+.farm-result-worker-tabs button {
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  border: 1px solid #dbe5f2;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  color: var(--muted);
+  text-align: left;
+  box-shadow: none;
+}
+
+.farm-result-worker-tabs button.active {
+  border-color: #8fb7e8;
+  background: #f0f7ff;
+  color: var(--navy);
+  box-shadow: inset 3px 0 0 #4777b3;
+}
+
+.farm-result-worker-tabs strong {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.farm-result-worker-tabs span {
+  overflow: hidden;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .farm-result-rate-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
