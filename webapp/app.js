@@ -12038,10 +12038,32 @@ function farmDisplayValue(field, row) {
   return value;
 }
 
+const FARM_WORK_COMPLETED_STATUS_KEYS = new Set(["completed", "closed", "recorded", "result_recorded", "work_recorded"]);
+const FARM_WORK_DISPATCHED_STATUS_KEYS = new Set(["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed", "recorded", "result_recorded", "work_recorded"]);
+
+function farmNormalizeWorkStatusKey(value = "") {
+  const key = String(value || "").trim().toLowerCase();
+  return ["recorded", "result_recorded", "work_recorded"].includes(key) ? "completed" : key;
+}
+
+function farmWorkIdentityKeys(order = {}) {
+  const values = [
+    order.id,
+    order._overrideOf,
+    order.work_order_id,
+    order.work_order_no,
+    order.order_no,
+    order.orderNo,
+    farmWorkOrderCanonicalKey(order),
+    farmShortWorkOrderNo(order),
+  ];
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
 function farmWorkStatusMeta(order) {
-  const status = String(order.status || "planned");
-  const dispatch = String(order.dispatch_status || "");
-  const approval = String(order.approval_status || "");
+  const status = farmNormalizeWorkStatusKey(order.status || "planned");
+  const dispatch = farmNormalizeWorkStatusKey(order.dispatch_status || "");
+  const approval = String(order.approval_status || "").trim().toLowerCase();
   const isRescheduled = !!order.rescheduled_date || (!!order.original_scheduled_date && order.original_scheduled_date !== order.scheduled_date);
   if (approval === "pending" || status === "pending_approval") return { key: "pending_approval", label: "รออนุมัติ", color: "#f59e0b", tone: "warning" };
   if (approval === "rejected" || status === "rejected") return { key: "rejected", label: "ไม่อนุมัติ", color: "#ef4444", tone: "danger" };
@@ -12219,8 +12241,8 @@ function farmDaysBetween(startIso, endIso) {
 }
 
 function farmWorkOrderStatusRank(order = {}) {
-  const status = String(order.status || "").toLowerCase();
-  const dispatch = String(order.dispatch_status || "").toLowerCase();
+  const status = farmNormalizeWorkStatusKey(order.status || "");
+  const dispatch = farmNormalizeWorkStatusKey(order.dispatch_status || "");
   if (status === "closed") return 80;
   if (status === "completed") return 70;
   if (status === "in_progress") return 60;
@@ -12295,7 +12317,16 @@ function farmCanonicalWorkOrderRows(rows = []) {
 
 function farmWorkOrders() {
   if (farmDerivedCache.workOrders) return farmDerivedCache.workOrders;
-  const orders = farmCanonicalWorkOrderRows(farmRows(farmTableByKey("work_orders")));
+  const rawWorkOrders = farmRows(farmTableByKey("work_orders"));
+  const orders = farmCanonicalWorkOrderRows(rawWorkOrders);
+  const orderIdsByCanonicalKey = new Map();
+  for (const rawOrder of rawWorkOrders) {
+    const key = farmWorkOrderCanonicalKey(rawOrder);
+    if (!key) continue;
+    if (!orderIdsByCanonicalKey.has(key)) orderIdsByCanonicalKey.set(key, new Set());
+    const target = orderIdsByCanonicalKey.get(key);
+    farmWorkIdentityKeys(rawOrder).forEach((value) => target.add(value));
+  }
   const blocks = farmRows(farmTableByKey("blocks"));
   const areaBlocks = farmRowsByKey("areas").filter((area) => !area.area_level || area.area_level === "block");
   const results = farmRows(farmTableByKey("work_results"));
@@ -12343,16 +12374,29 @@ function farmWorkOrders() {
     const endDate = useOccurrenceDate
       ? scheduledDate
       : (plannedEndDate && farmDateMs(plannedEndDate) >= farmDateMs(startDate) ? plannedEndDate : (scheduledDate || startDate));
-    const orderResults = resultsByOrderId.get(String(order.id || "")) || [];
+    const orderResultKeys = new Set([
+      ...farmWorkIdentityKeys(order),
+      ...(orderIdsByCanonicalKey.get(farmWorkOrderCanonicalKey(order)) || []),
+    ]);
+    const orderResults = [];
+    const seenResultIds = new Set();
+    for (const key of orderResultKeys) {
+      const matchingResults = resultsByOrderId.get(String(key || "")) || [];
+      for (const result of matchingResults) {
+        const resultKey = String(result.id || `${result.work_order_id || ""}:${result.result_date || ""}:${result.actual_quantity || ""}`);
+        if (seenResultIds.has(resultKey)) continue;
+        seenResultIds.add(resultKey);
+        orderResults.push(result);
+      }
+    }
     const resultDates = orderResults.map((row) => isoDay(row.result_date)).filter(Boolean).sort();
     const closedDate = isoDay(order.closed_at);
-    const actualFallback = (["completed", "closed"].includes(String(order.status || "")) && (closedDate || isoDay(order.rescheduled_date || order.scheduled_date || order.planned_end_date || startDate))) || "";
+    const actualFallback = (FARM_WORK_COMPLETED_STATUS_KEYS.has(farmNormalizeWorkStatusKey(order.status)) && (closedDate || isoDay(order.rescheduled_date || order.scheduled_date || order.planned_end_date || startDate))) || "";
     const actualStartDate = resultDates[0] || actualFallback;
     const actualEndDate = resultDates.at(-1) || closedDate || actualStartDate;
     const statusMeta = farmWorkStatusMeta(order);
-    const dispatchedStatuses = ["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"];
-    const hasDispatchTimeline = dispatchedStatuses.includes(statusMeta.key)
-      || dispatchedStatuses.includes(String(order.dispatch_status || ""))
+    const hasDispatchTimeline = FARM_WORK_DISPATCHED_STATUS_KEYS.has(statusMeta.key)
+      || FARM_WORK_DISPATCHED_STATUS_KEYS.has(farmNormalizeWorkStatusKey(order.dispatch_status))
       || !!order.dispatch_date
       || !!order.dispatch_start_date
       || !!order.rescheduled_date;
@@ -12473,10 +12517,11 @@ function farmWorkDateRangeMatches(row = {}, startDate = "", endDate = "") {
 
 function farmWorkStatusFilterMatches(row = {}, selectedStatus = "all") {
   if (!selectedStatus || selectedStatus === "all") return true;
-  const statusKey = row.statusMeta?.key || row.status || "";
-  if (statusKey === selectedStatus || row.status === selectedStatus) return true;
+  const statusKey = farmNormalizeWorkStatusKey(row.statusMeta?.key || row.status || "");
+  const selectedKey = farmNormalizeWorkStatusKey(selectedStatus);
+  if (statusKey === selectedKey || farmNormalizeWorkStatusKey(row.status) === selectedKey) return true;
   if (selectedStatus === "approved") {
-    return ["sent_to_mobile", "rescheduled", "in_progress"].includes(statusKey)
+    return ["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(statusKey)
       || ["approved", "not_required"].includes(String(row.approval_status || "").toLowerCase());
   }
   return false;
@@ -12559,7 +12604,7 @@ function renderFarmWorkSelect(id, label, options, value) {
 }
 
 function farmWorkProgress(order) {
-  const status = order?.statusMeta?.key || order?.status || "planned";
+  const status = farmNormalizeWorkStatusKey(order?.statusMeta?.key || order?.status || "planned");
   const map = {
     planned: 10,
     scheduled: 18,
@@ -12610,10 +12655,10 @@ function farmWorkTimelineSegments(row = {}) {
   const planStart = isoDay(row.plannedTimelineStart || row.startDate || row.scheduled_date);
   let planEnd = isoDay(row.plannedTimelineEnd || row.endDate || planStart);
   if (planStart && (!planEnd || farmDateMs(planEnd) < farmDateMs(planStart))) planEnd = planStart;
-  const status = String(row.statusMeta?.key || farmWorkStatusMeta(row).key || row.status || "");
-  const dispatchStatus = String(row.dispatch_status || "");
-  const hasDispatch = ["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(status)
-    || ["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(dispatchStatus)
+  const status = farmNormalizeWorkStatusKey(row.statusMeta?.key || farmWorkStatusMeta(row).key || row.status || "");
+  const dispatchStatus = farmNormalizeWorkStatusKey(row.dispatch_status || "");
+  const hasDispatch = FARM_WORK_DISPATCHED_STATUS_KEYS.has(status)
+    || FARM_WORK_DISPATCHED_STATUS_KEYS.has(dispatchStatus)
     || !!row.dispatchTimelineStart
     || !!row.dispatch_date
     || !!row.dispatch_start_date
@@ -12717,7 +12762,7 @@ function farmDispatchPrintSelectedSet(rows = []) {
 
 function farmDispatchApprovedOrders() {
   if (farmDerivedCache.dispatchApprovedOrders) return farmDerivedCache.dispatchApprovedOrders;
-  farmDerivedCache.dispatchApprovedOrders = farmWorkOrders().filter((row) => ["approved", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(row.statusMeta?.key || row.status)
+  farmDerivedCache.dispatchApprovedOrders = farmWorkOrders().filter((row) => ["approved", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"].includes(farmNormalizeWorkStatusKey(row.statusMeta?.key || row.status))
     || String(row.approval_status || "").toLowerCase() === "approved");
   return farmDerivedCache.dispatchApprovedOrders;
 }
@@ -18080,12 +18125,14 @@ async function saveFarmResultEntry() {
       updatedAt: now,
     }, ["planned_work_item_id", "plot_id", "block_id", "plot_group_id", "activity_id", "survey_template_id", "team_id"]));
 
+    resetFarmDerivedCaches();
     saveFarmRecords();
-    state.farmWorkDetailId = order.id;
-    state.farmResultWorkOrderId = order.id;
+    state.farmWorkDetailId = nextOrder.id;
+    state.farmResultWorkOrderId = nextOrder.id;
     state.farmSyncStatus = "success";
     state.farmSyncMessage = `บันทึกงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงสุทธิ ${moneyNf.format(calc.payrollTotal)} บาท · วัสดุ ${fmt(calc.materialLines.length)} รายการ · น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร`;
   } catch (error) {
+    resetFarmDerivedCaches();
     saveFarmRecords();
     state.farmSyncStatus = "error";
     state.farmSyncMessage = `บันทึกงานบางส่วนไม่สำเร็จ: ${error.message}`;
