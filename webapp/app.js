@@ -2746,7 +2746,7 @@ const FARM_TABLE_SCHEMAS = {
       F("rate_amount", "อัตรา", { type: "number" }),
       F("uom", "หน่วย"),
       F("rate_text", "อัตราแบบข้อความ"),
-      F("calculation_method", "วิธีคำนวณ", { options: ["per_ton", "per_tree", "per_rai", "per_day", "per_hour", "per_unit", "fixed", "survey_score"] }),
+      F("calculation_method", "วิธีคำนวณ", { options: ["per_ton", "per_tree", "per_rai", "per_bag", "per_day", "per_hour", "per_unit", "fixed", "survey_score"] }),
       F("is_hourly_enabled", "คิดรายชั่วโมง", { type: "boolean" }),
       F("affects_payroll", "กระทบค่าแรง", { type: "boolean" }),
       F("approval_required", "ต้องอนุมัติ", { type: "boolean" }),
@@ -16422,15 +16422,76 @@ function farmResultMachineLines(order) {
   });
 }
 
+function farmResultBudgetRateMatchKey(value = "") {
+  return farmNormalizeComparable(value).toLowerCase();
+}
+
+function farmResultBudgetRateKeys(rate = {}) {
+  return farmBudgetUnique([
+    rate.id,
+    rate._overrideOf,
+    rate.databaseId,
+    rate.rate_code,
+    rate.budget_rate_code,
+    rate.external_contract_no,
+    rate.source_rate_code,
+    farmBudgetDisplayRateCode(rate),
+  ])
+    .map(farmResultBudgetRateMatchKey)
+    .filter(Boolean);
+}
+
+function farmResultFindBudgetRateByToken(token = "", rates = farmRowsByKey("budget_activity_rates")) {
+  const key = farmResultBudgetRateMatchKey(token);
+  if (!key) return null;
+  return (rates || []).find((rate) => farmResultBudgetRateKeys(rate).includes(key)) || null;
+}
+
+function farmResultRateCodesFromOrder(order = {}) {
+  const noteText = String(order.note || "");
+  const noteCodes = [
+    ...noteText.matchAll(/(?:rate|rates|rate_code|อัตรา|เรท)\s*[:=]\s*([A-Z0-9-]+)/gi),
+  ].map((match) => match[1]);
+  const materialRows = farmRowsByKey("work_order_materials").filter((row) => String(row.work_order_id || "") === String(order.id || ""));
+  const materialCodes = materialRows.flatMap((row) => {
+    const meta = farmBudgetParseNoteJson(row);
+    return [
+      row.budget_rate_id,
+      row.rate_id,
+      row.rate_code,
+      meta.budget_rate_id,
+      meta.rate_id,
+      meta.rate_code,
+    ];
+  });
+  return farmBudgetUnique([
+    order.budget_rate_id,
+    order.rate_id,
+    order.rate_code,
+    order.budget_rate_code,
+    order.external_contract_no,
+    ...noteCodes,
+    ...materialCodes,
+  ].filter(Boolean));
+}
+
 function farmResultRateForOrder(order) {
+  const rates = farmRowsByKey("budget_activity_rates");
+  for (const token of farmResultRateCodesFromOrder(order)) {
+    const exact = farmResultFindBudgetRateByToken(token, rates);
+    if (exact?.id) return exact;
+  }
   const block = order?.block || farmLookup("blocks", order?.block_id) || {};
   const activity = order?.activity || farmLookup("activities", order?.activity_id) || {};
-  const budgetRate = farmBestBudgetRateForPlan(farmRowsByKey("budget_activity_rates"), activity, block?.id ? [block] : [], ["labor", "contractor"]);
+  const preferredTypes = ["material", "labor", "contractor"];
+  const budgetRate = farmBestBudgetRateForPlan(rates, activity, block?.id ? [block] : [], preferredTypes);
   if (budgetRate?.id) return budgetRate;
   return farmRowsByKey("payroll_rates").find((row) => row.activity_id === order?.activity_id && (!row.team_id || row.team_id === order?.team_id) && String(row.status || "active") !== "inactive") || {};
 }
 
 function farmResultBasisFromMethod(method = "", fallback = "manual_qty") {
+  const raw = String(method || "").trim();
+  const key = raw.toLowerCase();
   const map = {
     per_ton: "weight_ton",
     per_tree: "tree_count",
@@ -16442,7 +16503,17 @@ function farmResultBasisFromMethod(method = "", fallback = "manual_qty") {
     fixed: "work_order",
     per_unit: "manual_qty",
   };
-  return map[String(method || "").trim()] || fallback || "manual_qty";
+  if (map[key]) return map[key];
+  if (key.includes("กระสอบ") || key.includes("bag") || key.includes("sack")) return "bag_count";
+  if (key.includes("ต้น") || key.includes("tree")) return "tree_count";
+  if (key.includes("ไร่") || key.includes("rai")) return "area_rai";
+  if (key.includes("ตัน") || key.includes("ton")) return "weight_ton";
+  if (key.includes("ชั่วโมง") || key.includes("hour")) return "hour_count";
+  if (key.includes("วัน") || key.includes("day")) return "day_count";
+  if (key.includes("เที่ยว") || key.includes("trip")) return "trip_count";
+  if (key.includes("งาน") || key.includes("fixed")) return "work_order";
+  if (key.includes("หน่วย") || key.includes("unit")) return "manual_qty";
+  return fallback || "manual_qty";
 }
 
 function farmResultBasisLabel(basis = "") {
@@ -16468,7 +16539,20 @@ function farmResultRoleRateAmount(row = {}) {
 }
 
 function farmResultRoleRateText(row = {}) {
-  return [row.rate_category, row.payee_type, row.role_name, row.worker_group_name, row.rate_text, row.line_type]
+  return [
+    row.rate_category,
+    row.payee_type,
+    row.role_name,
+    row.worker_group_name,
+    row.rate_text,
+    row.rate_name,
+    row.name,
+    row.condition_name,
+    row.description,
+    row.note,
+    row.notes,
+    row.line_type,
+  ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -16503,10 +16587,19 @@ function farmResultRoleRateForGroup(rate = {}, group = "worker", fallback = {}) 
   const fallbackUnit = farmBudgetUnitBaseLabel(fallback.unit || rate.unit_name || "") || farmResultBasisLabel(fallbackBasis);
   const roleRows = rate?.id
     ? farmBudgetRateRelations("budget_rate_roles", rate).filter((row) => {
-      const lineType = String(row.line_type || "wage").toLowerCase();
+      const text = farmResultRoleRateText(row);
+      const lineType = String(row.line_type || row.rate_category || "wage").toLowerCase();
       const active = String(row.status || "active").toLowerCase() !== "inactive";
       const affectsPayroll = String(row.affects_payroll ?? "true").toLowerCase() !== "false";
-      return active && affectsPayroll && (!lineType || lineType === "wage");
+      const isPayrollLine = !lineType
+        || ["wage", "labor", "worker", "driver", "payroll"].some((token) => lineType.includes(token))
+        || lineType.includes("แรง")
+        || lineType.includes("ค่าแรง")
+        || text.includes("driver rate")
+        || text.includes("ค่าแรง")
+        || text.includes("คนขับ")
+        || text.includes("คนงาน");
+      return active && affectsPayroll && isPayrollLine;
     })
     : [];
   const explicit = roleRows.find((row) => farmResultRoleRateMatches(row, group));
@@ -16536,6 +16629,42 @@ function farmResultLineBasisQuantity({ rateInfo, basis, actualUnit, lineQuantity
   if (roleBasis === "day_count") return worker.attendanceStatus === "half_day" ? 0.5 : worker.attendanceStatus === "absent" ? 0 : 1;
   if (roleBasis === "weight_ton") return actualUnit === "ตัน" ? n(lineQuantity) : n(lineQuantity) / 1000;
   return n(lineQuantity);
+}
+
+function farmResultUnitIsBag(unit = "") {
+  const text = farmCleanUnitDisplay(unit).toLowerCase();
+  return text.includes("กระสอบ") || text.includes("bag") || text.includes("sack");
+}
+
+function farmResultUnitIsKg(unit = "") {
+  const text = farmCleanUnitDisplay(unit).toLowerCase();
+  return text === "กก." || text.includes("กก") || text.includes("กิโล") || text.includes("kg");
+}
+
+function farmResultMaterialBagQuantity(row = {}) {
+  const material = farmLookup("materials", row.material_id) || {};
+  const issueInfo = farmDispatchIssueUnitInfo(row);
+  const rowUnit = farmCleanUnitDisplay(row.unit_name || row.unit_id || "");
+  const issueUnit = farmCleanUnitDisplay(issueInfo.issueUnit || "");
+  const actual = n(row.actualQuantity || row.actual_quantity);
+  const issued = n(row.issued_quantity);
+  const planned = n(row.planned_quantity);
+  if (farmResultUnitIsBag(rowUnit)) return actual || issued || planned || n(issueInfo.issueQuantity) || n(issueInfo.plannedIssueQuantity);
+  if (farmResultUnitIsBag(issueUnit)) {
+    const issueQty = n(issueInfo.issueQuantity);
+    const plannedIssueQty = n(issueInfo.plannedIssueQuantity);
+    if (issueQty || plannedIssueQty) return Math.max(issueQty, plannedIssueQty);
+  }
+  const packKg = farmDispatchMaterialPackKg(row, material);
+  const kgQty = actual || issued || planned;
+  if (packKg > 0 && farmResultUnitIsKg(rowUnit) && kgQty) return kgQty / packKg;
+  return 0;
+}
+
+function farmResultFullBagQuantity({ actualUnit, actualQuantity, materialLines = [] } = {}) {
+  if (farmResultUnitIsBag(actualUnit) && n(actualQuantity) > 0) return n(actualQuantity);
+  const materialBags = materialLines.reduce((sum, row) => sum + farmResultMaterialBagQuantity(row), 0);
+  return materialBags > 0 ? materialBags : 0;
 }
 
 function farmResultTicketTokens(text) {
@@ -16584,6 +16713,7 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
   const workerCount = workers.length || 1;
   const shareQuantity = actualQuantity / workerCount;
   const shareWage = totalWage / workerCount;
+  const fullBagQuantity = farmResultFullBagQuantity({ actualUnit, actualQuantity, materialLines });
   const entries = draft.workerEntries || {};
   const workerLines = workers.map((worker) => {
     const entry = entries[worker.id] || {};
@@ -16591,7 +16721,8 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
     const attendanceStatus = entry.status || "present";
     const roleGroup = farmResultWorkerRoleGroup(worker);
     const rateInfo = farmResultRoleRateForGroup(rate, roleGroup, fallbackRate);
-    const lineQuantity = attendanceStatus === "absent" ? 0 : hasCustomQuantity ? n(entry.actualQuantity) : shareQuantity;
+    const defaultQuantity = rateInfo.basis === "bag_count" && fullBagQuantity > 0 ? fullBagQuantity : shareQuantity;
+    const lineQuantity = attendanceStatus === "absent" ? 0 : hasCustomQuantity ? n(entry.actualQuantity) : defaultQuantity;
     const workerHours = n(entry.workHours || worker.plannedHours || 8);
     const workerForBasis = { ...worker, attendanceStatus, workHours: workerHours, otHours: n(entry.otHours) };
     const lineBasisQuantity = farmResultLineBasisQuantity({ rateInfo, basis, actualUnit, lineQuantity, worker: workerForBasis });
@@ -16640,7 +16771,7 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
   const materialActualTotal = materialLines.reduce((sum, row) => sum + n(row.actualQuantity), 0);
   const fuelIssueTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_issue_liter), 0);
   const machineHoursTotal = machineLines.reduce((sum, row) => sum + n(row.actual_hours || row.planned_hours), 0);
-  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, wageTotal, payrollTotal, workerCount, shareQuantity, shareWage, roleSummary, materialActualTotal, fuelIssueTotal, machineHoursTotal };
+  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, wageTotal, payrollTotal, workerCount, shareQuantity, shareWage, fullBagQuantity, roleSummary, materialActualTotal, fuelIssueTotal, machineHoursTotal };
 }
 
 function farmResultPayrollPeriodForDate(date) {
@@ -16969,7 +17100,7 @@ function renderFarmResultPanel() {
                   <td><input type="time" value="${esc(row.checkOut)}" data-farm-result-worker-field="checkOut"></td>
                   <td><input type="number" min="0" step="0.5" value="${esc(row.workHours || "")}" data-farm-result-worker-field="workHours"></td>
                   <td><input type="number" min="0" step="0.5" value="${esc(row.otHours || "")}" data-farm-result-worker-field="otHours"></td>
-                  <td><input type="number" min="0" step="0.01" value="${row.hasCustomQuantity ? esc(row.actualQuantity) : ""}" placeholder="${moneyNf.format(calc.shareQuantity)}" data-farm-result-worker-field="actualQuantity"></td>
+                  <td><input type="number" min="0" step="0.01" value="${row.hasCustomQuantity ? esc(row.actualQuantity) : ""}" placeholder="${moneyNf.format(row.actualQuantity)}" data-farm-result-worker-field="actualQuantity"></td>
                   <td class="num">${moneyNf.format(row.wageAmount)}</td>
                   <td><input type="number" min="0" step="0.01" value="${esc(row.allowance || "")}" data-farm-result-worker-field="allowance"></td>
                   <td><input type="number" min="0" step="0.01" value="${esc(row.deduction || "")}" data-farm-result-worker-field="deduction"></td>
@@ -17125,7 +17256,7 @@ function setFarmResultWorkerShareQuantities() {
   calc.workerLines.filter((worker) => worker.roleGroup === activeRoleGroup).forEach((worker) => {
     entries[worker.id] = {
       ...(entries[worker.id] || {}),
-      actualQuantity: Math.round(calc.shareQuantity * 1000) / 1000,
+      actualQuantity: Math.round(n(worker.actualQuantity) * 1000) / 1000,
       workHours: entries[worker.id]?.workHours || worker.plannedHours || 8,
       status: entries[worker.id]?.status || "present",
     };
