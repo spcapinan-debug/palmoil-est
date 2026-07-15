@@ -16377,6 +16377,31 @@ function farmResultRoleLabel(group) {
   return "คนงาน";
 }
 
+function farmResultWorkerNormalHours(worker = {}) {
+  const employee = worker.employee || farmLookup("employees", worker.id) || {};
+  return n(employee.normal_hours_per_day || worker.normal_hours_per_day || worker.plannedHours) || 8;
+}
+
+function farmResultWorkerHourlyWage(worker = {}, dailyWage = 0, normalHours = 8) {
+  const employee = worker.employee || farmLookup("employees", worker.id) || {};
+  const hourly = n(employee.hourly_wage_rate || employee.hourly_rate || worker.hourly_wage_rate);
+  if (hourly > 0) return hourly;
+  return normalHours > 0 ? n(dailyWage) / normalHours : 0;
+}
+
+function farmResultWorkerDailyWage(worker = {}) {
+  const employee = worker.employee || farmLookup("employees", worker.id) || {};
+  const normalHours = farmResultWorkerNormalHours(worker);
+  const direct = n(employee.daily_wage || employee.daily_rate || employee.wage_daily || worker.daily_wage);
+  if (direct > 0) return direct;
+  const monthly = n(employee.monthly_salary || employee.salary || worker.monthly_salary);
+  if (monthly > 0) return monthly / 30;
+  const hourly = n(employee.hourly_wage_rate || employee.hourly_rate || worker.hourly_wage_rate);
+  if (hourly > 0) return hourly * normalHours;
+  const workerRate = n(worker.rate);
+  return workerRate >= 20 ? workerRate : 0;
+}
+
 function farmResultMaterialLines(order) {
   const draftEntries = state.farmResultDraft?.materialEntries || {};
   return farmDispatchMaterialCandidates(order).map((row) => {
@@ -16625,7 +16650,7 @@ function farmResultRoleRateForGroup(rate = {}, group = "worker", fallback = {}) 
 
 function farmResultLineBasisQuantity({ rateInfo, basis, actualUnit, lineQuantity, worker }) {
   const roleBasis = rateInfo?.basis || basis || "manual_qty";
-  if (roleBasis === "hour_count") return Math.max(0, n(worker.workHours) + n(worker.otHours));
+  if (roleBasis === "hour_count") return Math.max(0, n(worker.workHours));
   if (roleBasis === "day_count") return worker.attendanceStatus === "half_day" ? 0.5 : worker.attendanceStatus === "absent" ? 0 : 1;
   if (roleBasis === "weight_ton") return actualUnit === "ตัน" ? n(lineQuantity) : n(lineQuantity) / 1000;
   return n(lineQuantity);
@@ -16724,12 +16749,20 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
     const defaultQuantity = rateInfo.basis === "bag_count" && fullBagQuantity > 0 ? fullBagQuantity : shareQuantity;
     const lineQuantity = attendanceStatus === "absent" ? 0 : hasCustomQuantity ? n(entry.actualQuantity) : defaultQuantity;
     const workerHours = n(entry.workHours || worker.plannedHours || 8);
-    const workerForBasis = { ...worker, attendanceStatus, workHours: workerHours, otHours: n(entry.otHours) };
+    const workerForBasis = { ...worker, attendanceStatus, workHours: workerHours };
     const lineBasisQuantity = farmResultLineBasisQuantity({ rateInfo, basis, actualUnit, lineQuantity, worker: workerForBasis });
-    const wageAmount = attendanceStatus === "absent" ? 0 : lineBasisQuantity * n(rateInfo.rateAmount);
+    const dailyWage = farmResultWorkerDailyWage(worker);
+    const normalHours = farmResultWorkerNormalHours(worker);
+    const hourlyWage = farmResultWorkerHourlyWage(worker, dailyWage, normalHours);
+    const rateWageUnits = attendanceStatus === "absent" ? 0 : lineBasisQuantity * n(rateInfo.rateAmount);
+    const baseWageAmount = rateWageUnits * dailyWage;
+    const ot1Hours = attendanceStatus === "absent" ? 0 : n(entry.ot1Hours !== undefined ? entry.ot1Hours : entry.otHours);
+    const ot15Hours = attendanceStatus === "absent" ? 0 : n(entry.ot15Hours);
+    const ot2Hours = attendanceStatus === "absent" ? 0 : n(entry.ot2Hours);
+    const otAmount = (hourlyWage * ot1Hours) + (hourlyWage * 1.5 * ot15Hours) + (hourlyWage * 2 * ot2Hours);
     const allowance = n(entry.allowance);
     const deduction = n(entry.deduction);
-    const grossAmount = wageAmount + allowance - deduction;
+    const grossAmount = baseWageAmount + otAmount + allowance - deduction;
     return {
       ...worker,
       roleGroup,
@@ -16742,15 +16775,23 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
       checkIn: entry.checkIn || "08:00",
       checkOut: entry.checkOut || "17:00",
       workHours: workerHours,
-      otHours: n(entry.otHours),
+      otHours: ot1Hours + ot15Hours + ot2Hours,
+      ot1Hours,
+      ot15Hours,
+      ot2Hours,
+      otAmount,
       actualQuantity: lineQuantity,
       lineBasisQuantity,
       hasCustomQuantity,
+      dailyWage,
+      normalHours,
+      hourlyWage,
+      rateWageUnits,
       allowance,
       deduction,
       grossAmount,
-      wageAmount,
-      note: entry.note || "",
+      wageAmount: baseWageAmount,
+      baseWageAmount,
     };
   });
   const roleSummary = ["driver", "worker", "contractor"].map((group) => {
@@ -16974,10 +17015,11 @@ function renderFarmResultPanel() {
   const activeWorkerTotals = activeWorkerLines.reduce((totals, row) => ({
     quantity: totals.quantity + n(row.actualQuantity),
     wage: totals.wage + n(row.wageAmount),
+    ot: totals.ot + n(row.otAmount),
     allowance: totals.allowance + n(row.allowance),
     deduction: totals.deduction + n(row.deduction),
     gross: totals.gross + n(row.grossAmount),
-  }), { quantity: 0, wage: 0, allowance: 0, deduction: 0, gross: 0 });
+  }), { quantity: 0, wage: 0, ot: 0, allowance: 0, deduction: 0, gross: 0 });
   const roleTabs = roleGroups
     .filter((group) => groupedWorkers[group]?.length)
     .map((group) => {
@@ -17081,35 +17123,37 @@ function renderFarmResultPanel() {
                 <th>เวลาเข้า</th>
                 <th>เวลาออก</th>
                 <th>ชม.</th>
-                <th>OT</th>
+                <th>OT 1x</th>
+                <th>OT 1.5x</th>
+                <th>OT 2x</th>
                 <th>ผลงาน</th>
                 <th>ค่าแรง</th>
                 <th>เพิ่ม</th>
                 <th>หัก</th>
                 <th>สุทธิ</th>
-                <th>หมายเหตุ</th>
               </tr>
             </thead>
             <tbody>
               ${activeWorkerLines.map((row) => `
                 <tr data-farm-result-worker="${esc(row.id)}">
-                  <td><strong>${esc(row.name)}</strong><small>${esc(row.role || row.employee.payment_type || "-")}</small></td>
+                  <td><strong>${esc(row.name)}</strong><small>${esc(row.role || row.employee.payment_type || "-")} · รายวัน ${moneyNf.format(row.dailyWage || 0)}</small></td>
                   <td><span class="farm-result-role-pill ${esc(row.roleGroup)}">${esc(farmResultRoleLabel(row.roleGroup))}</span><small class="farm-result-rate-tag">${esc(row.rateLabel)}</small></td>
                   <td><select data-farm-result-worker-field="status">${["present", "late", "half_day", "absent"].map((status) => `<option value="${status}"${row.attendanceStatus === status ? " selected" : ""}>${status === "present" ? "มาทำงาน" : status === "late" ? "สาย" : status === "half_day" ? "ครึ่งวัน" : "ขาด"}</option>`).join("")}</select></td>
                   <td><input type="time" value="${esc(row.checkIn)}" data-farm-result-worker-field="checkIn"></td>
                   <td><input type="time" value="${esc(row.checkOut)}" data-farm-result-worker-field="checkOut"></td>
                   <td><input type="number" min="0" step="0.5" value="${esc(row.workHours || "")}" data-farm-result-worker-field="workHours"></td>
-                  <td><input type="number" min="0" step="0.5" value="${esc(row.otHours || "")}" data-farm-result-worker-field="otHours"></td>
+                  <td><input type="number" min="0" step="0.5" value="${esc(row.ot1Hours || "")}" data-farm-result-worker-field="ot1Hours"></td>
+                  <td><input type="number" min="0" step="0.5" value="${esc(row.ot15Hours || "")}" data-farm-result-worker-field="ot15Hours"></td>
+                  <td><input type="number" min="0" step="0.5" value="${esc(row.ot2Hours || "")}" data-farm-result-worker-field="ot2Hours"></td>
                   <td><input type="number" min="0" step="0.01" value="${row.hasCustomQuantity ? esc(row.actualQuantity) : ""}" placeholder="${moneyNf.format(row.actualQuantity)}" data-farm-result-worker-field="actualQuantity"></td>
-                  <td class="num">${moneyNf.format(row.wageAmount)}</td>
+                  <td class="num">${moneyNf.format(row.wageAmount)}<small>${moneyNf.format(row.rateWageUnits || 0)} x ${moneyNf.format(row.dailyWage || 0)}</small></td>
                   <td><input type="number" min="0" step="0.01" value="${esc(row.allowance || "")}" data-farm-result-worker-field="allowance"></td>
                   <td><input type="number" min="0" step="0.01" value="${esc(row.deduction || "")}" data-farm-result-worker-field="deduction"></td>
                   <td class="num strong">${moneyNf.format(row.grossAmount)}</td>
-                  <td><input type="text" value="${esc(row.note)}" data-farm-result-worker-field="note" placeholder="หมายเหตุ"></td>
-                </tr>`).join("") || `<tr><td colspan="13">ยังไม่มีคนงานในใบสั่งงาน ให้ผู้จัดการสั่งงานและเลือกทีมก่อน</td></tr>`}
+                </tr>`).join("") || `<tr><td colspan="14">ยังไม่มีคนงานในใบสั่งงาน ให้ผู้จัดการสั่งงานและเลือกทีมก่อน</td></tr>`}
             </tbody>
             <tfoot>
-              <tr><td colspan="7">รวม ${esc(farmResultRoleLabel(activeRoleGroup))}</td><td class="num">${moneyNf.format(activeWorkerTotals.quantity)}</td><td class="num">${moneyNf.format(activeWorkerTotals.wage)}</td><td class="num">${moneyNf.format(activeWorkerTotals.allowance)}</td><td class="num">${moneyNf.format(activeWorkerTotals.deduction)}</td><td class="num strong">${moneyNf.format(activeWorkerTotals.gross)}</td><td></td></tr>
+              <tr><td colspan="9">รวม ${esc(farmResultRoleLabel(activeRoleGroup))}</td><td class="num">${moneyNf.format(activeWorkerTotals.quantity)}</td><td class="num">${moneyNf.format(activeWorkerTotals.wage)}<small>OT ${moneyNf.format(activeWorkerTotals.ot)}</small></td><td class="num">${moneyNf.format(activeWorkerTotals.allowance)}</td><td class="num">${moneyNf.format(activeWorkerTotals.deduction)}</td><td class="num strong">${moneyNf.format(activeWorkerTotals.gross)}</td></tr>
             </tfoot>
           </table>
         </div>
@@ -17391,12 +17435,20 @@ async function saveFarmResultEntry() {
       state.farmRecords.push({
         ...attendance,
         ot_hours: Math.round(n(worker.otHours) * 100) / 100,
+        ot1_hours: Math.round(n(worker.ot1Hours) * 100) / 100,
+        ot15_hours: Math.round(n(worker.ot15Hours) * 100) / 100,
+        ot2_hours: Math.round(n(worker.ot2Hours) * 100) / 100,
         result_quantity: Math.round(n(worker.actualQuantity) * 1000) / 1000,
         allowance_amount: Math.round(n(worker.allowance) * 100) / 100,
         deduction_amount: Math.round(n(worker.deduction) * 100) / 100,
-        note: worker.note || "",
       });
-      if (attendanceTable) await persistFarmRowToDatabase(attendanceTable, attendance);
+      if (attendanceTable) await persistFarmRowToDatabase(attendanceTable, {
+        ...attendance,
+        ot_hours: Math.round(n(worker.otHours) * 100) / 100,
+        ot1_hours: Math.round(n(worker.ot1Hours) * 100) / 100,
+        ot15_hours: Math.round(n(worker.ot15Hours) * 100) / 100,
+        ot2_hours: Math.round(n(worker.ot2Hours) * 100) / 100,
+      });
       const line = {
         id: `payline-${resultId}-${worker.id}`.slice(0, 180),
         moduleId: "farm-payroll",
@@ -17411,6 +17463,8 @@ async function saveFarmResultEntry() {
         payment_type_snapshot: employee.payment_type || "รายวัน",
         rate_snapshot: worker.rateAmount,
         normal_hours_snapshot: employee.normal_hours_per_day || worker.workHours || 8,
+        daily_wage_snapshot: Math.round(n(worker.dailyWage) * 100) / 100,
+        hourly_wage_snapshot: Math.round(n(worker.hourlyWage) * 100) / 100,
         calculated_at: resultDate,
         is_locked: "true",
         gross_amount: Math.round(n(worker.grossAmount) * 100) / 100,
@@ -17420,9 +17474,13 @@ async function saveFarmResultEntry() {
         result_unit_snapshot: worker.rateUnit || calc.actualUnit,
         attendance_status_snapshot: worker.attendanceStatus || "present",
         base_wage_amount: Math.round(n(worker.wageAmount) * 100) / 100,
+        rate_wage_units_snapshot: Math.round(n(worker.rateWageUnits) * 1000) / 1000,
+        ot1_hours: Math.round(n(worker.ot1Hours) * 100) / 100,
+        ot15_hours: Math.round(n(worker.ot15Hours) * 100) / 100,
+        ot2_hours: Math.round(n(worker.ot2Hours) * 100) / 100,
+        ot_amount: Math.round(n(worker.otAmount) * 100) / 100,
         allowance_amount: Math.round(n(worker.allowance) * 100) / 100,
         deduction_amount: Math.round(n(worker.deduction) * 100) / 100,
-        note: worker.note || "",
         updatedAt: now,
       };
       state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "payroll_period_lines" && row.id === line.id));
@@ -17441,6 +17499,8 @@ async function saveFarmResultEntry() {
         payment_type_snapshot: line.payment_type_snapshot,
         rate_snapshot: line.rate_snapshot,
         normal_hours_snapshot: line.normal_hours_snapshot,
+        daily_wage_snapshot: line.daily_wage_snapshot,
+        hourly_wage_snapshot: line.hourly_wage_snapshot,
         calculated_at: line.calculated_at,
         is_locked: line.is_locked,
         gross_amount: line.gross_amount,
@@ -17448,6 +17508,14 @@ async function saveFarmResultEntry() {
         status: line.status,
         result_quantity_snapshot: line.result_quantity_snapshot,
         result_unit_snapshot: line.result_unit_snapshot,
+        base_wage_amount: line.base_wage_amount,
+        rate_wage_units_snapshot: line.rate_wage_units_snapshot,
+        ot1_hours: line.ot1_hours,
+        ot15_hours: line.ot15_hours,
+        ot2_hours: line.ot2_hours,
+        ot_amount: line.ot_amount,
+        allowance_amount: line.allowance_amount,
+        deduction_amount: line.deduction_amount,
         updatedAt: now,
       });
     }
