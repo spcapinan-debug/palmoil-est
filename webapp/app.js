@@ -16557,7 +16557,7 @@ function farmResultBasisLabel(basis = "") {
 }
 
 function farmResultRoleRateAmount(row = {}) {
-  for (const key of ["rate_amount", "rate", "unit_rate", "rate_snapshot"]) {
+  for (const key of ["rate_amount", "rateAmount", "rate", "unit_rate", "unitRate", "rate_snapshot", "rateSnapshot"]) {
     if (String(row[key] ?? "").trim() !== "") return n(row[key]);
   }
   return null;
@@ -16566,21 +16566,53 @@ function farmResultRoleRateAmount(row = {}) {
 function farmResultRoleRateText(row = {}) {
   return [
     row.rate_category,
+    row.rateCategory,
     row.payee_type,
+    row.payeeType,
     row.role_name,
+    row.roleName,
     row.worker_group_name,
+    row.workerGroupName,
     row.rate_text,
+    row.rateText,
     row.rate_name,
+    row.rateName,
     row.name,
     row.condition_name,
+    row.conditionName,
     row.description,
     row.note,
     row.notes,
     row.line_type,
+    row.lineType,
+    row.affectsPayroll,
+    row.calculationMethod,
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function farmResultRoleRateField(row = {}, snakeKey = "", camelKey = "") {
+  return row[snakeKey] ?? (camelKey ? row[camelKey] : undefined);
+}
+
+function farmResultRoleRateCategory(row = {}) {
+  return String(farmResultRoleRateField(row, "rate_category", "rateCategory") || "").toLowerCase();
+}
+
+function farmResultRoleRateLineType(row = {}) {
+  return String(farmResultRoleRateField(row, "line_type", "lineType") || farmResultRoleRateCategory(row) || "wage").toLowerCase();
+}
+
+function farmResultRoleRateIsSelectionOnly(row = {}) {
+  const category = farmResultRoleRateCategory(row);
+  const lineType = farmResultRoleRateLineType(row);
+  const roleName = String(farmResultRoleRateField(row, "role_name", "roleName") || "").toLowerCase();
+  const text = farmResultRoleRateText(row);
+  const isTeamSelection = !!(row.team_id || row.teamId || farmResultRoleRateField(row, "worker_group_name", "workerGroupName"));
+  const namesExplicitRate = /driver|worker|harvester|rate|คนขับ|คนงาน|แรงงาน|ค่าแรง|ผู้รับเหมา/.test(roleName);
+  return isTeamSelection && category === "base" && lineType === "wage" && !namesExplicitRate && !text.includes("driver rate");
 }
 
 function farmResultRoleRateMatches(row = {}, group = "worker") {
@@ -16613,9 +16645,9 @@ function farmResultRoleRateForGroup(rate = {}, group = "worker", fallback = {}) 
   const roleRows = rate?.id
     ? farmBudgetRateRelations("budget_rate_roles", rate).filter((row) => {
       const text = farmResultRoleRateText(row);
-      const lineType = String(row.line_type || row.rate_category || "wage").toLowerCase();
+      const lineType = farmResultRoleRateLineType(row);
       const active = String(row.status || "active").toLowerCase() !== "inactive";
-      const affectsPayroll = String(row.affects_payroll ?? "true").toLowerCase() !== "false";
+      const affectsPayroll = String(farmResultRoleRateField(row, "affects_payroll", "affectsPayroll") ?? "true").toLowerCase() !== "false";
       const isPayrollLine = !lineType
         || ["wage", "labor", "worker", "driver", "payroll"].some((token) => lineType.includes(token))
         || lineType.includes("แรง")
@@ -16627,14 +16659,15 @@ function farmResultRoleRateForGroup(rate = {}, group = "worker", fallback = {}) 
       return active && affectsPayroll && isPayrollLine;
     })
     : [];
-  const explicit = roleRows.find((row) => farmResultRoleRateMatches(row, group));
-  const base = roleRows.find((row) => farmResultRoleRateMatches(row, "worker"))
-    || roleRows.find((row) => ["base", "all", "team"].some((token) => farmResultRoleRateText(row).includes(token)));
+  const payrollRows = roleRows.filter((row) => !farmResultRoleRateIsSelectionOnly(row));
+  const explicit = payrollRows.find((row) => farmResultRoleRateMatches(row, group));
+  const base = payrollRows.find((row) => farmResultRoleRateMatches(row, "worker"))
+    || payrollRows.find((row) => ["base", "all"].some((token) => farmResultRoleRateText(row).includes(token)));
   const row = explicit || (group === "worker" ? base : null);
   const amount = farmResultRoleRateAmount(row || {});
-  const method = row?.calculation_method || fallback.method || rate.calculation_method || "per_unit";
+  const method = farmResultRoleRateField(row || {}, "calculation_method", "calculationMethod") || fallback.method || rate.calculation_method || "per_unit";
   const basis = farmResultBasisFromMethod(method, fallbackBasis);
-  const unit = farmBudgetUnitBaseLabel(row?.uom || row?.unit_name || fallbackUnit) || farmResultBasisLabel(basis);
+  const unit = farmBudgetUnitBaseLabel(row?.uom || row?.unit_name || row?.unitName || fallbackUnit) || farmResultBasisLabel(basis);
   const rateAmount = amount !== null ? amount : fallbackAmount;
   return {
     row,
@@ -16645,6 +16678,36 @@ function farmResultRoleRateForGroup(rate = {}, group = "worker", fallback = {}) 
     unit,
     label: farmResultRateLabel(rateAmount, unit, basis),
     source: row?.id ? "role" : "main",
+  };
+}
+
+function farmResultRateMeta(rate = {}) {
+  try {
+    return farmBudgetParseNoteJson(rate) || {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+function farmResultDerivedWorkerRateAmount(rateInfo = {}, fallbackRate = {}, rate = {}) {
+  if (rateInfo.source === "role") return n(rateInfo.rateAmount);
+  const fallbackAmount = n(fallbackRate.rateAmount || rateInfo.rateAmount);
+  if (!fallbackAmount) return 0;
+  const meta = farmResultRateMeta(rate);
+  const divisor = n(meta.performancePerUom || meta.workerRateDivisor || meta.worker_count_per_uom) || 10;
+  return divisor > 0 ? fallbackAmount / divisor : fallbackAmount;
+}
+
+function farmResultResolvedRoleRateForGroup(rate = {}, group = "worker", fallbackRate = {}) {
+  const rateInfo = farmResultRoleRateForGroup(rate, group, fallbackRate);
+  if (group !== "worker") return rateInfo;
+  const derivedRateAmount = farmResultDerivedWorkerRateAmount(rateInfo, fallbackRate, rate);
+  if (!derivedRateAmount || derivedRateAmount === n(rateInfo.rateAmount)) return rateInfo;
+  return {
+    ...rateInfo,
+    rateAmount: derivedRateAmount,
+    label: farmResultRateLabel(derivedRateAmount, rateInfo.unit, rateInfo.basis),
+    source: "derived_worker",
   };
 }
 
@@ -16736,18 +16799,38 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
   const fallbackRate = { rateAmount, basis, method, unit: rate.unit_name || actualUnit };
   const totalWage = calculationQuantity * rateAmount;
   const workerCount = workers.length || 1;
-  const shareQuantity = actualQuantity / workerCount;
-  const shareWage = totalWage / workerCount;
   const fullBagQuantity = farmResultFullBagQuantity({ actualUnit, actualQuantity, materialLines });
+  const payrollOutputQuantity = actualQuantity || fullBagQuantity;
   const entries = draft.workerEntries || {};
+  const activeRoleCounts = workers.reduce((counts, worker) => {
+    const entry = entries[worker.id] || {};
+    const status = entry.status || "present";
+    if (status === "absent") return counts;
+    const roleGroup = farmResultWorkerRoleGroup(worker);
+    counts.total += 1;
+    counts[roleGroup] = (counts[roleGroup] || 0) + 1;
+    return counts;
+  }, { total: 0, driver: 0, worker: 0, contractor: 0 });
+  const shareQuantity = payrollOutputQuantity / (activeRoleCounts.total || workerCount || 1);
+  const shareWage = totalWage / workerCount;
   const workerLines = workers.map((worker) => {
     const entry = entries[worker.id] || {};
     const hasCustomQuantity = entry.actualQuantity !== undefined && entry.actualQuantity !== "";
     const attendanceStatus = entry.status || "present";
     const roleGroup = farmResultWorkerRoleGroup(worker);
-    const rateInfo = farmResultRoleRateForGroup(rate, roleGroup, fallbackRate);
-    const defaultQuantity = rateInfo.basis === "bag_count" && fullBagQuantity > 0 ? fullBagQuantity : shareQuantity;
-    const lineQuantity = attendanceStatus === "absent" ? 0 : hasCustomQuantity ? n(entry.actualQuantity) : defaultQuantity;
+    const rateInfo = farmResultResolvedRoleRateForGroup(rate, roleGroup, fallbackRate);
+    const activeRoleCount = activeRoleCounts[roleGroup] || activeRoleCounts.total || 1;
+    const roleDefaultQuantity = roleGroup === "driver"
+      ? payrollOutputQuantity
+      : payrollOutputQuantity / activeRoleCount;
+    const defaultQuantity = roleDefaultQuantity || shareQuantity || 0;
+    const customQuantity = n(entry.actualQuantity);
+    const staleMaterialPlanQuantity = hasCustomQuantity
+      && fullBagQuantity > 0
+      && Math.abs(customQuantity - fullBagQuantity) < 0.001
+      && Math.abs(defaultQuantity - fullBagQuantity) > 0.001;
+    const useCustomQuantity = hasCustomQuantity && !staleMaterialPlanQuantity;
+    const lineQuantity = attendanceStatus === "absent" ? 0 : useCustomQuantity ? customQuantity : defaultQuantity;
     const workerHours = n(entry.workHours || worker.plannedHours || 8);
     const workerForBasis = { ...worker, attendanceStatus, workHours: workerHours };
     const lineBasisQuantity = farmResultLineBasisQuantity({ rateInfo, basis, actualUnit, lineQuantity, worker: workerForBasis });
@@ -16755,7 +16838,7 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
     const normalHours = farmResultWorkerNormalHours(worker);
     const hourlyWage = farmResultWorkerHourlyWage(worker, dailyWage, normalHours);
     const rateWageUnits = attendanceStatus === "absent" ? 0 : lineBasisQuantity * n(rateInfo.rateAmount);
-    const baseWageAmount = rateWageUnits * dailyWage;
+    const baseWageAmount = rateWageUnits;
     const ot1Hours = attendanceStatus === "absent" ? 0 : n(entry.ot1Hours !== undefined ? entry.ot1Hours : entry.otHours);
     const ot15Hours = attendanceStatus === "absent" ? 0 : n(entry.ot15Hours);
     const ot2Hours = attendanceStatus === "absent" ? 0 : n(entry.ot2Hours);
@@ -16782,7 +16865,7 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
       otAmount,
       actualQuantity: lineQuantity,
       lineBasisQuantity,
-      hasCustomQuantity,
+      hasCustomQuantity: useCustomQuantity,
       dailyWage,
       normalHours,
       hourlyWage,
@@ -16796,7 +16879,7 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
   });
   const roleSummary = ["driver", "worker", "contractor"].map((group) => {
     const lines = workerLines.filter((row) => row.roleGroup === group);
-    const rateInfo = farmResultRoleRateForGroup(rate, group, fallbackRate);
+    const rateInfo = farmResultResolvedRoleRateForGroup(rate, group, fallbackRate);
     return {
       group,
       label: farmResultRoleLabel(group),
@@ -17146,7 +17229,7 @@ function renderFarmResultPanel() {
                   <td><input type="number" min="0" step="0.5" value="${esc(row.ot15Hours || "")}" data-farm-result-worker-field="ot15Hours"></td>
                   <td><input type="number" min="0" step="0.5" value="${esc(row.ot2Hours || "")}" data-farm-result-worker-field="ot2Hours"></td>
                   <td><input type="number" min="0" step="0.01" value="${row.hasCustomQuantity ? esc(row.actualQuantity) : ""}" placeholder="${moneyNf.format(row.actualQuantity)}" data-farm-result-worker-field="actualQuantity"></td>
-                  <td class="num">${moneyNf.format(row.wageAmount)}<small>${moneyNf.format(row.rateWageUnits || 0)} x ${moneyNf.format(row.dailyWage || 0)}</small></td>
+                  <td class="num">${moneyNf.format(row.wageAmount)}<small>${moneyNf.format(row.lineBasisQuantity || 0)} x ${moneyNf.format(row.rateAmount || 0)}</small></td>
                   <td><input type="number" min="0" step="0.01" value="${esc(row.allowance || "")}" data-farm-result-worker-field="allowance"></td>
                   <td><input type="number" min="0" step="0.01" value="${esc(row.deduction || "")}" data-farm-result-worker-field="deduction"></td>
                   <td class="num strong">${moneyNf.format(row.grossAmount)}</td>
