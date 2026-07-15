@@ -16557,27 +16557,46 @@ function farmResultWorkerDailyWage(worker = {}) {
   return workerRate >= 20 ? workerRate : 0;
 }
 
+function farmResultPriorMaterialActualQuantity(order, materialId, currentResultId, materialName = "") {
+  const workOrderId = String(order?.id || "");
+  const key = String(materialId || "");
+  if (!workOrderId || !key) return 0;
+  const currentCostId = `cost-material-${currentResultId}-${key}`.slice(0, 180);
+  return farmRowsByKey("cost_entries").reduce((sum, row) => {
+    if (String(row.work_order_id || "") !== workOrderId) return sum;
+    if (String(row.cost_type || "").toLowerCase() !== "material") return sum;
+    const rowId = String(row.id || "");
+    if (rowId === currentCostId) return sum;
+    const sameMaterial = rowId.includes(`-${key}`)
+      || (materialName && String(row.item_snapshot || "") === String(materialName));
+    return sameMaterial ? sum + n(row.quantity_snapshot) : sum;
+  }, 0);
+}
+
 function farmResultMaterialLines(order) {
   const draftEntries = state.farmResultDraft?.materialEntries || {};
   const draft = farmResultDraftState(order);
   const resultQuantity = n(draft.actualQuantity);
-  const resultUnit = farmCleanUnitDisplay(draft.actualUnit || "");
-  const resultUnitKey = farmNormalizeKey(resultUnit);
+  const currentResultId = `result-${order?.id || ""}-${draft.resultDate || farmToday()}`.slice(0, 180);
   return farmDispatchMaterialCandidates(order).map((row) => {
     const key = row.material_id;
     const entry = draftEntries[key] || {};
     const issued = n(row.issued_quantity || row.planned_quantity);
     const rowUnit = farmCleanUnitDisplay(row.unit_name || row.unit_id || "");
-    const rowUnitKey = farmNormalizeKey(rowUnit);
-    const sameResultUnit = resultQuantity > 0 && (!resultUnitKey || !rowUnitKey || resultUnitKey === rowUnitKey
-      || (farmResultUnitIsBag(resultUnit) && farmResultUnitIsBag(rowUnit))
-      || (farmResultUnitIsKg(resultUnit) && farmResultUnitIsKg(rowUnit)));
-    const defaultActual = n(row.actual_quantity) || (sameResultUnit ? resultQuantity : 0) || issued;
+    const defaultActual = resultQuantity || n(row.actual_quantity) || issued;
+    const actualQuantity = resultQuantity || (entry.actualQuantity !== undefined && entry.actualQuantity !== "" ? n(entry.actualQuantity) : defaultActual);
+    const wasteQuantity = entry.wasteQuantity !== undefined && entry.wasteQuantity !== "" ? n(entry.wasteQuantity) : n(row.waste_quantity);
+    const priorActualQuantity = farmResultPriorMaterialActualQuantity(order, key, currentResultId, row.material_name || row.material_id);
+    const hasCurrentActual = resultQuantity > 0 || (entry.actualQuantity !== undefined && entry.actualQuantity !== "" && n(entry.actualQuantity) > 0);
+    const cumulativeActualQuantity = hasCurrentActual ? priorActualQuantity + actualQuantity : actualQuantity;
+    const pendingIssueQuantity = Math.max(0, issued - cumulativeActualQuantity - wasteQuantity);
     return {
       ...row,
       key,
-      actualQuantity: entry.actualQuantity !== undefined && entry.actualQuantity !== "" ? n(entry.actualQuantity) : defaultActual,
-      wasteQuantity: entry.wasteQuantity !== undefined && entry.wasteQuantity !== "" ? n(entry.wasteQuantity) : n(row.waste_quantity),
+      actualQuantity,
+      cumulativeActualQuantity,
+      wasteQuantity,
+      pendingIssueQuantity,
       unit_name: rowUnit || farmCleanUnitDisplay(row.unit_id) || "",
       note: farmResultCleanResourceNote(entry.note || row.note || ""),
     };
@@ -17064,9 +17083,10 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
   const wageTotal = workerLines.reduce((sum, row) => sum + row.wageAmount, 0);
   const payrollTotal = workerLines.reduce((sum, row) => sum + row.grossAmount, 0);
   const materialActualTotal = materialLines.reduce((sum, row) => sum + n(row.actualQuantity), 0);
+  const materialPendingTotal = materialLines.reduce((sum, row) => sum + n(row.pendingIssueQuantity), 0);
   const fuelIssueTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_issue_liter), 0);
   const machineHoursTotal = machineLines.reduce((sum, row) => sum + n(row.actual_hours || row.planned_hours), 0);
-  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, wageTotal, payrollTotal, workerCount, shareQuantity, shareWage, fullBagQuantity, roleSummary, materialActualTotal, fuelIssueTotal, machineHoursTotal };
+  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, wageTotal, payrollTotal, workerCount, shareQuantity, shareWage, fullBagQuantity, roleSummary, materialActualTotal, materialPendingTotal, fuelIssueTotal, machineHoursTotal };
 }
 
 function farmResultPayrollPeriodForDate(date) {
@@ -17416,11 +17436,11 @@ function renderFarmResultPanel() {
         <article class="farm-result-card farm-result-worker-card">
           <div class="section-head">
             <h3>วัสดุที่ใช้จริง</h3>
-            <span>กรอกใช้จริงและสูญเสีย/คืน เพื่อส่งต่อคลังและต้นทุน</span>
+            <span>ใช้ผลงานจริงเป็นยอดใช้จริง และคำนวณวัสดุรอเบิกจากยอดจ่ายคงเหลือ</span>
           </div>
           <div class="table-wrap farm-result-resource-wrap">
             <table class="mini-table farm-table farm-result-resource-table" data-no-export="true">
-              <thead><tr><th>วัสดุ</th><th>แผน/จ่าย</th><th>ใช้จริง</th><th>สูญเสีย/คืน</th><th>หน่วย</th><th>หมายเหตุ</th></tr></thead>
+              <thead><tr><th>วัสดุ</th><th>แผน/จ่าย</th><th>ใช้จริง</th><th>สูญเสีย/คืน</th><th>หน่วย</th><th>วัสดุรอเบิก</th></tr></thead>
               <tbody>
                 ${calc.materialLines.map((row) => `
                   <tr data-farm-result-material="${esc(row.key)}">
@@ -17429,10 +17449,10 @@ function renderFarmResultPanel() {
                     <td><input type="number" min="0" step="0.01" value="${esc(row.actualQuantity || "")}" data-farm-result-material-field="actualQuantity"></td>
                     <td><input type="number" min="0" step="0.01" value="${esc(row.wasteQuantity || "")}" data-farm-result-material-field="wasteQuantity"></td>
                     <td>${esc(farmCleanUnitDisplay(row.unit_name || row.unit_id || "-"))}</td>
-                    <td><input type="text" value="${esc(farmResultCleanResourceNote(row.note || ""))}" data-farm-result-material-field="note" placeholder="หมายเหตุ"></td>
+                    <td class="num"><strong>${moneyNf.format(n(row.pendingIssueQuantity))}</strong></td>
                   </tr>`).join("") || `<tr><td colspan="6">ยังไม่มีวัสดุในใบงาน</td></tr>`}
               </tbody>
-              <tfoot><tr><td>รวม</td><td></td><td class="num">${moneyNf.format(calc.materialActualTotal)}</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.wasteQuantity), 0))}</td><td colspan="2"></td></tr></tfoot>
+              <tfoot><tr><td>รวม</td><td></td><td class="num">${moneyNf.format(calc.materialActualTotal)}</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.wasteQuantity), 0))}</td><td></td><td class="num">${moneyNf.format(calc.materialPendingTotal)}</td></tr></tfoot>
             </table>
           </div>
         </article>
@@ -17783,7 +17803,7 @@ async function saveFarmResultEntry() {
         material_id: material.material_id,
         planned_quantity: Math.round(n(material.planned_quantity) * 1000) / 1000,
         issued_quantity: Math.round(n(material.issued_quantity) * 1000) / 1000,
-        actual_quantity: Math.round(n(material.actualQuantity) * 1000) / 1000,
+        actual_quantity: Math.round(n(material.cumulativeActualQuantity || material.actualQuantity) * 1000) / 1000,
         waste_quantity: Math.round(n(material.wasteQuantity) * 1000) / 1000,
         unit_id: material.unit_id || "",
         note: material.note || "",
@@ -17806,7 +17826,7 @@ async function saveFarmResultEntry() {
         cost_type: "material",
         amount: 0,
         status: "recorded",
-        quantity_snapshot: materialRow.actual_quantity,
+        quantity_snapshot: Math.round(n(material.actualQuantity) * 1000) / 1000,
         unit_snapshot: material.unit_name || material.unit_id || "",
         item_snapshot: material.material_name || material.material_id,
         updatedAt: now,

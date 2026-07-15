@@ -15111,7 +15111,7 @@ tfoot td,
   .farm-result-resource-table:not(.farm-result-machine-table) td:nth-child(3)::before { content: "ใช้จริง"; }
   .farm-result-resource-table:not(.farm-result-machine-table) td:nth-child(4)::before { content: "สูญเสีย"; }
   .farm-result-resource-table:not(.farm-result-machine-table) td:nth-child(5)::before { content: "หน่วย"; }
-  .farm-result-resource-table:not(.farm-result-machine-table) td:nth-child(6)::before { content: "หมายเหตุ"; }
+  .farm-result-resource-table:not(.farm-result-machine-table) td:nth-child(6)::before { content: "วัสดุรอเบิก"; }
   .farm-result-machine-table td:nth-child(2)::before { content: "ชม.จริง"; }
   .farm-result-machine-table td:nth-child(3)::before { content: "ชม.เริ่ม"; }
   .farm-result-machine-table td:nth-child(4)::before { content: "ชม.จบ"; }
