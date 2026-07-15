@@ -8609,7 +8609,7 @@ tfoot td {
 
 .farm-result-worker-tabs {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
   padding: 0 12px 9px;
 }
@@ -8650,7 +8650,7 @@ tfoot td {
 
 .farm-result-rate-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
   padding: 0 12px 9px;
 }
@@ -8728,7 +8728,8 @@ tfoot td {
 }
 
 .farm-result-worker-table {
-  min-width: 1160px;
+  min-width: 1360px;
+  table-layout: fixed;
 }
 
 .farm-result-worker-table th {
@@ -8743,7 +8744,8 @@ tfoot td {
 }
 
 .farm-result-worker-table td:first-child {
-  min-width: 170px;
+  width: 180px;
+  min-width: 180px;
 }
 
 .farm-result-worker-table td:first-child strong,
@@ -8787,10 +8789,54 @@ tfoot td {
 .farm-result-rate-tag {
   display: block;
   margin-top: 4px;
-  max-width: 96px;
+  max-width: 122px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.farm-result-worker-table th:nth-child(2),
+.farm-result-worker-table td:nth-child(2) {
+  width: 118px;
+}
+
+.farm-result-worker-table th:nth-child(3),
+.farm-result-worker-table td:nth-child(3) {
+  width: 94px;
+}
+
+.farm-result-worker-table th:nth-child(4),
+.farm-result-worker-table td:nth-child(4),
+.farm-result-worker-table th:nth-child(5),
+.farm-result-worker-table td:nth-child(5) {
+  width: 104px;
+}
+
+.farm-result-worker-table th:nth-child(6),
+.farm-result-worker-table td:nth-child(6),
+.farm-result-worker-table th:nth-child(7),
+.farm-result-worker-table td:nth-child(7),
+.farm-result-worker-table th:nth-child(8),
+.farm-result-worker-table td:nth-child(8),
+.farm-result-worker-table th:nth-child(9),
+.farm-result-worker-table td:nth-child(9),
+.farm-result-worker-table th:nth-child(10),
+.farm-result-worker-table td:nth-child(10) {
+  width: 92px;
+}
+
+.farm-result-worker-table th:nth-child(11),
+.farm-result-worker-table td:nth-child(11),
+.farm-result-worker-table th:nth-child(14),
+.farm-result-worker-table td:nth-child(14) {
+  width: 112px;
+}
+
+.farm-result-worker-table th:nth-child(12),
+.farm-result-worker-table td:nth-child(12),
+.farm-result-worker-table th:nth-child(13),
+.farm-result-worker-table td:nth-child(13) {
+  width: 96px;
 }
 
 .farm-result-worker-table input,
@@ -8806,7 +8852,8 @@ tfoot td {
 }
 
 .farm-result-worker-table input[type="number"] {
-  min-width: 76px;
+  width: 100%;
+  min-width: 72px;
 }
 
 .farm-result-worker-table tfoot td {
