@@ -13535,10 +13535,30 @@ function renderFarmWorkPlanner() {
   const selectedWorkerRefs = (budgetPicks.selectedWorkers || []).filter((value) => !String(value).startsWith("exclude:"));
   const selectedTeamIds = selectedWorkerRefs.filter((value) => value.startsWith("team:")).map((value) => value.slice(5));
   const selectedEmployeeIds = selectedWorkerRefs.filter((value) => value.startsWith("employee:")).map((value) => value.slice(9));
-  const previewTeam = teams.find((row) => selectedTeamIds.includes(row.id)) || teams[0];
+  const selectedMemberRows = teamMembers.filter((item) => selectedEmployeeIds.includes(String(item.employee_id || "")));
+  const inferredTeamIds = farmBudgetUnique(selectedMemberRows.map((item) => item.team_id).filter(Boolean));
+  const previewTeamIds = farmBudgetUnique([...selectedTeamIds, ...inferredTeamIds]);
+  const previewTeams = previewTeamIds
+    .map((id) => teams.find((row) => String(row.id) === String(id)))
+    .filter(Boolean);
+  const previewTeam = previewTeams[0] || null;
   const previewMembers = selectedEmployeeIds.length
-    ? selectedEmployeeIds.map((id) => ({ employee_id: id, member_role: farmLookup("employees", id)?.worker_type || "" }))
-    : teamMembers.filter((item) => item.team_id === previewTeam?.id).slice(0, 8);
+    ? selectedEmployeeIds.map((id) => {
+      const member = selectedMemberRows.find((item) => String(item.employee_id || "") === String(id)) || {};
+      const employee = farmLookup("employees", id) || {};
+      return {
+        ...member,
+        employee_id: id,
+        team_id: member.team_id || previewTeam?.id || "",
+        member_role: member.member_role || employee.worker_type || "",
+      };
+    })
+    : (previewTeamIds.length
+      ? teamMembers.filter((item) => previewTeamIds.includes(String(item.team_id || "")))
+      : []);
+  const previewTeamLabel = previewTeams.length
+    ? previewTeams.map((team) => team.team_name || team.team_code || farmRecordLabel(farmTableByKey("teams"), team)).filter(Boolean).join(", ")
+    : (selectedEmployeeIds.length ? "เลือกเป็นรายคน" : "-");
   const selectedBlocks = farmSelectedPlanningBlocks(budgetPicks);
   const totalRai = selectedBlocks.reduce((sum, row) => sum + n(row.area_rai), 0);
   const totalTrees = selectedBlocks.reduce((sum, row) => sum + n(row.tree_count), 0);
@@ -13620,7 +13640,7 @@ function renderFarmWorkPlanner() {
     : materialQuantity * materialRate;
   const totalCost = laborCost + materialCost;
   const plotCountText = `${fmt(selectedBlocks.length)} จาก ${fmt(blocks.length)} Block`;
-  const selectedWorkerCount = selectedWorkerRefs.length || previewMembers.length || (previewTeam ? 1 : 0);
+  const selectedWorkerCount = selectedEmployeeIds.length || previewMembers.length || selectedTeamIds.length || 0;
   const latestWorkOptions = workOrders.slice(0, 6).map((row) => {
     const label = [
       row.shortNo || farmShortWorkOrderNo(row),
@@ -13722,7 +13742,7 @@ function renderFarmWorkPlanner() {
           <dl>
             <dt>งาน</dt><dd>${esc(previewGroup?.group_name || "-")} / ${esc(previewActivity?.activity_name || "-")}</dd>
             <dt>พื้นที่</dt><dd>${esc(plotCountText)} · ${moneyNf.format(totalRai)} ไร่ · ${fmt(totalTrees)} ต้น</dd>
-            <dt>ทีม</dt><dd>${esc(previewTeam?.team_name || "-")} · ${fmt(previewMembers.length)} คน</dd>
+            <dt>ทีม</dt><dd>${esc(previewTeamLabel)} · ${fmt(previewMembers.length)} คน</dd>
             <dt>ช่วงวัน</dt><dd>${esc(displayDate(budgetPicks.startDate))} ถึง ${esc(displayDate(budgetPicks.endDate))}</dd>
             <dt>ทรัพยากร</dt><dd>วัสดุ ${fmt(selectedMaterials.length || rateMaterialUsageRows.length)} รายการ · รถ/เครื่องจักร ${fmt(selectedVehicles.length)} รายการ</dd>
             <dt>แบบตรวจงาน</dt><dd>${previewSurvey ? `${esc(previewSurvey.template_code || "")} · ${esc(previewSurvey.template_name || previewSurvey.file_name || "")} · ${fmt(previewSurveyQuestions.length)} ช่องตัวเลข` : "ไม่พบแบบตรวจที่ตรงกับกิจกรรม"}</dd>
@@ -19410,11 +19430,19 @@ function farmBudgetContractMaskLabel(row = {}) {
   return [activity, detail && detail !== "-" ? detail : ""].filter(Boolean).join(" - ");
 }
 
+function farmBudgetBahtRateLabel(row = {}) {
+  const amount = n(row.rate_amount);
+  const hasAmount = String(row.rate_amount ?? "").trim() !== "" && Number.isFinite(amount);
+  if (!hasAmount) return row.rate_text || "กำหนดภายหลัง";
+  const unit = farmBudgetRateUnitLabel(row.unit_name || row.uom || "");
+  return `${farmBudgetRateNumberLabel(amount)} บาท${unit ? `/${unit}` : ""}`;
+}
+
 function farmPlanBudgetRateOptionLabel(row = {}) {
   return [
     farmBudgetDisplayRateCode(row),
     row.activity_name || farmLookupLabel("activities", row.activity_id),
-    farmBudgetRateAmountLabel(row),
+    farmBudgetBahtRateLabel(row),
   ].filter(Boolean).join(" · ");
 }
 
