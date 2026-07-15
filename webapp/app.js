@@ -13506,9 +13506,22 @@ function renderFarmWorkPlanner() {
     && selectedBlocks.some((block) => farmRateMatchesBlock(row, block))
   );
   const planBudgetRates = matchingBudgetRates;
+  const savedBudgetRate = budgetRates.find((row) => row.id === budgetPicks.selectedBudgetRateId) || null;
+  const matchingSelectedBudgetRate = planBudgetRates.find((row) => row.id === budgetPicks.selectedBudgetRateId) || null;
   const autoBudgetRate = planBudgetRates[0] || {};
-  const selectedBudgetRate = planBudgetRates.find((row) => row.id === budgetPicks.selectedBudgetRateId) || autoBudgetRate;
-  budgetPicks.selectedBudgetRateId = selectedBudgetRate?.id || "";
+  const keepSavedBudgetRate = Boolean(state.farmWorkDetailId && savedBudgetRate?.id);
+  const selectedBudgetRate = keepSavedBudgetRate
+    ? savedBudgetRate
+    : (matchingSelectedBudgetRate || autoBudgetRate);
+  if (!keepSavedBudgetRate) budgetPicks.selectedBudgetRateId = selectedBudgetRate?.id || "";
+  const planBudgetRateOptions = selectedBudgetRate?.id
+    ? [selectedBudgetRate, ...planBudgetRates.filter((row) => row.id !== selectedBudgetRate.id)]
+    : planBudgetRates;
+  const selectedBudgetRateMatches = Boolean(selectedBudgetRate?.id
+    && previewActivity
+    && selectedBlocks.length
+    && farmRateMatchesActivity(selectedBudgetRate, previewActivity)
+    && selectedBlocks.some((block) => farmRateMatchesBlock(selectedBudgetRate, block)));
   const budgetMatchedBlocks = selectedBudgetRate?.id
     ? selectedBlocks.filter((block) => farmRateMatchesBlock(selectedBudgetRate, block))
     : [];
@@ -13518,6 +13531,9 @@ function renderFarmWorkPlanner() {
     selectedBlocks,
     matchingRates: matchingBudgetRates,
   });
+  const savedRateMatchWarning = selectedBudgetRate?.id && !selectedBudgetRateMatches
+    ? `ใช้ Rate ที่บันทึกไว้กับ Work Order (${farmBudgetDisplayRateCode(selectedBudgetRate)}) แต่ยังไม่พบความสัมพันธ์ Block/AP ตรงกับข้อมูลที่เลือก ระบบจึงคำนวณจาก Block ที่เลือกอยู่ก่อน`
+    : "";
   const laborBudgetRate = selectedBudgetRate?.id ? selectedBudgetRate : {};
   const materialBudgetRate = farmBestBudgetRateForPlan(budgetRates, previewActivity, selectedBlocks, ["material"]);
   const selectedMaterials = budgetPicks.selectedMaterials.length
@@ -13542,10 +13558,17 @@ function renderFarmWorkPlanner() {
   const materialQuantity = rateMaterialUsageRows.length
     ? rateMaterialUsageRows.reduce((sum, row) => sum + n(row.displayQuantity), 0)
     : selectedMaterials.length ? calculationBase * n(selectedUsageRate.usage_rate || 0) : 0;
-  const laborEstimate = selectedBudgetRate?.id ? farmBudgetRateCost(laborBudgetRate, budgetMatchedBlocks) : { quantity: 0, unit: "-", label: "-", rateAmount: 0, rateLabel: "-", amount: 0 };
+  const budgetBlocksForCalculation = selectedBudgetRate?.id
+    ? (budgetMatchedBlocks.length ? budgetMatchedBlocks : selectedBlocks)
+    : [];
+  const laborEstimate = selectedBudgetRate?.id ? farmBudgetRateCost(laborBudgetRate, budgetBlocksForCalculation) : { quantity: 0, unit: "-", label: "-", rateAmount: 0, rateLabel: "-", amount: 0 };
   const budgetCalculationWarning = selectedBudgetRate?.id && !laborEstimate.quantity
     ? `match แล้ว แต่ฐานคำนวณ ${laborEstimate.label || "ของอัตรา"} เป็น 0 จากข้อมูล Block ที่เลือก ให้ตรวจ area_rai / tree_count / planned_quantity ของ Block หรือปรับฐานเทียบในอัตรางบประมาณ`
     : "";
+  const budgetRateNotice = selectedBudgetRate?.id
+    ? (budgetCalculationWarning || savedRateMatchWarning || "คำนวณตามอัตรางบประมาณที่ match กับกิจกรรมและ Block/AP ที่เลือกเท่านั้น")
+    : budgetMismatchMessage;
+  const budgetRateNoticeOk = Boolean(selectedBudgetRate?.id && !budgetCalculationWarning && !savedRateMatchWarning);
   const materialRate = selectedMaterials.length ? n(materialBudgetRate?.rate_amount || 0) : 0;
   const laborCost = laborEstimate.amount;
   const materialCost = rateMaterialUsageRows.length
@@ -13629,8 +13652,8 @@ function renderFarmWorkPlanner() {
         </article>
         <article class="farm-plan-card farm-plan-method-card">
           <h4>3. วิธีคำนวณและทรัพยากร</h4>
-          <div class="farm-plan-resource-note ${selectedBudgetRate?.id && !budgetCalculationWarning ? "is-ok" : "is-warning"}">
-            <span>${selectedBudgetRate?.id ? esc(budgetCalculationWarning || "คำนวณตามอัตรางบประมาณที่ match กับกิจกรรมและ Block/AP ที่เลือกเท่านั้น") : esc(budgetMismatchMessage)}</span>
+          <div class="farm-plan-resource-note ${budgetRateNoticeOk ? "is-ok" : "is-warning"}">
+            <span>${esc(budgetRateNotice)}</span>
           </div>
           <div class="farm-plan-resource-summary">
             <span>วัสดุ ${fmt(selectedMaterials.length || rateMaterialUsageRows.length)} รายการ</span>
@@ -13640,8 +13663,8 @@ function renderFarmWorkPlanner() {
           </div>
           <label class="farm-plan-rate-select">อัตรางบประมาณ
             <select id="farmPlanBudgetRate">
-              ${planBudgetRates.length
-                ? planBudgetRates.map((row) => `<option value="${esc(row.id)}"${row.id === selectedBudgetRate?.id ? " selected" : ""}>${esc(farmPlanBudgetRateOptionLabel(row))}</option>`).join("")
+              ${planBudgetRateOptions.length
+                ? planBudgetRateOptions.map((row) => `<option value="${esc(row.id)}"${row.id === selectedBudgetRate?.id ? " selected" : ""}>${esc(farmPlanBudgetRateOptionLabel(row))}</option>`).join("")
                 : `<option value="">ยังไม่มีอัตราที่ตรงกับ Block และกิจกรรม</option>`}
             </select>
           </label>
@@ -13726,7 +13749,8 @@ async function createFarmWorkPlanFromSelection() {
           const survey = farmSurveyForActivity(activity);
           const activeRates = budgetRates.filter((rate) => String(rate.status || "active").toLowerCase() !== "inactive");
           const ratePool = activeRates.filter((rate) => farmRateMatchesActivity(rate, activity) && farmRateMatchesBlock(rate, block));
-          const selectedRate = activeRates.find((rate) => rate.id === picks.selectedBudgetRateId && farmRateMatchesActivity(rate, activity) && farmRateMatchesBlock(rate, block))
+          const explicitRate = activeRates.find((rate) => rate.id === picks.selectedBudgetRateId);
+          const selectedRate = (explicitRate?.id && farmRateMatchesActivity(explicitRate, activity) ? explicitRate : null)
             || ratePool[0];
           if (!selectedRate?.id) {
             throw new Error(farmPlanBudgetMatchMessage({ activeRates, activity, selectedBlocks: [block], matchingRates: ratePool }));
@@ -13885,7 +13909,8 @@ async function saveFarmWorkPlanEditFromSelection() {
           const occurrenceNo = scheduledDates.indexOf(scheduledDate) + 1;
           const activeRates = budgetRates.filter((rate) => String(rate.status || "active").toLowerCase() !== "inactive");
           const ratePool = activeRates.filter((rate) => farmRateMatchesActivity(rate, activity) && farmRateMatchesBlock(rate, block));
-          const selectedRate = activeRates.find((rate) => rate.id === picks.selectedBudgetRateId && farmRateMatchesActivity(rate, activity) && farmRateMatchesBlock(rate, block))
+          const explicitRate = activeRates.find((rate) => rate.id === picks.selectedBudgetRateId);
+          const selectedRate = (explicitRate?.id && farmRateMatchesActivity(explicitRate, activity) ? explicitRate : null)
             || ratePool[0];
           if (!selectedRate?.id) throw new Error(farmPlanBudgetMatchMessage({ activeRates, activity, selectedBlocks: [block], matchingRates: ratePool }));
           const estimate = farmBudgetRateCost(selectedRate, [block]);
