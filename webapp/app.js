@@ -3692,6 +3692,14 @@ function farmWorkOrderDispatchRangeFromNote(note = "") {
   return { startDate: isoDay(match[1]), endDate: isoDay(match[2]) };
 }
 
+function farmWorkOrderBudgetRateCodeFromNote(note = "") {
+  const text = String(note || "");
+  const direct = text.match(/(?:rate|rate_code|budget_rate)\s*:\s*([A-Z]{1,3}\d{2,4}(?:-[A-Z0-9]+){1,4})/i);
+  if (direct?.[1]) return direct[1].toUpperCase();
+  const fallback = text.match(/\b(R\d{2,4}-[A-Z0-9]{2,12}-\d{1,5})\b/i);
+  return fallback?.[1] ? fallback[1].toUpperCase() : "";
+}
+
 function farmWorkOrderNoteWithPlanRange(note = "", startDate = "", endDate = "") {
   const start = isoDay(startDate);
   const end = isoDay(endDate) || start;
@@ -12820,10 +12828,46 @@ function farmResolveBlockIdForPlanner(order = {}) {
   return match?.id || rawValues[0] || "";
 }
 
+function farmBudgetRateIdentityValues(rate = {}) {
+  return [
+    rate.id,
+    rate.rate_code,
+    rate.budget_rate_code,
+    rate.external_contract_no,
+    rate.contract_no,
+    rate.contract_code,
+    rate.contract_mask,
+    rate.code,
+    farmBudgetDisplayRateCode(rate),
+  ].filter(Boolean);
+}
+
+function farmFindBudgetRateForWorkOrder(order = {}) {
+  const rates = farmRowsByKey("budget_activity_rates");
+  const directId = String(order.budget_rate_id || "").trim();
+  if (directId) {
+    const byId = rates.find((row) => String(row.id || "") === directId);
+    if (byId) return byId;
+  }
+  const codes = farmBudgetUnique([
+    order.rate_code,
+    order.budget_rate_code,
+    order.external_contract_no,
+    order.contract_no,
+    order.contract_code,
+    farmWorkOrderBudgetRateCodeFromNote(order.note),
+  ].filter(Boolean).map((value) => String(value).trim().toUpperCase()));
+  if (!codes.length) return null;
+  return rates.find((row) => {
+    const identities = farmBudgetRateIdentityValues(row).map((value) => String(value).trim().toUpperCase());
+    return identities.some((value) => codes.includes(value));
+  }) || null;
+}
+
 function syncFarmWorkOrderToPlanner(order = {}) {
   if (!order?.id) return;
   const picks = farmWorkPlanState();
-  const rate = order.budget_rate_id ? farmRowsByKey("budget_activity_rates").find((row) => String(row.id) === String(order.budget_rate_id)) : null;
+  const rate = farmFindBudgetRateForWorkOrder(order);
   const blockId = farmResolveBlockIdForPlanner(order);
   const activityId = order.activity?.id || order.activity_id || "";
   const rateBlockIds = rate ? farmBudgetRateRelations("budget_rate_blocks", rate).map(farmBudgetMapBlockRelationSelection).filter(Boolean) : [];
@@ -12850,7 +12894,7 @@ function syncFarmWorkOrderToPlanner(order = {}) {
   ]);
   picks.selectedVehicles = farmBudgetUnique(orderMachines.map((row) => row.vehicle_id).filter(Boolean));
   picks.selectedWorkers = farmBudgetUnique([...explicitWorkerSelections, ...fallbackWorkerSelections].filter(Boolean));
-  picks.selectedBudgetRateId = order.budget_rate_id || picks.selectedBudgetRateId || "";
+  picks.selectedBudgetRateId = rate?.id || order.budget_rate_id || "";
   picks.startDate = order.planned_start_date || order.scheduled_date || order.startDate || picks.startDate || farmToday();
   picks.endDate = order.planned_end_date || order.rescheduled_date || order.endDate || picks.startDate;
   picks.workMode = order.repeat_mode && order.repeat_mode !== "none" ? "repeat" : "single";
