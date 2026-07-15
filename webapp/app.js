@@ -16559,18 +16559,47 @@ function farmResultWorkerDailyWage(worker = {}) {
 
 function farmResultMaterialLines(order) {
   const draftEntries = state.farmResultDraft?.materialEntries || {};
+  const draft = farmResultDraftState(order);
+  const resultQuantity = n(draft.actualQuantity);
+  const resultUnit = farmCleanUnitDisplay(draft.actualUnit || "");
+  const resultUnitKey = farmNormalizeKey(resultUnit);
   return farmDispatchMaterialCandidates(order).map((row) => {
     const key = row.material_id;
     const entry = draftEntries[key] || {};
     const issued = n(row.issued_quantity || row.planned_quantity);
+    const rowUnit = farmCleanUnitDisplay(row.unit_name || row.unit_id || "");
+    const rowUnitKey = farmNormalizeKey(rowUnit);
+    const sameResultUnit = resultQuantity > 0 && (!resultUnitKey || !rowUnitKey || resultUnitKey === rowUnitKey
+      || (farmResultUnitIsBag(resultUnit) && farmResultUnitIsBag(rowUnit))
+      || (farmResultUnitIsKg(resultUnit) && farmResultUnitIsKg(rowUnit)));
+    const defaultActual = n(row.actual_quantity) || (sameResultUnit ? resultQuantity : 0) || issued;
     return {
       ...row,
       key,
-      actualQuantity: entry.actualQuantity !== undefined && entry.actualQuantity !== "" ? n(entry.actualQuantity) : n(row.actual_quantity) || issued,
+      actualQuantity: entry.actualQuantity !== undefined && entry.actualQuantity !== "" ? n(entry.actualQuantity) : defaultActual,
       wasteQuantity: entry.wasteQuantity !== undefined && entry.wasteQuantity !== "" ? n(entry.wasteQuantity) : n(row.waste_quantity),
-      note: entry.note || row.note || "",
+      unit_name: rowUnit || farmCleanUnitDisplay(row.unit_id) || "",
+      note: farmResultCleanResourceNote(entry.note || row.note || ""),
     };
   });
+}
+
+function farmResultCleanResourceNote(value = "") {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return "";
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text)) return "";
+  if (/^\s*[\[{]/.test(text)) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return String(parsed.note || parsed.remark || parsed.issue_note || parsed.document_no || "").trim();
+      }
+      return "";
+    } catch {
+      return "";
+    }
+  }
+  return text;
 }
 
 function farmResultMachineLines(order) {
@@ -17339,7 +17368,7 @@ function renderFarmResultPanel() {
           <button type="button" data-farm-result-clear-worker>ล้างแก้ไขแท็บนี้</button>
         </div>
         <div class="table-wrap farm-result-worker-wrap">
-          <table class="mini-table farm-table farm-result-worker-table">
+          <table class="mini-table farm-table farm-result-worker-table" data-no-export="true">
             <thead>
               <tr>
                 <th>คนงาน</th>
@@ -17390,17 +17419,17 @@ function renderFarmResultPanel() {
             <span>กรอกใช้จริงและสูญเสีย/คืน เพื่อส่งต่อคลังและต้นทุน</span>
           </div>
           <div class="table-wrap farm-result-resource-wrap">
-            <table class="mini-table farm-table farm-result-resource-table">
+            <table class="mini-table farm-table farm-result-resource-table" data-no-export="true">
               <thead><tr><th>วัสดุ</th><th>แผน/จ่าย</th><th>ใช้จริง</th><th>สูญเสีย/คืน</th><th>หน่วย</th><th>หมายเหตุ</th></tr></thead>
               <tbody>
                 ${calc.materialLines.map((row) => `
                   <tr data-farm-result-material="${esc(row.key)}">
-                    <td><strong>${esc(row.material_name || row.material_id)}</strong><small>${esc(row.material_id || "")}</small></td>
+                    <td><strong>${esc(row.material_name || row.material_id)}</strong></td>
                     <td class="num">${moneyNf.format(n(row.planned_quantity))} / ${moneyNf.format(n(row.issued_quantity))}</td>
                     <td><input type="number" min="0" step="0.01" value="${esc(row.actualQuantity || "")}" data-farm-result-material-field="actualQuantity"></td>
                     <td><input type="number" min="0" step="0.01" value="${esc(row.wasteQuantity || "")}" data-farm-result-material-field="wasteQuantity"></td>
-                    <td>${esc(row.unit_name || row.unit_id || "-")}</td>
-                    <td><input type="text" value="${esc(row.note || "")}" data-farm-result-material-field="note" placeholder="หมายเหตุ"></td>
+                    <td>${esc(farmCleanUnitDisplay(row.unit_name || row.unit_id || "-"))}</td>
+                    <td><input type="text" value="${esc(farmResultCleanResourceNote(row.note || ""))}" data-farm-result-material-field="note" placeholder="หมายเหตุ"></td>
                   </tr>`).join("") || `<tr><td colspan="6">ยังไม่มีวัสดุในใบงาน</td></tr>`}
               </tbody>
               <tfoot><tr><td>รวม</td><td></td><td class="num">${moneyNf.format(calc.materialActualTotal)}</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.wasteQuantity), 0))}</td><td colspan="2"></td></tr></tfoot>
@@ -17413,7 +17442,7 @@ function renderFarmResultPanel() {
             <span>บันทึกชั่วโมง กม. และน้ำมันที่ใช้จริงจากงานนี้</span>
           </div>
           <div class="table-wrap farm-result-resource-wrap">
-            <table class="mini-table farm-table farm-result-resource-table farm-result-machine-table">
+            <table class="mini-table farm-table farm-result-resource-table farm-result-machine-table" data-no-export="true">
               <thead><tr><th>รถ/เครื่องจักร</th><th>คนขับ</th><th>ชม.จริง</th><th>ชม.เริ่ม</th><th>ชม.จบ</th><th>กม.เริ่ม</th><th>กม.จบ</th><th>น้ำมันเบิก</th><th>น้ำมันคงเหลือ</th><th>หมายเหตุ</th></tr></thead>
               <tbody>
                 ${calc.machineLines.map((row) => `

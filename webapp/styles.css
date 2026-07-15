@@ -8604,23 +8604,23 @@ tfoot td {
 }
 
 .farm-result-worker-card > .section-head {
-  padding-top: 12px;
+  padding-top: 10px;
 }
 
 .farm-result-worker-tabs {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
-  padding: 0 12px 9px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px;
+  padding: 0 10px 6px;
 }
 
 .farm-result-worker-tabs button {
   display: grid;
-  gap: 3px;
-  min-height: 48px;
+  gap: 2px;
+  min-height: 40px;
   border: 1px solid #dbe5f2;
-  border-radius: 10px;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 6px 8px;
   background: #fff;
   color: var(--muted);
   text-align: left;
@@ -8650,9 +8650,9 @@ tfoot td {
 
 .farm-result-rate-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
-  padding: 0 12px 9px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px;
+  padding: 0 10px 6px;
 }
 
 .farm-result-rate-card {
@@ -8661,7 +8661,7 @@ tfoot td {
   min-width: 0;
   border: 1px solid #dbe7f3;
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   background: #f8fbff;
 }
 
@@ -8702,7 +8702,7 @@ tfoot td {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .farm-result-worker-tools span {
