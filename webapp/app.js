@@ -12482,25 +12482,66 @@ function farmWorkStatusFilterMatches(row = {}, selectedStatus = "all") {
   return false;
 }
 
+function farmWorkOrderQueryText(row = {}) {
+  const zoneOption = farmWorkTextOption(row, "zone");
+  const plotGroupOption = farmWorkTextOption(row, "plotGroup");
+  return [
+    ...farmWorkOrderSearchAliases(row),
+    row.id,
+    row.shortNo,
+    farmShortWorkOrderNo(row),
+    row.work_order_no,
+    row.work_order_title,
+    row.plot?.plot_code,
+    row.plot?.plot_name,
+    row.block?.block_code,
+    row.block?.block_name,
+    row.block?.zone_name,
+    row.block?.zone,
+    row.block?.plot_group_code,
+    row.block?.plot_group,
+    zoneOption.label,
+    plotGroupOption.label,
+    row.block?.ap_code || row.block?.AP_code,
+    row.activity?.activity_name,
+    row.team?.team_name,
+    row.zone?.zone_name,
+    row.plotGroup?.group_name,
+    row.reschedule_reason,
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function farmWorkOrderQueryMatches(row = {}, query = "") {
+  const q = String(query || "").trim().toLowerCase();
+  return !q || farmWorkOrderQueryText(row).includes(q);
+}
+
 function filteredFarmWorkOrders() {
   const f = state.farmWorkFilters;
   const query = f.query.trim().toLowerCase();
   return farmWorkOrders().filter((row) => {
     const zoneOption = farmWorkTextOption(row, "zone");
     const plotGroupOption = farmWorkTextOption(row, "plotGroup");
-    const text = [...farmWorkOrderSearchAliases(row), row.shortNo, row.work_order_no, row.work_order_title, row.plot?.plot_code, row.plot?.plot_name, row.block?.block_code, row.block?.block_name, row.block?.zone_name, row.block?.zone, row.block?.plot_group_code, row.block?.plot_group, zoneOption.label, plotGroupOption.label, row.block?.ap_code || row.block?.AP_code, row.activity?.activity_name, row.team?.team_name, row.zone?.zone_name, row.plotGroup?.group_name, row.reschedule_reason].join(" ").toLowerCase();
     return (f.activityGroup === "all" || row.activityGroup?.id === f.activityGroup)
       && (f.team === "all" || row.team?.id === f.team)
       && (f.zone === "all" || zoneOption.value === f.zone || row.zone?.id === f.zone)
       && (f.plotGroup === "all" || plotGroupOption.value === f.plotGroup || row.plotGroup?.id === f.plotGroup)
       && farmWorkStatusFilterMatches(row, f.status)
       && farmWorkDateRangeMatches(row, f.startDate, f.endDate)
-      && (!query || text.includes(query));
+      && farmWorkOrderQueryMatches(row, query);
   });
 }
 
 function farmWorkRowsForTimeline() {
   const filtered = filteredFarmWorkOrders();
+  const query = String(state.farmWorkFilters?.query || "").trim();
+  if (query && !filtered.length) {
+    const queryRows = farmWorkOrders().filter((row) => farmWorkOrderQueryMatches(row, query)
+      && farmWorkStatusFilterMatches(row, state.farmWorkFilters.status)
+      && (state.farmWorkFilters.activityGroup === "all" || row.activityGroup?.id === state.farmWorkFilters.activityGroup)
+      && (state.farmWorkFilters.team === "all" || row.team?.id === state.farmWorkFilters.team));
+    if (queryRows.length) return queryRows;
+  }
   const selectedId = state.farmWorkDetailId || farmWorkPlanState().referenceOrderId || "";
   if (!selectedId || filtered.some((row) => row.id === selectedId)) return filtered;
   const selected = farmWorkOrders().find((row) => row.id === selectedId);
@@ -12622,6 +12663,31 @@ function farmWorkTimelineRange(rows = []) {
   if (!dates.length) return { minStart: farmToday(), maxEnd: farmToday() };
   dates.sort((a, b) => farmDateMs(a) - farmDateMs(b));
   return { minStart: dates[0], maxEnd: dates.at(-1) };
+}
+
+function farmWorkOrderExactQueryMatches(row = {}, query = "") {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return false;
+  return [row.id, row.shortNo, farmShortWorkOrderNo(row), row.work_order_no, ...farmWorkOrderSearchAliases(row)]
+    .filter(Boolean)
+    .some((value) => String(value).trim().toLowerCase() === q);
+}
+
+function farmWorkTimelineFocusedRows(rows = [], filters = {}) {
+  const query = String(filters?.query || "").trim();
+  if (!query || !rows.length) return [];
+  const exactRows = rows.filter((row) => farmWorkOrderExactQueryMatches(row, query));
+  if (exactRows.length) return exactRows;
+  return rows.length <= 5 ? rows : [];
+}
+
+function farmWorkTimelineSegmentBounds(segment = {}, timelineStart = "", dayCount = 0) {
+  const rawStart = farmDaysBetween(timelineStart, segment.start || timelineStart);
+  const rawEnd = farmDaysBetween(timelineStart, segment.end || segment.start || timelineStart);
+  if (rawEnd < 0 || rawStart >= dayCount) return null;
+  const startIndex = Math.max(0, rawStart);
+  const endIndex = Math.min(dayCount - 1, rawEnd);
+  return { startIndex, span: Math.max(1, endIndex - startIndex + 1) };
 }
 
 function farmWorkGroupKey(row) {
@@ -17953,11 +18019,13 @@ function renderFarmWorkBoard(options = {}) {
     || allRows[0]
     || null;
   if (!state.farmWorkDetailId && selected?.id) state.farmWorkDetailId = selected.id;
-  const { minStart, maxEnd } = farmWorkTimelineRange(rows);
+  const focusedRangeRows = farmWorkTimelineFocusedRows(rows, state.farmWorkFilters);
+  const rangeRows = focusedRangeRows.length ? focusedRangeRows : rows;
+  const { minStart, maxEnd } = farmWorkTimelineRange(rangeRows);
   const filterStart = isoDay(state.farmWorkFilters.startDate);
   const filterEnd = isoDay(state.farmWorkFilters.endDate);
-  const timelineStart = filterStart || farmAddDays(minStart, -2) || farmToday();
-  const timelineEnd = filterEnd || farmAddDays(maxEnd, 3) || farmAddDays(timelineStart, compact ? 59 : 29);
+  const timelineStart = focusedRangeRows.length ? (farmAddDays(minStart, -2) || filterStart || farmToday()) : (filterStart || farmAddDays(minStart, -2) || farmToday());
+  const timelineEnd = focusedRangeRows.length ? (farmAddDays(maxEnd, 3) || filterEnd || farmAddDays(timelineStart, compact ? 59 : 29)) : (filterEnd || farmAddDays(maxEnd, 3) || farmAddDays(timelineStart, compact ? 59 : 29));
   const maxDays = Math.min(180, Math.max(compact ? 60 : 30, farmDaysBetween(timelineStart, timelineEnd) + 1));
   const days = Array.from({ length: maxDays }, (_, index) => farmAddDays(timelineStart, index));
   const dayWidth = compact ? 24 : 30;
@@ -18066,19 +18134,25 @@ function renderFarmWorkBoard(options = {}) {
               const row = item.row;
               const segments = farmWorkTimelineSegments(row);
               const planSegment = segments.find((segment) => segment.type === "planned");
-              const startIndex = Math.max(0, farmDaysBetween(timelineStart, planSegment?.start || row.startDate || timelineStart));
-              const span = Math.max(1, farmDaysBetween(planSegment?.start || row.startDate || timelineStart, planSegment?.end || row.endDate || row.startDate || timelineStart) + 1);
-              const approvedIndex = row.approved_at ? Math.max(0, farmDaysBetween(timelineStart, row.approved_at)) : -1;
-              const closedIndex = row.closed_at ? Math.max(0, farmDaysBetween(timelineStart, row.closed_at)) : -1;
+              const planBounds = farmWorkTimelineSegmentBounds({
+                start: planSegment?.start || row.startDate || timelineStart,
+                end: planSegment?.end || row.endDate || row.startDate || timelineStart,
+              }, timelineStart, days.length) || { startIndex: 0, span: 1 };
+              const startIndex = planBounds.startIndex;
+              const span = planBounds.span;
+              const approvedRawIndex = row.approved_at ? farmDaysBetween(timelineStart, row.approved_at) : -1;
+              const closedRawIndex = row.closed_at ? farmDaysBetween(timelineStart, row.closed_at) : -1;
+              const approvedIndex = approvedRawIndex >= 0 && approvedRawIndex < days.length ? approvedRawIndex : -1;
+              const closedIndex = closedRawIndex >= 0 && closedRawIndex < days.length ? closedRawIndex : -1;
               const needsApproval = row.statusMeta.key === "pending_approval";
               const activityText = farmShortActivityText(row);
               const blockText = farmShortBlockText(row);
               const teamText = row.team?.team_name || farmLookupLabel("teams", row.team_id) || "-";
               const segmentBars = segments.map((segment) => {
-                const segmentStartIndex = Math.max(0, farmDaysBetween(timelineStart, segment.start || timelineStart));
-                const segmentSpan = Math.max(1, farmDaysBetween(segment.start || timelineStart, segment.end || segment.start || timelineStart) + 1);
+                const bounds = farmWorkTimelineSegmentBounds(segment, timelineStart, days.length);
+                if (!bounds) return "";
                 const barClass = segment.type === "actual" ? "farm-work-actual-bar" : "farm-work-plan-bar";
-                return `<button class="${barClass} ${esc(segment.className)}" type="button" data-farm-work-detail="${esc(row.id)}" title="${esc(segment.title)}" style="left:${segmentStartIndex * dayWidth}px;width:${Math.max(dayWidth, segmentSpan * dayWidth)}px"><span>${esc(segment.label)}</span></button>`;
+                return `<button class="${barClass} ${esc(segment.className)}" type="button" data-farm-work-detail="${esc(row.id)}" title="${esc(segment.title)}" style="left:${bounds.startIndex * dayWidth}px;width:${Math.max(dayWidth, bounds.span * dayWidth)}px"><span>${esc(segment.label)}</span></button>`;
               }).join("");
               return `
                 <div class="farm-work-row status-${esc(row.statusMeta.key)}${selected?.id === row.id ? " active" : ""}" data-farm-work-detail="${esc(row.id)}">
