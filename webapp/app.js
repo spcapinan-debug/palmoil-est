@@ -12829,6 +12829,31 @@ function farmLooksUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 }
 
+function farmDbUuidOrEmpty(value) {
+  return farmLooksUuid(value) ? String(value).toLowerCase() : "";
+}
+
+function farmResultDbUuidRefs(row, keys = []) {
+  const out = { ...row };
+  keys.forEach((key) => {
+    out[key] = farmDbUuidOrEmpty(out[key]);
+  });
+  return out;
+}
+
+function farmResultCostDbRow(row) {
+  return farmResultDbUuidRefs(row, [
+    "estate_id",
+    "plot_id",
+    "block_id",
+    "activity_id",
+    "work_order_id",
+    "work_result_id",
+    "source_id",
+    "vehicle_id",
+  ]);
+}
+
 function farmShortActivityText(row) {
   const workTitle = row?.work_order_title || "";
   const activityName = row?.activity?.activity_name || farmLookupLabel("activities", row?.activity_id) || "";
@@ -13401,6 +13426,37 @@ function farmNewUuid() {
   return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
     (Number(c) ^ Math.random() * 16 >> Number(c) / 4).toString(16)
   );
+}
+
+function farmHashHex8(input = "", seed = 0x811c9dc5) {
+  let hash = seed >>> 0;
+  const text = String(input || "empty");
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function farmStableUuid(value = "") {
+  const raw = String(value || "empty").trim() || "empty";
+  if (farmLooksUuid(raw)) return raw.toLowerCase();
+  const a = farmHashHex8(`a:${raw}`, 0x811c9dc5);
+  const b = farmHashHex8(`b:${raw}`, 0x9e3779b9);
+  const c = farmHashHex8(`c:${raw}`, 0x85ebca6b);
+  const d = farmHashHex8(`d:${raw}`, 0xc2b2ae35);
+  const hex = `${a}${b}${c}${d}`.padEnd(32, "0").slice(0, 32);
+  const variant = ((parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80).toString(16).padStart(2, "0");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(18, 20)}-${hex.slice(20, 32)}`;
+}
+
+function farmStableChildId(prefix, ...parts) {
+  return farmStableUuid([prefix, ...parts].map((part) => String(part ?? "")).join(":"));
+}
+
+function farmResultIdForOrderDate(orderId, resultDate) {
+  const day = isoDay(resultDate) || String(resultDate || "");
+  return farmStableChildId("work_results", orderId || "", day);
 }
 
 function farmWorkOrderChildUuid(tableKey, matcher) {
@@ -16482,13 +16538,45 @@ function farmResultDraftState(order = farmResultSelectedOrder()) {
   const activity = order?.activity || {};
   const rate = farmResultRateForOrder(order);
   const basis = rate?.comparison_basis || "";
-  if (!draft.resultDate) draft.resultDate = farmToday();
+  if (!draft.resultDate) draft.resultDate = farmResultDefaultDate(order);
+  draft.surveyAnswers = draft.surveyAnswers || {};
+  if (!draft.surveyAnswers.POSTING_DATE) draft.surveyAnswers.POSTING_DATE = draft.resultDate;
   if (!draft.actualUnit) {
     draft.actualUnit = basis === "bag_count" ? "กระสอบ"
       : basis === "weight_ton" || activity.work_type === "harvest" ? "กก."
         : activity.default_unit || "หน่วย";
   }
   return draft;
+}
+
+function farmResultDefaultDate(order = farmResultSelectedOrder()) {
+  const workOrderId = String(order?.id || "");
+  const materialRows = farmRowsByKey("work_order_materials").filter((row) => String(row.work_order_id || "") === workOrderId);
+  const issueDate = materialRows
+    .map((row) => isoDay(row.issue_date || row.issued_date || row.issued_at || row.issueDate || row.document_date || row.doc_date || row.dispatch_date || row.issue_document_date))
+    .filter(Boolean)
+    .sort()[0];
+  return issueDate
+    || isoDay(order?.dispatch_start_date || order?.dispatch_date || order?.scheduled_date || order?.planned_start_date || order?.start_date)
+    || farmToday();
+}
+
+function farmResultBlankDraft(order = farmResultSelectedOrder()) {
+  const resultDate = farmResultDefaultDate(order);
+  return {
+    resultDate,
+    ticketText: "",
+    actualQuantity: "",
+    actualUnit: "",
+    qualityScore: "",
+    surveyStatus: "pending",
+    surveyNote: "",
+    note: "",
+    surveyAnswers: { POSTING_DATE: resultDate },
+    workerEntries: {},
+    materialEntries: {},
+    machineEntries: {},
+  };
 }
 
 function farmResultWorkers(order) {
@@ -16557,16 +16645,18 @@ function farmResultWorkerDailyWage(worker = {}) {
   return workerRate >= 20 ? workerRate : 0;
 }
 
-function farmResultPriorMaterialActualQuantity(order, materialId, currentResultId, materialName = "") {
+function farmResultPriorMaterialActualQuantity(order, materialId, currentResultId, materialName = "", resultDate = "") {
   const workOrderId = String(order?.id || "");
   const key = String(materialId || "");
   if (!workOrderId || !key) return 0;
-  const currentCostId = `cost-material-${currentResultId}-${key}`.slice(0, 180);
+  const currentCostId = farmStableChildId("cost_entries", "material", workOrderId, resultDate || currentResultId, key);
+  const legacyResultId = resultDate ? `result-${workOrderId}-${resultDate}`.slice(0, 180) : "";
+  const legacyCurrentCostId = legacyResultId ? `cost-material-${legacyResultId}-${key}`.slice(0, 180) : "";
   return farmRowsByKey("cost_entries").reduce((sum, row) => {
     if (String(row.work_order_id || "") !== workOrderId) return sum;
     if (String(row.cost_type || "").toLowerCase() !== "material") return sum;
     const rowId = String(row.id || "");
-    if (rowId === currentCostId) return sum;
+    if (rowId === currentCostId || rowId === legacyCurrentCostId) return sum;
     const sameMaterial = rowId.includes(`-${key}`)
       || (materialName && String(row.item_snapshot || "") === String(materialName));
     return sameMaterial ? sum + n(row.quantity_snapshot) : sum;
@@ -16577,7 +16667,8 @@ function farmResultMaterialLines(order) {
   const draftEntries = state.farmResultDraft?.materialEntries || {};
   const draft = farmResultDraftState(order);
   const resultQuantity = n(draft.actualQuantity);
-  const currentResultId = `result-${order?.id || ""}-${draft.resultDate || farmToday()}`.slice(0, 180);
+  const resultDate = draft.resultDate || farmResultDefaultDate(order);
+  const currentResultId = farmResultIdForOrderDate(order?.id, resultDate);
   return farmDispatchMaterialCandidates(order).map((row) => {
     const key = row.material_id;
     const entry = draftEntries[key] || {};
@@ -16586,7 +16677,7 @@ function farmResultMaterialLines(order) {
     const defaultActual = resultQuantity || n(row.actual_quantity) || issued;
     const actualQuantity = resultQuantity || (entry.actualQuantity !== undefined && entry.actualQuantity !== "" ? n(entry.actualQuantity) : defaultActual);
     const wasteQuantity = entry.wasteQuantity !== undefined && entry.wasteQuantity !== "" ? n(entry.wasteQuantity) : n(row.waste_quantity);
-    const priorActualQuantity = farmResultPriorMaterialActualQuantity(order, key, currentResultId, row.material_name || row.material_id);
+    const priorActualQuantity = farmResultPriorMaterialActualQuantity(order, key, currentResultId, row.material_name || row.material_id, resultDate);
     const hasCurrentActual = resultQuantity > 0 || (entry.actualQuantity !== undefined && entry.actualQuantity !== "" && n(entry.actualQuantity) > 0);
     const cumulativeActualQuantity = hasCurrentActual ? priorActualQuantity + actualQuantity : actualQuantity;
     const pendingIssueQuantity = Math.max(0, issued - cumulativeActualQuantity - wasteQuantity);
@@ -17090,11 +17181,13 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
 }
 
 function farmResultPayrollPeriodForDate(date) {
+  const safeDate = isoDay(date) || farmToday();
+  const month = safeDate.slice(0, 7);
   const periods = farmRowsByKey("payroll_periods");
-  return periods.find((row) => (!row.start_date || row.start_date <= date) && (!row.end_date || row.end_date >= date))
+  return periods.find((row) => (!row.start_date || row.start_date <= safeDate) && (!row.end_date || row.end_date >= safeDate))
     || periods.find((row) => String(row.status || "").toLowerCase() === "open")
     || periods[0]
-    || { id: `pay-period-${date.slice(0, 7)}`, period_code: `PAY-${date.slice(0, 7)}`, period_name: `งวดค่าแรง ${date.slice(0, 7)}`, start_date: `${date.slice(0, 7)}-01`, end_date: date, status: "open" };
+    || { id: farmStableChildId("payroll_periods", month), period_code: `PAY-${month}`, period_name: `งวดค่าแรง ${month}`, start_date: `${month}-01`, end_date: safeDate, status: "open" };
 }
 
 function renderFarmSurveyChoiceControl(question, draft) {
@@ -17510,16 +17603,21 @@ function renderFarmResultPanel() {
 }
 
 function syncFarmResultDraftFromForm() {
+  const order = farmResultSelectedOrder();
   const workerEntries = state.farmResultDraft?.workerEntries || {};
   const materialEntries = state.farmResultDraft?.materialEntries || {};
   const machineEntries = state.farmResultDraft?.machineEntries || {};
-  const surveyAnswers = {};
+  const previousResultDate = isoDay(state.farmResultDraft?.resultDate) || "";
+  const resultDate = dateValue(document.querySelector("#farmResultDate")) || state.farmResultDraft?.resultDate || farmResultDefaultDate(order);
+  const surveyAnswers = { ...(state.farmResultDraft?.surveyAnswers || {}) };
   document.querySelectorAll("[data-farm-survey-answer]").forEach((input) => {
     if ((input.type === "radio" || input.type === "checkbox") && !input.checked) return;
     surveyAnswers[input.dataset.farmSurveyAnswer] = input.value;
   });
+  const postingDate = isoDay(surveyAnswers.POSTING_DATE) || surveyAnswers.POSTING_DATE || "";
+  if (!surveyAnswers.POSTING_DATE || postingDate === previousResultDate) surveyAnswers.POSTING_DATE = resultDate;
   state.farmResultDraft = {
-    resultDate: dateValue(document.querySelector("#farmResultDate")) || state.farmResultDraft?.resultDate || farmToday(),
+    resultDate,
     ticketText: document.querySelector("#farmResultTicketText")?.value.trim() || "",
     actualQuantity: document.querySelector("#farmResultQuantity")?.value || "",
     actualUnit: document.querySelector("#farmResultUnit")?.value || "",
@@ -17606,15 +17704,17 @@ async function saveFarmResultEntry() {
     return;
   }
   const resultTable = farmTableByKey("work_results");
+  const payrollPeriodTable = farmTableByKey("payroll_periods");
   const payrollLineTable = farmTableByKey("payroll_period_lines");
   const attendanceTable = farmTableByKey("work_attendance");
   const workOrderTable = farmTableByKey("work_orders");
   const materialTable = farmTableByKey("work_order_materials");
   const machineTable = farmTableByKey("work_order_machines");
   const costTable = farmTableByKey("cost_entries");
-  const resultDate = calc.draft.resultDate || farmToday();
+  const resultDate = isoDay(calc.draft.resultDate) || farmResultDefaultDate(order);
   const period = farmResultPayrollPeriodForDate(resultDate);
-  const resultId = `result-${order.id}-${resultDate}`.slice(0, 180);
+  const resultId = farmResultIdForOrderDate(order.id, resultDate);
+  const legacyResultId = `result-${order.id}-${resultDate}`.slice(0, 180);
   const now = new Date().toISOString();
   const ticketText = calc.tickets.map((row) => row.wpDocNo || row.docKey).filter(Boolean).join(", ");
   const survey = farmSurveyForOrder(order);
@@ -17650,7 +17750,7 @@ async function saveFarmResultEntry() {
     survey_status: calc.draft.surveyStatus || "pending",
     survey_note: calc.draft.surveyNote || "",
     survey_values_json: JSON.stringify(surveyAnswerRows),
-    recorded_by: "profile-admin",
+    recorded_by: "",
     status: "completed",
     source_ticket_numbers: ticketText || calc.draft.ticketText,
     actual_weight_kg: calc.ticketKg,
@@ -17677,7 +17777,7 @@ async function saveFarmResultEntry() {
     survey_status: calc.draft.surveyStatus || "pending",
     survey_note: calc.draft.surveyNote || "",
     survey_values_json: JSON.stringify(surveyAnswerRows),
-    recorded_by: "profile-admin",
+    recorded_by: "",
     status: "completed",
     updatedAt: now,
   };
@@ -17686,14 +17786,22 @@ async function saveFarmResultEntry() {
   state.farmSyncMessage = "กำลังบันทึกผลงานและแตกค่าแรงรายคน...";
   render();
   try {
-    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_results" && row.work_order_id === order.id && row.result_date === resultDate));
+    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_results" && row.work_order_id === order.id && row.result_date === resultDate)
+      && !(row.tableId === "work_results" && (row.id === resultId || row.id === legacyResultId)));
     state.farmRecords.push(fullResultRow);
-    await persistFarmRowToDatabase(resultTable, resultDbRow);
+    if (payrollPeriodTable && period?.id && !farmRowsByKey("payroll_periods").some((row) => String(row.id || "") === String(period.id))) {
+      const periodRow = { ...period, moduleId: "farm-payroll", tableId: "payroll_periods", updatedAt: now };
+      state.farmRecords.push(periodRow);
+      await persistFarmRowToDatabase(payrollPeriodTable, periodRow);
+    }
+    await persistFarmRowToDatabase(resultTable, farmResultDbUuidRefs(resultDbRow, ["work_order_id", "survey_template_id", "recorded_by"]));
 
     for (const worker of calc.workerLines) {
       const employee = worker.employee || {};
+      const attendanceId = farmStableChildId("work_attendance", order.id, resultDate, worker.id);
+      const legacyAttendanceId = `att-${legacyResultId}-${worker.id}`.slice(0, 180);
       const attendance = {
-        id: `att-${resultId}-${worker.id}`.slice(0, 180),
+        id: attendanceId,
         moduleId: "farm-work",
         tableId: "work_attendance",
         work_order_id: order.id,
@@ -17705,7 +17813,7 @@ async function saveFarmResultEntry() {
         status: worker.attendanceStatus || "present",
         updatedAt: now,
       };
-      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_attendance" && row.id === attendance.id));
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_attendance" && (row.id === attendance.id || row.id === legacyAttendanceId)));
       state.farmRecords.push({
         ...attendance,
         ot_hours: Math.round(n(worker.otHours) * 100) / 100,
@@ -17716,15 +17824,17 @@ async function saveFarmResultEntry() {
         allowance_amount: Math.round(n(worker.allowance) * 100) / 100,
         deduction_amount: Math.round(n(worker.deduction) * 100) / 100,
       });
-      if (attendanceTable) await persistFarmRowToDatabase(attendanceTable, {
+      if (attendanceTable) await persistFarmRowToDatabase(attendanceTable, farmResultDbUuidRefs({
         ...attendance,
         ot_hours: Math.round(n(worker.otHours) * 100) / 100,
         ot1_hours: Math.round(n(worker.ot1Hours) * 100) / 100,
         ot15_hours: Math.round(n(worker.ot15Hours) * 100) / 100,
         ot2_hours: Math.round(n(worker.ot2Hours) * 100) / 100,
-      });
+      }, ["work_order_id", "employee_id"]));
+      const payrollLineId = farmStableChildId("payroll_period_lines", order.id, resultDate, worker.id);
+      const legacyPayrollLineId = `payline-${legacyResultId}-${worker.id}`.slice(0, 180);
       const line = {
-        id: `payline-${resultId}-${worker.id}`.slice(0, 180),
+        id: payrollLineId,
         moduleId: "farm-payroll",
         tableId: "payroll_period_lines",
         payroll_period_id: period.id,
@@ -17757,9 +17867,9 @@ async function saveFarmResultEntry() {
         deduction_amount: Math.round(n(worker.deduction) * 100) / 100,
         updatedAt: now,
       };
-      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "payroll_period_lines" && row.id === line.id));
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "payroll_period_lines" && (row.id === line.id || row.id === legacyPayrollLineId)));
       state.farmRecords.push(line);
-      await persistFarmRowToDatabase(payrollLineTable, {
+      await persistFarmRowToDatabase(payrollLineTable, farmResultDbUuidRefs({
         id: line.id,
         moduleId: "farm-payroll",
         tableId: "payroll_period_lines",
@@ -17791,12 +17901,20 @@ async function saveFarmResultEntry() {
         allowance_amount: line.allowance_amount,
         deduction_amount: line.deduction_amount,
         updatedAt: now,
-      });
+      }, ["payroll_period_id", "employee_id", "contractor_id", "work_result_id"]));
     }
 
     for (const material of calc.materialLines) {
+      const existingMaterialRow = farmRowsByKey("work_order_materials").find((row) =>
+        String(row.work_order_id || "") === String(order.id || "")
+        && String(row.material_id || "") === String(material.material_id || "")
+      );
+      const materialRowId = existingMaterialRow?.id && farmLooksUuid(existingMaterialRow.id)
+        ? existingMaterialRow.id
+        : farmStableChildId("work_order_materials", order.id, material.material_id);
+      const legacyMaterialRowId = `result-material-${order.id}-${material.material_id}`.slice(0, 180);
       const materialRow = {
-        id: `result-material-${order.id}-${material.material_id}`.slice(0, 180),
+        id: materialRowId,
         moduleId: "farm-work",
         tableId: "work_order_materials",
         work_order_id: order.id,
@@ -17809,11 +17927,13 @@ async function saveFarmResultEntry() {
         note: material.note || "",
         updatedAt: now,
       };
-      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_order_materials" && row.id === materialRow.id));
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_order_materials" && (row.id === materialRow.id || row.id === legacyMaterialRowId)));
       state.farmRecords.push(materialRow);
-      if (materialTable) await persistFarmRowToDatabase(materialTable, materialRow);
+      if (materialTable) await persistFarmRowToDatabase(materialTable, farmResultDbUuidRefs(materialRow, ["work_order_id", "material_id", "unit_id"]));
+      const materialCostId = farmStableChildId("cost_entries", "material", order.id, resultDate, material.material_id);
+      const legacyMaterialCostId = `cost-material-${legacyResultId}-${material.material_id}`.slice(0, 180);
       const materialCost = {
-        id: `cost-material-${resultId}-${material.material_id}`.slice(0, 180),
+        id: materialCostId,
         moduleId: "farm-budget",
         tableId: "cost_entries",
         cost_date: resultDate,
@@ -17823,6 +17943,7 @@ async function saveFarmResultEntry() {
         ap_code: order.block?.ap_code || order.block?.AP_code || "",
         activity_id: order.activity_id || "",
         work_order_id: order.id,
+        work_result_id: resultId,
         cost_type: "material",
         amount: 0,
         status: "recorded",
@@ -17831,16 +17952,24 @@ async function saveFarmResultEntry() {
         item_snapshot: material.material_name || material.material_id,
         updatedAt: now,
       };
-      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "cost_entries" && row.id === materialCost.id));
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "cost_entries" && (row.id === materialCost.id || row.id === legacyMaterialCostId)));
       state.farmRecords.push(materialCost);
-      if (costTable) await persistFarmRowToDatabase(costTable, materialCost);
+      if (costTable) await persistFarmRowToDatabase(costTable, farmResultCostDbRow(materialCost));
     }
 
     for (const machine of calc.machineLines) {
       const actualHours = n(machine.actual_hours) || Math.max(0, n(machine.end_hour_meter) - n(machine.start_hour_meter)) || n(machine.planned_hours);
       const fuelIssue = n(machine.fuel_issue_liter);
+      const existingMachineRow = farmRowsByKey("work_order_machines").find((row) =>
+        String(row.work_order_id || "") === String(order.id || "")
+        && String(row.vehicle_id || "") === String(machine.vehicle_id || "")
+      );
+      const machineRowId = existingMachineRow?.id && farmLooksUuid(existingMachineRow.id)
+        ? existingMachineRow.id
+        : farmStableChildId("work_order_machines", order.id, machine.vehicle_id);
+      const legacyMachineRowId = `result-machine-${order.id}-${machine.vehicle_id}`.slice(0, 180);
       const machineRow = {
-        id: `result-machine-${order.id}-${machine.vehicle_id}`.slice(0, 180),
+        id: machineRowId,
         moduleId: "farm-work",
         tableId: "work_order_machines",
         work_order_id: order.id,
@@ -17859,11 +17988,13 @@ async function saveFarmResultEntry() {
         note: machine.note || "",
         updatedAt: now,
       };
-      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_order_machines" && row.id === machineRow.id));
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_order_machines" && (row.id === machineRow.id || row.id === legacyMachineRowId)));
       state.farmRecords.push(machineRow);
-      if (machineTable) await persistFarmRowToDatabase(machineTable, machineRow);
+      if (machineTable) await persistFarmRowToDatabase(machineTable, farmResultDbUuidRefs(machineRow, ["work_order_id", "vehicle_id", "driver_employee_id", "fuel_material_id"]));
+      const machineCostId = farmStableChildId("cost_entries", "machine", order.id, resultDate, machine.vehicle_id);
+      const legacyMachineCostId = `cost-machine-${legacyResultId}-${machine.vehicle_id}`.slice(0, 180);
       const machineCost = {
-        id: `cost-machine-${resultId}-${machine.vehicle_id}`.slice(0, 180),
+        id: machineCostId,
         moduleId: "farm-budget",
         tableId: "cost_entries",
         cost_date: resultDate,
@@ -17873,6 +18004,7 @@ async function saveFarmResultEntry() {
         ap_code: order.block?.ap_code || order.block?.AP_code || "",
         activity_id: order.activity_id || "",
         work_order_id: order.id,
+        work_result_id: resultId,
         cost_type: "machine",
         amount: 0,
         status: "recorded",
@@ -17881,12 +18013,14 @@ async function saveFarmResultEntry() {
         item_snapshot: machine.vehicle_name || machine.vehicle_id,
         updatedAt: now,
       };
-      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "cost_entries" && row.id === machineCost.id));
+      state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "cost_entries" && (row.id === machineCost.id || row.id === legacyMachineCostId)));
       state.farmRecords.push(machineCost);
-      if (costTable) await persistFarmRowToDatabase(costTable, machineCost);
+      if (costTable) await persistFarmRowToDatabase(costTable, farmResultCostDbRow(machineCost));
       if (fuelIssue) {
+        const fuelCostId = farmStableChildId("cost_entries", "fuel", order.id, resultDate, machine.vehicle_id);
+        const legacyFuelCostId = `cost-fuel-${legacyResultId}-${machine.vehicle_id}`.slice(0, 180);
         const fuelCost = {
-          id: `cost-fuel-${resultId}-${machine.vehicle_id}`.slice(0, 180),
+          id: fuelCostId,
           moduleId: "farm-budget",
           tableId: "cost_entries",
           cost_date: resultDate,
@@ -17896,6 +18030,7 @@ async function saveFarmResultEntry() {
           ap_code: order.block?.ap_code || order.block?.AP_code || "",
           activity_id: order.activity_id || "",
           work_order_id: order.id,
+          work_result_id: resultId,
           cost_type: "fuel",
           amount: 0,
           status: "recorded",
@@ -17905,9 +18040,9 @@ async function saveFarmResultEntry() {
           vehicle_id: machine.vehicle_id,
           updatedAt: now,
         };
-        state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "cost_entries" && row.id === fuelCost.id));
+        state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "cost_entries" && (row.id === fuelCost.id || row.id === legacyFuelCostId)));
         state.farmRecords.push(fuelCost);
-        if (costTable) await persistFarmRowToDatabase(costTable, fuelCost);
+        if (costTable) await persistFarmRowToDatabase(costTable, farmResultCostDbRow(fuelCost));
       }
     }
 
@@ -17924,7 +18059,7 @@ async function saveFarmResultEntry() {
     state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (row.id === nextOrder.id || row.id === order.id || row._overrideOf === order.id)));
     state.farmRecords.push(nextOrder);
     await ensureFarmWorkOrderQr(nextOrder, "result");
-    await persistFarmRowToDatabase(workOrderTable, {
+    await persistFarmRowToDatabase(workOrderTable, farmResultDbUuidRefs({
       id: nextOrder.id,
       moduleId: "farm-work",
       tableId: "work_orders",
@@ -17943,7 +18078,7 @@ async function saveFarmResultEntry() {
       approval_status: nextOrder.approval_status || "not_required",
       status: "completed",
       updatedAt: now,
-    });
+    }, ["planned_work_item_id", "plot_id", "block_id", "plot_group_id", "activity_id", "survey_template_id", "team_id"]));
 
     saveFarmRecords();
     state.farmWorkDetailId = order.id;
@@ -22337,7 +22472,10 @@ async function init() {
     if (e.target.id === "farmResultOrderSelect") {
       state.farmResultWorkOrderId = e.target.value;
       state.farmWorkDetailId = e.target.value;
-      state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {}, materialEntries: {}, machineEntries: {} };
+      const selectedOrder = farmResultOrderList().find((row) => String(row.id) === String(e.target.value))
+        || farmLookup("work_orders", e.target.value)
+        || farmResultSelectedOrder();
+      state.farmResultDraft = farmResultBlankDraft(selectedOrder);
       render();
       return;
     }
@@ -23177,7 +23315,10 @@ async function init() {
       state.farmWorkDetailId = id;
       state.farmDispatchWorkOrderId = id;
       state.farmResultRoleTab = "";
-      state.farmResultDraft = { resultDate: farmToday(), ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {}, materialEntries: {}, machineEntries: {} };
+      const selectedOrder = farmResultOrderList().find((row) => String(row.id) === String(id))
+        || farmLookup("work_orders", id)
+        || farmResultSelectedOrder();
+      state.farmResultDraft = farmResultBlankDraft(selectedOrder);
       render();
       return;
     }

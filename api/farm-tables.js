@@ -189,6 +189,41 @@ function newUuid() {
   });
 }
 
+function stableHashHex8(input = "", seed = 0x811c9dc5) {
+  let hash = seed >>> 0;
+  const text = String(input || "empty");
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function stableUuid(value = "") {
+  const raw = String(value || "empty").trim() || "empty";
+  if (isUuid(raw)) return raw.toLowerCase();
+  const a = stableHashHex8(`a:${raw}`, 0x811c9dc5);
+  const b = stableHashHex8(`b:${raw}`, 0x9e3779b9);
+  const c = stableHashHex8(`c:${raw}`, 0x85ebca6b);
+  const d = stableHashHex8(`d:${raw}`, 0xc2b2ae35);
+  const hex = `${a}${b}${c}${d}`.padEnd(32, "0").slice(0, 32);
+  const variant = ((parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80).toString(16).padStart(2, "0");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(18, 20)}-${hex.slice(20, 32)}`;
+}
+
+function stableChildUuid(prefix, ...parts) {
+  return stableUuid([prefix, ...parts].map((part) => String(part ?? "")).join(":"));
+}
+
+function normalizeWorkResultUuid(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (isUuid(raw)) return raw.toLowerCase();
+  const legacy = raw.match(/^result-(.+)-(\d{4}-\d{2}-\d{2})$/);
+  if (legacy) return stableChildUuid("work_results", legacy[1], legacy[2]);
+  return stableUuid(`work_results:${raw}`);
+}
+
 function cleanText(value, max = 200) {
   return String(value || "").trim().slice(0, max);
 }
@@ -352,7 +387,7 @@ const TEXT_ID_KEYS_BY_TABLE = {
   work_order_qr_codes: new Set(["id", "work_order_id"]),
   work_order_locations: new Set(["id", "work_order_id"]),
   work_order_status_logs: new Set(["id", "work_order_id", "entity_id"]),
-  work_results: new Set(["id", "work_order_id", "supervisor_id"]),
+  work_results: new Set(["work_order_id", "supervisor_id"]),
   work_attendance: new Set(["id", "work_order_id", "employee_id"]),
   attachments: new Set(["id", "entity_id", "survey_template_id"]),
 };
@@ -394,6 +429,14 @@ function sanitizeDbRow(table, row) {
   const textIdKeys = TEXT_ID_KEYS_BY_TABLE[table] || new Set();
   for (const [key, value] of Object.entries(row || {})) {
     if (META_KEYS.has(key) || GENERATED_KEYS.has(key)) continue;
+    if (table === "work_results" && key === "id" && value && !isUuid(value)) {
+      out.id = normalizeWorkResultUuid(value);
+      continue;
+    }
+    if (key === "work_result_id" && value && !isUuid(value)) {
+      out.work_result_id = normalizeWorkResultUuid(value);
+      continue;
+    }
     if (key === "id" && !isUuid(value) && !textIdKeys.has(key)) continue;
     if (key.endsWith("_id") || key === "id") {
       if (value && (isUuid(value) || textIdKeys.has(key))) out[key] = value;
