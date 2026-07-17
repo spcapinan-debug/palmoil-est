@@ -8722,6 +8722,26 @@ tfoot td {
   font-weight: 900;
 }
 
+.farm-result-add-worker-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.farm-result-add-worker-controls select {
+  min-height: 30px;
+  min-width: 220px;
+  max-width: 320px;
+  border: 1px solid #d3dbea;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: #fff;
+  color: var(--navy);
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .farm-result-worker-wrap {
   max-height: 430px;
   border-top: 1px solid #edf1f6;

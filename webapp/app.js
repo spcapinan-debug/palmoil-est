@@ -699,6 +699,16 @@ const FARM_MODULES = [
       { code: "RPT-002", name: "รายงานค่าแรงรายงวด", module: "payroll", filter: "งวด / ทีม / พนักงาน", format: "Excel/PDF", status: "ready" },
     ],
   },
+  {
+    id: "farm-performance",
+    title: "ประสิทธิภาพการทำงาน",
+    group: "Reports",
+    accent: "Result → Person / Team / Activity / Block",
+    description: "วิเคราะห์ผลงานจากบันทึกงานจริง เทียบรายคน รายทีม กิจกรรม โซน แปลง Block จำนวนต้น และปีปลูก",
+    tables: ["work_results", "payroll_period_lines", "work_orders", "work_attendance", "cost_entries"],
+    fields: [],
+    seed: [],
+  },
 ];
 
 const FARM_WORKFLOW_STAGES = [
@@ -707,8 +717,9 @@ const FARM_WORKFLOW_STAGES = [
   { no: "03", title: "สั่งงาน", views: ["farm-dispatch"], table: "work_orders", note: "ผู้จัดการหยิบแผนมาสั่งงาน ปรับวัน ทีม คนงาน และออกใบสั่งงาน", role: "Estate Manager" },
   { no: "04", title: "จ่ายพัสดุ", views: ["farm-inventory-issue"], table: "inventory_documents", note: "ฝ่ายพัสดุเห็นรายการเบิกจากแผนและใบสั่งงานเพื่อจ่ายและตัดสต๊อก", role: "Store / Inventory" },
   { no: "05", title: "บันทึกงาน", views: ["farm-result"], table: "work_results", note: "หัวหน้าทีมบันทึกผลงานจริงจากใบสั่งงาน ดึงใบชั่งหรือคีย์จำนวน แล้วเฉลี่ยค่าแรง", role: "Supervisor / Mobile" },
-  { no: "06", title: "ค่าแรง / ต้นทุน", views: ["farm-payroll", "farm-budget"], note: "คำนวณค่าแรง รายชั่วโมง OT เงินเพิ่ม เงินหัก และต้นทุน", role: "Accounting" },
-  { no: "07", title: "รายงาน", views: ["farm-reports"], note: "สรุปรายงาน ตรวจย้อนหลัง และส่งออก Excel/PDF", role: "Viewer / Auditor" },
+  { no: "06", title: "ประสิทธิภาพการทำงาน", views: ["farm-performance"], table: "work_results", note: "วิเคราะห์ผลงานรายคน รายทีม กิจกรรม พื้นที่ จำนวนต้น และช่วงปีปาล์ม", role: "Manager / Analyst" },
+  { no: "07", title: "ค่าแรง / ต้นทุน", views: ["farm-payroll", "farm-budget"], note: "คำนวณค่าแรง รายชั่วโมง OT เงินเพิ่ม เงินหัก และต้นทุน", role: "Accounting" },
+  { no: "08", title: "รายงาน", views: ["farm-reports"], note: "สรุปรายงาน ตรวจย้อนหลัง และส่งออก Excel/PDF", role: "Viewer / Auditor" },
 ];
 
 const FARM_OPERATION_WORKFLOW_VIEWS = new Set([
@@ -720,6 +731,7 @@ const FARM_OPERATION_WORKFLOW_VIEWS = new Set([
   "farm-dispatch",
   "farm-result",
   "farm-inventory-issue",
+  "farm-performance",
   "farm-reports",
 ]);
 
@@ -1985,6 +1997,8 @@ const FARM_TABLE_SCHEMAS = {
       F("approval_status", "สถานะอนุมัติ", { options: ["not_required", "pending", "approved", "rejected"] }),
       F("approved_by", "ผู้อนุมัติ", { references: "profiles" }),
       F("approved_at", "วันที่อนุมัติ", { type: "date" }),
+      F("actual_start_date", "วันที่เริ่มทำจริง", { type: "date" }),
+      F("actual_end_date", "วันที่ทำจริงล่าสุด", { type: "date" }),
       F("closed_at", "วันที่ปิดงาน", { type: "date" }),
       F("status", "สถานะ", { type: "status" }),
     ],
@@ -3216,7 +3230,7 @@ function farmDatabaseTablesForView(view = state.view) {
       "contractors",
     ].forEach((key) => tableSet.add(key));
   }
-  if (["farm-work", "farm-dispatch", "farm-result"].includes(view)) {
+  if (["farm-work", "farm-dispatch", "farm-result", "farm-performance"].includes(view)) {
     [
       "work_orders",
       "blocks",
@@ -3255,7 +3269,7 @@ function farmDatabaseTablesForView(view = state.view) {
       "planned_work_materials",
     ].forEach((key) => tableSet.add(key));
   }
-  if (view === "farm-result") {
+  if (["farm-result", "farm-performance"].includes(view)) {
     [
       "payroll_periods",
       "payroll_period_lines",
@@ -12052,12 +12066,223 @@ function farmWorkIdentityKeys(order = {}) {
     order._overrideOf,
     order.work_order_id,
     order.work_order_no,
+    order.work_order_code,
     order.order_no,
     order.orderNo,
+    order.work_order_ref,
+    order.work_order_short_no,
+    order.short_work_order_no,
+    order.canonical_work_order_no,
+    order.display_order_no,
     farmWorkOrderCanonicalKey(order),
     farmShortWorkOrderNo(order),
   ];
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function farmWorkRowIdentityValues(row = {}) {
+  const values = [
+    row.id,
+    row._overrideOf,
+    row.work_order_id,
+    row.work_order_no,
+    row.work_order_code,
+    row.order_no,
+    row.orderNo,
+    row.work_order_ref,
+    row.work_order_short_no,
+    row.short_work_order_no,
+    row.canonical_work_order_no,
+    row.display_order_no,
+    row.reference_id,
+    row.reference_no,
+    row.source_work_order_id,
+    row.parent_work_order_id,
+    row.document_work_order_id,
+    row.document_work_order_no,
+    farmWorkOrderCanonicalKey(row),
+    farmShortWorkOrderNo(row),
+  ];
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function farmIdentityMatchesAny(rowKeys = [], targetKeys = []) {
+  const rows = [...new Set(rowKeys.map((value) => String(value || "").trim()).filter(Boolean))];
+  const targets = [...new Set(targetKeys.map((value) => String(value || "").trim()).filter(Boolean))];
+  if (!rows.length || !targets.length) return false;
+  const targetSet = new Set(targets);
+  if (rows.some((key) => targetSet.has(key))) return true;
+  const lowerTargets = targets.map((key) => key.toLowerCase());
+  return rows.some((key) => {
+    const lowerKey = key.toLowerCase();
+    return lowerTargets.some((target) => target.length >= 6 && lowerKey.includes(target));
+  });
+}
+
+function farmResolveWorkOrderStorageRow(order = {}) {
+  const rows = farmRowsByKey("work_orders");
+  const directId = String(order.id || "").trim();
+  if (directId && farmLooksUuid(directId)) {
+    return rows.find((row) => String(row.id || "").toLowerCase() === directId.toLowerCase()) || order;
+  }
+  const keys = farmWorkIdentityKeys(order);
+  return rows.find((row) => farmLooksUuid(row.id) && farmIdentityMatchesAny(farmWorkRowIdentityValues(row), keys))
+    || rows.find((row) => farmIdentityMatchesAny(farmWorkRowIdentityValues(row), keys))
+    || {};
+}
+
+function farmWorkOrderDbId(order = {}) {
+  const storage = farmResolveWorkOrderStorageRow(order);
+  if (farmLooksUuid(storage.id)) return String(storage.id).toLowerCase();
+  if (farmLooksUuid(order.id)) return String(order.id).toLowerCase();
+  const stableKey = farmWorkOrderCanonicalKey(order)
+    || farmShortWorkOrderNo(order)
+    || order.work_order_no
+    || order.order_no
+    || order.id
+    || "";
+  return stableKey ? farmStableChildId("work_orders", stableKey) : "";
+}
+
+function farmWorkOrderAllIdentityKeys(order = {}) {
+  const storage = farmResolveWorkOrderStorageRow(order);
+  return farmBudgetUnique([
+    ...farmWorkIdentityKeys(order),
+    ...farmWorkIdentityKeys(storage),
+    farmWorkOrderDbId(order),
+  ]);
+}
+
+function farmWorkOrderTargetStartDate(order = {}) {
+  const noteText = order.note || order.notes || order.description || order.work_description || "";
+  const dispatchRange = farmWorkOrderDispatchRangeFromNote(noteText);
+  const planRange = farmWorkOrderDateRangeFromNote(noteText);
+  return isoDay(
+    order.dispatchTimelineStart ||
+    order.dispatch_start_date ||
+    order.rescheduled_start_date ||
+    order.scheduled_start_date ||
+    order.note_dispatch_start_date ||
+    dispatchRange.startDate ||
+    order.dispatch_date ||
+    order.rescheduled_date ||
+    order.scheduled_date ||
+    order.plannedTimelineStart ||
+    order.planned_start_date ||
+    order.start_date ||
+    planRange.startDate ||
+    order.planned_date ||
+    order.actual_start_date ||
+    order.result_date
+  );
+}
+
+function farmWorkOrderTargetEndDate(order = {}) {
+  const noteText = order.note || order.notes || order.description || order.work_description || "";
+  const dispatchRange = farmWorkOrderDispatchRangeFromNote(noteText);
+  const planRange = farmWorkOrderDateRangeFromNote(noteText);
+  return isoDay(
+    order.dispatchTimelineEnd ||
+    order.dispatch_end_date ||
+    order.rescheduled_end_date ||
+    order.dispatch_to_date ||
+    order.scheduled_end_date ||
+    order.note_dispatch_end_date ||
+    dispatchRange.endDate ||
+    dispatchRange.startDate ||
+    order.plannedTimelineEnd ||
+    order.planned_end_date ||
+    order.end_date ||
+    order.endDate ||
+    order.dispatch_date ||
+    order.rescheduled_date ||
+    order.scheduled_date ||
+    order.planned_start_date ||
+    order.start_date ||
+    planRange.endDate ||
+    planRange.startDate ||
+    order.planned_date ||
+    order.actual_end_date ||
+    order.result_date
+  );
+}
+
+function farmDateDayMs(value) {
+  const iso = isoDay(value);
+  return iso ? Date.parse(`${iso}T00:00:00`) : NaN;
+}
+
+function farmWorkOrderExpectedDateRanges(order = {}) {
+  const noteText = order.note || order.notes || order.description || order.work_description || "";
+  const dispatchRange = farmWorkOrderDispatchRangeFromNote(noteText);
+  const planRange = farmWorkOrderDateRangeFromNote(noteText);
+  const candidatePairs = [
+    [
+      order.dispatchTimelineStart || order.dispatch_start_date || order.rescheduled_start_date || order.scheduled_start_date || order.note_dispatch_start_date || dispatchRange.startDate || order.dispatch_date || order.rescheduled_date || order.scheduled_date,
+      order.dispatchTimelineEnd || order.dispatch_end_date || order.rescheduled_end_date || order.dispatch_to_date || order.scheduled_end_date || order.note_dispatch_end_date || dispatchRange.endDate || dispatchRange.startDate || order.dispatch_date || order.rescheduled_date || order.scheduled_date,
+    ],
+    [
+      order.plannedTimelineStart || order.planned_start_date || order.start_date || order.plan_start_date || planRange.startDate || order.planned_date,
+      order.plannedTimelineEnd || order.planned_end_date || order.end_date || order.endDate || order.plan_end_date || planRange.endDate || planRange.startDate || order.planned_date,
+    ],
+    [
+      order.target_start_date || order.targetStartDate,
+      order.target_end_date || order.targetEndDate,
+    ],
+    [
+      farmWorkOrderTargetStartDate(order),
+      farmWorkOrderTargetEndDate(order),
+    ],
+  ];
+  return candidatePairs
+    .map(([start, end]) => ({ start: isoDay(start), end: isoDay(end) }))
+    .filter(({ start, end }) => {
+      if (!start || !end) return false;
+      const dayCount = farmDaysBetween(start, end) + 1;
+      return Number.isFinite(dayCount) && dayCount >= 1 && dayCount <= 370;
+    });
+}
+
+function farmWorkOrderExpectedWorkDates(order = {}) {
+  const ranges = farmWorkOrderExpectedDateRanges(order);
+  const selectedRange = ranges.find((range) => farmDaysBetween(range.start, range.end) > 0) || ranges[0] || {};
+  const start = selectedRange.start || farmWorkOrderTargetStartDate(order);
+  const end = selectedRange.end || farmWorkOrderTargetEndDate(order);
+  const dayCount = farmDaysBetween(start, end) + 1;
+  if (!start || !end || !Number.isFinite(dayCount) || dayCount < 1 || dayCount > 370) return [];
+  return Array.from({ length: dayCount }, (_, index) => farmAddDays(start, index));
+}
+
+function farmResultDatesForOrder(order = {}, extraResults = []) {
+  const keys = farmWorkOrderAllIdentityKeys(order);
+  const rows = [...farmRowsByKey("work_results"), ...(extraResults || [])];
+  return [...new Set(rows
+    .filter((row) => {
+      const rowKeys = farmWorkRowIdentityValues(row);
+      return farmIdentityMatchesAny(rowKeys, keys);
+    })
+    .map((row) => isoDay(row.result_date || row.work_date || row.date || row.calculated_at))
+    .filter(Boolean))]
+    .sort((a, b) => farmDateDayMs(a) - farmDateDayMs(b));
+}
+
+function farmWorkOrderStatusAfterResult(order = {}, resultDate = "", extraResults = []) {
+  const expectedDates = farmWorkOrderExpectedWorkDates(order);
+  const recordedDates = new Set(farmResultDatesForOrder(order, extraResults));
+  const currentDate = isoDay(resultDate);
+  if (currentDate) recordedDates.add(currentDate);
+  if (!recordedDates.size) return "in_progress";
+  if (!expectedDates.length) return "completed";
+  return expectedDates.every((date) => recordedDates.has(date)) ? "completed" : "in_progress";
+}
+
+function farmEffectiveWorkStatusMeta(order = {}, extraResults = []) {
+  const baseStatus = farmNormalizeWorkStatusKey(order.status || "");
+  if (["closed", "rejected", "pending_approval"].includes(baseStatus)) return farmWorkStatusMeta(order);
+  const recordedDates = farmResultDatesForOrder(order, extraResults);
+  if (!recordedDates.length) return farmWorkStatusMeta(order);
+  const effectiveStatus = farmWorkOrderStatusAfterResult(order, "", extraResults);
+  return farmWorkStatusMeta({ ...order, status: effectiveStatus, approval_status: order.approval_status || "approved" });
 }
 
 function farmWorkStatusMeta(order) {
@@ -12394,18 +12619,30 @@ function farmWorkOrders() {
     const actualFallback = (FARM_WORK_COMPLETED_STATUS_KEYS.has(farmNormalizeWorkStatusKey(order.status)) && (closedDate || isoDay(order.rescheduled_date || order.scheduled_date || order.planned_end_date || startDate))) || "";
     const actualStartDate = resultDates[0] || actualFallback;
     const actualEndDate = resultDates.at(-1) || closedDate || actualStartDate;
-    const statusMeta = farmWorkStatusMeta(order);
-    const hasDispatchTimeline = FARM_WORK_DISPATCHED_STATUS_KEYS.has(statusMeta.key)
+    const preliminaryStatusMeta = farmEffectiveWorkStatusMeta(order, orderResults);
+    const hasDispatchTimeline = FARM_WORK_DISPATCHED_STATUS_KEYS.has(preliminaryStatusMeta.key)
       || FARM_WORK_DISPATCHED_STATUS_KEYS.has(farmNormalizeWorkStatusKey(order.dispatch_status))
       || !!order.dispatch_date
       || !!order.dispatch_start_date
+      || !!order.note_dispatch_start_date
+      || !!noteDispatchRange.startDate
       || !!order.rescheduled_date;
     const dispatchTimelineStart = hasDispatchTimeline
-      ? isoDay(noteDispatchRange.startDate || order.note_dispatch_start_date || order.dispatch_start_date || order.dispatch_date || order.rescheduled_date || order.scheduled_date || startDate)
+      ? isoDay(order.dispatch_start_date || order.rescheduled_start_date || order.note_dispatch_start_date || noteDispatchRange.startDate || order.dispatch_date || order.rescheduled_date || order.scheduled_date || startDate)
       : "";
     const dispatchTimelineEnd = hasDispatchTimeline
-      ? isoDay(noteDispatchRange.endDate || order.note_dispatch_end_date || order.dispatch_end_date || order.rescheduled_end_date || order.dispatch_date || order.planned_end_date || endDate || dispatchTimelineStart)
+      ? isoDay(order.dispatch_end_date || order.rescheduled_end_date || order.dispatch_to_date || order.note_dispatch_end_date || noteDispatchRange.endDate || noteDispatchRange.startDate || order.planned_end_date || endDate || order.dispatch_date || order.rescheduled_date || dispatchTimelineStart)
       : "";
+    const timelineAwareOrder = {
+      ...order,
+      startDate,
+      endDate,
+      plannedTimelineStart: plannedStartDate || startDate,
+      plannedTimelineEnd: plannedEndDate || endDate || plannedStartDate || startDate,
+      dispatchTimelineStart,
+      dispatchTimelineEnd,
+    };
+    const statusMeta = farmEffectiveWorkStatusMeta(timelineAwareOrder, orderResults);
     return {
       ...order,
       startDate,
@@ -12652,6 +12889,8 @@ function farmWorkTimelineDayClass(day = "", timelineStart = "") {
 }
 
 function farmWorkTimelineSegments(row = {}) {
+  const noteText = row.note || row.notes || row.description || row.work_description || "";
+  const dispatchRange = farmWorkOrderDispatchRangeFromNote(noteText);
   const planStart = isoDay(row.plannedTimelineStart || row.startDate || row.scheduled_date);
   let planEnd = isoDay(row.plannedTimelineEnd || row.endDate || planStart);
   if (planStart && (!planEnd || farmDateMs(planEnd) < farmDateMs(planStart))) planEnd = planStart;
@@ -12660,11 +12899,13 @@ function farmWorkTimelineSegments(row = {}) {
   const hasDispatch = FARM_WORK_DISPATCHED_STATUS_KEYS.has(status)
     || FARM_WORK_DISPATCHED_STATUS_KEYS.has(dispatchStatus)
     || !!row.dispatchTimelineStart
+    || !!row.note_dispatch_start_date
+    || !!dispatchRange.startDate
     || !!row.dispatch_date
     || !!row.dispatch_start_date
     || !!row.rescheduled_date;
-  const dispatchStart = hasDispatch ? isoDay(row.dispatchTimelineStart || row.dispatch_start_date || row.dispatch_date || row.rescheduled_date || row.scheduled_date || "") : "";
-  let dispatchEnd = hasDispatch ? isoDay(row.dispatchTimelineEnd || row.dispatch_end_date || row.rescheduled_end_date || row.dispatch_date || row.planned_end_date || row.endDate || dispatchStart) : "";
+  const dispatchStart = hasDispatch ? isoDay(row.dispatchTimelineStart || row.dispatch_start_date || row.rescheduled_start_date || row.note_dispatch_start_date || dispatchRange.startDate || row.dispatch_date || row.rescheduled_date || row.scheduled_date || row.plannedTimelineStart || row.startDate || "") : "";
+  let dispatchEnd = hasDispatch ? isoDay(row.dispatchTimelineEnd || row.dispatch_end_date || row.rescheduled_end_date || row.dispatch_to_date || row.note_dispatch_end_date || dispatchRange.endDate || row.planned_end_date || row.endDate || row.dispatch_date || row.rescheduled_date || dispatchStart) : "";
   if (dispatchStart && (!dispatchEnd || farmDateMs(dispatchEnd) < farmDateMs(dispatchStart))) dispatchEnd = dispatchStart;
   const actualStart = isoDay(row.actualStartDate);
   let actualEnd = isoDay(row.actualEndDate || actualStart);
@@ -13045,10 +13286,13 @@ function syncFarmWorkOrderToPlanner(order = {}) {
 }
 
 function selectFarmWorkOrderFromTimeline(id = "") {
-  const order = farmWorkOrders().find((row) => row.id === id);
+  const target = String(id || "").trim();
+  const orders = farmWorkOrders();
+  const order = orders.find((row) => String(row.id || "") === target)
+    || orders.find((row) => farmIdentityMatchesAny(farmWorkRowIdentityValues(row), [target]));
   if (!order) return;
   state.farmWorkDetailId = order.id;
-  syncFarmWorkOrderToPlanner(order);
+  if (state.view === "farm-work") syncFarmWorkOrderToPlanner(order);
   if (state.view === "farm-dispatch") state.farmDispatchWorkOrderId = order.id;
   if (state.view === "farm-result") state.farmResultWorkOrderId = order.id;
 }
@@ -14821,8 +15065,8 @@ function renderFarmDispatchPanel() {
   const team = teams.find((row) => row.id === activeTeamId) || teams[0] || {};
   const supervisor = farmLookup("employees", team.supervisor_employee_id) || {};
   const noteDispatchRange = farmWorkOrderDispatchRangeFromNote(order?.note);
-  const dispatchDate = order?.dispatchTimelineStart || noteDispatchRange.startDate || order?.note_dispatch_start_date || order?.dispatch_start_date || order?.dispatch_date || order?.rescheduled_date || order?.scheduled_date || order?.planned_start_date || farmToday();
-  const dispatchEndDate = order?.dispatchTimelineEnd || noteDispatchRange.endDate || order?.note_dispatch_end_date || order?.dispatch_end_date || order?.rescheduled_end_date || order?.dispatch_date || order?.planned_end_date || order?.endDate || dispatchDate;
+  const dispatchDate = order?.dispatchTimelineStart || noteDispatchRange.startDate || order?.note_dispatch_start_date || order?.dispatch_start_date || order?.rescheduled_start_date || order?.dispatch_date || order?.rescheduled_date || order?.scheduled_date || order?.planned_start_date || farmToday();
+  const dispatchEndDate = order?.dispatchTimelineEnd || noteDispatchRange.endDate || order?.note_dispatch_end_date || order?.dispatch_end_date || order?.rescheduled_end_date || order?.dispatch_to_date || order?.planned_end_date || order?.endDate || order?.dispatch_date || dispatchDate;
   const activityName = farmLookupLabel("activities", order?.activity_id);
   const planRange = [displayDate(order?.planned_start_date || order?.scheduled_date), displayDate(order?.planned_end_date || order?.scheduled_date)].filter(Boolean).join(" ถึง ");
   const orderArea = [order?.plot?.plot_code, order?.block?.block_code || order?.block?.block_name, order?.block?.ap_code || order?.block?.AP_code].filter(Boolean).join(" / ") || "-";
@@ -15057,7 +15301,7 @@ function renderFarmDispatchPrintPreview(order, context = {}) {
         <div><span>ทีม</span><b>${esc(teamName)}</b></div>
         <div><span>หัวหน้าทีม</span><b>${esc(supervisorName)}</b></div>
         <div><span>ช่วงแผนเดิม</span><b>${esc(planRange || "-")}</b></div>
-        <div><span>สถานะ</span><b>${esc(farmWorkStatusMeta(order).label || "-")}</b></div>
+        <div><span>สถานะ</span><b>${esc(farmEffectiveWorkStatusMeta(order).label || "-")}</b></div>
       </div>
 
       <div class="farm-print-two-col">
@@ -15659,7 +15903,8 @@ function farmInventoryIssueRows() {
   const lines = farmRowsByKey("inventory_document_lines");
   const visibleStatuses = new Set(["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed"]);
   return farmWorkOrders().flatMap((order) => {
-    const orderDocs = docs.filter((row) => row.work_order_id === order.id);
+    const orderKeys = farmWorkIdentityKeys(order);
+    const orderDocs = docs.filter((row) => farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys));
     const actualDocs = orderDocs.filter(farmInventoryIssueDocIsActual);
     const actualDocIds = new Set(actualDocs.map((row) => row.id));
     const statusKey = order.statusMeta?.key || order.status || "";
@@ -15674,7 +15919,7 @@ function farmInventoryIssueRows() {
         factor: item.issue_factor,
       };
       const itemLines = lines.filter((line) =>
-        (actualDocIds.has(line.document_id) || line.work_order_id === order.id)
+        (actualDocIds.has(line.document_id) || farmIdentityMatchesAny(farmWorkRowIdentityValues(line), orderKeys))
         && (line.item_id === inventoryItemId || line.material_id === item.material_id)
         && farmInventoryIssueDocIsActual(docs.find((docRow) => docRow.id === line.document_id) || { status: line.status })
       );
@@ -15708,6 +15953,59 @@ function farmInventoryIssueRows() {
     || String(a.order.shortNo || farmShortWorkOrderNo(a.order)).localeCompare(String(b.order.shortNo || farmShortWorkOrderNo(b.order)), "th"));
 }
 
+function farmWorkOrderIssueDocumentsForDate(order = {}, resultDate = "") {
+  const day = isoDay(resultDate);
+  if (!day) return [];
+  const orderKeys = farmWorkOrderAllIdentityKeys(order);
+  return farmRowsByKey("inventory_documents")
+    .filter((row) => String(row.doc_type || row.document_type || "").toLowerCase() === "issue")
+    .filter(farmInventoryIssueDocIsActual)
+    .filter((row) => farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys))
+    .filter((row) => isoDay(row.doc_date || row.issue_date || row.document_date || row.date || row.created_at) === day);
+}
+
+function farmWorkOrderIssuedMaterialSummary(order = {}, resultDate = "") {
+  const day = isoDay(resultDate);
+  if (!day) return [];
+  const docs = farmWorkOrderIssueDocumentsForDate(order, day);
+  if (!docs.length) return [];
+  const orderKeys = farmWorkOrderAllIdentityKeys(order);
+  const docIds = new Set(docs.map((row) => String(row.id || "").trim()).filter(Boolean));
+  const docNos = new Set(docs.map((row) => String(row.document_no || row.doc_no || row.no || "").trim()).filter(Boolean));
+  const summary = new Map();
+  farmRowsByKey("inventory_document_lines").forEach((line) => {
+    const docId = String(line.document_id || "").trim();
+    const docNo = String(line.document_no || line.doc_no || "").trim();
+    const directDocMatch = docIds.has(docId) || docNos.has(docNo);
+    const identityMatch = farmIdentityMatchesAny(farmWorkRowIdentityValues(line), orderKeys);
+    const lineDay = isoDay(line.issue_date || line.doc_date || line.document_date || line.date || line.created_at);
+    if (!(directDocMatch || identityMatch) || (lineDay && lineDay !== day)) return;
+    const materialId = line.material_id || line.item_id || line.sku_id || line.product_id || "";
+    const label = line.material_name || line.item_name || line.sku_name || line.product_name
+      || farmLookupLabel("materials", materialId)
+      || farmLookupLabel("inventory_master", materialId)
+      || materialId
+      || "วัสดุ";
+    const unit = farmCleanUnitDisplay(line.unit_name || line.unit || line.uom || farmLookupLabel("units", line.unit_id) || "");
+    const quantity = n(line.actual_quantity || line.issue_quantity || line.issued_quantity || line.quantity || line.qty);
+    if (!quantity) return;
+    const key = `${farmNormalizeKey(label)}|${farmNormalizeKey(unit)}`;
+    const item = summary.get(key) || { label, unit, quantity: 0 };
+    item.quantity += quantity;
+    summary.set(key, item);
+  });
+  return [...summary.values()];
+}
+
+function farmWorkOrderIssuedMaterialDefault(order = {}, resultDate = "") {
+  const rows = farmWorkOrderIssuedMaterialSummary(order, resultDate);
+  return {
+    rows,
+    quantity: rows.reduce((sum, row) => sum + n(row.quantity), 0),
+    unit: rows.find((row) => row.unit)?.unit || "",
+  };
+}
+
 function farmInventoryIssueJobSummary(row) {
   const order = row?.order || {};
   const activity = farmShortActivityText(order);
@@ -15736,8 +16034,9 @@ function farmInventoryIssueRequesterOptions(order = {}) {
     });
   };
   candidates.forEach((row) => pushEmployee(row.id || row.employee_id, row));
+  const orderKeys = farmWorkOrderAllIdentityKeys(order);
   farmRowsByKey("work_order_workers")
-    .filter((row) => String(row.work_order_id || "") === String(order.id || ""))
+    .filter((row) => farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys))
     .forEach((row) => pushEmployee(row.employee_id, row));
   return [...map.values()];
 }
@@ -16457,8 +16756,8 @@ function farmResultFilterState() {
 }
 
 function farmResultOrderDateLabel(order = {}) {
-  const start = order.rescheduled_date || order.dispatch_date || order.scheduled_date || order.planned_start_date || "";
-  const end = order.rescheduled_end_date || order.dispatch_end_date || order.planned_end_date || order.endDate || start;
+  const start = farmWorkOrderTargetStartDate(order);
+  const end = farmWorkOrderTargetEndDate(order) || start;
   if (!start && !end) return "-";
   if (!end || end === start) return displayDate(start);
   return `${displayDate(start)} - ${displayDate(end)}`;
@@ -16584,25 +16883,31 @@ function farmResultDraftState(order = farmResultSelectedOrder()) {
   const rate = farmResultRateForOrder(order);
   const basis = rate?.comparison_basis || "";
   if (!draft.resultDate) draft.resultDate = farmResultDefaultDate(order);
+  const issuedDefault = farmWorkOrderIssuedMaterialDefault(order, draft.resultDate);
   draft.surveyAnswers = draft.surveyAnswers || {};
   if (!draft.surveyAnswers.POSTING_DATE) draft.surveyAnswers.POSTING_DATE = draft.resultDate;
   if (!draft.actualUnit) {
-    draft.actualUnit = basis === "bag_count" ? "กระสอบ"
+    draft.actualUnit = issuedDefault.unit || (basis === "bag_count" ? "กระสอบ"
       : basis === "weight_ton" || activity.work_type === "harvest" ? "กก."
-        : activity.default_unit || "หน่วย";
+        : activity.default_unit || "หน่วย");
+  }
+  if ((draft.actualQuantity === undefined || draft.actualQuantity === "" || n(draft.actualQuantity) === 0) && n(issuedDefault.quantity)) {
+    draft.actualQuantity = Math.round(n(issuedDefault.quantity) * 1000) / 1000;
   }
   return draft;
 }
 
 function farmResultDefaultDate(order = farmResultSelectedOrder()) {
-  const workOrderId = String(order?.id || "");
-  const materialRows = farmRowsByKey("work_order_materials").filter((row) => String(row.work_order_id || "") === workOrderId);
+  const orderKeys = farmWorkOrderAllIdentityKeys(order);
+  const materialRows = farmRowsByKey("work_order_materials").filter((row) =>
+    farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys)
+  );
   const issueDate = materialRows
     .map((row) => isoDay(row.issue_date || row.issued_date || row.issued_at || row.issueDate || row.document_date || row.doc_date || row.dispatch_date || row.issue_document_date))
     .filter(Boolean)
     .sort()[0];
   return issueDate
-    || isoDay(order?.dispatch_start_date || order?.dispatch_date || order?.scheduled_date || order?.planned_start_date || order?.start_date)
+    || farmWorkOrderTargetStartDate(order)
     || farmToday();
 }
 
@@ -16618,16 +16923,42 @@ function farmResultBlankDraft(order = farmResultSelectedOrder()) {
     surveyNote: "",
     note: "",
     surveyAnswers: { POSTING_DATE: resultDate },
+    extraWorkerIds: [],
     workerEntries: {},
     materialEntries: {},
     machineEntries: {},
   };
 }
 
+function farmResultAppendExtraWorkers(workers = []) {
+  const extraIds = [...new Set((state.farmResultDraft?.extraWorkerIds || []).map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!extraIds.length) return workers;
+  const table = farmTableByKey("employees");
+  const seen = new Set(workers.map((worker) => String(worker.id || "")));
+  const appended = [...workers];
+  extraIds.forEach((id) => {
+    if (seen.has(id)) return;
+    const employee = farmLookup("employees", id) || {};
+    appended.push({
+      id,
+      role: employee.worker_type || employee.position || "",
+      employee,
+      name: farmRecordLabel(table, employee) || employee.full_name || employee.employee_code || id,
+      rate: n(employee.daily_wage || employee.hourly_wage_rate),
+      plannedHours: 8,
+    });
+    seen.add(id);
+  });
+  return appended;
+}
+
 function farmResultWorkers(order) {
-  const rows = farmRowsByKey("work_order_workers").filter((row) => row.work_order_id === order?.id);
+  const orderKeys = farmWorkOrderAllIdentityKeys(order);
+  const rows = farmRowsByKey("work_order_workers").filter((row) =>
+    farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys)
+  );
   if (rows.length) {
-    return rows.map((row) => {
+    return farmResultAppendExtraWorkers(rows.map((row) => {
       const employee = farmLookup("employees", row.employee_id) || {};
       return {
         id: row.employee_id,
@@ -16637,9 +16968,9 @@ function farmResultWorkers(order) {
         rate: n(row.rate || employee.daily_wage || employee.hourly_wage_rate),
         plannedHours: n(row.planned_hours || 8),
       };
-    }).filter((row) => row.id);
+    }).filter((row) => row.id));
   }
-  return farmDispatchWorkerCandidates(order, order?.team_id).filter((row) => row.checked).map((row) => {
+  return farmResultAppendExtraWorkers(farmDispatchWorkerCandidates(order, order?.team_id).filter((row) => row.checked).map((row) => {
     const employee = farmLookup("employees", row.id) || {};
     return {
       id: row.id,
@@ -16649,7 +16980,7 @@ function farmResultWorkers(order) {
       rate: n(employee.daily_wage || employee.hourly_wage_rate),
       plannedHours: 8,
     };
-  });
+  }));
 }
 
 function farmResultWorkerRoleGroup(worker = {}) {
@@ -16663,6 +16994,28 @@ function farmResultRoleLabel(group) {
   if (group === "driver") return "คนขับ";
   if (group === "contractor") return "ผู้รับเหมา";
   return "คนงาน";
+}
+
+function farmResultAttendanceOptions() {
+  return [
+    ["present", "มาทำงาน"],
+    ["late", "สาย"],
+    ["half_day", "ครึ่งวัน"],
+    ["sick_leave", "ลาป่วย"],
+    ["personal_leave", "ลากิจ"],
+    ["vacation_leave", "ลาพักผ่อน"],
+    ["absent", "ขาด"],
+  ];
+}
+
+function farmResultAttendanceLabel(status = "present") {
+  const found = farmResultAttendanceOptions().find(([key]) => key === String(status || "present"));
+  return found?.[1] || "มาทำงาน";
+}
+
+function farmResultIsWorkerPresent(status = "present") {
+  const key = String(status || "present").trim();
+  return key === "present" || key === "มาทำงาน";
 }
 
 function farmResultWorkerNormalHours(worker = {}) {
@@ -16691,14 +17044,15 @@ function farmResultWorkerDailyWage(worker = {}) {
 }
 
 function farmResultPriorMaterialActualQuantity(order, materialId, currentResultId, materialName = "", resultDate = "") {
-  const workOrderId = String(order?.id || "");
+  const workOrderId = farmWorkOrderDbId(order) || String(order?.id || "");
+  const orderKeys = farmWorkOrderAllIdentityKeys(order);
   const key = String(materialId || "");
   if (!workOrderId || !key) return 0;
   const currentCostId = farmStableChildId("cost_entries", "material", workOrderId, resultDate || currentResultId, key);
   const legacyResultId = resultDate ? `result-${workOrderId}-${resultDate}`.slice(0, 180) : "";
   const legacyCurrentCostId = legacyResultId ? `cost-material-${legacyResultId}-${key}`.slice(0, 180) : "";
   return farmRowsByKey("cost_entries").reduce((sum, row) => {
-    if (String(row.work_order_id || "") !== workOrderId) return sum;
+    if (!farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys)) return sum;
     if (String(row.cost_type || "").toLowerCase() !== "material") return sum;
     const rowId = String(row.id || "");
     if (rowId === currentCostId || rowId === legacyCurrentCostId) return sum;
@@ -16816,7 +17170,10 @@ function farmResultRateCodesFromOrder(order = {}) {
   const noteCodes = [
     ...noteText.matchAll(/(?:rate|rates|rate_code|อัตรา|เรท)\s*[:=]\s*([A-Z0-9-]+)/gi),
   ].map((match) => match[1]);
-  const materialRows = farmRowsByKey("work_order_materials").filter((row) => String(row.work_order_id || "") === String(order.id || ""));
+  const orderKeys = farmWorkOrderAllIdentityKeys(order);
+  const materialRows = farmRowsByKey("work_order_materials").filter((row) =>
+    farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys)
+  );
   const materialCodes = materialRows.flatMap((row) => {
     const meta = farmBudgetParseNoteJson(row);
     return [
@@ -17038,9 +17395,10 @@ function farmResultResolvedRoleRateForGroup(rate = {}, group = "worker", fallbac
 }
 
 function farmResultLineBasisQuantity({ rateInfo, basis, actualUnit, lineQuantity, worker }) {
+  if (!farmResultIsWorkerPresent(worker.attendanceStatus)) return 0;
   const roleBasis = rateInfo?.basis || basis || "manual_qty";
   if (roleBasis === "hour_count") return Math.max(0, n(worker.workHours));
-  if (roleBasis === "day_count") return worker.attendanceStatus === "half_day" ? 0.5 : worker.attendanceStatus === "absent" ? 0 : 1;
+  if (roleBasis === "day_count") return 1;
   if (roleBasis === "weight_ton") return actualUnit === "ตัน" ? n(lineQuantity) : n(lineQuantity) / 1000;
   return n(lineQuantity);
 }
@@ -17131,7 +17489,7 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
   const activeRoleCounts = workers.reduce((counts, worker) => {
     const entry = entries[worker.id] || {};
     const status = entry.status || "present";
-    if (status === "absent") return counts;
+    if (!farmResultIsWorkerPresent(status)) return counts;
     const roleGroup = farmResultWorkerRoleGroup(worker);
     counts.total += 1;
     counts[roleGroup] = (counts[roleGroup] || 0) + 1;
@@ -17156,18 +17514,19 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
       && Math.abs(customQuantity - fullBagQuantity) < 0.001
       && Math.abs(defaultQuantity - fullBagQuantity) > 0.001;
     const useCustomQuantity = hasCustomQuantity && !staleMaterialPlanQuantity;
-    const lineQuantity = attendanceStatus === "absent" ? 0 : useCustomQuantity ? customQuantity : defaultQuantity;
+    const isPresentForWage = farmResultIsWorkerPresent(attendanceStatus);
+    const lineQuantity = !isPresentForWage ? 0 : useCustomQuantity ? customQuantity : defaultQuantity;
     const workerHours = n(entry.workHours || worker.plannedHours || 8);
     const workerForBasis = { ...worker, attendanceStatus, workHours: workerHours };
     const lineBasisQuantity = farmResultLineBasisQuantity({ rateInfo, basis, actualUnit, lineQuantity, worker: workerForBasis });
     const dailyWage = farmResultWorkerDailyWage(worker);
     const normalHours = farmResultWorkerNormalHours(worker);
     const hourlyWage = farmResultWorkerHourlyWage(worker, dailyWage, normalHours);
-    const rateWageUnits = attendanceStatus === "absent" ? 0 : lineBasisQuantity * n(rateInfo.rateAmount);
+    const rateWageUnits = !isPresentForWage ? 0 : lineBasisQuantity * n(rateInfo.rateAmount);
     const baseWageAmount = rateWageUnits;
-    const ot1Hours = attendanceStatus === "absent" ? 0 : n(entry.ot1Hours !== undefined ? entry.ot1Hours : entry.otHours);
-    const ot15Hours = attendanceStatus === "absent" ? 0 : n(entry.ot15Hours);
-    const ot2Hours = attendanceStatus === "absent" ? 0 : n(entry.ot2Hours);
+    const ot1Hours = !isPresentForWage ? 0 : n(entry.ot1Hours !== undefined ? entry.ot1Hours : entry.otHours);
+    const ot15Hours = !isPresentForWage ? 0 : n(entry.ot15Hours);
+    const ot2Hours = !isPresentForWage ? 0 : n(entry.ot2Hours);
     const otAmount = (hourlyWage * ot1Hours) + (hourlyWage * 1.5 * ot15Hours) + (hourlyWage * 2 * ot2Hours);
     const allowance = n(entry.allowance);
     const deduction = n(entry.deduction);
@@ -17443,6 +17802,26 @@ function renderFarmResultPanel() {
     .filter((row) => row.count)
     .map((row) => `${row.label}: ${row.rateInfo.label}`)
     .join(" | ");
+  const currentWorkerIds = new Set(calc.workerLines.map((row) => String(row.id || "")));
+  const employeeTable = farmTableByKey("employees");
+  const addWorkerOptions = farmRowsByKey("employees")
+    .filter((employee) => employee.id && !currentWorkerIds.has(String(employee.id)))
+    .map((employee) => {
+      const label = farmRecordLabel(employeeTable, employee) || employee.full_name || employee.employee_code || employee.id;
+      return `<option value="${esc(employee.id)}">${esc(label)}</option>`;
+    })
+    .join("");
+  const issuedMaterialDefault = farmWorkOrderIssuedMaterialDefault(order, draft.resultDate);
+  const issuedMaterialSummary = issuedMaterialDefault.rows;
+  const actualQuantityInputValue = String(draft.actualQuantity ?? "").trim()
+    ? draft.actualQuantity
+    : (n(issuedMaterialDefault.quantity) ? Math.round(n(issuedMaterialDefault.quantity) * 1000) / 1000 : "");
+  const issuedMaterialNotice = issuedMaterialSummary.length
+    ? `<div class="farm-result-issued-materials">
+        <strong>วัสดุที่เบิกในวันทำงาน ${esc(formatThaiDate(draft.resultDate || ""))}</strong>
+        <span>${issuedMaterialSummary.map((row) => `${esc(row.label)} ${fmt(row.quantity)} ${esc(row.unit || "")}`).join(" · ")}</span>
+      </div>`
+    : "";
   return `
     <section class="farm-result-page">
       <div class="section-head">
@@ -17462,19 +17841,20 @@ function renderFarmResultPanel() {
         <article class="farm-result-card farm-result-main-entry">
           <div class="section-head"><h3>ผลงานรวม</h3><span>ใช้ใบชั่งหรือกรอกจำนวนเอง</span></div>
           <div class="farm-result-fields">
-            <label>วันที่บันทึก${renderDateInputControl({ id: "farmResultDate", value: draft.resultDate, ariaLabel: "เลือกวันที่บันทึกงาน" })}</label>
-            <label>เลขใบชั่ง
+            <label>วันทำงาน${renderDateInputControl({ id: "farmResultDate", value: draft.resultDate, ariaLabel: "เลือกวันทำงาน" })}</label>
+            <label class="farm-result-ticket-field">เลขใบชั่ง
               <input id="farmResultTicketText" type="text" value="${esc(draft.ticketText || "")}" placeholder="เช่น 26-06-000123, 000124">
             </label>
+            ${issuedMaterialNotice}
             <label>ผลงานจริง
-              <input id="farmResultQuantity" type="number" min="0" step="0.01" value="${esc(draft.actualQuantity || "")}" placeholder="${calc.ticketKg ? fmt(calc.ticketKg) : "0"}">
+              <input id="farmResultQuantity" type="number" min="0" step="0.01" value="${esc(actualQuantityInputValue)}" placeholder="${calc.ticketKg ? fmt(calc.ticketKg) : "0"}">
             </label>
             <label>หน่วย
               <select id="farmResultUnit">
                 ${["กก.", "ตัน", "กระสอบ", "ไร่", "ต้น", "หน่วย"].map((unit) => `<option value="${esc(unit)}"${unit === calc.actualUnit ? " selected" : ""}>${esc(unit)}</option>`).join("")}
               </select>
             </label>
-            <label>หมายเหตุ
+            <label class="farm-result-note-field">หมายเหตุ
               <input id="farmResultNote" type="text" value="${esc(draft.note || "")}" placeholder="หมายเหตุการทำงาน">
             </label>
           </div>
@@ -17485,7 +17865,7 @@ function renderFarmResultPanel() {
             <span><b>${esc(firstWorker?.checkIn || "08:00")}</b>เริ่มงาน</span>
             <span><b>${esc(firstWorker?.checkOut || "17:00")}</b>เลิกงาน</span>
             <span><b>${fmt(calc.ticketKg || calc.actualQuantity)}</b>${calc.ticketKg ? "กก. จากใบชั่ง" : `ผลงาน ${esc(calc.actualUnit)}`}</span>
-            <span><b>${fmt(calc.workerLines.filter((row) => row.attendanceStatus !== "absent").length)}</b>มาทำงาน</span>
+            <span><b>${fmt(calc.workerLines.filter((row) => farmResultIsWorkerPresent(row.attendanceStatus)).length)}</b>มาทำงาน</span>
           </div>
           <p>${esc(rateLabel)}</p>
         </article>
@@ -17522,6 +17902,10 @@ function renderFarmResultPanel() {
         </div>
         <div class="farm-result-worker-tools">
           <span>กำลังบันทึก: ${esc(farmResultRoleLabel(activeRoleGroup))} ${fmt(activeWorkerLines.length)} คน · ${esc(activeRoleSummary?.rateInfo?.label || "-")}</span>
+          <div class="farm-result-add-worker-controls">
+            <select id="farmResultAddWorker" aria-label="เพิ่มคนงาน"><option value="">เพิ่มคนงาน</option>${addWorkerOptions}</select>
+            <button type="button" data-farm-result-add-worker>เพิ่มคนงาน</button>
+          </div>
           <button type="button" data-farm-result-fill-share>ใส่ค่าเฉลี่ยแท็บนี้</button>
           <button type="button" data-farm-result-clear-worker>ล้างแก้ไขแท็บนี้</button>
         </div>
@@ -17550,7 +17934,7 @@ function renderFarmResultPanel() {
                 <tr data-farm-result-worker="${esc(row.id)}">
                   <td><strong>${esc(row.name)}</strong><small>${esc(row.role || row.employee.payment_type || "-")} · รายวัน ${moneyNf.format(row.dailyWage || 0)}</small></td>
                   <td><span class="farm-result-role-pill ${esc(row.roleGroup)}">${esc(farmResultRoleLabel(row.roleGroup))}</span><small class="farm-result-rate-tag">${esc(row.rateLabel)}</small></td>
-                  <td><select data-farm-result-worker-field="status">${["present", "late", "half_day", "absent"].map((status) => `<option value="${status}"${row.attendanceStatus === status ? " selected" : ""}>${status === "present" ? "มาทำงาน" : status === "late" ? "สาย" : status === "half_day" ? "ครึ่งวัน" : "ขาด"}</option>`).join("")}</select></td>
+                  <td><select data-farm-result-worker-field="status">${farmResultAttendanceOptions().map(([status, label]) => `<option value="${esc(status)}"${row.attendanceStatus === status ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></td>
                   <td><input type="time" value="${esc(row.checkIn)}" data-farm-result-worker-field="checkIn"></td>
                   <td><input type="time" value="${esc(row.checkOut)}" data-farm-result-worker-field="checkOut"></td>
                   <td><input type="number" min="0" step="0.5" value="${esc(row.workHours || "")}" data-farm-result-worker-field="workHours"></td>
@@ -17654,6 +18038,21 @@ function syncFarmResultDraftFromForm() {
   const machineEntries = state.farmResultDraft?.machineEntries || {};
   const previousResultDate = isoDay(state.farmResultDraft?.resultDate) || "";
   const resultDate = dateValue(document.querySelector("#farmResultDate")) || state.farmResultDraft?.resultDate || farmResultDefaultDate(order);
+  const quantityInput = document.querySelector("#farmResultQuantity");
+  const unitInput = document.querySelector("#farmResultUnit");
+  let actualQuantity = quantityInput?.value || "";
+  let actualUnit = unitInput?.value || "";
+  const previousIssued = farmWorkOrderIssuedMaterialDefault(order, previousResultDate);
+  const nextIssued = farmWorkOrderIssuedMaterialDefault(order, resultDate);
+  const previousIssuedQuantity = n(previousIssued.quantity) ? Math.round(n(previousIssued.quantity) * 1000) / 1000 : 0;
+  const nextIssuedQuantity = n(nextIssued.quantity) ? Math.round(n(nextIssued.quantity) * 1000) / 1000 : 0;
+  const rawActualQuantity = String(actualQuantity || "").trim();
+  if (resultDate !== previousResultDate && nextIssuedQuantity && (!rawActualQuantity || n(rawActualQuantity) === previousIssuedQuantity)) {
+    actualQuantity = String(nextIssuedQuantity);
+  }
+  if (resultDate !== previousResultDate && nextIssued.unit && (!actualUnit || String(actualUnit) === String(previousIssued.unit || ""))) {
+    actualUnit = nextIssued.unit;
+  }
   const surveyAnswers = { ...(state.farmResultDraft?.surveyAnswers || {}) };
   document.querySelectorAll("[data-farm-survey-answer]").forEach((input) => {
     if ((input.type === "radio" || input.type === "checkbox") && !input.checked) return;
@@ -17664,17 +18063,37 @@ function syncFarmResultDraftFromForm() {
   state.farmResultDraft = {
     resultDate,
     ticketText: document.querySelector("#farmResultTicketText")?.value.trim() || "",
-    actualQuantity: document.querySelector("#farmResultQuantity")?.value || "",
-    actualUnit: document.querySelector("#farmResultUnit")?.value || "",
+    actualQuantity,
+    actualUnit,
     qualityScore: document.querySelector("#farmResultQuality")?.value || "",
     surveyStatus: document.querySelector("#farmResultSurveyStatus")?.value || state.farmResultDraft?.surveyStatus || "pending",
     surveyNote: document.querySelector("#farmResultSurveyNote")?.value.trim() || "",
     note: document.querySelector("#farmResultNote")?.value.trim() || "",
     surveyAnswers,
+    extraWorkerIds: state.farmResultDraft?.extraWorkerIds || [],
     workerEntries,
     materialEntries,
     machineEntries,
   };
+}
+
+function handleFarmResultFormFieldChange(target) {
+  const shouldRefreshResultForm = target?.id === "farmResultDate";
+  const scrollX = window.scrollX;
+  const scrollY = window.scrollY;
+  const pageScrollTop = document.scrollingElement?.scrollTop ?? scrollY;
+  syncFarmResultDraftFromForm();
+  if (!shouldRefreshResultForm) return;
+  render();
+  const restoreResultScroll = () => {
+    window.scrollTo(scrollX, scrollY);
+    if (document.scrollingElement) document.scrollingElement.scrollTop = pageScrollTop;
+  };
+  requestAnimationFrame(restoreResultScroll);
+  window.setTimeout(restoreResultScroll, 0);
+  window.setTimeout(restoreResultScroll, 80);
+  window.setTimeout(restoreResultScroll, 220);
+  window.setTimeout(restoreResultScroll, 600);
 }
 
 function syncFarmResultWorkerDraftFromTable() {
@@ -17714,7 +18133,9 @@ function setFarmResultWorkerShareQuantities() {
   const calc = farmResultCalculation(order);
   const entries = { ...(state.farmResultDraft.workerEntries || {}) };
   const activeRoleGroup = state.farmResultRoleTab || "worker";
-  calc.workerLines.filter((worker) => worker.roleGroup === activeRoleGroup).forEach((worker) => {
+  calc.workerLines
+    .filter((worker) => worker.roleGroup === activeRoleGroup && farmResultIsWorkerPresent(worker.attendanceStatus))
+    .forEach((worker) => {
     entries[worker.id] = {
       ...(entries[worker.id] || {}),
       actualQuantity: Math.round(n(worker.actualQuantity) * 1000) / 1000,
@@ -17738,8 +18159,25 @@ function clearFarmResultWorkerDraft() {
 }
 
 async function saveFarmResultEntry() {
-  const order = farmResultSelectedOrder();
-  if (!order) return;
+  const selectedOrder = farmResultSelectedOrder();
+  if (!selectedOrder) return;
+  const storageOrder = farmResolveWorkOrderStorageRow(selectedOrder);
+  const sourceOrderId = String(selectedOrder.id || storageOrder.id || "");
+  const dbWorkOrderId = farmWorkOrderDbId(selectedOrder);
+  const selectedOrderKeys = farmWorkIdentityKeys(selectedOrder);
+  const order = {
+    ...storageOrder,
+    ...selectedOrder,
+    id: dbWorkOrderId || selectedOrder.id,
+    source_work_order_id: selectedOrder.source_work_order_id || storageOrder.source_work_order_id || sourceOrderId,
+    work_order_no: selectedOrder.work_order_no || storageOrder.work_order_no || farmWorkOrderCanonicalKey(selectedOrder) || farmShortWorkOrderNo(selectedOrder),
+    order_no: selectedOrder.order_no || storageOrder.order_no || farmShortWorkOrderNo(selectedOrder),
+    work_order_ref: selectedOrder.work_order_ref || storageOrder.work_order_ref || farmWorkOrderCanonicalKey(selectedOrder) || selectedOrder.work_order_no || farmShortWorkOrderNo(selectedOrder),
+    work_order_short_no: selectedOrder.work_order_short_no || storageOrder.work_order_short_no || farmShortWorkOrderNo(selectedOrder),
+    canonical_work_order_no: selectedOrder.canonical_work_order_no || storageOrder.canonical_work_order_no || farmWorkOrderCanonicalKey(selectedOrder),
+    readonly: false,
+  };
+  const orderKeys = farmBudgetUnique([...farmWorkOrderAllIdentityKeys(order), ...selectedOrderKeys]);
   syncFarmResultWorkerDraftFromTable();
   const calc = farmResultCalculation(order);
   if (!calc.actualQuantity || !calc.workerLines.length) {
@@ -17759,7 +18197,12 @@ async function saveFarmResultEntry() {
   const resultDate = isoDay(calc.draft.resultDate) || farmResultDefaultDate(order);
   const period = farmResultPayrollPeriodForDate(resultDate);
   const resultId = farmResultIdForOrderDate(order.id, resultDate);
-  const legacyResultId = `result-${order.id}-${resultDate}`.slice(0, 180);
+  const legacyResultIds = farmBudgetUnique([
+    `result-${sourceOrderId}-${resultDate}`.slice(0, 180),
+    `result-${selectedOrder.id}-${resultDate}`.slice(0, 180),
+    `result-${dbWorkOrderId}-${resultDate}`.slice(0, 180),
+  ].filter(Boolean));
+  const legacyResultId = legacyResultIds[0] || resultId;
   const now = new Date().toISOString();
   const ticketText = calc.tickets.map((row) => row.wpDocNo || row.docKey).filter(Boolean).join(", ");
   const survey = farmSurveyForOrder(order);
@@ -17784,6 +18227,10 @@ async function saveFarmResultEntry() {
     moduleId: "farm-result",
     tableId: "work_results",
     work_order_id: order.id,
+    work_order_no: order.work_order_no || farmWorkOrderCanonicalKey(order) || farmShortWorkOrderNo(order),
+    order_no: farmShortWorkOrderNo(order),
+    work_order_ref: farmWorkOrderCanonicalKey(order) || order.work_order_no || farmShortWorkOrderNo(order),
+    work_order_short_no: farmShortWorkOrderNo(order),
     result_date: resultDate,
     actual_quantity: calc.actualQuantity,
     actual_unit: calc.actualUnit,
@@ -17826,13 +18273,18 @@ async function saveFarmResultEntry() {
     status: "completed",
     updatedAt: now,
   };
+  const recordedResultDates = farmResultDatesForOrder(order, [fullResultRow]);
+  const actualStartDate = recordedResultDates[0] || resultDate;
+  const actualEndDate = recordedResultDates[recordedResultDates.length - 1] || resultDate;
+  const nextWorkStatus = farmWorkOrderStatusAfterResult(order, resultDate, [fullResultRow]);
+  const nextWorkStatusMeta = farmWorkStatusMeta({ ...order, status: nextWorkStatus });
   state.farmSyncBusy = true;
   state.farmSyncStatus = "";
   state.farmSyncMessage = "กำลังบันทึกผลงานและแตกค่าแรงรายคน...";
   render();
   try {
-    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_results" && row.work_order_id === order.id && row.result_date === resultDate)
-      && !(row.tableId === "work_results" && (row.id === resultId || row.id === legacyResultId)));
+    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_results" && farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys) && row.result_date === resultDate)
+      && !(row.tableId === "work_results" && (row.id === resultId || legacyResultIds.includes(row.id))));
     state.farmRecords.push(fullResultRow);
     if (payrollPeriodTable && period?.id && !farmRowsByKey("payroll_periods").some((row) => String(row.id || "") === String(period.id))) {
       const periodRow = { ...period, moduleId: "farm-payroll", tableId: "payroll_periods", updatedAt: now };
@@ -17951,7 +18403,7 @@ async function saveFarmResultEntry() {
 
     for (const material of calc.materialLines) {
       const existingMaterialRow = farmRowsByKey("work_order_materials").find((row) =>
-        String(row.work_order_id || "") === String(order.id || "")
+        farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys)
         && String(row.material_id || "") === String(material.material_id || "")
       );
       const materialRowId = existingMaterialRow?.id && farmLooksUuid(existingMaterialRow.id)
@@ -18006,7 +18458,7 @@ async function saveFarmResultEntry() {
       const actualHours = n(machine.actual_hours) || Math.max(0, n(machine.end_hour_meter) - n(machine.start_hour_meter)) || n(machine.planned_hours);
       const fuelIssue = n(machine.fuel_issue_liter);
       const existingMachineRow = farmRowsByKey("work_order_machines").find((row) =>
-        String(row.work_order_id || "") === String(order.id || "")
+        farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys)
         && String(row.vehicle_id || "") === String(machine.vehicle_id || "")
       );
       const machineRowId = existingMachineRow?.id && farmLooksUuid(existingMachineRow.id)
@@ -18093,15 +18545,18 @@ async function saveFarmResultEntry() {
 
     const nextOrder = {
       ...order,
-      id: order.readonly ? `override-${order.id}` : order.id,
+      id: order.id,
       moduleId: "farm-work",
       tableId: "work_orders",
-      _overrideOf: order.readonly ? order.id : order._overrideOf,
-      status: "completed",
+      _overrideOf: order._overrideOf || (sourceOrderId && sourceOrderId !== order.id ? sourceOrderId : ""),
+      status: nextWorkStatus,
+      actual_start_date: actualStartDate,
+      actual_end_date: actualEndDate,
+      closed_at: nextWorkStatus === "completed" ? actualEndDate : "",
       updatedAt: now,
     };
-    if (!nextOrder._overrideOf) delete nextOrder._overrideOf;
-    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && (row.id === nextOrder.id || row.id === order.id || row._overrideOf === order.id)));
+    if (!nextOrder._overrideOf || nextOrder._overrideOf === nextOrder.id) delete nextOrder._overrideOf;
+    state.farmRecords = state.farmRecords.filter((row) => !(row.tableId === "work_orders" && farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys)));
     state.farmRecords.push(nextOrder);
     await ensureFarmWorkOrderQr(nextOrder, "result");
     await persistFarmRowToDatabase(workOrderTable, farmResultDbUuidRefs({
@@ -18121,7 +18576,10 @@ async function saveFarmResultEntry() {
       planned_end_date: nextOrder.planned_end_date,
       scheduled_date: nextOrder.scheduled_date,
       approval_status: nextOrder.approval_status || "not_required",
-      status: "completed",
+      status: nextWorkStatus,
+      actual_start_date: nextOrder.actual_start_date,
+      actual_end_date: nextOrder.actual_end_date,
+      closed_at: nextOrder.closed_at,
       updatedAt: now,
     }, ["planned_work_item_id", "plot_id", "block_id", "plot_group_id", "activity_id", "survey_template_id", "team_id"]));
 
@@ -18130,7 +18588,7 @@ async function saveFarmResultEntry() {
     state.farmWorkDetailId = nextOrder.id;
     state.farmResultWorkOrderId = nextOrder.id;
     state.farmSyncStatus = "success";
-    state.farmSyncMessage = `บันทึกงานแล้ว: ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงสุทธิ ${moneyNf.format(calc.payrollTotal)} บาท · วัสดุ ${fmt(calc.materialLines.length)} รายการ · น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร`;
+    state.farmSyncMessage = `บันทึกงานแล้ว (${nextWorkStatusMeta.label}): ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงสุทธิ ${moneyNf.format(calc.payrollTotal)} บาท · วัสดุ ${fmt(calc.materialLines.length)} รายการ · น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร`;
   } catch (error) {
     resetFarmDerivedCaches();
     saveFarmRecords();
@@ -22534,8 +22992,7 @@ async function init() {
       return;
     }
     if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultNote"].includes(e.target.id)) {
-      syncFarmResultDraftFromForm();
-      render();
+      handleFarmResultFormFieldChange(e.target);
       return;
     }
     if (e.target.matches("[data-farm-result-worker-field]")) {
@@ -22944,7 +23401,7 @@ async function init() {
       return;
     }
     if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultNote"].includes(e.target.id)) {
-      syncFarmResultDraftFromForm();
+      handleFarmResultFormFieldChange(e.target);
       return;
     }
     if (e.target.matches?.("[data-farm-survey-answer]")) {
@@ -23348,6 +23805,18 @@ async function init() {
       clearFarmResultWorkerDraft();
       return;
     }
+    if (e.target.closest("[data-farm-result-add-worker]")) {
+      syncFarmResultWorkerDraftFromTable();
+      const picker = document.querySelector("#farmResultAddWorker");
+      const workerId = String(picker?.value || "").trim();
+      if (workerId) {
+        const ids = new Set((state.farmResultDraft?.extraWorkerIds || []).map((id) => String(id || "").trim()).filter(Boolean));
+        ids.add(workerId);
+        state.farmResultDraft.extraWorkerIds = [...ids];
+      }
+      render();
+      return;
+    }
     const resultRoleTab = e.target.closest("[data-farm-result-role-tab]");
     if (resultRoleTab) {
       syncFarmResultWorkerDraftFromTable();
@@ -23377,8 +23846,34 @@ async function init() {
     }
     const workDetail = e.target.closest("[data-farm-work-detail]");
     if (workDetail) {
+      e.preventDefault();
+      e.stopPropagation();
+      const scrollX = window.scrollX;
+      const scrollY = window.scrollY;
+      const pageScrollTop = document.scrollingElement?.scrollTop ?? scrollY;
+      const timelineScrollers = [...document.querySelectorAll(".farm-work-gantt, .farm-work-rows, .farm-work-layout")]
+        .map((element, index) => ({ index, left: element.scrollLeft, top: element.scrollTop }));
+      workDetail.blur?.();
       selectFarmWorkOrderFromTimeline(workDetail.dataset.farmWorkDetail);
       render();
+      const restoreScroll = () => {
+        window.scrollTo(scrollX, scrollY);
+        if (document.scrollingElement) document.scrollingElement.scrollTop = pageScrollTop;
+        const currentScrollers = [...document.querySelectorAll(".farm-work-gantt, .farm-work-rows, .farm-work-layout")];
+        timelineScrollers.forEach((item) => {
+          const element = currentScrollers[item.index];
+          if (!element) return;
+          element.scrollLeft = item.left;
+          element.scrollTop = item.top;
+        });
+        document.activeElement?.blur?.();
+      };
+      requestAnimationFrame(restoreScroll);
+      window.setTimeout(restoreScroll, 0);
+      window.setTimeout(restoreScroll, 80);
+      window.setTimeout(restoreScroll, 220);
+      window.setTimeout(restoreScroll, 600);
+      window.setTimeout(restoreScroll, 1200);
       return;
     }
     const workApprove = e.target.closest("[data-farm-work-approve]");
