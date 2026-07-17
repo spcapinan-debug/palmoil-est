@@ -15968,11 +15968,20 @@ function farmWorkOrderIssuedMaterialSummary(order = {}, resultDate = "") {
   const day = isoDay(resultDate);
   if (!day) return [];
   const docs = farmWorkOrderIssueDocumentsForDate(order, day);
-  if (!docs.length) return [];
   const orderKeys = farmWorkOrderAllIdentityKeys(order);
   const docIds = new Set(docs.map((row) => String(row.id || "").trim()).filter(Boolean));
   const docNos = new Set(docs.map((row) => String(row.document_no || row.doc_no || row.no || "").trim()).filter(Boolean));
   const summary = new Map();
+  const addSummary = (label, unit, quantity) => {
+    const qty = n(quantity);
+    if (!qty) return;
+    const cleanLabel = String(label || "วัสดุ").trim() || "วัสดุ";
+    const cleanUnit = farmCleanUnitDisplay(unit || "");
+    const key = `${farmNormalizeKey(cleanLabel)}|${farmNormalizeKey(cleanUnit)}`;
+    const item = summary.get(key) || { label: cleanLabel, unit: cleanUnit, quantity: 0 };
+    item.quantity += qty;
+    summary.set(key, item);
+  };
   farmRowsByKey("inventory_document_lines").forEach((line) => {
     const docId = String(line.document_id || "").trim();
     const docNo = String(line.document_no || line.doc_no || "").trim();
@@ -15988,11 +15997,19 @@ function farmWorkOrderIssuedMaterialSummary(order = {}, resultDate = "") {
       || "วัสดุ";
     const unit = farmCleanUnitDisplay(line.unit_name || line.unit || line.uom || farmLookupLabel("units", line.unit_id) || "");
     const quantity = n(line.actual_quantity || line.issue_quantity || line.issued_quantity || line.quantity || line.qty);
-    if (!quantity) return;
-    const key = `${farmNormalizeKey(label)}|${farmNormalizeKey(unit)}`;
-    const item = summary.get(key) || { label, unit, quantity: 0 };
-    item.quantity += quantity;
-    summary.set(key, item);
+    addSummary(label, unit, quantity);
+  });
+  farmRowsByKey("work_order_materials").forEach((row) => {
+    if (!farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys)) return;
+    const rowDay = isoDay(row.issue_date || row.issued_date || row.actual_issue_date || row.dispatch_date || row.result_date || row.updatedAt || row.updated_at || row.created_at);
+    if (rowDay && rowDay !== day) return;
+    const materialId = row.material_id || row.item_id || row.sku_id || "";
+    const label = row.material_name || row.item_name || row.sku_name || farmLookupLabel("materials", materialId) || materialId || "วัสดุ";
+    const unit = row.issue_unit_name || row.unit_name || row.unit || row.uom || farmLookupLabel("units", row.unit_id) || "";
+    const quantity = row.actual_issue_quantity ?? row.issue_actual_quantity ?? row.actual_issued_quantity
+      ?? row.issue_quantity ?? row.issued_quantity ?? row.quantity_issued ?? row.issued_qty ?? row.issue_qty
+      ?? row.actual_quantity ?? "";
+    addSummary(label, unit, quantity);
   });
   return [...summary.values()];
 }
@@ -16737,8 +16754,13 @@ function farmResultCandidateOrders() {
       farmRowsByKey("work_order_workers").map((worker) => String(worker.work_order_id || "")).filter(Boolean)
     );
   }
-  const preferred = rows.filter((row) => allowed.has(row.statusMeta.key) || farmDerivedCache.workOrderWorkerIds.has(String(row.id || "")));
-  farmDerivedCache.resultCandidateOrders = preferred.length ? preferred : rows.filter((row) => !["closed", "rejected"].includes(row.statusMeta.key));
+  const preferred = rows.filter((row) => {
+    const meta = farmEffectiveWorkStatusMeta(row);
+    return allowed.has(meta.key) || farmDerivedCache.workOrderWorkerIds.has(String(row.id || ""));
+  });
+  farmDerivedCache.resultCandidateOrders = preferred.length
+    ? preferred
+    : rows.filter((row) => !["closed", "rejected"].includes(farmEffectiveWorkStatusMeta(row).key));
   return farmDerivedCache.resultCandidateOrders;
 }
 
@@ -16779,7 +16801,7 @@ function farmResultOrderSearchText(order = {}) {
     order.block?.AP_code,
     order.plot?.plot_code,
     farmLookupLabel("teams", order.team_id),
-    order.statusMeta?.label,
+    farmEffectiveWorkStatusMeta(order)?.label,
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
@@ -16787,8 +16809,9 @@ function farmResultFilteredOrders() {
   const filters = farmResultFilterState();
   const query = String(filters.query || "").trim().toLowerCase();
   return farmResultCandidateOrders().filter((order) => {
+    const meta = farmEffectiveWorkStatusMeta(order);
     const activityOk = filters.activity === "all" || String(order.activity_id || "") === String(filters.activity);
-    const statusOk = filters.status === "all" || String(order.statusMeta?.key || order.status || "") === String(filters.status);
+    const statusOk = filters.status === "all" || String(meta?.key || order.status || "") === String(filters.status);
     const queryOk = !query || farmResultOrderSearchText(order).includes(query);
     return activityOk && statusOk && queryOk;
   });
@@ -16807,9 +16830,10 @@ function farmResultActivityFilterOptions(rows = farmResultCandidateOrders()) {
 function farmResultStatusFilterOptions(rows = farmResultCandidateOrders()) {
   const map = new Map();
   rows.forEach((order) => {
-    const key = String(order.statusMeta?.key || order.status || "").trim();
+    const meta = farmEffectiveWorkStatusMeta(order);
+    const key = String(meta?.key || order.status || "").trim();
     if (!key || map.has(key)) return;
-    map.set(key, order.statusMeta?.label || key);
+    map.set(key, meta?.label || key);
   });
   return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "th"));
 }
@@ -16824,7 +16848,7 @@ function renderFarmResultWorkSearch(order, allOrders = farmResultCandidateOrders
   const selectedMeta = order ? [
     farmResultOrderDateLabel(order),
     farmLookupLabel("teams", order.team_id) || "-",
-    order.statusMeta?.label || "-",
+    farmEffectiveWorkStatusMeta(order)?.label || "-",
   ].filter(Boolean).join(" · ") : "ค้นหาแล้วคลิกเลือกงานที่ต้องการบันทึก";
   return `
     <section class="farm-result-search-panel">
@@ -16870,7 +16894,7 @@ function renderFarmResultWorkSearch(order, allOrders = farmResultCandidateOrders
               <span>${esc(farmShortBlockText(row))}</span>
               <span>${esc(farmLookupLabel("teams", row.team_id) || "-")}</span>
               <span>${esc(farmResultOrderDateLabel(row))}</span>
-              <em>${esc(row.statusMeta?.label || "-")}</em>
+              <em>${esc(farmEffectiveWorkStatusMeta(row)?.label || "-")}</em>
             </button>`;
         }).join("") || `<div class="farm-result-order-empty">ไม่พบใบสั่งงานตามเงื่อนไข</div>`}
       </div>
@@ -17062,22 +17086,39 @@ function farmResultPriorMaterialActualQuantity(order, materialId, currentResultI
   }, 0);
 }
 
+function farmResultIssuedMaterialForCandidate(summaryRows = [], row = {}) {
+  const rowLabel = row.material_name || row.item_name || farmLookupLabel("materials", row.material_id) || row.material_id || "";
+  const rowUnit = farmCleanUnitDisplay(row.unit_name || row.unit || row.uom || farmLookupLabel("units", row.unit_id) || "");
+  const labelKey = farmNormalizeKey(rowLabel);
+  const unitKey = farmNormalizeKey(rowUnit);
+  const exact = summaryRows.find((item) => {
+    const itemLabelKey = farmNormalizeKey(item.label);
+    const itemUnitKey = farmNormalizeKey(item.unit);
+    return itemLabelKey === labelKey && (!unitKey || !itemUnitKey || itemUnitKey === unitKey);
+  });
+  return exact || (summaryRows.length === 1 ? summaryRows[0] : null);
+}
+
 function farmResultMaterialLines(order) {
   const draftEntries = state.farmResultDraft?.materialEntries || {};
   const draft = farmResultDraftState(order);
   const resultQuantity = n(draft.actualQuantity);
   const resultDate = draft.resultDate || farmResultDefaultDate(order);
   const currentResultId = farmResultIdForOrderDate(order?.id, resultDate);
-  return farmDispatchMaterialCandidates(order).map((row) => {
+  const issuedSummary = farmWorkOrderIssuedMaterialSummary(order, resultDate);
+  const candidates = farmDispatchMaterialCandidates(order);
+  return candidates.map((row) => {
     const key = row.material_id;
     const entry = draftEntries[key] || {};
     const issued = n(row.issued_quantity || row.planned_quantity);
     const rowUnit = farmCleanUnitDisplay(row.unit_name || row.unit_id || "");
-    const defaultActual = resultQuantity || n(row.actual_quantity) || issued;
-    const actualQuantity = resultQuantity || (entry.actualQuantity !== undefined && entry.actualQuantity !== "" ? n(entry.actualQuantity) : defaultActual);
+    const issuedOnDate = n(farmResultIssuedMaterialForCandidate(issuedSummary, row)?.quantity);
+    const entryHasActual = entry.actualQuantity !== undefined && entry.actualQuantity !== "";
+    const defaultActual = issuedOnDate || (candidates.length === 1 ? resultQuantity : 0) || n(row.actual_quantity) || issued;
+    const actualQuantity = entryHasActual ? n(entry.actualQuantity) : defaultActual;
     const wasteQuantity = entry.wasteQuantity !== undefined && entry.wasteQuantity !== "" ? n(entry.wasteQuantity) : n(row.waste_quantity);
     const priorActualQuantity = farmResultPriorMaterialActualQuantity(order, key, currentResultId, row.material_name || row.material_id, resultDate);
-    const hasCurrentActual = resultQuantity > 0 || (entry.actualQuantity !== undefined && entry.actualQuantity !== "" && n(entry.actualQuantity) > 0);
+    const hasCurrentActual = actualQuantity > 0;
     const cumulativeActualQuantity = hasCurrentActual ? priorActualQuantity + actualQuantity : actualQuantity;
     const pendingIssueQuantity = Math.max(0, issued - cumulativeActualQuantity - wasteQuantity);
     return {
@@ -17803,14 +17844,8 @@ function renderFarmResultPanel() {
     .map((row) => `${row.label}: ${row.rateInfo.label}`)
     .join(" | ");
   const currentWorkerIds = new Set(calc.workerLines.map((row) => String(row.id || "")));
-  const employeeTable = farmTableByKey("employees");
-  const addWorkerOptions = farmRowsByKey("employees")
-    .filter((employee) => employee.id && !currentWorkerIds.has(String(employee.id)))
-    .map((employee) => {
-      const label = farmRecordLabel(employeeTable, employee) || employee.full_name || employee.employee_code || employee.id;
-      return `<option value="${esc(employee.id)}">${esc(label)}</option>`;
-    })
-    .join("");
+  const addWorkerOptions = renderFarmDispatchWorkerOptions(currentWorkerIds);
+  const effectiveOrderStatus = order ? farmEffectiveWorkStatusMeta(order) : null;
   const issuedMaterialDefault = farmWorkOrderIssuedMaterialDefault(order, draft.resultDate);
   const issuedMaterialSummary = issuedMaterialDefault.rows;
   const actualQuantityInputValue = String(draft.actualQuantity ?? "").trim()
@@ -17831,7 +17866,7 @@ function renderFarmResultPanel() {
       ${renderFarmResultWorkSearch(order, orders)}
       <div class="farm-result-summary-strip">
         <article><span>กิจกรรม</span><strong>${esc(farmLookupLabel("activities", order?.activity_id) || "-")}</strong><small>${esc(area)}</small></article>
-        <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(order?.statusMeta?.label || "-")}</small></article>
+        <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(effectiveOrderStatus?.label || "-")}</small></article>
         <article><span>เรทตามบทบาท</span><strong>${fmt(calc.roleSummary.filter((row) => row.count).length || 1)} ชุด</strong><small>${esc(roleRateSummary || rateLabel)}</small></article>
         <article><span>ค่าแรงรวม</span><strong>${moneyNf.format(calc.payrollTotal || calc.totalWage)}</strong><small>ล็อก snapshot หลังบันทึก</small></article>
         <article><span>วัสดุ / น้ำมัน</span><strong>${fmt(calc.materialLines.length)} / ${fmt(calc.machineLines.length)}</strong><small>น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร</small></article>
