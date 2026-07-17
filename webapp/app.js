@@ -18764,15 +18764,27 @@ function renderFarmWorkBoard(options = {}) {
   const approvalCount = rows.filter((row) => row.statusMeta.key === "pending_approval").length;
   const shiftedCount = rows.filter((row) => row.statusMeta.key === "rescheduled").length;
   const closedCount = rows.filter((row) => row.statusMeta.key === "closed").length;
-  const timelineRows = rows.slice().sort((a, b) => farmWorkGroupKey(a).localeCompare(farmWorkGroupKey(b), "th")
+  const timelineSourceRows = focusedRangeRows.length ? focusedRangeRows : rows;
+  const sortedTimelineRows = timelineSourceRows.slice().sort((a, b) => farmWorkGroupKey(a).localeCompare(farmWorkGroupKey(b), "th")
     || farmDateMs(a.startDate) - farmDateMs(b.startDate)
     || String(a.shortNo || farmShortWorkOrderNo(a)).localeCompare(String(b.shortNo || farmShortWorkOrderNo(b)), "th"));
+  const maxTimelineRows = state.view === "farm-dispatch" || state.view === "farm-result" ? 160 : 240;
+  const timelineRows = sortedTimelineRows.slice(0, maxTimelineRows);
+  const hiddenTimelineCount = Math.max(0, sortedTimelineRows.length - timelineRows.length);
+  const timelineSubtitle = hiddenTimelineCount
+    ? `${subtitle} · แสดง ${fmt(timelineRows.length)} จาก ${fmt(sortedTimelineRows.length)} รายการ`
+    : subtitle;
+  const groupCounts = new Map();
+  timelineRows.forEach((row) => {
+    const group = farmWorkGroupKey(row);
+    groupCounts.set(group, (groupCounts.get(group) || 0) + 1);
+  });
   const groupedRows = [];
   let lastGroup = "";
   for (const row of timelineRows) {
     const group = farmWorkGroupKey(row);
     if (group !== lastGroup) {
-      groupedRows.push({ type: "group", id: `group-${group}`, group, count: timelineRows.filter((item) => farmWorkGroupKey(item) === group).length });
+      groupedRows.push({ type: "group", id: `group-${group}`, group, count: groupCounts.get(group) || 0 });
       lastGroup = group;
     }
     groupedRows.push({ type: "order", row });
@@ -18801,7 +18813,7 @@ function renderFarmWorkBoard(options = {}) {
     <section class="farm-work-console${compact ? " farm-work-compact" : ""}">
       <div class="section-head">
         <h3>${esc(title)}</h3>
-        <span>${esc(subtitle)}</span>
+        <span>${esc(timelineSubtitle)}</span>
       </div>
       ${showKpis ? `<div class="farm-work-kpis">
         <article><span>Work Order</span><strong>${fmt(rows.length)}</strong><small>จากทั้งหมด ${fmt(allRows.length)}</small></article>
@@ -21956,8 +21968,8 @@ function renderFarmPage() {
       ${isPeoplePage ? renderFarmPeopleBoard(table, rows, tables) : ""}
       ${isInventoryPage ? renderFarmInventoryBoard() : ""}
       ${isWorkPage ? `${renderFarmWorkBoard({ title: "Planner", subtitle: "ตารางแผนงานแบบย่อ แสดง Activity, Block, ทีม และสถานะในแถวเดียว" })}${renderFarmWorkPlanner()}` : ""}
-      ${isDispatchPage ? `${renderFarmWorkBoard({ title: "Scheduler", subtitle: "ตารางงานสำหรับผู้จัดการ ใช้ดูแผนก่อนหยิบไปสั่งงาน", showKpis: false })}${renderFarmDispatchPanel()}${renderFarmWorkOrderList()}${renderFarmActivityModal()}` : ""}
-      ${isResultPage ? `${renderFarmResultPanel()}${renderFarmWorkOrderList()}` : ""}
+      ${isDispatchPage ? `${renderFarmWorkBoard({ title: "Scheduler", subtitle: "ตารางงานสำหรับผู้จัดการ ใช้ดูแผนก่อนหยิบไปสั่งงาน", showKpis: false })}${renderFarmDispatchPanel()}${renderFarmActivityModal()}` : ""}
+      ${isResultPage ? `${renderFarmResultPanel()}` : ""}
       ${isInventoryIssuePage ? renderFarmInventoryIssueQueue() : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
