@@ -121,6 +121,8 @@ const farmDerivedCache = {
   dispatchApprovedOrders: null,
   resultCandidateOrders: null,
   workOrderWorkerIds: null,
+  workOrderStorageIndex: null,
+  resultDateIndex: null,
 };
 
 function resetFarmDerivedCaches() {
@@ -130,6 +132,8 @@ function resetFarmDerivedCaches() {
   farmDerivedCache.dispatchApprovedOrders = null;
   farmDerivedCache.resultCandidateOrders = null;
   farmDerivedCache.workOrderWorkerIds = null;
+  farmDerivedCache.workOrderStorageIndex = null;
+  farmDerivedCache.resultDateIndex = null;
 }
 
 const els = {
@@ -12119,13 +12123,38 @@ function farmIdentityMatchesAny(rowKeys = [], targetKeys = []) {
   });
 }
 
-function farmResolveWorkOrderStorageRow(order = {}) {
+function farmIdentityCacheKey(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function farmWorkOrderStorageIndex() {
+  if (farmDerivedCache.workOrderStorageIndex) return farmDerivedCache.workOrderStorageIndex;
   const rows = farmRowsByKey("work_orders");
+  const byId = new Map();
+  const byIdentity = new Map();
+  rows.forEach((row) => {
+    const idKey = farmIdentityCacheKey(row.id);
+    if (idKey && farmLooksUuid(row.id) && !byId.has(idKey)) byId.set(idKey, row);
+    farmWorkRowIdentityValues(row).forEach((value) => {
+      const key = farmIdentityCacheKey(value);
+      if (key && !byIdentity.has(key)) byIdentity.set(key, row);
+    });
+  });
+  farmDerivedCache.workOrderStorageIndex = { rows, byId, byIdentity };
+  return farmDerivedCache.workOrderStorageIndex;
+}
+
+function farmResolveWorkOrderStorageRow(order = {}) {
+  const { rows, byId, byIdentity } = farmWorkOrderStorageIndex();
   const directId = String(order.id || "").trim();
   if (directId && farmLooksUuid(directId)) {
-    return rows.find((row) => String(row.id || "").toLowerCase() === directId.toLowerCase()) || order;
+    return byId.get(farmIdentityCacheKey(directId)) || order;
   }
   const keys = farmWorkIdentityKeys(order);
+  for (const key of keys) {
+    const row = byIdentity.get(farmIdentityCacheKey(key));
+    if (row) return row;
+  }
   return rows.find((row) => farmLooksUuid(row.id) && farmIdentityMatchesAny(farmWorkRowIdentityValues(row), keys))
     || rows.find((row) => farmIdentityMatchesAny(farmWorkRowIdentityValues(row), keys))
     || {};
@@ -12253,16 +12282,37 @@ function farmWorkOrderExpectedWorkDates(order = {}) {
   return Array.from({ length: dayCount }, (_, index) => farmAddDays(start, index));
 }
 
+function farmResultDateIndex() {
+  if (farmDerivedCache.resultDateIndex) return farmDerivedCache.resultDateIndex;
+  const byIdentity = new Map();
+  farmRowsByKey("work_results").forEach((row) => {
+    const resultDate = isoDay(row.result_date || row.work_date || row.date || row.calculated_at);
+    if (!resultDate) return;
+    farmWorkRowIdentityValues(row).forEach((value) => {
+      const key = farmIdentityCacheKey(value);
+      if (!key) return;
+      if (!byIdentity.has(key)) byIdentity.set(key, new Set());
+      byIdentity.get(key).add(resultDate);
+    });
+  });
+  farmDerivedCache.resultDateIndex = byIdentity;
+  return farmDerivedCache.resultDateIndex;
+}
+
 function farmResultDatesForOrder(order = {}, extraResults = []) {
   const keys = farmWorkOrderAllIdentityKeys(order);
-  const rows = [...farmRowsByKey("work_results"), ...(extraResults || [])];
-  return [...new Set(rows
-    .filter((row) => {
-      const rowKeys = farmWorkRowIdentityValues(row);
-      return farmIdentityMatchesAny(rowKeys, keys);
-    })
-    .map((row) => isoDay(row.result_date || row.work_date || row.date || row.calculated_at))
-    .filter(Boolean))]
+  const dates = new Set();
+  const index = farmResultDateIndex();
+  keys.forEach((value) => {
+    const indexedDates = index.get(farmIdentityCacheKey(value));
+    if (indexedDates) indexedDates.forEach((date) => dates.add(date));
+  });
+  (extraResults || []).forEach((row) => {
+    if (!farmIdentityMatchesAny(farmWorkRowIdentityValues(row), keys)) return;
+    const resultDate = isoDay(row.result_date || row.work_date || row.date || row.calculated_at);
+    if (resultDate) dates.add(resultDate);
+  });
+  return [...dates]
     .sort((a, b) => farmDateDayMs(a) - farmDateDayMs(b));
 }
 
@@ -12281,7 +12331,9 @@ function farmEffectiveWorkStatusMeta(order = {}, extraResults = []) {
   if (["closed", "rejected", "pending_approval"].includes(baseStatus)) return farmWorkStatusMeta(order);
   const recordedDates = farmResultDatesForOrder(order, extraResults);
   if (!recordedDates.length) return farmWorkStatusMeta(order);
-  const effectiveStatus = farmWorkOrderStatusAfterResult(order, "", extraResults);
+  const expectedDates = farmWorkOrderExpectedWorkDates(order);
+  const recordedSet = new Set(recordedDates);
+  const effectiveStatus = expectedDates.length && expectedDates.every((date) => recordedSet.has(date)) ? "completed" : "in_progress";
   return farmWorkStatusMeta({ ...order, status: effectiveStatus, approval_status: order.approval_status || "approved" });
 }
 
@@ -18768,7 +18820,7 @@ function renderFarmWorkBoard(options = {}) {
   const sortedTimelineRows = timelineSourceRows.slice().sort((a, b) => farmWorkGroupKey(a).localeCompare(farmWorkGroupKey(b), "th")
     || farmDateMs(a.startDate) - farmDateMs(b.startDate)
     || String(a.shortNo || farmShortWorkOrderNo(a)).localeCompare(String(b.shortNo || farmShortWorkOrderNo(b)), "th"));
-  const maxTimelineRows = state.view === "farm-dispatch" || state.view === "farm-result" ? 160 : 240;
+  const maxTimelineRows = state.view === "farm-dispatch" ? 90 : state.view === "farm-result" ? 70 : 240;
   const timelineRows = sortedTimelineRows.slice(0, maxTimelineRows);
   const hiddenTimelineCount = Math.max(0, sortedTimelineRows.length - timelineRows.length);
   const timelineSubtitle = hiddenTimelineCount
