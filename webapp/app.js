@@ -3235,7 +3235,9 @@ function farmDatabaseTablesForView(view = state.view) {
     ].forEach((key) => tableSet.add(key));
   }
   if (["farm-work", "farm-dispatch", "farm-result", "farm-performance"].includes(view)) {
-    [
+    // Keep workflow reads focused. The old shared list loaded survey, budget,
+    // and payroll tables even when a user only opened dispatch/result.
+    const workflowTables = [
       "work_orders",
       "blocks",
       "areas",
@@ -3251,20 +3253,16 @@ function farmDatabaseTablesForView(view = state.view) {
       "team_members",
       "employees",
       "contractors",
-      "survey_templates",
-      "survey_questions",
-      "activity_material_usage_rates",
-      "budget_years",
-      "budget_activity_rates",
-      "budget_rate_blocks",
-      "budget_rate_materials",
-      "budget_rate_roles",
       "work_order_workers",
       "work_order_materials",
       "work_order_machines",
       "work_results",
       "work_attendance",
-    ].forEach((key) => tableSet.add(key));
+    ];
+    if (view === "farm-work" || view === "farm-performance") {
+      workflowTables.push("survey_templates", "survey_questions", "activity_material_usage_rates", "budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_roles");
+    }
+    workflowTables.forEach((key) => tableSet.add(key));
   }
   if (view === "farm-dispatch") {
     [
@@ -22841,11 +22839,22 @@ async function init() {
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
-  await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadSummaryPalmoilAreas(), loadBlockMapData(), loadFarmBudgetRateData(), loadClearOverridesFromServer()]);
-  setDefaultTransportDateRange();
-  setDateValue(els.clearDate, state.payload.source.dateMax);
-  const priorityFarmTables = farmDatabaseTablesForView(state.view);
-  if (priorityFarmTables.length) await loadFarmTablesFromDatabase({ silent: false, tables: priorityFarmTables });
+  // Farm workflow pages are database-backed. Do not block their first paint
+  // on the transport workbook, mill-weight, map, and legacy master payloads.
+  // Those payloads are only required by the transport/reporting views.
+  if (isFarmView(state.view)) {
+    // Paint the shell immediately; the database response can fill the page
+    // afterward without making the route look frozen on a cold load.
+    render();
+    const priorityFarmTables = farmDatabaseTablesForView(state.view);
+    if (priorityFarmTables.length) {
+      await loadFarmTablesFromDatabase({ silent: false, tables: priorityFarmTables });
+    }
+  } else {
+    await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadSummaryPalmoilAreas(), loadBlockMapData(), loadFarmBudgetRateData(), loadClearOverridesFromServer()]);
+    setDefaultTransportDateRange();
+    setDateValue(els.clearDate, state.payload.source.dateMax);
+  }
 
   els.startDate.addEventListener("input", () => {
     syncDatePickerFromText(els.startDate);
