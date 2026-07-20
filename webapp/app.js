@@ -14566,7 +14566,7 @@ function farmDispatchCandidateOrders() {
 
 function farmDispatchSelectedOrder(rows = farmDispatchCandidateOrders()) {
   const selectedId = state.farmDispatchWorkOrderId || state.farmWorkDetailId;
-  const selected = rows.find((row) => row.id === selectedId) || farmWorkOrders().find((row) => row.id === selectedId) || rows[0] || null;
+  const selected = rows.find((row) => String(row.id) === String(selectedId)) || farmWorkOrders().find((row) => String(row.id) === String(selectedId)) || rows[0] || null;
   if (selected && state.farmDispatchWorkOrderId !== selected.id) state.farmDispatchWorkOrderId = selected.id;
   if (selected && state.farmDispatchLastOrderId !== selected.id) {
     state.farmDispatchLastOrderId = selected.id;
@@ -16821,7 +16821,7 @@ function farmResultCandidateOrders() {
 function farmResultSelectedOrder() {
   const rows = farmResultCandidateOrders();
   const selectedId = state.farmResultWorkOrderId || state.farmWorkDetailId || state.farmDispatchWorkOrderId;
-  const selected = rows.find((row) => row.id === selectedId) || farmWorkOrders().find((row) => row.id === selectedId) || rows[0] || null;
+  const selected = rows.find((row) => String(row.id) === String(selectedId)) || farmWorkOrders().find((row) => String(row.id) === String(selectedId)) || rows[0] || null;
   if (selected && state.farmResultWorkOrderId !== selected.id) state.farmResultWorkOrderId = selected.id;
   return selected;
 }
@@ -16944,7 +16944,7 @@ function renderFarmResultWorkSearch(order, allOrders = farmResultCandidateOrders
       </div>
       <div class="farm-result-search-results" role="listbox" aria-label="รายการใบสั่งงาน">
         ${rows.map((row) => {
-          const selected = row.id === order?.id;
+          const selected = String(row.id) === String(order?.id);
           return `
             <button type="button" class="farm-result-order-card${selected ? " is-selected" : ""}" data-farm-result-order-pick="${esc(row.id)}" role="option" aria-selected="${selected ? "true" : "false"}">
               <span class="farm-result-order-no">${esc(farmShortWorkOrderNo(row))}</span>
@@ -17901,12 +17901,30 @@ function renderFarmResultPanel() {
   const issuedMaterialDefault = farmWorkOrderIssuedMaterialDefault(order, draft.resultDate);
   const issuedMaterialSummary = issuedMaterialDefault.rows;
   const actualQuantityInputValue = draft.actualQuantity ?? "";
-  const issuedMaterialNotice = issuedMaterialSummary.length
-    ? `<div class="farm-result-issued-materials">
-        <strong>วัสดุที่เบิกในวันทำงาน ${esc(formatThaiDate(draft.resultDate || ""))}</strong>
-        <span>${issuedMaterialSummary.map((row) => `${esc(row.label)} ${fmt(row.quantity)} ${esc(row.unit || "")}`).join(" · ")}</span>
-      </div>`
-    : "";
+  const completedWorkDates = order ? farmResultDatesForOrder(order) : [];
+  const fallbackMaterialRows = farmResultMaterialLines(order)
+    .map((row) => ({
+      label: row.material_name || row.item_name || farmLookupLabel("materials", row.material_id) || row.material_id || "",
+      quantity: n(row.issued_quantity || row.planned_quantity),
+      unit: farmCleanUnitDisplay(row.unit_name || row.unit_id || ""),
+    }))
+    .filter((row) => row.label);
+  const workHistoryMaterials = issuedMaterialSummary.length ? issuedMaterialSummary : fallbackMaterialRows;
+  const workHistory = `
+    <aside class="farm-result-work-history" aria-label="วันที่ทำมาแล้วและวัสดุ">
+      <div>
+        <span>วันที่ทำมาแล้ว</span>
+        <strong>${completedWorkDates.length
+          ? completedWorkDates.map((date) => `<em>${esc(formatThaiDate(date))}</em>`).join("")
+          : "<em>ยังไม่มีวันที่บันทึก</em>"}</strong>
+      </div>
+      <div>
+        <span>วัสดุ</span>
+        <strong>${workHistoryMaterials.length
+          ? workHistoryMaterials.map((row) => `<em>${esc(row.label)}${n(row.quantity) ? ` ${fmt(row.quantity)} ${esc(row.unit || "")}` : ""}</em>`).join("")
+          : "<em>ไม่มีวัสดุในใบงาน</em>"}</strong>
+      </div>
+    </aside>`;
   return `
     <section class="farm-result-page">
       <div class="section-head">
@@ -17930,7 +17948,6 @@ function renderFarmResultPanel() {
             <label class="farm-result-ticket-field">เลขใบชั่ง
               <input id="farmResultTicketText" type="text" value="${esc(draft.ticketText || "")}" placeholder="เช่น 26-06-000123, 000124">
             </label>
-            ${issuedMaterialNotice}
             <label>ผลงานจริง
               <input id="farmResultQuantity" type="number" min="0" step="0.01" class="farm-result-required-input" value="${esc(actualQuantityInputValue)}" placeholder="กรอกผลงานจริง">
             </label>
@@ -17939,9 +17956,7 @@ function renderFarmResultPanel() {
                 ${["กก.", "ตัน", "กระสอบ", "ไร่", "ต้น", "หน่วย"].map((unit) => `<option value="${esc(unit)}"${unit === calc.actualUnit ? " selected" : ""}>${esc(unit)}</option>`).join("")}
               </select>
             </label>
-            <label class="farm-result-note-field">หมายเหตุ
-              <input id="farmResultNote" type="text" value="${esc(draft.note || "")}" placeholder="หมายเหตุการทำงาน">
-            </label>
+            ${workHistory}
           </div>
         </article>
         <article class="farm-result-card farm-result-mobile-card">
@@ -18142,7 +18157,7 @@ function syncFarmResultDraftFromForm() {
     qualityScore: document.querySelector("#farmResultQuality")?.value || "",
     surveyStatus: document.querySelector("#farmResultSurveyStatus")?.value || state.farmResultDraft?.surveyStatus || "pending",
     surveyNote: document.querySelector("#farmResultSurveyNote")?.value.trim() || "",
-    note: document.querySelector("#farmResultNote")?.value.trim() || "",
+    note: state.farmResultDraft?.note || "",
     surveyAnswers,
     extraWorkerIds: state.farmResultDraft?.extraWorkerIds || [],
     workerEntries,
@@ -23088,7 +23103,7 @@ async function init() {
       render();
       return;
     }
-    if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultNote"].includes(e.target.id)) {
+    if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote"].includes(e.target.id)) {
       handleFarmResultFormFieldChange(e.target);
       return;
     }
@@ -23497,7 +23512,7 @@ async function init() {
       }, 350);
       return;
     }
-    if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultNote"].includes(e.target.id)) {
+    if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote"].includes(e.target.id)) {
       handleFarmResultFormFieldChange(e.target);
       return;
     }
@@ -23923,12 +23938,15 @@ async function init() {
     }
     const resultOrderPick = e.target.closest("[data-farm-result-order-pick]");
     if (resultOrderPick) {
+      e.preventDefault();
+      e.stopPropagation();
       const id = resultOrderPick.dataset.farmResultOrderPick;
       state.farmResultWorkOrderId = id;
       state.farmWorkDetailId = id;
       state.farmDispatchWorkOrderId = id;
       state.farmResultRoleTab = "";
-      const selectedOrder = farmResultOrderList().find((row) => String(row.id) === String(id))
+      const selectedOrder = farmResultCandidateOrders().find((row) => String(row.id) === String(id))
+        || farmResultOrderList().find((row) => String(row.id) === String(id))
         || farmLookup("work_orders", id)
         || farmResultSelectedOrder();
       state.farmResultDraft = farmResultBlankDraft(selectedOrder);
