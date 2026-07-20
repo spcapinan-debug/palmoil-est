@@ -15237,3 +15237,13 @@ tfoot td,
     min-height: 38px;
   }
 }
+
+.farm-result-required-input {
+  font-weight: 800 !important;
+  border: 2px solid #c26b3e !important;
+  background: #fff8f1 !important;
+}
+.farm-result-required-input::placeholder {
+  color: #8a4b2d;
+  font-weight: 800;
+}

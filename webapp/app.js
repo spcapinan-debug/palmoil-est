@@ -1,4 +1,4 @@
-﻿const state = {
+const state = {
   payload: null,
   records: [],
   millPayload: null,
@@ -3256,11 +3256,15 @@ function farmDatabaseTablesForView(view = state.view) {
       "work_order_workers",
       "work_order_materials",
       "work_order_machines",
-      "work_results",
-      "work_attendance",
     ];
     if (view === "farm-work" || view === "farm-performance") {
       workflowTables.push("survey_templates", "survey_questions", "activity_material_usage_rates", "budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_roles");
+    }
+    if (["farm-work", "farm-dispatch", "farm-result", "farm-performance"].includes(view)) {
+      workflowTables.push("work_results");
+    }
+    if (["farm-result", "farm-performance"].includes(view)) {
+      workflowTables.push("work_attendance");
     }
     workflowTables.forEach((key) => tableSet.add(key));
   }
@@ -16895,8 +16899,12 @@ function renderFarmResultWorkSearch(order, allOrders = farmResultCandidateOrders
   const activityOptions = farmResultActivityFilterOptions(allOrders);
   const statusOptions = farmResultStatusFilterOptions(allOrders);
   const selectedTitle = order ? `${farmShortWorkOrderNo(order)} · ${farmShortActivityText(order)} · ${farmShortBlockText(order)}` : "ยังไม่ได้เลือกใบสั่งงาน";
+  const workedDateLabel = order?.actualStartDate
+    ? `ทำแล้ว ${dateInputValue(order.actualStartDate)}${order.actualEndDate && order.actualEndDate !== order.actualStartDate ? ` - ${dateInputValue(order.actualEndDate)}` : ""}`
+    : "ยังไม่มีวันที่ทำงาน";
   const selectedMeta = order ? [
     farmResultOrderDateLabel(order),
+    workedDateLabel,
     farmLookupLabel("teams", order.team_id) || "-",
     farmEffectiveWorkStatusMeta(order)?.label || "-",
   ].filter(Boolean).join(" · ") : "ค้นหาแล้วคลิกเลือกงานที่ต้องการบันทึก";
@@ -16964,9 +16972,6 @@ function farmResultDraftState(order = farmResultSelectedOrder()) {
     draft.actualUnit = issuedDefault.unit || (basis === "bag_count" ? "กระสอบ"
       : basis === "weight_ton" || activity.work_type === "harvest" ? "กก."
         : activity.default_unit || "หน่วย");
-  }
-  if ((draft.actualQuantity === undefined || draft.actualQuantity === "" || n(draft.actualQuantity) === 0) && n(issuedDefault.quantity)) {
-    draft.actualQuantity = Math.round(n(issuedDefault.quantity) * 1000) / 1000;
   }
   return draft;
 }
@@ -17152,20 +17157,17 @@ function farmResultIssuedMaterialForCandidate(summaryRows = [], row = {}) {
 function farmResultMaterialLines(order) {
   const draftEntries = state.farmResultDraft?.materialEntries || {};
   const draft = farmResultDraftState(order);
-  const resultQuantity = n(draft.actualQuantity);
   const resultDate = draft.resultDate || farmResultDefaultDate(order);
   const currentResultId = farmResultIdForOrderDate(order?.id, resultDate);
-  const issuedSummary = farmWorkOrderIssuedMaterialSummary(order, resultDate);
   const candidates = farmDispatchMaterialCandidates(order);
   return candidates.map((row) => {
     const key = row.material_id;
     const entry = draftEntries[key] || {};
     const issued = n(row.issued_quantity || row.planned_quantity);
     const rowUnit = farmCleanUnitDisplay(row.unit_name || row.unit_id || "");
-    const issuedOnDate = n(farmResultIssuedMaterialForCandidate(issuedSummary, row)?.quantity);
     const entryHasActual = entry.actualQuantity !== undefined && entry.actualQuantity !== "";
-    const defaultActual = issuedOnDate || (candidates.length === 1 ? resultQuantity : 0) || n(row.actual_quantity) || issued;
-    const actualQuantity = entryHasActual ? n(entry.actualQuantity) : defaultActual;
+    // Actual usage is entered by the supervisor; issued quantity remains a reference only.
+    const actualQuantity = entryHasActual ? n(entry.actualQuantity) : 0;
     const wasteQuantity = entry.wasteQuantity !== undefined && entry.wasteQuantity !== "" ? n(entry.wasteQuantity) : n(row.waste_quantity);
     const priorActualQuantity = farmResultPriorMaterialActualQuantity(order, key, currentResultId, row.material_name || row.material_id, resultDate);
     const hasCurrentActual = actualQuantity > 0;
@@ -17898,9 +17900,7 @@ function renderFarmResultPanel() {
   const effectiveOrderStatus = order ? farmEffectiveWorkStatusMeta(order) : null;
   const issuedMaterialDefault = farmWorkOrderIssuedMaterialDefault(order, draft.resultDate);
   const issuedMaterialSummary = issuedMaterialDefault.rows;
-  const actualQuantityInputValue = String(draft.actualQuantity ?? "").trim()
-    ? draft.actualQuantity
-    : (n(issuedMaterialDefault.quantity) ? Math.round(n(issuedMaterialDefault.quantity) * 1000) / 1000 : "");
+  const actualQuantityInputValue = draft.actualQuantity ?? "";
   const issuedMaterialNotice = issuedMaterialSummary.length
     ? `<div class="farm-result-issued-materials">
         <strong>วัสดุที่เบิกในวันทำงาน ${esc(formatThaiDate(draft.resultDate || ""))}</strong>
@@ -17932,7 +17932,7 @@ function renderFarmResultPanel() {
             </label>
             ${issuedMaterialNotice}
             <label>ผลงานจริง
-              <input id="farmResultQuantity" type="number" min="0" step="0.01" value="${esc(actualQuantityInputValue)}" placeholder="${calc.ticketKg ? fmt(calc.ticketKg) : "0"}">
+              <input id="farmResultQuantity" type="number" min="0" step="0.01" class="farm-result-required-input" value="${esc(actualQuantityInputValue)}" placeholder="กรอกผลงานจริง">
             </label>
             <label>หน่วย
               <select id="farmResultUnit">
@@ -18053,7 +18053,7 @@ function renderFarmResultPanel() {
                   <tr data-farm-result-material="${esc(row.key)}">
                     <td><strong>${esc(row.material_name || row.material_id)}</strong></td>
                     <td class="num">${moneyNf.format(n(row.planned_quantity))} / ${moneyNf.format(n(row.issued_quantity))}</td>
-                    <td><input type="number" min="0" step="0.01" value="${esc(row.actualQuantity || "")}" data-farm-result-material-field="actualQuantity"></td>
+                    <td><input type="number" min="0" step="0.01" class="farm-result-required-input" value="${esc(row.actualQuantity || "")}" placeholder="กรอกใช้จริง" data-farm-result-material-field="actualQuantity"></td>
                     <td><input type="number" min="0" step="0.01" value="${esc(row.wasteQuantity || "")}" data-farm-result-material-field="wasteQuantity"></td>
                     <td>${esc(farmCleanUnitDisplay(row.unit_name || row.unit_id || "-"))}</td>
                     <td class="num"><strong>${moneyNf.format(n(row.pendingIssueQuantity))}</strong></td>
@@ -18127,17 +18127,6 @@ function syncFarmResultDraftFromForm() {
   const unitInput = document.querySelector("#farmResultUnit");
   let actualQuantity = quantityInput?.value || "";
   let actualUnit = unitInput?.value || "";
-  const previousIssued = farmWorkOrderIssuedMaterialDefault(order, previousResultDate);
-  const nextIssued = farmWorkOrderIssuedMaterialDefault(order, resultDate);
-  const previousIssuedQuantity = n(previousIssued.quantity) ? Math.round(n(previousIssued.quantity) * 1000) / 1000 : 0;
-  const nextIssuedQuantity = n(nextIssued.quantity) ? Math.round(n(nextIssued.quantity) * 1000) / 1000 : 0;
-  const rawActualQuantity = String(actualQuantity || "").trim();
-  if (resultDate !== previousResultDate && nextIssuedQuantity && (!rawActualQuantity || n(rawActualQuantity) === previousIssuedQuantity)) {
-    actualQuantity = String(nextIssuedQuantity);
-  }
-  if (resultDate !== previousResultDate && nextIssued.unit && (!actualUnit || String(actualUnit) === String(previousIssued.unit || ""))) {
-    actualUnit = nextIssued.unit;
-  }
   const surveyAnswers = { ...(state.farmResultDraft?.surveyAnswers || {}) };
   document.querySelectorAll("[data-farm-survey-answer]").forEach((input) => {
     if ((input.type === "radio" || input.type === "checkbox") && !input.checked) return;
