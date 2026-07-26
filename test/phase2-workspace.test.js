@@ -132,3 +132,7 @@ test("transport startup does not call protected workspace APIs", () => {
   assert.match(appSource, /if\s*\(isFarmView\(state\.view\)\s*\|\|\s*requestedWorkspaceRouteFromUrl\(\)\)\s*await loadWorkspaceShell\(\)/);
   assert.doesNotMatch(appSource, /const workspaceShell\s*=\s*loadWorkspaceShell\(\)/);
 });
+
+test("daily workspace renders its empty state without a selected work order", () => {
+  assert.match(appSource, /function farmResultRateCodesFromOrder\(order = \{\}\)\s*\{\s*order = order \|\| \{\};/);
+});

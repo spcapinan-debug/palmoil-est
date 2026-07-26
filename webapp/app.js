@@ -17459,6 +17459,7 @@ function farmResultFindBudgetRateByToken(token = "", rates = farmRowsByKey("budg
 }
 
 function farmResultRateCodesFromOrder(order = {}) {
+  order = order || {};
   const noteText = String(order.note || "");
   const noteCodes = [
     ...noteText.matchAll(/(?:rate|rates|rate_code|อัตรา|เรท)\s*[:=]\s*([A-Z0-9-]+)/gi),
