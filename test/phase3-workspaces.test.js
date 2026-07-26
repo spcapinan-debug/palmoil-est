@@ -126,6 +126,9 @@ test("route deep links preserve query params and browser back rehydrates the tab
   assert.match(appSource, /window\.addEventListener\("popstate"/);
   assert.doesNotMatch(appSource, /function openWorkspaceRoute[\s\S]{0,350}url\.search\s*=\s*""/);
   assert.match(appSource, /workspaceTabFromUrl/);
+  assert.match(appSource, /const WORKSPACE_ROUTE_FALLBACKS =/);
+  assert.match(appSource, /applyWorkspaceFallbackRoute\(initialWorkspaceRoute\)/);
+  assert.match(appSource, /!applyWorkspaceRoute\(requestedRoute\)\)\s*applyWorkspaceFallbackRoute\(requestedRoute\)/);
 });
 
 test("responsive rules cover tablet and mobile without exposing secrets", () => {

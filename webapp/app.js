@@ -3119,8 +3119,35 @@ function requestedWorkspaceRouteFromUrl() {
     ? `${path}${window.location.search || ""}` : "";
 }
 
+const WORKSPACE_ROUTE_FALLBACKS = {
+  "/farm/dashboard": ["dashboard", "farm-management-dashboard"],
+  "/farm/master": ["farm.master", "farm-area"],
+  "/farm/work": ["farm.work", "farm-work"],
+  "/farm/daily": ["farm.daily", "farm-result"],
+  "/inventory": ["inventory.stock", "farm-inventory"],
+  "/inventory/fuel": ["inventory.fuel", "farm-inventory"],
+  "/hr/people": ["hr.people", "farm-people"],
+  "/payroll": ["payroll", "farm-payroll"],
+  "/budget": ["budget", "farm-budget"],
+  "/reports": ["reports", "farm-reports"],
+  "/system/access": ["system.access", "farm-governance"],
+};
+
 function workspaceRoutePath(route) {
   return String(route || "").split("?")[0].replace(/\/+$/, "") || "/";
+}
+
+function applyWorkspaceFallbackRoute(route) {
+  const path = workspaceRoutePath(route);
+  const fallback = WORKSPACE_ROUTE_FALLBACKS[path];
+  if (!fallback) return false;
+  state.workspaceRoute = path;
+  state.view = fallback[1];
+  const requestedTab = workspaceTabFromUrl(state.view);
+  if (state.view === "farm-work" && requestedTab) state.farmWorkWorkspaceTab = requestedTab;
+  if (state.view === "farm-result" && requestedTab) state.farmDailyWorkspaceTab = requestedTab;
+  ensureFarmViewState(state.view);
+  return true;
 }
 
 function workspaceTabFromUrl(view = state.view) {
@@ -23619,11 +23646,16 @@ async function init() {
   ensurePrintPreviewElements();
   applySidebarState();
   state.view = initialViewFromUrl();
-  if (isFarmView(state.view) || requestedWorkspaceRouteFromUrl()) await loadWorkspaceShell();
+  const initialWorkspaceRoute = requestedWorkspaceRouteFromUrl();
+  if (initialWorkspaceRoute) applyWorkspaceFallbackRoute(initialWorkspaceRoute);
+  if (isFarmView(state.view) || initialWorkspaceRoute) await loadWorkspaceShell();
   window.addEventListener("popstate", () => {
     const requestedRoute = requestedWorkspaceRouteFromUrl();
-    if (requestedRoute) applyWorkspaceRoute(requestedRoute);
-    state.view = initialViewFromUrl();
+    if (requestedRoute) {
+      if (!applyWorkspaceRoute(requestedRoute)) applyWorkspaceFallbackRoute(requestedRoute);
+    } else {
+      state.view = initialViewFromUrl();
+    }
     const tab = workspaceTabFromUrl(state.view);
     if (state.view === "farm-work" && tab) state.farmWorkWorkspaceTab = tab;
     if (state.view === "farm-result" && tab) state.farmDailyWorkspaceTab = tab;
