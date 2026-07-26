@@ -112,6 +112,19 @@ const state = {
   farmEditId: "",
   estSearchTimer: null,
   sidebarCollapsed: localStorage.getItem("sidebarIconRailExpandedV2") !== "1",
+  workspaceNavigation: [],
+  workspaceDefinitions: [],
+  workspaceTabs: [],
+  workspacePermissions: new Set(),
+  workspaceRoles: new Set(),
+  workspaceActionCenter: [],
+  workspaceReadiness: [],
+  workspaceTab: "",
+  workspaceRoute: "",
+  dynamicMenuEnabled: false,
+  actionCenterFilters: {
+    year: "", from: "", to: "", ap: "", block: "", team: "", activity: "", rspo: "",
+  },
 };
 
 const farmDerivedCache = {
@@ -150,6 +163,7 @@ const els = {
   datePanel: document.querySelector(".date-panel"),
   globalFilterPanel: document.querySelector("#globalFilterPanel"),
   tabs: document.querySelector("#tabs"),
+  farmMenuSection: document.querySelector("#farmMenuSection"),
   dashboard: document.querySelector("#dashboard"),
   reportPage: document.querySelector("#reportPage"),
   clearPage: document.querySelector("#clearPage"),
@@ -188,6 +202,7 @@ const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
 const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_weight.json";
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
+const FARM_SESSION_API = window.__FARM_SESSION_API__ || "/api/farm-session";
 const FARM_BUDGET_SYNC_API = window.__FARM_BUDGET_SYNC_API__ || "/api/farm-budget-sync";
 const FARM_DB_TABLE_CACHE_MS = 30 * 1000;
 const farmDbTableLoadedAt = new Map();
@@ -195,6 +210,15 @@ const farmDbTableInflight = new Map();
 const MASTER_FOLDER_DATA_URL = window.__MASTER_FOLDER_DATA_URL__ || "./data/master_data_full.json";
 const FARM_BUDGET_RATE_DATA_URL = "";
 const TRANSPORT_VIEWS = new Set(["dashboard", "stock", "mill", "rspo", "daily", "summary", "clear"]);
+
+function farmApiHeaders(extra = {}) {
+  const token = window.__SUPABASE_ACCESS_TOKEN__ || localStorage.getItem("supabaseAccessToken") || "";
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
+}
+
+function farmApiErrorMessage(payload, fallback) {
+  return payload?.error?.message || payload?.message || payload?.error || fallback;
+}
 const DAILY_HEADERS = [
   "วันที่",
   "เวลา",
@@ -714,6 +738,17 @@ const FARM_MODULES = [
     seed: [],
   },
 ];
+
+FARM_MODULES.push({
+  id: "farm-management-dashboard",
+  title: "ภาพรวมงานสวน",
+  group: "Management",
+  accent: "Action Center / Readiness",
+  description: "งานที่ต้องดำเนินการและความพร้อมของแต่ละโมดูลจากฐานข้อมูลจริง",
+  tables: [],
+  fields: [],
+  seed: [],
+});
 
 const FARM_WORKFLOW_STAGES = [
   { no: "01", title: "ข้อมูลหลัก", views: ["farm-area", "farm-activities", "farm-inventory", "farm-budget"], note: "เตรียมพื้นที่ กิจกรรม พัสดุ และอัตรางบประมาณ", role: "Admin / Manager" },
@@ -2983,6 +3018,171 @@ function initialViewFromUrl() {
   return state.view;
 }
 
+function requestedWorkspaceRouteFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const explicit = params.get("route");
+  if (explicit) return explicit;
+  const path = window.location.pathname || "";
+  return /^\/(farm|inventory|hr|payroll|budget|reports|system)(\/|$)/.test(path)
+    ? `${path}${window.location.search || ""}` : "";
+}
+
+function workspaceRoutePath(route) {
+  return String(route || "").split("?")[0].replace(/\/+$/, "") || "/";
+}
+
+function resolveWorkspaceRoute(items, route) {
+  const raw = String(route || "");
+  const path = workspaceRoutePath(raw);
+  return items.find((item) => item.route === raw)
+    || items.find((item) => workspaceRoutePath(item.route) === path)
+    || null;
+}
+
+function workspaceFlag(settings, key) {
+  const row = (settings || []).find((item) => item.setting_key === key);
+  return ["1", "true", "yes", "on"].includes(String(row?.setting_value ?? "").toLowerCase());
+}
+
+function readActionCenterFiltersFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  for (const key of Object.keys(state.actionCenterFilters)) {
+    if (params.has(key)) state.actionCenterFilters[key] = params.get(key) || "";
+  }
+}
+
+function workspaceRouteWithFilters(route) {
+  const [path, search = ""] = String(route || "").split("?");
+  const params = new URLSearchParams(search);
+  for (const [key, value] of Object.entries(state.actionCenterFilters)) {
+    if (value) params.set(key, value);
+  }
+  const query = params.toString();
+  return `${path}${query ? `?${query}` : ""}`;
+}
+
+function workspaceLegacyView(item) {
+  if (item?.legacy_view_key && isFarmView(item.legacy_view_key)) return item.legacy_view_key;
+  const key = String(item?.workspace_key || "");
+  if (key === "dashboard") return "farm-management-dashboard";
+  if (key.startsWith("farm.master")) return "farm-area";
+  if (key.startsWith("farm.work")) return "farm-work";
+  if (key.startsWith("farm.daily")) return "farm-result";
+  if (key.startsWith("farm.performance")) return "farm-performance";
+  if (key.startsWith("inventory")) return "farm-inventory";
+  if (key.startsWith("hr.people")) return "farm-people";
+  if (key.startsWith("hr.time")) return "farm-hr-time";
+  if (key.startsWith("hr.performance")) return "farm-performance";
+  if (key.startsWith("payroll")) return "farm-payroll";
+  if (key.startsWith("budget")) return "farm-budget";
+  if (key.startsWith("reports")) return "farm-reports";
+  if (key.startsWith("system.access")) return "farm-governance";
+  if (key.startsWith("system")) return "farm-general";
+  return "farm-reports";
+}
+
+function workspaceCanAccess(item) {
+  if (!item.required_permission_key) return true;
+  if ([...state.workspaceRoles].some((role) => ["admin", "super_admin", "director"].includes(String(role).toLowerCase()))) return true;
+  return state.workspacePermissions.has(item.required_permission_key);
+}
+
+function workspaceRouteCanAccess(route) {
+  const item = resolveWorkspaceRoute(state.workspaceNavigation, route);
+  return Boolean(item && workspaceCanAccess(item));
+}
+
+function renderDynamicWorkspaceMenu() {
+  if (!state.dynamicMenuEnabled || !els.farmMenuSection) return;
+  const visible = state.workspaceNavigation
+    .filter((item) => !item.is_hidden && workspaceCanAccess(item))
+    .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+  const groups = visible.filter((item) => item.navigation_mode === "group");
+  const roots = visible.filter((item) => !item.parent_id && item.navigation_mode !== "group" && item.is_primary);
+  const button = (item, index) => `
+    <button type="button" data-view="${esc(workspaceLegacyView(item))}"
+      data-workspace-route="${esc(item.route || "")}" data-workspace-tab="${esc(item.workspace_tab || "")}"
+      data-icon="${esc(PALM_MENU_ICONS[index % PALM_MENU_ICONS.length])}">
+      <span>${esc(item.label_th || item.menu_key)}</span>
+    </button>`;
+  els.farmMenuSection.innerHTML = `
+    <p class="menu-section-title">ระบบบริหารงานสวนปาล์มคีรีรัฐ</p>
+    ${roots.map(button).join("")}
+    ${groups.map((group, groupIndex) => {
+      const children = visible.filter((item) => item.parent_id === group.id && item.is_primary);
+      return children.length ? `<details class="menu-dropdown" data-menu-group="${esc(group.menu_key)}">
+        <summary data-icon="${esc(PALM_MENU_ICONS[groupIndex % PALM_MENU_ICONS.length])}"><span>${esc(group.label_th)}</span></summary>
+        <div class="menu-items">${children.map(button).join("")}</div>
+      </details>` : "";
+    }).join("")}`;
+  syncSidebarDropdowns();
+}
+
+function applyWorkspaceRoute(route) {
+  const item = resolveWorkspaceRoute(state.workspaceNavigation, route);
+  if (!item || !workspaceCanAccess(item)) return false;
+  state.workspaceRoute = item.route || route;
+  state.workspaceTab = item.workspace_tab || "";
+  state.view = workspaceLegacyView(item);
+  ensureFarmViewState(state.view);
+  return true;
+}
+
+function openWorkspaceRoute(route) {
+  const target = workspaceRouteWithFilters(route);
+  if (!applyWorkspaceRoute(target)) return false;
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("route", workspaceRoutePath(route));
+  for (const [key, value] of Object.entries(state.actionCenterFilters)) {
+    if (value) url.searchParams.set(key, value);
+  }
+  window.history.pushState({}, "", url);
+  setView(state.view);
+  return true;
+}
+
+async function loadWorkspaceShell() {
+  try {
+    const tables = [
+      "system_settings", "v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs",
+      "v_management_action_center", "v_system_module_readiness",
+    ].join(",");
+    const [session, payload] = await Promise.all([
+      fetch(FARM_SESSION_API, { cache: "no-store", headers: farmApiHeaders() }).then((res) => res.json()),
+      fetch(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000`, {
+        cache: "no-store", headers: farmApiHeaders(),
+      }).then((res) => res.json()),
+    ]);
+    if (!session?.ok || !payload?.ok) {
+      throw new Error(farmApiErrorMessage(session?.ok ? payload : session, "Workspace navigation unavailable"));
+    }
+    state.workspacePermissions = new Set(session.permissions || []);
+    state.workspaceRoles = new Set(session.roles || []);
+    const tabs = payload.tables?.v_app_workspace_tabs || [];
+    const tabMetadata = new Map(tabs.map((item) => [item.id, item]));
+    state.workspaceNavigation = (payload.tables?.v_app_navigation || []).map((item) => ({
+      ...item,
+      is_primary: tabMetadata.get(item.id)?.is_primary ?? false,
+      is_hidden: tabMetadata.get(item.id)?.is_hidden ?? false,
+    }));
+    state.workspaceDefinitions = payload.tables?.v_app_workspace_definition || [];
+    state.workspaceTabs = tabs;
+    state.workspaceActionCenter = payload.tables?.v_management_action_center || [];
+    state.workspaceReadiness = payload.tables?.v_system_module_readiness || [];
+    state.dynamicMenuEnabled = workspaceFlag(payload.tables?.system_settings, "system.dynamic_menu_enabled");
+    readActionCenterFiltersFromUrl();
+    const requestedRoute = requestedWorkspaceRouteFromUrl();
+    if (requestedRoute) applyWorkspaceRoute(requestedRoute);
+    renderDynamicWorkspaceMenu();
+    return true;
+  } catch (error) {
+    state.dynamicMenuEnabled = false;
+    state.farmDbErrors = { ...(state.farmDbErrors || {}), workspace_navigation: error.message };
+    return false;
+  }
+}
+
 function isTransportView(view = state.view) {
   return TRANSPORT_VIEWS.has(view);
 }
@@ -3331,8 +3531,8 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
 
   const request = (async () => {
     const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(tableKeys.join(","))}&t=${Date.now()}`;
-    const payload = await fetch(url, { cache: "no-store" }).then((res) => res.json());
-    if (!payload || !payload.tables) throw new Error(payload?.error || "No farm table payload");
+    const payload = await fetch(url, { cache: "no-store", headers: farmApiHeaders() }).then((res) => res.json());
+    if (!payload || !payload.tables) throw new Error(farmApiErrorMessage(payload, "No farm table payload"));
     const nextRows = Object.fromEntries(
       Object.entries(payload.tables).map(([tableKey, rows]) => [tableKey, normalizeFarmDbRows(tableKey, Array.isArray(rows) ? rows : [])])
     );
@@ -3379,12 +3579,12 @@ function mergeFarmDbRow(tableKey, row) {
 async function persistFarmRowToDatabase(table, row) {
   const res = await fetch(FARM_TABLES_API, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: farmApiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ table: table.key, row }),
     cache: "no-store",
   });
   const payload = await res.json().catch(() => ({}));
-  if (!res.ok || payload?.ok === false) throw new Error(payload?.error || `Farm API ${res.status}`);
+  if (!res.ok || payload?.ok === false) throw new Error(farmApiErrorMessage(payload, `Farm API ${res.status}`));
   const saved = payload.row ? mergeFarmDbRow(table.key, payload.row) : null;
   return { ...payload, row: saved || payload.row || row };
 }
@@ -3405,12 +3605,12 @@ function farmDbTableAvailable(tableKey) {
 async function deleteFarmRowFromDatabase(table, id) {
   const res = await fetch(FARM_TABLES_API, {
     method: "DELETE",
-    headers: { "Content-Type": "application/json" },
+    headers: farmApiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ table: table.key, id }),
     cache: "no-store",
   });
   const payload = await res.json().catch(() => ({}));
-  if (!res.ok || payload?.ok === false) throw new Error(payload?.error || `Farm API ${res.status}`);
+  if (!res.ok || payload?.ok === false) throw new Error(farmApiErrorMessage(payload, `Farm API ${res.status}`));
   return payload;
 }
 
@@ -21961,8 +22161,81 @@ function renderFarmActivitiesBoard() {
     ${renderFarmActivityModal()}`;
 }
 
+function renderFarmManagementDashboard() {
+  const actions = [...state.workspaceActionCenter]
+    .filter((item) => Number(item.item_count || 0) > 0 && workspaceRouteCanAccess(item.route))
+    .sort((a, b) => Number(a.priority ?? 999) - Number(b.priority ?? 999)
+      || Number(b.item_count || 0) - Number(a.item_count || 0));
+  const readiness = [...state.workspaceReadiness]
+    .filter((item) => workspaceRouteCanAccess(item.route))
+    .sort((a, b) => String(a.module_key || "").localeCompare(String(b.module_key || "")));
+  const filter = (key, label, type = "text") => `
+    <label><span>${esc(label)}</span><input type="${type}" data-action-center-filter="${key}"
+      value="${esc(state.actionCenterFilters[key] || "")}"></label>`;
+  const actionRows = actions.map((item) => {
+    const priority = Number(item.priority ?? 999);
+    const priorityClass = priority <= 1 ? "critical" : priority <= 5 ? "medium" : "";
+    return `
+    <tr>
+      <td><span class="action-priority ${priorityClass}">P${esc(item.priority ?? "-")}</span></td>
+      <td>${esc(item.action_label || item.action_key || "-")}</td>
+      <td>${esc(item.module_key || "-")}</td>
+      <td class="number">${fmt(Number(item.item_count || 0))}</td>
+      <td><button type="button" data-workspace-route="${esc(item.route || "")}"${item.route ? "" : " disabled"}>เปิด Workspace</button></td>
+    </tr>`;
+  }).join("");
+  const readinessRows = readiness.map((item) => `
+      <tr>
+        <td><strong>${esc(item.module_name || item.module_key || "-")}</strong><br><small>${esc(item.module_key || "")}</small></td>
+        <td>${fmt(Number(item.item_count || 0))}</td>
+        <td>${fmt(Number(item.issue_count || 0))}</td>
+        <td>${esc(item.readiness_status || item.status || "-")}</td>
+        <td><button type="button" data-workspace-route="${esc(item.route || "")}"${item.route ? "" : " disabled"}>เปิดโมดูล</button></td>
+      </tr>`).join("");
+  return `
+    <div class="farm-page action-center-page">
+      <div class="report-title">
+        <div>
+          <h2>Action Center</h2>
+          <p>รายการที่ต้องดำเนินการและความพร้อมของแต่ละโมดูลจากฐานข้อมูลปัจจุบัน</p>
+        </div>
+        <button type="button" data-workspace-refresh>Refresh DB</button>
+      </div>
+      <section class="farm-panel action-center-filters">
+        ${filter("year", "ปี", "number")}
+        ${filter("from", "จากวันที่", "date")}
+        ${filter("to", "ถึงวันที่", "date")}
+        ${filter("ap", "AP")}
+        ${filter("block", "Block")}
+        ${filter("team", "ทีม")}
+        ${filter("activity", "กิจกรรม")}
+        <label><span>RSPO</span><select data-action-center-filter="rspo">
+          <option value="">ทั้งหมด</option>
+          <option value="RSPO"${state.actionCenterFilters.rspo === "RSPO" ? " selected" : ""}>RSPO</option>
+          <option value="NON-RSPO"${state.actionCenterFilters.rspo === "NON-RSPO" ? " selected" : ""}>NON-RSPO</option>
+        </select></label>
+        <p>ยอดรายการเป็นยอดรวมจาก <code>v_management_action_center</code>; ตัวกรองจะถูกส่งเป็นบริบทให้ Workspace ปลายทาง</p>
+      </section>
+      <section class="farm-panel">
+        <div class="section-head"><h3>งานที่ต้องดำเนินการ</h3><span>${fmt(actions.length)} รายการ</span></div>
+        <div class="table-wrap"><table class="mini-table">
+          <thead><tr><th>Priority</th><th>Action</th><th>Module</th><th>จำนวน</th><th></th></tr></thead>
+          <tbody>${actionRows || `<tr><td colspan="5">ไม่พบรายการที่ต้องดำเนินการ</td></tr>`}</tbody>
+        </table></div>
+      </section>
+      <section class="farm-panel">
+        <div class="section-head"><h3>Module Readiness</h3><span>${fmt(readiness.length)} โมดูล</span></div>
+        <div class="table-wrap"><table class="mini-table">
+          <thead><tr><th>Module</th><th>รายการ</th><th>ปัญหา</th><th>สถานะ</th><th></th></tr></thead>
+          <tbody>${readinessRows || `<tr><td colspan="5">ไม่พบข้อมูลความพร้อมของโมดูล</td></tr>`}</tbody>
+        </table></div>
+      </section>
+    </div>`;
+}
+
 function renderFarmPage() {
   const module = selectedFarmModule();
+  if (module.id === "farm-management-dashboard") return renderFarmManagementDashboard();
   const tables = farmTablesForModule(module);
   const table = selectedFarmTable(module);
   const visibleFields = farmVisibleFields(table);
@@ -22840,6 +23113,8 @@ async function init() {
   ensurePrintPreviewElements();
   applySidebarState();
   state.view = initialViewFromUrl();
+  const workspaceShell = loadWorkspaceShell();
+  if (isFarmView(state.view) || requestedWorkspaceRouteFromUrl()) await workspaceShell;
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
@@ -22936,6 +23211,8 @@ async function init() {
     }
     const btn = e.target.closest("button[data-view]");
     if (btn) {
+      state.workspaceRoute = btn.dataset.workspaceRoute || "";
+      state.workspaceTab = btn.dataset.workspaceTab || "";
       setView(btn.dataset.view);
       closeSidebarFlyouts();
     }
@@ -22967,6 +23244,11 @@ async function init() {
     setView("dashboard");
   });
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.matches("[data-action-center-filter]")) {
+      state.actionCenterFilters[e.target.dataset.actionCenterFilter] = e.target.value;
+      render();
+      return;
+    }
     if (e.target.id === "palmFromDate") {
       const iso = dateValue(e.target);
       if (iso) state.palmFilters.from = iso;
@@ -23459,6 +23741,17 @@ async function init() {
     }
     if (e.target.id === "yieldCompareMode") {
       state.dashboardCompareMode = e.target.value;
+      render();
+    }
+  });
+  els.reportPage.addEventListener("click", async (e) => {
+    const routeButton = e.target.closest("[data-workspace-route]");
+    if (routeButton) {
+      openWorkspaceRoute(routeButton.dataset.workspaceRoute);
+      return;
+    }
+    if (e.target.closest("[data-workspace-refresh]")) {
+      await loadWorkspaceShell();
       render();
     }
   });

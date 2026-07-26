@@ -4414,6 +4414,61 @@ tfoot td {
   line-height: 1.15;
 }
 
+.action-center-page {
+  display: grid;
+  gap: 12px;
+}
+
+.action-center-page .farm-panel {
+  padding: 14px;
+}
+
+.action-center-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.action-center-filters label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.action-center-filters input,
+.action-center-filters select {
+  min-width: 0;
+}
+
+.action-center-filters p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.action-priority {
+  display: inline-block;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eef2f7;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.action-priority.critical,
+.action-priority.high {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.action-priority.medium {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .farm-budget-board {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.9fr);
