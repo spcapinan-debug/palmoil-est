@@ -1,0 +1,9 @@
+{
+  "name": "palmoil-est",
+  "private": true,
+  "scripts": {
+    "build": "node webapp/scripts/build_online_export.mjs --check",
+    "lint": "node scripts/check-syntax.mjs",
+    "test": "node --test"
+  }
+}

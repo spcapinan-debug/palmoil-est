@@ -1,697 +1,286 @@
-const FARM_TABLES = new Set([
-  "profiles",
-  "areas",
-  "people",
-  "worker_documents",
-  "person_housing_assignments",
-  "activity_wage_codes",
-  "activity_material_rates",
-  "inventory_master",
-  "inventory_documents",
-  "inventory_document_lines",
-  "work_plans",
-  "plan_materials",
-  "work_order_resources",
-  "payroll_lines",
-  "payroll_rules",
-  "access_scopes",
-  "approval_logs",
-  "master_versions",
-  "estates",
-  "zones",
-  "plot_groups",
-  "plots",
-  "blocks",
-  "departments",
-  "housing_units",
-  "employees",
-  "attendance_records",
-  "leave_requests",
-  "training_records",
-  "performance_reviews",
-  "employee_housing_assignments",
-  "housing_utility_charges",
-  "contractors",
-  "teams",
-  "team_members",
-  "team_activity_skills",
-  "activity_groups",
-  "wage_codes",
-  "activities",
-  "activity_wage_code_mappings",
-  "material_categories",
-  "units",
-  "unit_conversions",
-  "sku_conversions",
-  "materials",
-  "material_lots",
-  "activity_material_usage_rates",
-  "survey_templates",
-  "survey_questions",
-  "vehicles",
-  "annual_work_plans",
-  "planned_work_items",
-  "planned_work_materials",
-  "work_orders",
-  "work_order_workers",
-  "work_order_materials",
-  "work_order_machines",
-  "work_order_approvals",
-  "work_order_qr_codes",
-  "work_order_locations",
-  "work_order_status_logs",
-  "work_attendance",
-  "work_results",
-  "warehouses",
-  "bin_locations",
-  "stock_transactions",
-  "stock_balances",
-  "budget_years",
-  "budget_activity_rates",
-  "budget_rate_blocks",
-  "budget_rate_materials",
-  "budget_rate_roles",
-  "contractor_period_estimates",
-  "cost_entries",
-  "payroll_periods",
-  "payroll_period_lines",
-  "payroll_rates",
-  "deduction_types",
-  "allowance_types",
-  "permissions",
-  "role_permissions",
-  "user_access_scopes",
-  "master_record_versions",
-  "audit_logs",
-  "system_settings",
-  "attachments",
-  "report_exports",
+const {
+  ApiError,
+  audit,
+  authenticate,
+  authorize,
+  errorResponse,
+  json,
+  readBody,
+  requireUuid,
+  rest,
+} = require("./_farm-api");
+
+const TABLES = new Set([
+  "profiles", "areas", "people", "worker_documents", "person_housing_assignments",
+  "activity_wage_codes", "activity_material_rates", "inventory_master", "inventory_documents",
+  "inventory_document_lines", "work_plans", "plan_materials", "work_order_resources",
+  "payroll_lines", "payroll_rules", "access_scopes", "approval_logs", "master_versions",
+  "estates", "zones", "plot_groups", "plots", "blocks", "departments", "positions",
+  "housing_units", "employees", "employee_employment_terms", "attendance_records",
+  "leave_requests", "training_records", "performance_reviews", "employee_housing_assignments",
+  "housing_utility_charges", "contractors", "teams", "team_members", "team_activity_skills",
+  "activity_groups", "wage_codes", "activities", "activity_wage_code_mappings",
+  "material_categories", "units", "unit_conversions", "sku_conversions", "materials",
+  "material_lots", "activity_material_usage_rates", "vehicles", "annual_work_plans",
+  "planned_work_items", "planned_work_materials", "work_orders", "work_order_workers",
+  "work_order_materials", "work_order_machines", "work_order_approvals", "work_order_qr_codes",
+  "work_order_locations", "work_order_status_logs", "work_attendance", "work_results",
+  "work_result_workers", "work_result_weight_tickets", "work_result_vehicle_usage",
+  "warehouses", "bin_locations", "stock_transactions", "stock_balances", "goods_issues",
+  "goods_issue_lines", "budget_years", "budget_activity_rates", "budget_rate_blocks",
+  "budget_rate_materials", "budget_rate_roles", "budget_rate_rule_sets", "budget_rate_rules",
+  "budget_rate_rule_conditions", "budget_rate_rule_blocks", "budget_rate_block_snapshots",
+  "activity_budget_rate_recommendations", "activity_performance_standards",
+  "work_performance_metrics", "contractor_period_estimates", "cost_entries", "payroll_periods",
+  "payroll_period_lines", "payroll_rates", "payroll_employee_summaries", "payroll_earning_lines",
+  "payroll_allowance_lines", "payroll_deduction_lines", "deduction_types", "allowance_types",
+  "fuel_tanks", "fuel_requisitions", "fuel_issues", "vehicle_fuel_balances",
+  "vehicle_fuel_measurements", "vehicle_fuel_consumption_periods",
+  "vehicle_fuel_efficiency_standards", "survey_templates", "survey_questions",
+  "survey_template_assignments", "survey_responses", "survey_answers",
+  "survey_response_attachments", "survey_answer_attachments", "survey_findings",
+  "roles", "permissions", "role_permissions", "menu_items", "profile_roles",
+  "user_access_scopes", "master_record_versions", "audit_logs", "system_settings",
+  "attachments", "report_exports",
+  "v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs",
+  "v_management_action_center", "v_system_module_readiness", "v_farm_workflow_workspace",
+  "v_daily_work_entry_context", "v_inventory_work_order_workspace", "v_inventory_setup_queue",
+  "v_vehicle_fuel_status", "v_work_result_vehicle_fuel_detail", "v_fuel_control_exceptions",
+  "v_hr_people_workspace", "v_payroll_period_workspace", "v_budget_activity_rates_unified",
+  "v_budget_rate_rule_editor", "v_budget_rate_announcement_matrix",
+  "v_survey_response_summary", "v_survey_question_analysis", "v_survey_finding_followup",
+  "v_survey_action_center", "v_available_inbound_weight_tickets",
 ]);
 
-const REQUIRED_TABLES = new Set([
-  "estates",
-  "zones",
-  "plot_groups",
-  "plots",
-  "blocks",
-  "activity_groups",
-  "activities",
-  "materials",
-  "vehicles",
-  "budget_years",
-  "budget_activity_rates",
-  "work_orders",
-]);
-
-function json(res, status, payload) {
-  res.statusCode = status;
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", "no-store");
-  res.end(JSON.stringify(payload));
-}
-
-function supabaseConfig() {
-  const url = process.env.SUPABASE_URL || "https://xhtwmzlorceebsemqkww.supabase.co";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  if (String(key).startsWith("sb_publishable_")) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is a publishable key. Use the Supabase service_role/secret key for server writes.");
-  }
-  return { url: url.replace(/\/$/, ""), key };
-}
-
-async function supabaseFetch(path, options = {}) {
-  const { url, key } = supabaseConfig();
-  const res = await fetch(`${url}/rest/v1/${path}`, {
-    ...options,
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-      ...(options.headers || {}),
-    },
-  });
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!res.ok) {
-    const message = data?.message || data?.error || text || `Supabase ${res.status}`;
-    throw new Error(message);
-  }
-  return data;
-}
-
-async function supabaseFetchAll(path, limit = 50000) {
-  const pageSize = 1000;
-  const rows = [];
-  for (let offset = 0; rows.length < limit; offset += pageSize) {
-    const take = Math.min(pageSize, limit - rows.length);
-    const separator = path.includes("?") ? "&" : "?";
-    const page = await supabaseFetch(`${path}${separator}limit=${take}&offset=${offset}`);
-    if (!Array.isArray(page) || !page.length) break;
-    rows.push(...page);
-    if (page.length < take) break;
-  }
-  return rows;
-}
-
-function validTables(value) {
-  const requested = String(value || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const tables = requested.length ? requested : Array.from(FARM_TABLES);
-  return tables.filter((table) => FARM_TABLES.has(table));
-}
-
-function validTable(value) {
-  const table = String(value || "").trim();
-  return FARM_TABLES.has(table) ? table : "";
-}
-
-async function readBody(req) {
-  let raw = "";
-  for await (const chunk of req) raw += chunk;
-  if (!raw) return {};
-  return JSON.parse(raw);
-}
-
-function isUuid(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
-}
-
-function newUuid() {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
-    const random = Math.floor(Math.random() * 16);
-    const value = char === "x" ? random : (random & 0x3) | 0x8;
-    return value.toString(16);
-  });
-}
-
-function stableHashHex8(input = "", seed = 0x811c9dc5) {
-  let hash = seed >>> 0;
-  const text = String(input || "empty");
-  for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
-}
-
-function stableUuid(value = "") {
-  const raw = String(value || "empty").trim() || "empty";
-  if (isUuid(raw)) return raw.toLowerCase();
-  const a = stableHashHex8(`a:${raw}`, 0x811c9dc5);
-  const b = stableHashHex8(`b:${raw}`, 0x9e3779b9);
-  const c = stableHashHex8(`c:${raw}`, 0x85ebca6b);
-  const d = stableHashHex8(`d:${raw}`, 0xc2b2ae35);
-  const hex = `${a}${b}${c}${d}`.padEnd(32, "0").slice(0, 32);
-  const variant = ((parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80).toString(16).padStart(2, "0");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(18, 20)}-${hex.slice(20, 32)}`;
-}
-
-function stableChildUuid(prefix, ...parts) {
-  return stableUuid([prefix, ...parts].map((part) => String(part ?? "")).join(":"));
-}
-
-function normalizeWorkResultUuid(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  if (isUuid(raw)) return raw.toLowerCase();
-  const legacy = raw.match(/^result-(.+)-(\d{4}-\d{2}-\d{2})$/);
-  if (legacy) return stableChildUuid("work_results", legacy[1], legacy[2]);
-  return stableUuid(`work_results:${raw}`);
-}
-
-function cleanText(value, max = 200) {
-  return String(value || "").trim().slice(0, max);
-}
-
-function farmRecordCategory(table) {
-  return `farm_table:${table}`;
-}
-
-function fallbackLocalId(table, row) {
-  const candidates = [
-    row.id,
-    row[`${table.replace(/s$/, "")}_code`],
-    row.estate_code,
-    row.zone_code,
-    row.plot_code,
-    row.block_code,
-    row.employee_code,
-    row.contractor_code,
-    row.team_code,
-    row.activity_code,
-    row.group_code,
-    row.category_code,
-    row.unit_code,
-    row.material_code,
-    row.item_code,
-    row.vehicle_code,
-    row.document_no,
-    row.work_order_no,
-  ].filter(Boolean);
-  return cleanText(`${table}:${candidates[0] || Date.now()}`, 180);
-}
-
-function fromFallbackRecord(row) {
-  return {
-    ...(row.payload || {}),
-    id: row.payload?.id || row.local_id,
-    databaseId: row.id,
-    _source: "farm_master_records",
-    _farmFallback: true,
-    updated_at: row.updated_at,
-  };
-}
-
-async function loadFallbackRows(table) {
-  const category = encodeURIComponent(farmRecordCategory(table));
-  const rows = await supabaseFetchAll(`est_master_records?category=eq.${category}&target_table=eq.${encodeURIComponent(table)}&order=updated_at.desc`, 50000);
-  return Array.isArray(rows) ? rows.map(fromFallbackRecord) : [];
-}
-
-async function saveFallbackRow(table, row, reason = "") {
-  const localId = fallbackLocalId(table, row);
-  const payload = {
-    local_id: localId,
-    category: farmRecordCategory(table),
-    target_table: table,
-    payload: { ...row, id: row.id || localId },
-    note: reason || null,
-    updated_at: new Date().toISOString(),
-  };
-  const saved = await supabaseFetch("est_master_records?on_conflict=local_id", {
-    method: "POST",
-    body: JSON.stringify([payload]),
-    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-  });
-  return fromFallbackRecord(saved?.[0] || payload);
-}
-
-async function saveFallbackRows(table, rows, reason = "") {
-  const payloadRows = rows.map((row) => {
-    const localId = fallbackLocalId(table, row);
-    return {
-      local_id: localId,
-      category: farmRecordCategory(table),
-      target_table: table,
-      payload: { ...row, id: row.id || localId },
-      note: reason || null,
-      updated_at: new Date().toISOString(),
-    };
-  });
-  const savedRows = [];
-  for (const part of chunkRows(payloadRows, 300)) {
-    const saved = await supabaseFetch("est_master_records?on_conflict=local_id", {
-      method: "POST",
-      body: JSON.stringify(part),
-      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-    });
-    savedRows.push(...(Array.isArray(saved) ? saved.map(fromFallbackRecord) : []));
-  }
-  return savedRows;
-}
-
-async function deleteFallbackRow(table, id) {
-  const ids = [`${table}:${id}`, id].filter(Boolean);
-  let deleted = 0;
-  for (const localId of ids) {
-    const rows = await supabaseFetch(`est_master_records?local_id=eq.${encodeURIComponent(localId)}&category=eq.${encodeURIComponent(farmRecordCategory(table))}`, {
-      method: "DELETE",
-      headers: { Prefer: "return=representation" },
-    }).catch(() => []);
-    deleted += Array.isArray(rows) ? rows.length : 0;
-  }
-  if (isUuid(id)) {
-    const rows = await supabaseFetch(`est_master_records?id=eq.${encodeURIComponent(id)}&category=eq.${encodeURIComponent(farmRecordCategory(table))}`, {
-      method: "DELETE",
-      headers: { Prefer: "return=representation" },
-    }).catch(() => []);
-    deleted += Array.isArray(rows) ? rows.length : 0;
-  }
-  const payloadRows = await supabaseFetch(`est_master_records?category=eq.${encodeURIComponent(farmRecordCategory(table))}&target_table=eq.${encodeURIComponent(table)}&payload->>id=eq.${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    headers: { Prefer: "return=representation" },
-  }).catch(() => []);
-  deleted += Array.isArray(payloadRows) ? payloadRows.length : 0;
-  return deleted;
-}
-
-async function deleteFallbackTableRows(table) {
-  const rows = await supabaseFetch(`est_master_records?category=eq.${encodeURIComponent(farmRecordCategory(table))}&target_table=eq.${encodeURIComponent(table)}`, {
-    method: "DELETE",
-    headers: { Prefer: "return=representation" },
-  });
-  return Array.isArray(rows) ? rows.length : 0;
-}
-
-const META_KEYS = new Set([
-  "moduleId",
-  "tableId",
-  "readonly",
-  "_source",
-  "_overrideOf",
-  "_deleted",
-  "_farmFallback",
-  "updatedAt",
-  "databaseId",
-]);
-
-const GENERATED_KEYS = new Set([
-  "tree_per_rai",
-  "hourly_wage_rate",
-  "total_utility_amount",
-  "estimated_amount",
-  "amount",
-  "variance_quantity",
-  "net_amount",
-  "created_at",
-  "updated_at",
-]);
-
-const TEXT_ID_KEYS_BY_TABLE = {
-  budget_years: new Set(["id"]),
-  budget_activity_rates: new Set(["id", "budget_year_id"]),
-  budget_rate_blocks: new Set(["id", "budget_rate_id", "block_id"]),
-  budget_rate_materials: new Set(["id", "budget_rate_id"]),
-  budget_rate_roles: new Set(["id", "budget_rate_id"]),
-  survey_templates: new Set(["id", "activity_id"]),
-  survey_questions: new Set(["id", "template_id"]),
-  work_orders: new Set(["planned_work_item_id", "plot_id", "block_id", "plot_group_id", "activity_id", "survey_template_id", "team_id", "rescheduled_by_manager_id", "approved_by", "budget_rate_id"]),
-  work_order_workers: new Set(["id", "work_order_id", "employee_id"]),
-  work_order_materials: new Set(["id", "work_order_id", "material_id", "unit_id"]),
-  work_order_machines: new Set(["id", "work_order_id", "vehicle_id", "driver_employee_id", "fuel_material_id"]),
-  work_order_qr_codes: new Set(["id", "work_order_id"]),
-  work_order_locations: new Set(["id", "work_order_id"]),
-  work_order_status_logs: new Set(["id", "work_order_id", "entity_id"]),
-  work_results: new Set(["work_order_id", "supervisor_id"]),
-  work_attendance: new Set(["id", "work_order_id", "employee_id"]),
-  attachments: new Set(["id", "entity_id", "survey_template_id"]),
+const READ_RESTRICTED = {
+  audit_logs: "system.audit.view",
+  profiles: "system.user.manage",
+  profile_roles: "system.role.manage",
+  roles: "system.role.manage",
+  permissions: "system.role.manage",
+  role_permissions: "system.role.manage",
+  user_access_scopes: "system.user.manage",
 };
 
-const UNIQUE_KEYS = {
-  estates: "estate_code",
-  plot_groups: "group_code",
-  plots: "plot_code",
-  employees: "employee_code",
-  contractors: "contractor_code",
-  teams: "team_code",
-  activity_groups: "group_code",
-  wage_codes: "wage_code",
-  activities: "activity_code",
-  material_categories: "category_code",
-  units: "unit_code",
-  materials: "material_code",
-  vehicles: "vehicle_code",
-  budget_years: "fiscal_year",
-  budget_activity_rates: "rate_code",
-  budget_rate_blocks: "id",
-  budget_rate_materials: "id",
-  budget_rate_roles: "id",
-  work_orders: "work_order_no",
-  permissions: "permission_key",
-  areas: "area_code",
-  people: "person_code",
-  worker_documents: "document_no",
-  inventory_master: "item_code",
-  inventory_documents: "document_no",
-  work_plans: "plan_code",
-  payroll_rules: "rule_code",
-  survey_templates: "template_code",
+const WRITE_PERMISSIONS = {
+  employees: "hr.employee.edit",
+  employee_employment_terms: "hr.employee.edit",
+  teams: "hr.team.manage",
+  team_members: "hr.team.manage",
+  annual_work_plans: "farm.plan.create",
+  planned_work_items: "farm.plan.create",
+  planned_work_materials: "farm.plan.create",
+  work_orders: "farm.work_order.create",
+  work_order_workers: "farm.work_order.dispatch",
+  work_order_materials: "farm.work_order.dispatch",
+  work_order_machines: "farm.work_order.dispatch",
+  work_results: "farm.result.record",
+  work_result_workers: "farm.result.record",
+  work_result_weight_tickets: "farm.weigh_ticket.link",
+  warehouses: "inventory.manage",
+  material_lots: "inventory.manage",
+  stock_balances: "inventory.manage",
+  stock_transactions: "inventory.manage",
+  goods_issues: "inventory.manage",
+  goods_issue_lines: "inventory.manage",
+  fuel_tanks: "fuel.issue",
+  fuel_requisitions: "fuel.requisition.create",
+  fuel_issues: "fuel.issue",
+  survey_templates: "survey.template.manage",
+  survey_questions: "survey.template.manage",
+  survey_template_assignments: "survey.template.manage",
+  survey_responses: "survey.respond",
+  survey_answers: "survey.respond",
+  survey_response_attachments: "survey.respond",
+  survey_answer_attachments: "survey.respond",
+  survey_findings: "survey.finding.manage",
+  activity_performance_standards: "performance.standard.manage",
+  activity_budget_rate_recommendations: "budget.recommendation.generate",
+  budget_rate_rule_sets: "budget.rate_rule.manage",
+  budget_rate_rules: "budget.rate_rule.manage",
+  budget_rate_rule_conditions: "budget.rate_rule.manage",
+  budget_rate_rule_blocks: "budget.rate_rule.manage",
+  system_settings: "system.integration.manage",
+};
+
+const CONFLICT_KEYS = {
+  estates: "estate_code", zones: "zone_code", plot_groups: "group_code", plots: "plot_code",
+  blocks: "block_code", employees: "employee_code", teams: "team_code",
+  activity_groups: "group_code", activities: "activity_code", materials: "material_code",
+  vehicles: "vehicle_code", budget_years: "fiscal_year", budget_activity_rates: "rate_code",
+  work_orders: "work_order_no", permissions: "permission_key", survey_templates: "template_code",
   survey_questions: "question_code",
 };
 
-function sanitizeDbRow(table, row) {
-  const out = {};
-  const textIdKeys = TEXT_ID_KEYS_BY_TABLE[table] || new Set();
-  for (const [key, value] of Object.entries(row || {})) {
-    if (META_KEYS.has(key) || GENERATED_KEYS.has(key)) continue;
-    if (table === "work_results" && key === "id" && value && !isUuid(value)) {
-      out.id = normalizeWorkResultUuid(value);
-      continue;
-    }
-    if (key === "work_result_id" && value && !isUuid(value)) {
-      out.work_result_id = normalizeWorkResultUuid(value);
-      continue;
-    }
-    if (key === "id" && !isUuid(value) && !textIdKeys.has(key)) continue;
-    if (key.endsWith("_id") || key === "id") {
-      if (value && (isUuid(value) || textIdKeys.has(key))) out[key] = value;
-      continue;
-    }
-    if (value === "") continue;
-    if (value === "true") out[key] = true;
-    else if (value === "false") out[key] = false;
-    else out[key] = value;
-  }
-  return out;
+const OPTIONAL_TABLES = new Set([...TABLES].filter((name) => name.startsWith("v_")));
+const CACHE_MS = 30_000;
+const cache = new Map();
+const ACTION_ONLY_TABLES = new Set([
+  "stock_transactions", "stock_balances", "goods_issues", "goods_issue_lines",
+  "fuel_issues", "vehicle_fuel_balances", "vehicle_fuel_consumption_periods",
+  "payroll_periods", "payroll_period_lines", "payroll_employee_summaries",
+  "payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines",
+  "budget_rate_block_snapshots", "survey_responses", "survey_answers", "survey_findings",
+  "work_result_weight_tickets",
+]);
+
+function tableName(value) {
+  const name = String(value || "").trim();
+  if (!TABLES.has(name)) throw new ApiError(400, "INVALID_TABLE", `Table is not allowlisted: ${name || "(empty)"}`);
+  return name;
 }
 
-function missingColumnFromError(error) {
-  const message = String(error?.message || error || "");
-  return message.match(/Could not find the '([^']+)' column/i)?.[1]
-    || message.match(/column \"([^\"]+)\" of relation/i)?.[1]
-    || "";
+function requestedTables(value) {
+  const raw = String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+  if (!raw.length) throw new ApiError(400, "TABLES_REQUIRED", "The tables query parameter is required");
+  return [...new Set(raw.map(tableName))];
 }
 
-async function upsertRealTableRow(table, row) {
-  const dbRow = sanitizeDbRow(table, row);
-  const hadWritableId = Boolean(dbRow.id);
-  if (!dbRow.id) dbRow.id = newUuid();
-  if (!Object.keys(dbRow).length) throw new Error("No writable columns");
-  const uniqueKey = UNIQUE_KEYS[table];
-  const conflictKey = hadWritableId ? "id" : (uniqueKey && dbRow[uniqueKey] ? uniqueKey : "id");
-  const path = conflictKey
-    ? `${table}?on_conflict=${encodeURIComponent(conflictKey)}`
-    : table;
-  let writableRow = { ...dbRow };
-  let saved = null;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    try {
-      saved = await supabaseFetch(path, {
-        method: "POST",
-        body: JSON.stringify([writableRow]),
-        headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-      });
-      break;
-    } catch (error) {
-      const missing = missingColumnFromError(error);
-      if (!missing || !Object.prototype.hasOwnProperty.call(writableRow, missing)) throw error;
-      delete writableRow[missing];
-      if (!Object.keys(writableRow).length) throw new Error("No writable columns after schema cleanup");
+function readPermission(actor, table) {
+  const permission = READ_RESTRICTED[table];
+  if (permission) authorize(actor, { permissions: [permission] });
+}
+
+function writePermission(actor, table) {
+  const permission = WRITE_PERMISSIONS[table];
+  authorize(actor, permission ? { permissions: [permission] } : {});
+}
+
+function isMissingRelation(error) {
+  return error?.status === 404 || /relation .* does not exist|schema cache|could not find the table/i.test(error?.message || "");
+}
+
+async function parallelMap(items, concurrency, task) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await task(items[index], index);
     }
   }
-  return saved?.[0] || dbRow;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  return results;
 }
 
-function chunkRows(rows, size = 300) {
-  const out = [];
-  for (let index = 0; index < rows.length; index += size) out.push(rows.slice(index, index + size));
-  return out;
-}
-
-async function upsertRealTableRows(table, rows) {
-  const uniqueKey = UNIQUE_KEYS[table];
-  const dbRows = rows.map((row) => {
-    const dbRow = sanitizeDbRow(table, row);
-    if (!dbRow.id) dbRow.id = newUuid();
-    return dbRow;
-  }).filter((row) => Object.keys(row).length);
-  if (!dbRows.length) throw new Error("No writable columns");
-  const conflictKey = uniqueKey && dbRows.every((row) => row[uniqueKey]) ? uniqueKey : "id";
-  const allKeys = [...new Set(dbRows.flatMap((row) => Object.keys(row)))];
-  const normalizedRows = dbRows.map((row) => Object.fromEntries(allKeys.map((key) => [key, Object.prototype.hasOwnProperty.call(row, key) ? row[key] : null])));
-  const savedRows = [];
-  for (const part of chunkRows(normalizedRows)) {
-    let writablePart = part.map((row) => ({ ...row }));
-    let saved = null;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      try {
-        saved = await supabaseFetch(`${table}?on_conflict=${encodeURIComponent(conflictKey)}`, {
-          method: "POST",
-          body: JSON.stringify(writablePart),
-          headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-        });
-        break;
-      } catch (error) {
-        const missing = missingColumnFromError(error);
-        if (!missing || !writablePart.some((row) => Object.prototype.hasOwnProperty.call(row, missing))) throw error;
-        writablePart = writablePart.map((row) => {
-          const next = { ...row };
-          delete next[missing];
-          return next;
-        });
-        if (!writablePart.some((row) => Object.keys(row).length)) throw new Error("No writable columns after schema cleanup");
-      }
-    }
-    savedRows.push(...(Array.isArray(saved) ? saved : []));
+async function readTable(table, limit, offset) {
+  try {
+    const { data, response } = await rest(`${table}?select=*&limit=${limit}&offset=${offset}`, {
+      headers: { Prefer: "count=exact" },
+    });
+    const range = String(response.headers.get("content-range") || "");
+    const total = Number(range.split("/")[1]);
+    return { table, rows: Array.isArray(data) ? data : [], total: Number.isFinite(total) ? total : null };
+  } catch (error) {
+    if (OPTIONAL_TABLES.has(table) && isMissingRelation(error)) return { table, rows: [], total: 0, warning: error.message };
+    throw error;
   }
-  return savedRows;
 }
 
-async function upsertFarmTableRows(table, rows, reason = "") {
-  return { rows: await upsertRealTableRows(table, rows), warnings: [] };
+function clearCache() {
+  cache.clear();
 }
 
-async function deleteRealTableRow(table, id) {
-  if (!id) throw new Error("No id");
-  const rows = await supabaseFetch(`${table}?id=eq.${encodeURIComponent(id)}`, {
+async function handleGet(req, res, url, actor) {
+  const tables = requestedTables(url.searchParams.get("tables"));
+  tables.forEach((table) => readPermission(actor, table));
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 5000), 1), 5000);
+  const page = Math.max(Number(url.searchParams.get("page") || 1), 1);
+  const offsetParam = url.searchParams.get("offset");
+  const offset = offsetParam == null ? (page - 1) * limit : Math.max(Number(offsetParam), 0);
+  const cacheKey = JSON.stringify({ tables: [...tables].sort(), limit, offset });
+  const cached = cache.get(cacheKey);
+  if (url.searchParams.get("refresh") !== "1" && cached && Date.now() - cached.at < CACHE_MS) {
+    return json(res, 200, { ...cached.payload, source: { ...cached.payload.source, cache: "hit" } });
+  }
+
+  const reads = await parallelMap(tables, 8, (table) => readTable(table, limit, offset));
+  const payload = {
+    ok: true,
+    tables: Object.fromEntries(reads.map((item) => [item.table, item.rows])),
+    warnings: Object.fromEntries(reads.filter((item) => item.warning).map((item) => [item.table, item.warning])),
+    pagination: Object.fromEntries(reads.map((item) => [item.table, {
+      limit, offset, page: Math.floor(offset / limit) + 1, total: item.total,
+      hasMore: item.total == null ? item.rows.length === limit : offset + item.rows.length < item.total,
+    }])),
+    source: {
+      mode: "supabase-real-only",
+      tableCount: tables.length,
+      rowCount: reads.reduce((sum, item) => sum + item.rows.length, 0),
+      cache: "miss",
+      generatedAt: new Date().toISOString(),
+    },
+  };
+  cache.set(cacheKey, { at: Date.now(), payload });
+  return json(res, 200, payload);
+}
+
+async function handlePost(req, res, actor) {
+  const body = await readBody(req);
+  const table = tableName(body.table);
+  writePermission(actor, table);
+  if (ACTION_ONLY_TABLES.has(table)) {
+    throw new ApiError(409, "ACTION_REQUIRED", `${table} must be changed through /api/farm-actions`);
+  }
+  const rows = Array.isArray(body.rows) ? body.rows : (body.row && typeof body.row === "object" ? [body.row] : []);
+  if (!rows.length || rows.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
+    throw new ApiError(400, "VALIDATION_ERROR", "row or rows must contain JSON objects");
+  }
+  if (rows.length > 500) throw new ApiError(400, "VALIDATION_ERROR", "A request may write at most 500 rows");
+  const conflict = String(body.onConflict || CONFLICT_KEYS[table] || "id");
+  if (!/^[a-z_][a-z0-9_]*$/i.test(conflict)) throw new ApiError(400, "VALIDATION_ERROR", "Invalid onConflict column");
+  const { data } = await rest(`${table}?on_conflict=${encodeURIComponent(conflict)}`, {
+    method: "POST",
+    body: JSON.stringify(rows),
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+  });
+  await audit(req, actor, `farm_table.upsert.${table}`, table, data?.[0]?.id, {
+    reason: String(body.reason || "").slice(0, 500), count: Array.isArray(data) ? data.length : 0,
+  });
+  clearCache();
+  return json(res, 200, { ok: true, table, count: data?.length || 0, rows: data || [] });
+}
+
+async function handleDelete(req, res, url, actor) {
+  const body = await readBody(req).catch(() => ({}));
+  const table = tableName(body.table || url.searchParams.get("table"));
+  writePermission(actor, table);
+  if (ACTION_ONLY_TABLES.has(table)) {
+    throw new ApiError(409, "ACTION_REQUIRED", `${table} must be changed through /api/farm-actions`);
+  }
+  if (body.all === true) throw new ApiError(403, "DELETE_ALL_DISABLED", "Bulk table deletion is disabled");
+  const id = requireUuid(body.id || url.searchParams.get("id"), "id");
+  const { data } = await rest(`${table}?id=eq.${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: { Prefer: "return=representation" },
   });
-  return Array.isArray(rows) ? rows.length : 0;
+  if (!data?.length) throw new ApiError(404, "NOT_FOUND", `${table} row was not found`);
+  await audit(req, actor, `farm_table.delete.${table}`, table, id, {
+    reason: String(body.reason || "").slice(0, 500),
+  });
+  clearCache();
+  return json(res, 200, { ok: true, table, id, deleted: data.length });
 }
 
-function supabaseInFilter(values = []) {
-  return `in.(${values.map((value) => `"${String(value).replace(/"/g, '\\"')}"`).join(",")})`;
-}
-
-async function deleteRealTableRows(table) {
-  const rows = await supabaseFetchAll(`${table}?select=id`, 50000);
-  const ids = rows.map((row) => row.id).filter(Boolean);
-  let deleted = 0;
-  for (const part of chunkRows(ids, 300)) {
-    const result = await supabaseFetch(`${table}?id=${supabaseInFilter(part)}`, {
-      method: "DELETE",
-      headers: { Prefer: "return=representation" },
-    });
-    deleted += Array.isArray(result) ? result.length : 0;
-  }
-  return deleted;
-}
-
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   if (req.method === "OPTIONS") return json(res, 200, { ok: true });
-
   try {
-    const requestUrl = new URL(req.url, "http://localhost");
-    if (req.method === "POST") {
-      const body = await readBody(req);
-      const table = validTable(body.table);
-      if (!table) return json(res, 400, { ok: false, error: "Invalid farm table" });
-      if (Array.isArray(body.rows)) {
-        const rows = body.rows.filter((row) => row && typeof row === "object");
-        if (!rows.length) return json(res, 400, { ok: false, error: "No rows" });
-        const result = await upsertFarmTableRows(table, rows, body.reason || "");
-        return json(res, 200, {
-          ok: true,
-          table,
-          mode: result.warnings.length ? "mixed" : "supabase-real-table",
-          count: result.rows.length,
-          warningCount: result.warnings.length,
-          warnings: [...new Set(result.warnings)].slice(0, 20),
-          rows: result.rows,
-        });
-      }
-      const row = body.row && typeof body.row === "object" ? body.row : null;
-      if (!row) return json(res, 400, { ok: false, error: "No row" });
-      try {
-        const saved = await upsertRealTableRow(table, row);
-        return json(res, 200, { ok: true, table, mode: "supabase-real-table", row: saved });
-      } catch (err) {
-        return json(res, 500, { ok: false, table, mode: "supabase-real-table", error: err.message });
-      }
+    const url = new URL(req.url, "http://localhost");
+    if (req.method === "GET" && url.searchParams.get("healthcheck") === "1") {
+      return json(res, 200, { ok: true, route: "farm-tables", authRequired: true });
     }
-
-    if (req.method === "DELETE") {
-      const body = await readBody(req).catch(() => ({}));
-      const table = validTable(body.table || requestUrl.searchParams.get("table"));
-      if (!table) return json(res, 400, { ok: false, error: "Invalid farm table" });
-      if (body.all === true) {
-        let realDeleted = 0;
-        let realError = null;
-        if (body.fallbackOnly !== true) {
-          try {
-            realDeleted = await deleteRealTableRows(table);
-          } catch (err) {
-            realError = err;
-          }
-        }
-        const deleted = await deleteFallbackTableRows(table);
-        if (realError && !deleted) return json(res, 500, { ok: false, table, error: realError.message });
-        return json(res, 200, {
-          ok: true,
-          table,
-          mode: realDeleted ? "supabase-real-table" : "farm-master-fallback",
-          deleted: realDeleted + deleted,
-          realDeleted,
-          fallbackDeleted: deleted,
-          warning: realError ? realError.message : "",
-        });
-      }
-      const id = cleanText(body.id || requestUrl.searchParams.get("id"), 220);
-      if (!id) return json(res, 400, { ok: false, error: "No id" });
-      let realDeleted = 0;
-      let realError = null;
-      try {
-        realDeleted = await deleteRealTableRow(table, id);
-      } catch (err) {
-        realError = err;
-      }
-      const fallbackDeleted = await deleteFallbackRow(table, id).catch(() => 0);
-      if (realError && !fallbackDeleted) {
-        return json(res, 500, { ok: false, table, error: realError.message });
-      }
-      return json(res, 200, {
-        ok: true,
-        table,
-        id,
-        mode: realDeleted ? "supabase-real-table" : "farm-master-fallback",
-        deleted: realDeleted + fallbackDeleted,
-        warning: realError ? realError.message : "",
-      });
-    }
-
-    if (req.method !== "GET") return json(res, 405, { ok: false, error: "Method not allowed" });
-
-    if (requestUrl.searchParams.get("healthcheck") === "1") {
-      return json(res, 200, {
-        ok: true,
-        route: "farm-tables",
-        hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
-        hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-      });
-    }
-
-    const tables = validTables(requestUrl.searchParams.get("tables"));
-    const limit = Math.min(Math.max(Number(requestUrl.searchParams.get("limit") || 50000), 1), 50000);
-    const result = {};
-    const errors = {};
-    const warnings = {};
-
-    for (const table of tables) {
-      let realRows = [];
-      let realError = null;
-      try {
-        realRows = await supabaseFetchAll(`${table}?select=*`, limit);
-      } catch (err) {
-        realError = err;
-      }
-      const map = new Map();
-      for (const row of Array.isArray(realRows) ? realRows : []) map.set(row.id || JSON.stringify(row), row);
-      result[table] = [...map.values()];
-      if (realError) {
-        if (REQUIRED_TABLES.has(table)) errors[table] = realError.message;
-        else warnings[table] = realError.message;
-      }
-    }
-
-    return json(res, 200, {
-      ok: Object.keys(errors).length === 0,
-      tables: result,
-      errors,
-      warnings,
-      source: {
-        mode: "supabase-real-only",
-        tableCount: tables.length,
-        rowCount: Object.values(result).reduce((sum, rows) => sum + rows.length, 0),
-        generatedAt: new Date().toISOString(),
-      },
-    });
-  } catch (err) {
-    return json(res, 500, { ok: false, error: err.message });
+    const actor = await authenticate(req);
+    if (req.method === "GET") return handleGet(req, res, url, actor);
+    if (req.method === "POST") return handlePost(req, res, actor);
+    if (req.method === "DELETE") return handleDelete(req, res, url, actor);
+    throw new ApiError(405, "METHOD_NOT_ALLOWED", "Method not allowed");
+  } catch (error) {
+    return errorResponse(res, error);
   }
+}
+
+module.exports = handler;
+module.exports._test = {
+  ACTION_ONLY_TABLES, TABLES, cache, clearCache, parallelMap, requestedTables, tableName,
 };
