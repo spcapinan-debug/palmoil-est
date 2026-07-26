@@ -114,9 +114,22 @@ const CONFLICT_KEYS = {
   survey_questions: "question_code",
 };
 
-// `areas` is a legacy compatibility source; the current project uses
-// estates/zones/plots/blocks and must not fail an otherwise valid workspace read.
-const OPTIONAL_TABLES = new Set([...TABLES].filter((name) => name.startsWith("v_")).concat("areas"));
+// These compatibility sources were replaced by the current normalized tables.
+// Keep mixed legacy workspace reads usable without creating duplicate schema.
+const OPTIONAL_TABLES = new Set([...TABLES].filter((name) => name.startsWith("v_")).concat(
+  "areas",
+  "access_scopes",
+  "approval_logs",
+  "inventory_document_lines",
+  "inventory_documents",
+  "inventory_master",
+  "master_versions",
+  "payroll_lines",
+  "payroll_rules",
+  "people",
+  "person_housing_assignments",
+  "worker_documents",
+));
 const CACHE_MS = 30_000;
 const cache = new Map();
 const ACTION_ONLY_TABLES = new Set([
@@ -380,7 +393,15 @@ async function enforceUatTableWrite(actor, table, rows) {
 
 async function handleGet(req, res, url, actor) {
   const tables = requestedTables(url.searchParams.get("tables") ?? url.searchParams.get("table"));
-  tables.forEach((table) => readPermission(actor, table));
+  const deniedTables = new Set();
+  for (const table of tables) {
+    try {
+      readPermission(actor, table);
+    } catch (error) {
+      if (!actorIsUat(actor) || error?.status !== 403) throw error;
+      deniedTables.add(table);
+    }
+  }
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 5000), 1), 5000);
   const page = Math.max(Number(url.searchParams.get("page") || 1), 1);
   const offsetParam = url.searchParams.get("offset");
@@ -393,6 +414,9 @@ async function handleGet(req, res, url, actor) {
 
   const context = actorIsUat(actor) ? await uatReadContext(actor) : null;
   const reads = await parallelMap(tables, 8, async (table) => {
+    if (deniedTables.has(table)) {
+      return { table, rows: [], total: 0, warning: "Table is not available to this UAT role" };
+    }
     const read = await readTable(table, limit, offset);
     if (!context) return read;
     const rows = table === "v_management_action_center"

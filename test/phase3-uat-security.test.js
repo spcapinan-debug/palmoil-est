@@ -107,6 +107,12 @@ test("Preview routing serves the SPA entry point for direct workspace routes", (
 });
 
 test("current farm hierarchy remains usable when the legacy areas table is absent", () => {
-  assert.equal(farmTables._test.OPTIONAL_TABLES.has("areas"), true);
+  for (const table of [
+    "areas", "access_scopes", "approval_logs", "inventory_document_lines",
+    "inventory_documents", "inventory_master", "master_versions", "payroll_lines",
+    "payroll_rules", "people", "person_housing_assignments", "worker_documents",
+  ]) {
+    assert.equal(farmTables._test.OPTIONAL_TABLES.has(table), true, table);
+  }
   assert.equal(farmTables._test.OPTIONAL_TABLES.has("blocks"), false);
 });
