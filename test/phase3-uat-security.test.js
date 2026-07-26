@@ -12,6 +12,8 @@ const migration = fs.readFileSync(
   path.join(__dirname, "..", "supabase", "migrations", "20260726052723_phase3_uat_roles.sql"),
   "utf8",
 );
+const vercelConfig = require("../vercel.json");
+const indexHtml = fs.readFileSync(path.join(__dirname, "..", "webapp", "index.html"), "utf8");
 
 test("UAT roles grant only the existing least-privilege permission system", () => {
   assert.match(migration, /uat_manager/);
@@ -93,4 +95,13 @@ test("shared body parser accepts Vercel pre-parsed JSON without rereading the st
   const parsed = { action: "submit_work_order", confirmed: true };
   assert.equal(await farmApi.readBody({ body: parsed }), parsed);
   assert.deepEqual(await farmApi.readBody({ body: JSON.stringify(parsed) }), parsed);
+});
+
+test("Preview routing serves the SPA entry point for direct workspace routes", () => {
+  assert.deepEqual(vercelConfig.routes.slice(-2), [
+    { src: "/(app\\.js|styles\\.css)", dest: "/webapp/$1" },
+    { src: "/(.*)", dest: "/webapp/index.html" },
+  ]);
+  assert.match(indexHtml, /href="\/styles\.css/);
+  assert.match(indexHtml, /src="\/app\.js/);
 });

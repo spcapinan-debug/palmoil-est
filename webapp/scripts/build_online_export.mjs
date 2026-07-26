@@ -17,12 +17,12 @@ app = app.replace(
 );
 
 html = html.replace(
-  /<link rel="stylesheet" href="\.\/styles\.css\?v=[^"]+">/,
+  /<link rel="stylesheet" href="(?:\.\/|\/)styles\.css\?v=[^"]+">/,
   `<style>\n${css.replace(/<\/style/gi, "<\\/style")}\n</style>`
 );
 
 html = html.replace(
-  /<script src="\.\/app\.js\?v=[^"]+"><\/script>/,
+  /<script src="(?:\.\/|\/)app\.js\?v=[^"]+"><\/script>/,
   `<script>window.__PALM_DATA__ = ${data.replace(/<\//g, "<\\/")};</script>\n<script>\n${app.replace(/<\//g, "<\\/")}\n</script>`
 );
 
