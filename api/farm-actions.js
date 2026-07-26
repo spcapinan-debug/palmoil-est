@@ -13,7 +13,7 @@ const {
   requireUuid,
   rest,
   rpc,
-} = require("./_farm-api");
+} = require("../lib/server/farm-api");
 
 const ACTIONS = {
   get_or_create_work_result: {

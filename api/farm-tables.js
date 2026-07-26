@@ -9,7 +9,7 @@ const {
   readBody,
   requireUuid,
   rest,
-} = require("./_farm-api");
+} = require("../lib/server/farm-api");
 
 const TABLES = new Set([
   "profiles", "areas", "people", "worker_documents", "person_housing_assignments",
@@ -127,7 +127,7 @@ const ACTION_ONLY_TABLES = new Set([
 
 function tableName(value) {
   const name = String(value || "").trim();
-  if (!TABLES.has(name)) throw new ApiError(400, "INVALID_TABLE", `Table is not allowlisted: ${name || "(empty)"}`);
+  if (!TABLES.has(name)) throw new ApiError(400, "INVALID_TABLE", "Requested table is not allowed");
   return name;
 }
 
@@ -184,7 +184,7 @@ function clearCache() {
 }
 
 async function handleGet(req, res, url, actor) {
-  const tables = requestedTables(url.searchParams.get("tables"));
+  const tables = requestedTables(url.searchParams.get("tables") ?? url.searchParams.get("table"));
   tables.forEach((table) => readPermission(actor, table));
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 5000), 1), 5000);
   const page = Math.max(Number(url.searchParams.get("page") || 1), 1);
@@ -219,6 +219,9 @@ async function handleGet(req, res, url, actor) {
 
 async function handlePost(req, res, actor) {
   const body = await readBody(req);
+  if (!body || typeof body !== "object" || Array.isArray(body) || !body.table) {
+    throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
+  }
   const table = tableName(body.table);
   writePermission(actor, table);
   if (ACTION_ONLY_TABLES.has(table)) {
@@ -226,7 +229,7 @@ async function handlePost(req, res, actor) {
   }
   const rows = Array.isArray(body.rows) ? body.rows : (body.row && typeof body.row === "object" ? [body.row] : []);
   if (!rows.length || rows.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
-    throw new ApiError(400, "VALIDATION_ERROR", "row or rows must contain JSON objects");
+    throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   if (rows.length > 500) throw new ApiError(400, "VALIDATION_ERROR", "A request may write at most 500 rows");
   const conflict = String(body.onConflict || CONFLICT_KEYS[table] || "id");
@@ -244,7 +247,10 @@ async function handlePost(req, res, actor) {
 }
 
 async function handleDelete(req, res, url, actor) {
-  const body = await readBody(req).catch(() => ({}));
+  const body = await readBody(req);
+  if (!body || typeof body !== "object" || Array.isArray(body) || !(body.table || url.searchParams.get("table"))) {
+    throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
+  }
   const table = tableName(body.table || url.searchParams.get("table"));
   writePermission(actor, table);
   if (ACTION_ONLY_TABLES.has(table)) {
@@ -265,18 +271,25 @@ async function handleDelete(req, res, url, actor) {
 }
 
 async function handler(req, res) {
-  if (req.method === "OPTIONS") return json(res, 200, { ok: true });
+  const allowedMethods = "GET, POST, DELETE, OPTIONS";
+  if (req.method === "OPTIONS") {
+    res.setHeader("Allow", allowedMethods);
+    return json(res, 200, { ok: true });
+  }
   try {
     const url = new URL(req.url, "http://localhost");
     if (req.method === "GET" && url.searchParams.get("healthcheck") === "1") {
       config();
       return json(res, 200, { ok: true, route: "farm-tables", configured: true, authRequired: true });
     }
+    if (!["GET", "POST", "DELETE"].includes(req.method)) {
+      res.setHeader("Allow", allowedMethods);
+      throw new ApiError(405, "METHOD_NOT_ALLOWED", "Method not allowed");
+    }
     const actor = await authenticate(req);
-    if (req.method === "GET") return handleGet(req, res, url, actor);
-    if (req.method === "POST") return handlePost(req, res, actor);
-    if (req.method === "DELETE") return handleDelete(req, res, url, actor);
-    throw new ApiError(405, "METHOD_NOT_ALLOWED", "Method not allowed");
+    if (req.method === "GET") return await handleGet(req, res, url, actor);
+    if (req.method === "POST") return await handlePost(req, res, actor);
+    return await handleDelete(req, res, url, actor);
   } catch (error) {
     return errorResponse(res, error);
   }

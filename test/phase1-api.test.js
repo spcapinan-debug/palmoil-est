@@ -5,7 +5,7 @@ const test = require("node:test");
 
 const farmTables = require("../api/farm-tables");
 const farmActions = require("../api/farm-actions");
-const farmApi = require("../api/_farm-api");
+const farmApi = require("../lib/server/farm-api");
 
 const EXPECTED_TABLES = `
 v_app_navigation v_app_workspace_definition v_app_workspace_tabs v_management_action_center v_system_module_readiness
@@ -28,8 +28,58 @@ function responseRecorder() {
   return {
     headers: {},
     setHeader(name, value) { this.headers[name] = value; },
+    getHeader(name) { return this.headers[name]; },
     end(body) { this.body = JSON.parse(body); },
   };
+}
+
+function apiRequest(method, url, body, { authenticated = true } = {}) {
+  const raw = body === undefined ? "" : (typeof body === "string" ? body : JSON.stringify(body));
+  return {
+    method,
+    url,
+    headers: authenticated ? { authorization: "Bearer user-access-token" } : {},
+    async *[Symbol.asyncIterator]() {
+      if (raw) yield Buffer.from(raw);
+    },
+  };
+}
+
+async function withAuthenticatedFarmApi(run) {
+  const previousFetch = global.fetch;
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  try {
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-test-key";
+    global.fetch = async (url) => {
+      const text = String(url);
+      if (text.endsWith("/auth/v1/user")) return new Response(JSON.stringify({ id: "user-1" }), { status: 200 });
+      const resource = text.split("/rest/v1/")[1]?.split("?")[0] || "";
+      if (resource === "profiles") {
+        return new Response(JSON.stringify([{ id: "user-1", status: "active", role: "super_admin" }]), { status: 200 });
+      }
+      if (resource === "profile_roles" || resource === "user_access_scopes") {
+        return new Response("[]", { status: 200 });
+      }
+      const rows = resource === "work_orders"
+        ? [{ id: "work-order-1", work_order_no: "WEBTEST-2569-WO-FERT-001" }]
+        : [];
+      return new Response(JSON.stringify(rows), {
+        status: 200,
+        headers: { "content-range": `0-${Math.max(rows.length - 1, 0)}/${rows.length}` },
+      });
+    };
+    farmTables._test.clearCache();
+    await run();
+  } finally {
+    global.fetch = previousFetch;
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+    farmTables._test.clearCache();
+  }
 }
 
 test("farm table allowlist covers the handoff schema", () => {
@@ -40,6 +90,83 @@ test("GET requires an explicit requested table list", () => {
   assert.throws(() => farmTables._test.requestedTables(""), (error) => error.code === "TABLES_REQUIRED");
   assert.deepEqual(farmTables._test.requestedTables("work_orders,work_results,work_orders"), ["work_orders", "work_results"]);
   assert.throws(() => farmTables._test.requestedTables("not_a_real_table"), (error) => error.code === "INVALID_TABLE");
+});
+
+test("farm table errors are contained, standardized, and recoverable", async () => {
+  await withAuthenticatedFarmApi(async () => {
+    const responses = [];
+    const recover = async () => {
+      const res = responseRecorder();
+      responses.push(res);
+      await farmTables(apiRequest("GET", "/api/farm-tables?table=work_orders&refresh=1"), res);
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.ok, true);
+      assert.equal(res.body.tables.work_orders[0].work_order_no, "WEBTEST-2569-WO-FERT-001");
+    };
+
+    const unknown = responseRecorder();
+    responses.push(unknown);
+    await farmTables(apiRequest("GET", "/api/farm-tables?table=not_allowed_table"), unknown);
+    assert.equal(unknown.statusCode, 400);
+    assert.deepEqual(unknown.body, {
+      ok: false,
+      error: { code: "INVALID_TABLE", message: "Requested table is not allowed" },
+    });
+    await recover();
+
+    for (const body of [{}, { table: "work_orders" }]) {
+      const invalidPost = responseRecorder();
+      responses.push(invalidPost);
+      await farmTables(apiRequest("POST", "/api/farm-tables", body), invalidPost);
+      assert.equal(invalidPost.statusCode, 400);
+      assert.deepEqual(invalidPost.body, {
+        ok: false,
+        error: { code: "INVALID_PAYLOAD", message: "Request payload is invalid" },
+      });
+      await recover();
+    }
+
+    const invalidDelete = responseRecorder();
+    responses.push(invalidDelete);
+    await farmTables(apiRequest("DELETE", "/api/farm-tables", {}), invalidDelete);
+    assert.equal(invalidDelete.statusCode, 400);
+    assert.equal(invalidDelete.body.error.code, "INVALID_PAYLOAD");
+    await recover();
+
+    const unsupported = responseRecorder();
+    responses.push(unsupported);
+    await farmTables(apiRequest("PATCH", "/api/farm-tables", undefined, { authenticated: false }), unsupported);
+    assert.equal(unsupported.statusCode, 405);
+    assert.equal(unsupported.body.error.code, "METHOD_NOT_ALLOWED");
+    assert.equal(unsupported.headers.Allow, "GET, POST, DELETE, OPTIONS");
+    await recover();
+
+    await new Promise((resolve) => setImmediate(resolve));
+    const output = JSON.stringify(responses.map((res) => res.body));
+    assert.doesNotMatch(output, /SUPABASE_SERVICE_ROLE_KEY|server-only-test-key|Authorization|apikey/i);
+  });
+});
+
+test("internal errors are generic and the shared helper is not an API route", () => {
+  const res = responseRecorder();
+  farmApi.errorResponse(res, new farmApi.ApiError(
+    500,
+    "SERVER_CONFIG_ERROR",
+    "Server configuration contains sensitive details",
+    { stack: "private stack" }
+  ));
+  assert.equal(res.statusCode, 500);
+  assert.deepEqual(res.body, {
+    ok: false,
+    error: { code: "INTERNAL_ERROR", message: "Internal server error" },
+  });
+  assert.equal(fs.existsSync(path.join(__dirname, "..", "api", "_farm-api.js")), false);
+  assert.equal(fs.existsSync(path.join(__dirname, "..", "lib", "server", "farm-api.js")), true);
+  const browserSource = [
+    fs.readFileSync(path.join(__dirname, "..", "webapp", "index.html"), "utf8"),
+    fs.readFileSync(path.join(__dirname, "..", "webapp", "app.js"), "utf8"),
+  ].join("\n");
+  assert.doesNotMatch(browserSource, /_farm-api|lib\/server\/farm-api/);
 });
 
 test("authenticated API smoke reads the Phase 2 and WEBTEST-2569 tables only", async () => {
@@ -165,7 +292,7 @@ test("Supabase server configuration fails fast without both required variables",
 
 test("write implementation has no fallback or silent column stripping", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "api", "farm-tables.js"), "utf8");
-  const shared = fs.readFileSync(path.join(__dirname, "..", "api", "_farm-api.js"), "utf8");
+  const shared = fs.readFileSync(path.join(__dirname, "..", "lib", "server", "farm-api.js"), "utf8");
   assert.doesNotMatch(source, /saveFallback|farm_master_records|missingColumnFromError|delete\s+writable/i);
   assert.match(shared, /SCHEMA_MISMATCH/);
   assert.match(source, /DELETE_ALL_DISABLED/);
@@ -234,12 +361,12 @@ test("security migration keeps flags off and hardens views and RPC grants", () =
 });
 
 test("server APIs have no Supabase URL or anonymous-key fallback", () => {
-  for (const file of [
-    "_farm-api.js", "est-master.js", "farm-budget-cleanup.js", "farm-budget-sync.js", "transport-sync.js",
-  ]) {
+  for (const file of ["est-master.js", "farm-budget-cleanup.js", "farm-budget-sync.js", "transport-sync.js"]) {
     const source = fs.readFileSync(path.join(__dirname, "..", "api", file), "utf8");
     assert.doesNotMatch(source, /xhtwmzlorceebsemqkww\.supabase\.co|SUPABASE_ANON_KEY/);
   }
+  const shared = fs.readFileSync(path.join(__dirname, "..", "lib", "server", "farm-api.js"), "utf8");
+  assert.doesNotMatch(shared, /xhtwmzlorceebsemqkww\.supabase\.co|SUPABASE_ANON_KEY/);
 });
 
 test("local Supabase secrets are ignored and only empty server variables are documented", () => {

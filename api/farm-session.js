@@ -3,7 +3,7 @@ const {
   authenticate,
   errorResponse,
   json,
-} = require("./_farm-api");
+} = require("../lib/server/farm-api");
 
 async function handler(req, res) {
   if (req.method === "OPTIONS") return json(res, 200, { ok: true });
