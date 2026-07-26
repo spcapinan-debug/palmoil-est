@@ -23113,8 +23113,7 @@ async function init() {
   ensurePrintPreviewElements();
   applySidebarState();
   state.view = initialViewFromUrl();
-  const workspaceShell = loadWorkspaceShell();
-  if (isFarmView(state.view) || requestedWorkspaceRouteFromUrl()) await workspaceShell;
+  if (isFarmView(state.view) || requestedWorkspaceRouteFromUrl()) await loadWorkspaceShell();
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
