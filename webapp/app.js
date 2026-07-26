@@ -90,6 +90,8 @@ const state = {
   farmWorkFilters: { activityGroup: "all", team: "all", zone: "all", plotGroup: "all", status: "all", query: "", startDate: "", endDate: "" },
   farmWorkGroupMode: "activity",
   farmWorkGroupChecks: { activity: true, zone: true, plotGroup: true },
+  farmWorkWorkspaceTab: "overview",
+  farmWorkWorkspaceFilters: { year: "all", activity: "all", block: "all", status: "all", query: "" },
   farmPlannerTab: "dates",
   farmWorkDetailId: "",
   farmDispatchWorkOrderId: "",
@@ -105,6 +107,7 @@ const state = {
   farmResultWorkOrderId: "",
   farmResultFilters: { query: "", activity: "all", status: "all" },
   farmResultRoleTab: "",
+  farmDailyWorkspaceTab: "results",
   farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {}, materialEntries: {}, machineEntries: {} },
   farmResultRenderTimer: null,
   farmTableId: "",
@@ -126,6 +129,27 @@ const state = {
     year: "", from: "", to: "", ap: "", block: "", team: "", activity: "", rspo: "",
   },
 };
+
+const FARM_WORK_WORKSPACE_TABS = [
+  ["overview", "ภาพรวม"],
+  ["annual-plans", "แผนประจำปี"],
+  ["plan-items", "รายการแผน"],
+  ["work-orders", "ใบสั่งงาน"],
+  ["dispatch", "แจกจ่ายงาน"],
+  ["calendar", "ปฏิทินงาน"],
+  ["pending", "งานรอดำเนินการ"],
+];
+
+const FARM_DAILY_WORKSPACE_TABS = [
+  ["results", "ผลงาน"],
+  ["workers", "คนงานและเวลา"],
+  ["materials", "วัสดุ"],
+  ["weigh-tickets", "ใบชั่ง"],
+  ["vehicles", "รถและน้ำมัน"],
+  ["survey", "Survey"],
+  ["attachments", "เอกสารแนบ"],
+  ["review", "ตรวจสอบและปิดงาน"],
+];
 
 const farmDerivedCache = {
   rowsByKey: new Map(),
@@ -203,6 +227,7 @@ const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_wei
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
 const FARM_SESSION_API = window.__FARM_SESSION_API__ || "/api/farm-session";
+const FARM_ACTIONS_API = window.__FARM_ACTIONS_API__ || "/api/farm-actions";
 const FARM_BUDGET_SYNC_API = window.__FARM_BUDGET_SYNC_API__ || "/api/farm-budget-sync";
 const FARM_DB_TABLE_CACHE_MS = 30 * 1000;
 const farmDbTableLoadedAt = new Map();
@@ -561,7 +586,9 @@ const FARM_MODULES = [
     group: "Operation",
     accent: "Plan → Work Order",
     description: "สร้างแผนงานและ Work Order จากพื้นที่ กิจกรรม ทีม และอัตรางบประมาณ ก่อนส่งต่อให้ผู้จัดการสั่งงาน",
-    tables: ["work_plans", "plan_materials", "work_orders", "work_order_resources"],
+    tables: ["annual_work_plans", "planned_work_items", "planned_work_materials", "work_orders",
+      "work_order_workers", "work_order_materials", "work_order_machines", "work_results",
+      "v_farm_workflow_workspace", "v_management_action_center"],
     fields: [
       ["code", "เลขที่งาน", "WO-2569-001"],
       ["name", "ชื่องาน", "ใส่ปุ๋ยแปลง PLT-001"],
@@ -592,7 +619,12 @@ const FARM_MODULES = [
     group: "Operation",
     accent: "Supervisor Daily Result",
     description: "หน้าหัวหน้างานสำหรับบันทึกผลงานจริงจากใบสั่งงาน ดึงน้ำหนักจากเลขใบชั่งหรือคีย์จำนวนจริง แล้วเฉลี่ยค่าแรงตามทีมที่ได้รับคำสั่ง",
-    tables: ["work_results", "work_attendance", "payroll_period_lines", "work_orders", "work_order_workers"],
+    tables: ["work_results", "work_result_workers", "work_result_weight_tickets",
+      "work_result_vehicle_usage", "work_orders", "work_order_workers", "work_order_materials",
+      "work_order_machines", "survey_template_assignments", "survey_responses", "survey_answers",
+      "survey_response_attachments", "survey_answer_attachments", "survey_findings", "attachments",
+      "v_daily_work_entry_context", "v_available_inbound_weight_tickets",
+      "v_inventory_work_order_workspace", "v_work_result_vehicle_fuel_detail"],
     fields: [],
     seed: [],
   },
@@ -1957,6 +1989,66 @@ const FARM_TABLE_SCHEMAS = {
     ],
     seed: FARM_SURVEY_QUESTIONS,
   },
+  work_result_workers: {
+    moduleId: "farm-result", title: "คนงานและเวลา", primaryKey: "id",
+    codeField: "work_date", labelField: "employee_id", readonly: true, fields: [], seed: [],
+  },
+  work_result_weight_tickets: {
+    moduleId: "farm-result", title: "ใบชั่งที่ผูกแล้ว", primaryKey: "id",
+    codeField: "source_doc_no", labelField: "allocated_weight_kg", readonly: true, fields: [], seed: [],
+  },
+  work_result_vehicle_usage: {
+    moduleId: "farm-result", title: "รถและน้ำมันตามผลงาน", primaryKey: "id",
+    codeField: "vehicle_id", labelField: "allocated_fuel_liter", readonly: true, fields: [], seed: [],
+  },
+  survey_template_assignments: {
+    moduleId: "farm-result", title: "Survey Assignment", primaryKey: "id",
+    codeField: "trigger_event", labelField: "template_id", readonly: true, fields: [], seed: [],
+  },
+  survey_responses: {
+    moduleId: "farm-result", title: "Survey Responses", primaryKey: "id",
+    codeField: "response_no", labelField: "status", readonly: true, fields: [], seed: [],
+  },
+  survey_answers: {
+    moduleId: "farm-result", title: "Survey Answers", primaryKey: "id",
+    codeField: "question_code_snapshot", labelField: "answer_text", readonly: true, fields: [], seed: [],
+  },
+  survey_response_attachments: {
+    moduleId: "farm-result", title: "Survey Attachments", primaryKey: "id",
+    codeField: "response_id", labelField: "caption", readonly: true, fields: [], seed: [],
+  },
+  survey_answer_attachments: {
+    moduleId: "farm-result", title: "Survey Answer Attachments", primaryKey: "id",
+    codeField: "answer_id", labelField: "caption", readonly: true, fields: [], seed: [],
+  },
+  survey_findings: {
+    moduleId: "farm-result", title: "Survey Findings", primaryKey: "id",
+    codeField: "finding_no", labelField: "description", readonly: true, fields: [], seed: [],
+  },
+  v_management_action_center: {
+    moduleId: "farm-work", title: "Action Center", primaryKey: "action_key",
+    codeField: "action_key", labelField: "action_label", readonly: true, fields: [], seed: [],
+  },
+  v_farm_workflow_workspace: {
+    moduleId: "farm-work", title: "Workflow Workspace", primaryKey: "work_order_id",
+    codeField: "work_order_no", labelField: "activity_name", readonly: true, fields: [], seed: [],
+  },
+  v_daily_work_entry_context: {
+    moduleId: "farm-result", title: "Daily Work Context", primaryKey: "work_order_id",
+    codeField: "work_order_no", labelField: "activity_name", readonly: true, fields: [], seed: [],
+  },
+  v_available_inbound_weight_tickets: {
+    moduleId: "farm-result", title: "Inbound Weight Tickets", primaryKey: "transport_source_record_id",
+    codeField: "doc_no", labelField: "supplier_name", readonly: true, fields: [], seed: [],
+  },
+  v_inventory_work_order_workspace: {
+    moduleId: "farm-result", title: "Work Order Material Workspace", primaryKey: "work_order_id",
+    codeField: "work_order_no", labelField: "activity_name", readonly: true, fields: [], seed: [],
+  },
+  v_work_result_vehicle_fuel_detail: {
+    moduleId: "farm-result", title: "Vehicle Fuel Detail", primaryKey: "id",
+    codeField: "vehicle_code", labelField: "vehicle_name", readonly: true, fields: [], seed: [],
+  },
   annual_work_plans: {
     moduleId: "farm-work",
     title: "แผนงานรายปี",
@@ -3031,6 +3123,26 @@ function workspaceRoutePath(route) {
   return String(route || "").split("?")[0].replace(/\/+$/, "") || "/";
 }
 
+function workspaceTabFromUrl(view = state.view) {
+  const requested = new URLSearchParams(window.location.search).get("tab") || "";
+  const tabs = view === "farm-work" ? FARM_WORK_WORKSPACE_TABS
+    : view === "farm-result" ? FARM_DAILY_WORKSPACE_TABS : [];
+  return tabs.some(([key]) => key === requested) ? requested : "";
+}
+
+function setFarmWorkspaceTab(view, tab, { replace = false } = {}) {
+  const tabs = view === "farm-work" ? FARM_WORK_WORKSPACE_TABS : FARM_DAILY_WORKSPACE_TABS;
+  if (!tabs.some(([key]) => key === tab)) return false;
+  if (view === "farm-work") state.farmWorkWorkspaceTab = tab;
+  else state.farmDailyWorkspaceTab = tab;
+  const url = new URL(window.location.href);
+  url.searchParams.set("route", view === "farm-work" ? "/farm/work" : "/farm/daily");
+  url.searchParams.set("tab", tab);
+  (replace ? window.history.replaceState : window.history.pushState).call(window.history, {}, "", url);
+  render();
+  return true;
+}
+
 function resolveWorkspaceRoute(items, route) {
   const raw = String(route || "");
   const path = workspaceRoutePath(raw);
@@ -3124,6 +3236,9 @@ function applyWorkspaceRoute(route) {
   state.workspaceRoute = item.route || route;
   state.workspaceTab = item.workspace_tab || "";
   state.view = workspaceLegacyView(item);
+  const requestedTab = workspaceTabFromUrl(state.view);
+  if (state.view === "farm-work") state.farmWorkWorkspaceTab = requestedTab || item.workspace_tab || state.farmWorkWorkspaceTab;
+  if (state.view === "farm-result") state.farmDailyWorkspaceTab = requestedTab || item.workspace_tab || state.farmDailyWorkspaceTab;
   ensureFarmViewState(state.view);
   return true;
 }
@@ -3132,7 +3247,6 @@ function openWorkspaceRoute(route) {
   const target = workspaceRouteWithFilters(route);
   if (!applyWorkspaceRoute(target)) return false;
   const url = new URL(window.location.href);
-  url.search = "";
   url.searchParams.set("route", workspaceRoutePath(route));
   for (const [key, value] of Object.entries(state.actionCenterFilters)) {
     if (value) url.searchParams.set(key, value);
@@ -3560,6 +3674,40 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
     return false;
   } finally {
     if (farmDbTableInflight.get(requestKey) === request) farmDbTableInflight.delete(requestKey);
+  }
+}
+
+async function runFarmAction(action, args = {}, { confirmed = false, reason = "" } = {}) {
+  if (state.farmSyncBusy) throw new Error("มีคำสั่งกำลังทำงาน กรุณารอสักครู่");
+  state.farmSyncBusy = true;
+  state.farmSyncStatus = "loading";
+  state.farmSyncMessage = "กำลังบันทึกผ่าน Server Action…";
+  render();
+  try {
+    const idempotencyKey = `${action}:${crypto.randomUUID()}`;
+    const response = await fetch(FARM_ACTIONS_API, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        ...farmApiHeaders(),
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({ action, args, confirmed, reason, idempotency_key: idempotencyKey }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error(farmApiErrorMessage(payload, "Server Action ไม่สำเร็จ"));
+    state.farmSyncStatus = "success";
+    state.farmSyncMessage = "บันทึกสำเร็จ";
+    return payload.result;
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = error.message || "Server Action ไม่สำเร็จ";
+    throw error;
+  } finally {
+    state.farmSyncBusy = false;
+    await loadFarmCurrentViewTables({ silent: true, force: true });
+    render();
   }
 }
 
@@ -12574,6 +12722,7 @@ function farmShortWorkOrderNo(order = {}) {
     const year = yearSeq[1].length === 4 ? String(yearSeq[1]).slice(-2) : yearSeq[1];
     return `W${year}-${String(Number(yearSeq[2]) || yearSeq[2]).padStart(3, "0")}`;
   }
+  if (sourceNo) return sourceNo;
   const tail = sourceNo.match(/(\d{1,5})$/);
   const seq = tail ? tail[1] : "1";
   return `W${yearSuffix}-${String(Number(seq) || seq).padStart(3, "0")}`;
@@ -12734,7 +12883,13 @@ function farmWorkOrderStatusRank(order = {}) {
 
 function farmWorkOrderCanonicalKey(row = {}) {
   const rawNo = String(row.work_order_no || row.order_no || row.orderNo || "").trim();
-  if (rawNo) return farmShortWorkOrderNo(row).toLowerCase();
+  const explicit = String(row.canonical_work_order_no || row.work_order_ref || "").trim();
+  if (explicit) return explicit.toLowerCase();
+  if (rawNo) {
+    return /^(?:W\d{2}-\d+|F\d{1,3}[-/]\d+)$/i.test(rawNo)
+      ? farmShortWorkOrderNo(row).toLowerCase()
+      : rawNo.toLowerCase();
+  }
   return String(row._overrideOf || row.id || "").trim().toLowerCase();
 }
 
@@ -17192,15 +17347,30 @@ function farmResultDefaultDate(order = farmResultSelectedOrder()) {
 
 function farmResultBlankDraft(order = farmResultSelectedOrder()) {
   const resultDate = farmResultDefaultDate(order);
+  const orderId = order ? farmWorkOrderDbId(order) || order.id : "";
+  const existing = farmRowsByKey("work_results")
+    .filter((row) => row.work_order_id === orderId && ["draft", "submitted"].includes(row.result_status))
+    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0];
   return {
-    resultDate,
+    resultDate: existing?.result_date || resultDate,
     ticketText: "",
-    actualQuantity: "",
-    actualUnit: "",
-    qualityScore: "",
-    surveyStatus: "pending",
+    actualQuantity: existing?.actual_quantity ?? "",
+    actualUnit: existing?.actual_unit || "",
+    actualStartAt: existing?.actual_start_at || "",
+    actualEndAt: existing?.actual_end_at || "",
+    actualAreaRai: existing?.actual_area_rai ?? "",
+    actualTreeCount: existing?.actual_tree_count ?? "",
+    totalLaborHours: existing?.total_labor_hours ?? "",
+    stoppageMinutes: existing?.stoppage_minutes ?? "",
+    completionPct: existing?.completion_pct ?? "",
+    reworkQuantity: existing?.rework_quantity ?? "",
+    weatherCondition: existing?.weather_condition || "",
+    terrainCondition: existing?.terrain_condition || "",
+    qualityScore: existing?.quality_score ?? "",
+    surveyStatus: existing?.survey_status || "pending",
     surveyNote: "",
-    note: "",
+    note: existing?.note || "",
+    existingResultId: existing?.id || "",
     surveyAnswers: { POSTING_DATE: resultDate },
     extraWorkerIds: [],
     workerEntries: {},
@@ -17934,7 +18104,7 @@ function renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, 
   const scoreGroups = farmSurveySectionGroups(scoreQuestions);
   const metaDate = farmSurveyAnswerValue(draft, "POSTING_DATE") || resultDate || farmToday();
   return `
-    <article class="farm-result-card farm-result-survey-card">
+    <article class="farm-result-card farm-result-survey-card" data-daily-section="survey">
       <div class="farm-survey-answer-box">
         <div class="section-head">
           <h3>ตรวจงาน / Survey</h3>
@@ -18127,7 +18297,7 @@ function renderFarmResultPanel() {
       <div>
         <span>วันที่ทำมาแล้ว</span>
         <strong>${completedWorkDates.length
-          ? completedWorkDates.map((date) => `<em>${esc(formatThaiDate(date))}</em>`).join("")
+          ? completedWorkDates.map((date) => `<em>${esc(displayDate(date))}</em>`).join("")
           : "<em>ยังไม่มีวันที่บันทึก</em>"}</strong>
       </div>
       <div>
@@ -18144,7 +18314,7 @@ function renderFarmResultPanel() {
         <span>หัวหน้าทีมบันทึกผลงานจริง รายชื่อคนทำงาน และค่าแรงรายคนจากใบสั่งงานเดียว</span>
       </div>
       ${renderFarmResultWorkSearch(order, orders)}
-      <div class="farm-result-summary-strip">
+      <div class="farm-result-summary-strip" data-daily-section="all">
         <article><span>กิจกรรม</span><strong>${esc(farmLookupLabel("activities", order?.activity_id) || "-")}</strong><small>${esc(area)}</small></article>
         <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(effectiveOrderStatus?.label || "-")}</small></article>
         <article><span>เรทตามบทบาท</span><strong>${fmt(calc.roleSummary.filter((row) => row.count).length || 1)} ชุด</strong><small>${esc(roleRateSummary || rateLabel)}</small></article>
@@ -18152,7 +18322,7 @@ function renderFarmResultPanel() {
         <article><span>วัสดุ / น้ำมัน</span><strong>${fmt(calc.materialLines.length)} / ${fmt(calc.machineLines.length)}</strong><small>น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร</small></article>
         <article><span>แบบตรวจงาน</span><strong>${esc(survey?.template_code || "-")}</strong><small>${esc(surveyAttachment?.file_name || survey?.template_name || "ไม่พบแบบตรวจ")}</small></article>
       </div>
-      <div class="farm-result-entry-grid">
+      <div class="farm-result-entry-grid" data-daily-section="results">
         <article class="farm-result-card farm-result-main-entry">
           <div class="section-head"><h3>ผลงานรวม</h3><span>ใช้ใบชั่งหรือกรอกจำนวนเอง</span></div>
           <div class="farm-result-fields">
@@ -18168,6 +18338,18 @@ function renderFarmResultPanel() {
                 ${["กก.", "ตัน", "กระสอบ", "ไร่", "ต้น", "หน่วย"].map((unit) => `<option value="${esc(unit)}"${unit === calc.actualUnit ? " selected" : ""}>${esc(unit)}</option>`).join("")}
               </select>
             </label>
+            <label>เวลาเริ่ม<input id="farmResultStartAt" type="datetime-local" value="${esc(String(draft.actualStartAt || "").slice(0, 16))}"></label>
+            <label>เวลาสิ้นสุด<input id="farmResultEndAt" type="datetime-local" value="${esc(String(draft.actualEndAt || "").slice(0, 16))}"></label>
+            <label>พื้นที่จริง (ไร่)<input id="farmResultAreaRai" type="number" min="0" step="0.01" value="${esc(draft.actualAreaRai || "")}"></label>
+            <label>จำนวนต้น<input id="farmResultTreeCount" type="number" min="0" step="1" value="${esc(draft.actualTreeCount || "")}"></label>
+            <label>ชั่วโมงแรงงาน<input id="farmResultLaborHours" type="number" min="0" step="0.25" value="${esc(draft.totalLaborHours || "")}"></label>
+            <label>เวลาหยุด (นาที)<input id="farmResultStoppage" type="number" min="0" step="1" value="${esc(draft.stoppageMinutes || "")}"></label>
+            <label>คุณภาพ %<input id="farmResultWorkQuality" type="number" min="0" max="100" step="0.1" value="${esc(draft.qualityScore || "")}"></label>
+            <label>ความสำเร็จ %<input id="farmResultCompletion" type="number" min="0" max="100" step="0.1" value="${esc(draft.completionPct || "")}"></label>
+            <label>งานแก้ไขซ้ำ<input id="farmResultRework" type="number" min="0" step="0.01" value="${esc(draft.reworkQuantity || "")}"></label>
+            <label>สภาพอากาศ<input id="farmResultWeather" type="text" maxlength="120" value="${esc(draft.weatherCondition || "")}"></label>
+            <label>สภาพพื้นที่<input id="farmResultTerrain" type="text" maxlength="120" value="${esc(draft.terrainCondition || "")}"></label>
+            <label class="farm-result-note-field">หมายเหตุ<textarea id="farmResultNote" maxlength="2000">${esc(draft.note || "")}</textarea></label>
             ${workHistory}
           </div>
         </article>
@@ -18182,13 +18364,13 @@ function renderFarmResultPanel() {
           <p>${esc(rateLabel)}</p>
         </article>
       </div>
-      <section class="farm-result-role-strip">
+      <section class="farm-result-role-strip" data-daily-section="all">
         ${roleTabs || `<span><b>ทีมงาน</b>${fmt(calc.workerLines.length)} คน</span>`}
         <span><b>วัสดุ</b>${fmt(calc.materialLines.length)} รายการ</span>
         <span><b>รถ/เครื่องจักร</b>${fmt(calc.machineLines.length)} รายการ</span>
         <span><b>น้ำมันใช้จริง</b>${moneyNf.format(calc.fuelIssueTotal)} ลิตร</span>
       </section>
-      <article class="farm-result-card farm-result-worker-card">
+      <article class="farm-result-card farm-result-worker-card" data-daily-section="workers">
         <div class="section-head">
           <h3>บันทึกแรงงานตามบทบาท</h3>
           <span>คนงานและคนขับใช้ rate แยกจากอัตรางบประมาณ แล้วล็อกค่าแรงเป็น snapshot หลังบันทึก</span>
@@ -18267,7 +18449,7 @@ function renderFarmResultPanel() {
         </div>
       </article>
       <div class="farm-result-resource-grid">
-        <article class="farm-result-card farm-result-worker-card">
+        <article class="farm-result-card farm-result-worker-card" data-daily-section="materials">
           <div class="section-head">
             <h3>วัสดุที่ใช้จริง</h3>
             <span>ใช้ผลงานจริงเป็นยอดใช้จริง และคำนวณวัสดุรอเบิกจากยอดจ่ายคงเหลือ</span>
@@ -18290,7 +18472,7 @@ function renderFarmResultPanel() {
             </table>
           </div>
         </article>
-        <article class="farm-result-card farm-result-worker-card">
+        <article class="farm-result-card farm-result-worker-card" data-daily-section="vehicles">
           <div class="section-head">
             <h3>รถ/เครื่องจักร และน้ำมัน</h3>
             <span>บันทึกชั่วโมง กม. และน้ำมันที่ใช้จริงจากงานนี้</span>
@@ -18320,7 +18502,7 @@ function renderFarmResultPanel() {
       </div>
       ${renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, draft, resultDate: draft.resultDate || farmToday() })}
       <div class="farm-result-bottom-grid">
-        <article class="farm-result-card">
+        <article class="farm-result-card" data-daily-section="weigh-tickets">
           <div class="section-head"><h3>ใบชั่ง / แหล่งผลงาน</h3><span>${fmt(calc.tickets.length)} ใบ · ${fmt(calc.ticketKg)} กก.</span></div>
           <div class="table-wrap">
             <table class="mini-table farm-table">
@@ -18329,7 +18511,7 @@ function renderFarmResultPanel() {
             </table>
           </div>
         </article>
-        <article class="farm-result-card">
+        <article class="farm-result-card" data-daily-section="review">
           <div class="section-head"><h3>ตรวจสอบก่อนปิดงาน</h3><span>ส่งต่อค่าแรงและปิดสถานะงาน</span></div>
           <div class="farm-result-review-list">
             <p><strong>ผลงานรวม</strong><span>${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)}</span></p>
@@ -18366,10 +18548,21 @@ function syncFarmResultDraftFromForm() {
     ticketText: document.querySelector("#farmResultTicketText")?.value.trim() || "",
     actualQuantity,
     actualUnit,
-    qualityScore: document.querySelector("#farmResultQuality")?.value || "",
+    qualityScore: document.querySelector("#farmResultWorkQuality")?.value
+      || document.querySelector("#farmResultQuality")?.value || "",
+    actualStartAt: document.querySelector("#farmResultStartAt")?.value || "",
+    actualEndAt: document.querySelector("#farmResultEndAt")?.value || "",
+    actualAreaRai: document.querySelector("#farmResultAreaRai")?.value || "",
+    actualTreeCount: document.querySelector("#farmResultTreeCount")?.value || "",
+    totalLaborHours: document.querySelector("#farmResultLaborHours")?.value || "",
+    stoppageMinutes: document.querySelector("#farmResultStoppage")?.value || "",
+    completionPct: document.querySelector("#farmResultCompletion")?.value || "",
+    reworkQuantity: document.querySelector("#farmResultRework")?.value || "",
+    weatherCondition: document.querySelector("#farmResultWeather")?.value.trim() || "",
+    terrainCondition: document.querySelector("#farmResultTerrain")?.value.trim() || "",
     surveyStatus: document.querySelector("#farmResultSurveyStatus")?.value || state.farmResultDraft?.surveyStatus || "pending",
     surveyNote: document.querySelector("#farmResultSurveyNote")?.value.trim() || "",
-    note: state.farmResultDraft?.note || "",
+    note: document.querySelector("#farmResultNote")?.value.trim() || state.farmResultDraft?.note || "",
     surveyAnswers,
     extraWorkerIds: state.farmResultDraft?.extraWorkerIds || [],
     workerEntries,
@@ -19286,61 +19479,6 @@ function renderFarmWorkDetail(order) {
         <button type="button" data-farm-open-work-table="work_orders">เปิดตาราง WO</button>
       </div>
     </aside>`;
-}
-
-function updateFarmWorkOrderDecision(id, decision) {
-  const table = farmTableByKey("work_orders");
-  const current = farmRows(table).find((row) => row.id === id);
-  if (!current) return;
-  const now = new Date().toISOString();
-  const approved = decision === "approved";
-  const next = {
-    ...current,
-    id: current.readonly ? `override-${id}` : current.id,
-    moduleId: "farm-work",
-    tableId: "work_orders",
-    _overrideOf: current.readonly ? id : current._overrideOf,
-    approval_status: decision,
-    status: approved ? "approved" : "rejected",
-    approved_by: approved ? "profile-admin" : "",
-    approved_at: now.slice(0, 10),
-    updatedAt: now,
-  };
-  if (!next._overrideOf) delete next._overrideOf;
-  state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === "work_orders" && (item.id === next.id || item._overrideOf === id || item.id === id)));
-  state.farmRecords.push(next);
-  state.farmRecords.push({
-    id: `farm-approval-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    moduleId: "farm-governance",
-    tableId: "approval_logs",
-    entity_table: "work_orders",
-    entity_id: id,
-    event_type: "approval",
-    approval_level: "1",
-    actor_profile_id: "profile-admin",
-    decision,
-    event_date: now.slice(0, 10),
-    status: "active",
-    updatedAt: now,
-  });
-  state.farmRecords.push({
-    id: `farm-status-log-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    moduleId: "farm-governance",
-    tableId: "approval_logs",
-    entity_table: "work_orders",
-    entity_id: id,
-    event_type: "status_change",
-    from_status: current.status || "",
-    to_status: approved ? "approved" : "rejected",
-    actor_profile_id: "profile-admin",
-    event_date: now.slice(0, 10),
-    note: approved ? "อนุมัติจากหน้า Work Order Timeline" : "ไม่อนุมัติจากหน้า Work Order Timeline",
-    status: "active",
-    updatedAt: now,
-  });
-  state.farmWorkDetailId = id;
-  saveFarmRecords();
-  render();
 }
 
 function renderFarmKeyBindings(table) {
@@ -22245,6 +22383,362 @@ function renderFarmManagementDashboard() {
     </div>`;
 }
 
+async function saveFarmDailyEntry() {
+  const order = farmResultSelectedOrder();
+  if (!order) return;
+  syncFarmResultDraftFromForm();
+  const draft = state.farmResultDraft;
+  const workOrderId = farmWorkOrderDbId(order) || order.id;
+  try {
+    const created = await runFarmAction("get_or_create_work_result", {
+      work_order_id: workOrderId,
+      result_date: draft.resultDate,
+    });
+    const resultId = typeof created === "string" ? created : created?.id || draft.existingResultId;
+    if (!resultId) throw new Error("ไม่พบรหัสบันทึกผลงาน");
+    const calc = farmResultCalculation(order);
+    await runFarmAction("save_work_result_draft", {
+      result_id: resultId,
+      actual_start_at: draft.actualStartAt || null,
+      actual_end_at: draft.actualEndAt || null,
+      actual_quantity: draft.actualQuantity,
+      actual_unit: draft.actualUnit,
+      actual_area_rai: draft.actualAreaRai,
+      actual_tree_count: draft.actualTreeCount,
+      total_labor_hours: draft.totalLaborHours,
+      stoppage_minutes: draft.stoppageMinutes,
+      quality_score: draft.qualityScore,
+      completion_pct: draft.completionPct,
+      rework_quantity: draft.reworkQuantity,
+      weather_condition: draft.weatherCondition,
+      terrain_condition: draft.terrainCondition,
+      survey_status: draft.surveyStatus,
+      note: draft.note,
+      workers: calc.workerLines.map((row) => ({
+        employee_id: row.id,
+        team_id: order.team_id || null,
+        worker_role: row.role || row.roleGroup,
+        attendance_status: row.attendanceStatus,
+        actual_hours: row.workHours,
+        actual_quantity: row.actualQuantity,
+        actual_unit: draft.actualUnit,
+        rate_type: row.rateType || "snapshot",
+        rate_amount: row.rateAmount,
+        earning_amount: row.grossAmount,
+        quantity_allocation_method: row.hasCustomQuantity ? "manual" : "equal",
+        is_quantity_estimated: !row.hasCustomQuantity,
+      })),
+      materials: calc.materialLines.filter((row) => row.material_id).map((row) => ({
+        material_id: row.material_id,
+        used_quantity: row.actualQuantity,
+        note: n(row.wasteQuantity) ? `คืน/สูญเสีย ${row.wasteQuantity}` : null,
+      })),
+      vehicles: calc.machineLines.filter((row) => row.vehicle_id).map((row) => ({
+        vehicle_id: row.vehicle_id,
+        driver_employee_id: row.driver_employee_id || null,
+        start_odometer: row.start_km,
+        end_odometer: row.end_km,
+        start_hour_meter: row.start_hour_meter,
+        end_hour_meter: row.end_hour_meter,
+        actual_quantity: draft.actualQuantity,
+        actual_unit: draft.actualUnit,
+        allocation_method: "pending",
+        note: row.note,
+      })),
+    });
+    state.farmResultDraft.existingResultId = resultId;
+  } catch (error) {
+    console.error("Daily result save failed", error.message);
+  }
+}
+
+function renderFarmWorkspaceTabs(tabs, active, view) {
+  return `<nav class="farm-workspace-tabs" role="tablist" aria-label="${view === "farm-work" ? "วางแผนและใบงาน" : "บันทึกงานประจำวัน"}">
+    ${tabs.map(([key, label]) => `<button type="button" role="tab" aria-selected="${key === active ? "true" : "false"}"
+      class="${key === active ? "active" : ""}" data-farm-workspace-tab="${esc(key)}" data-farm-workspace-view="${esc(view)}">${esc(label)}</button>`).join("")}
+  </nav>`;
+}
+
+function farmWorkflowWorkspaceRows() {
+  const aggregate = farmRowsByKey("v_farm_workflow_workspace");
+  return aggregate.length ? aggregate : farmWorkOrders().map((order) => ({
+    work_order_id: order.id,
+    work_order_no: order.work_order_no || farmShortWorkOrderNo(order),
+    work_order_status: order.status,
+    scheduled_date: order.scheduled_date,
+    planned_work_item_id: order.planned_work_item_id,
+    block_id: order.block_id,
+    block_code: order.block?.block_code,
+    activity_id: order.activity_id,
+    activity_name: order.activity?.activity_name,
+    team_name: order.team?.team_name,
+    planned_quantity: order.planned_quantity,
+    planned_unit: order.planned_unit,
+    worker_count: farmResultWorkers(order).length,
+    next_action: farmEffectiveWorkStatusMeta(order).label,
+  }));
+}
+
+function farmWorkStatusKey(row = {}) {
+  return String(row.work_order_status || row.status || "").toLowerCase();
+}
+
+function renderFarmWorkOverview() {
+  const rows = farmWorkflowWorkspaceRows();
+  const today = farmToday();
+  const count = (statuses) => rows.filter((row) => statuses.includes(farmWorkStatusKey(row))).length;
+  const awaitingResult = rows.filter((row) => ["dispatched", "completed"].includes(farmWorkStatusKey(row)) && !row.result_id).length;
+  const awaitingReview = rows.filter((row) => row.result_status === "submitted").length;
+  const overdue = rows.filter((row) => row.scheduled_date && row.scheduled_date < today
+    && !["closed", "rejected"].includes(farmWorkStatusKey(row))).length;
+  const actions = farmRowsByKey("v_management_action_center").filter((row) =>
+    String(row.route || "").startsWith("/farm/work") || String(row.route || "").startsWith("/farm/daily"));
+  const metrics = [
+    ["จำนวนแผน", farmRowsByKey("annual_work_plans").length],
+    ["งานรออนุมัติ", count(["submitted", "pending_approval"])],
+    ["งานพร้อมเริ่ม", count(["approved", "dispatched"])],
+    ["งานกำลังทำ", count(["in_progress"])],
+    ["งานรอบันทึกผลงาน", awaitingResult],
+    ["งานรอตรวจ", awaitingReview],
+    ["งานปิดแล้ว", count(["closed"])],
+    ["งานล่าช้า", overdue],
+  ];
+  return `<div class="farm-workspace-overview">
+    <section class="farm-workspace-metrics">${metrics.map(([label, value]) =>
+      `<article><span>${esc(label)}</span><strong>${fmt(value)}</strong></article>`).join("")}</section>
+    <section class="farm-panel">
+      <div class="section-head"><h3>Action Center</h3><span>เฉพาะงานวางแผนและงานประจำวัน</span></div>
+      <div class="table-wrap"><table class="mini-table"><thead><tr><th>Priority</th><th>รายการ</th><th>จำนวน</th><th>ทางลัด</th></tr></thead>
+      <tbody>${actions.map((row) => `<tr><td>${esc(row.priority || "-")}</td><td>${esc(row.action_label || row.action_key || "-")}</td>
+        <td class="num">${fmt(row.item_count || row.issue_count || 0)}</td><td><button type="button" data-workspace-open="${esc(row.route || "/farm/work")}">เปิด</button></td></tr>`).join("")
+        || `<tr><td colspan="4">ไม่มีรายการค้างใน Action Center</td></tr>`}</tbody></table></div>
+    </section>
+  </div>`;
+}
+
+function farmFilteredAnnualPlans() {
+  const filters = state.farmWorkWorkspaceFilters;
+  const items = farmRowsByKey("planned_work_items");
+  const orders = farmWorkflowWorkspaceRows();
+  return farmRowsByKey("annual_work_plans").filter((plan) => {
+    const planItems = items.filter((item) => item.annual_plan_id === plan.id);
+    const queryText = [plan.plan_year, plan.plan_name, plan.note].join(" ").toLowerCase();
+    return (filters.year === "all" || String(plan.plan_year) === filters.year)
+      && (filters.status === "all" || plan.status === filters.status)
+      && (filters.activity === "all" || planItems.some((item) => item.activity_id === filters.activity))
+      && (filters.block === "all" || planItems.some((item) => item.block_id === filters.block))
+      && (!filters.query || queryText.includes(filters.query.toLowerCase()))
+      && (planItems.length || !filters.activity && !filters.block)
+      && orders !== null;
+  });
+}
+
+function renderFarmWorkFilters() {
+  const filters = state.farmWorkWorkspaceFilters;
+  const plans = farmRowsByKey("annual_work_plans");
+  const years = [...new Set(plans.map((row) => String(row.plan_year)).filter(Boolean))].sort().reverse();
+  return `<div class="farm-workspace-filters">
+    <label>ค้นหา<input type="search" data-farm-workspace-filter="query" value="${esc(filters.query)}" placeholder="ชื่อแผน / ปี"></label>
+    <label>ปี<select data-farm-workspace-filter="year"><option value="all">ทั้งหมด</option>${years.map((year) =>
+      `<option value="${esc(year)}"${filters.year === year ? " selected" : ""}>${esc(year)}</option>`).join("")}</select></label>
+    <label>กิจกรรม<select data-farm-workspace-filter="activity"><option value="all">ทั้งหมด</option>${farmRowsByKey("activities").map((row) =>
+      `<option value="${esc(row.id)}"${filters.activity === row.id ? " selected" : ""}>${esc(row.activity_name || row.activity_code)}</option>`).join("")}</select></label>
+    <label>พื้นที่<select data-farm-workspace-filter="block"><option value="all">ทั้งหมด</option>${farmRowsByKey("blocks").map((row) =>
+      `<option value="${esc(row.id)}"${filters.block === row.id ? " selected" : ""}>${esc(row.block_code || row.block_name)}</option>`).join("")}</select></label>
+    <label>สถานะ<select data-farm-workspace-filter="status"><option value="all">ทั้งหมด</option>${["draft", "submitted", "approved", "planned", "closed"].map((status) =>
+      `<option value="${status}"${filters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}</select></label>
+  </div>`;
+}
+
+function renderFarmAnnualPlans() {
+  const plans = farmFilteredAnnualPlans();
+  const items = farmRowsByKey("planned_work_items");
+  const workflow = farmWorkflowWorkspaceRows();
+  return `${renderFarmWorkFilters()}<section class="farm-panel">
+    <div class="section-head"><h3>แผนประจำปี</h3><span>${fmt(plans.length)} แผน · Plan vs Actual จากข้อมูลจริง</span></div>
+    <div class="farm-card-table">${plans.map((plan) => {
+      const planItems = items.filter((item) => item.annual_plan_id === plan.id);
+      const itemIds = new Set(planItems.map((item) => item.id));
+      const orders = workflow.filter((row) => itemIds.has(row.planned_work_item_id));
+      const planned = planItems.reduce((sum, item) => sum + n(item.target_quantity), 0);
+      const actual = orders.reduce((sum, row) => sum + n(row.actual_quantity), 0);
+      return `<article data-farm-annual-plan="${esc(plan.id)}">
+        <header><div><strong>${esc(plan.plan_name || `แผนปี ${plan.plan_year}`)}</strong><span>ปี ${esc(plan.plan_year)} · ${esc(farmTranslateValue(plan.status))}</span></div>
+          <button type="button" data-farm-plan-detail="${esc(plan.id)}">ดูรายละเอียด</button></header>
+        <dl><div><dt>รายการแผน</dt><dd>${fmt(planItems.length)}</dd></div><div><dt>ใบงาน</dt><dd>${fmt(orders.length)}</dd></div>
+          <div><dt>Plan</dt><dd>${fmt(planned)}</dd></div><div><dt>Actual</dt><dd>${fmt(actual)}</dd></div></dl>
+        <progress max="${Math.max(planned, 1)}" value="${Math.min(actual, Math.max(planned, 1))}"></progress>
+      </article>`;
+    }).join("") || `<div class="farm-workspace-empty">ไม่พบแผนตามตัวกรอง</div>`}</div>
+  </section>`;
+}
+
+function renderFarmPlanItems() {
+  const filters = state.farmWorkWorkspaceFilters;
+  const plans = new Map(farmRowsByKey("annual_work_plans").map((row) => [row.id, row]));
+  const workflow = farmWorkflowWorkspaceRows();
+  const rows = farmRowsByKey("planned_work_items").filter((item) =>
+    (filters.year === "all" || String(plans.get(item.annual_plan_id)?.plan_year) === filters.year)
+    && (filters.activity === "all" || item.activity_id === filters.activity)
+    && (filters.block === "all" || item.block_id === filters.block)
+    && (filters.status === "all" || item.status === filters.status));
+  return `${renderFarmWorkFilters()}<section class="farm-panel">
+    <div class="section-head"><h3>รายการแผน</h3><span>สร้างใบงานต้องยืนยัน และคืนใบงานเดิมหากสร้างซ้ำ</span></div>
+    <div class="table-wrap"><table class="mini-table farm-responsive-table"><thead><tr><th>แผน</th><th>ช่วงวันที่</th><th>พื้นที่</th><th>กิจกรรม</th><th>เป้าหมาย</th><th>งบ</th><th>ใบงาน</th><th></th></tr></thead>
+    <tbody>${rows.map((item) => {
+      const orders = workflow.filter((row) => row.planned_work_item_id === item.id);
+      return `<tr><td>${esc(plans.get(item.annual_plan_id)?.plan_name || "-")}</td><td>${esc(item.planned_start_date || "-")} – ${esc(item.planned_end_date || "-")}</td>
+        <td>${esc(farmLookupLabel("blocks", item.block_id) || item.ap_code || "-")}</td><td>${esc(farmLookupLabel("activities", item.activity_id))}</td>
+        <td class="num">${fmt(item.target_quantity)} ${esc(item.target_unit || "")}</td><td class="num">${moneyNf.format(n(item.planned_budget))}</td>
+        <td>${orders.length ? orders.map((row) => `<button type="button" data-farm-open-work-order="${esc(row.work_order_id)}">${esc(row.work_order_no)}</button>`).join(" ") : "ยังไม่มี"}</td>
+        <td><button type="button" data-farm-create-order-from-plan="${esc(item.id)}" ${orders.length || state.farmSyncBusy ? "disabled" : ""}>สร้างใบงาน</button></td></tr>`;
+    }).join("") || `<tr><td colspan="8">ไม่พบรายการแผน</td></tr>`}</tbody></table></div>
+  </section>`;
+}
+
+function farmWorkOrderNextAction(status) {
+  return ({
+    draft: ["submit_work_order", "ส่งอนุมัติ"],
+    submitted: ["approve_work_order", "อนุมัติ"],
+    pending_approval: ["approve_work_order", "อนุมัติ"],
+    approved: ["dispatch_work_order", "แจกจ่าย"],
+    dispatched: ["start_work_order", "เริ่มงาน"],
+    in_progress: ["complete_work_order", "จบงาน"],
+    completed: ["close_work_order", "ปิดใบงาน"],
+  })[status] || null;
+}
+
+function renderFarmWorkspaceWorkOrders({ pendingOnly = false } = {}) {
+  const rows = farmWorkflowWorkspaceRows()
+    .filter((row) => !pendingOnly || !["closed", "rejected"].includes(farmWorkStatusKey(row)));
+  return `<section class="farm-panel">
+    <div class="section-head"><h3>${pendingOnly ? "งานรอดำเนินการ" : "ใบสั่งงาน"}</h3><span>ข้อมูลรวมจาก v_farm_workflow_workspace · ไม่เกิด N+1 request</span></div>
+    <div class="table-wrap"><table class="mini-table farm-responsive-table"><thead><tr><th>เลขใบงาน/วันที่</th><th>พื้นที่/กิจกรรม</th><th>เป้าหมาย</th><th>ทีม/หัวหน้า</th><th>ทรัพยากร</th><th>ต้นทุนแผน</th><th>สถานะ</th><th>ขั้นตอนถัดไป</th></tr></thead>
+    <tbody>${rows.map((row) => {
+      const next = farmWorkOrderNextAction(farmWorkStatusKey(row));
+      return `<tr data-farm-workspace-order="${esc(row.work_order_id)}"><td><button type="button" data-farm-open-work-order="${esc(row.work_order_id)}"><strong>${esc(row.work_order_no)}</strong></button><small>${esc(row.scheduled_date || "-")}</small></td>
+        <td><strong>${esc(row.block_code || row.ap_code || "-")}</strong><small>${esc(row.activity_name || row.activity_code || "-")}</small></td>
+        <td class="num">${fmt(row.planned_quantity)} ${esc(row.planned_unit || "")}</td><td>${esc(row.team_name || "-")}<small>${esc(row.supervisor_name || row.manager_name || "-")}</small></td>
+        <td>${fmt(row.worker_count)} คน · ${fmt(row.material_count)} วัสดุ · ${fmt(row.machine_count)} รถ</td><td class="num">${moneyNf.format(n(row.planned_total_cost))}</td>
+        <td><span class="status-pill">${esc(farmTranslateValue(farmWorkStatusKey(row)))}</span></td>
+        <td>${next ? `<button type="button" class="farm-workflow-action" data-farm-work-order-action="${esc(next[0])}" data-work-order-id="${esc(row.work_order_id)}">${esc(next[1])}</button>` : esc(row.next_action || "เสร็จสิ้น")}</td></tr>`;
+    }).join("") || `<tr><td colspan="8">ไม่พบใบสั่งงาน</td></tr>`}</tbody></table></div>
+  </section>`;
+}
+
+function renderFarmWorkWorkspace() {
+  const active = FARM_WORK_WORKSPACE_TABS.some(([key]) => key === state.farmWorkWorkspaceTab)
+    ? state.farmWorkWorkspaceTab : "overview";
+  state.farmWorkWorkspaceTab = active;
+  const content = active === "overview" ? renderFarmWorkOverview()
+    : active === "annual-plans" ? renderFarmAnnualPlans()
+      : active === "plan-items" ? renderFarmPlanItems()
+        : active === "work-orders" ? renderFarmWorkspaceWorkOrders()
+          : active === "dispatch" ? renderFarmDispatchPanel()
+            : active === "calendar" ? renderFarmWorkBoard({ title: "ปฏิทินงาน", subtitle: "แผนและผลงานจริงใน timeline เดียว" })
+              : renderFarmWorkspaceWorkOrders({ pendingOnly: true });
+  return `${renderFarmWorkspaceTabs(FARM_WORK_WORKSPACE_TABS, active, "farm-work")}<div class="farm-workspace-content">${content}</div>`;
+}
+
+function farmDailyCurrentResult(order = farmResultSelectedOrder()) {
+  if (!order) return null;
+  const orderId = farmWorkOrderDbId(order) || order.id;
+  const resultId = farmRowsByKey("v_daily_work_entry_context")
+    .find((row) => row.work_order_id === orderId)?.result_id;
+  return farmRowsByKey("work_results").find((row) => row.id === resultId)
+    || farmRowsByKey("work_results").find((row) => row.work_order_id === orderId
+      && (!state.farmResultDraft.resultDate || row.result_date === state.farmResultDraft.resultDate))
+    || null;
+}
+
+function renderFarmDailyWeighTickets() {
+  const result = farmDailyCurrentResult();
+  const linked = result ? farmRowsByKey("work_result_weight_tickets").filter((row) => row.work_result_id === result.id && row.link_status !== "cancelled") : [];
+  const linkedSourceIds = new Set(linked.map((row) => row.transport_source_record_id));
+  const available = farmRowsByKey("v_available_inbound_weight_tickets");
+  return `<section class="farm-panel farm-daily-special-panel">
+    <div class="section-head"><h3>ใบชั่งรับเข้า</h3><span>เฉพาะ in_out_type = I · ผูกแล้ว ${fmt(linked.reduce((sum, row) => sum + n(row.allocated_weight_kg), 0))} กก.</span></div>
+    <div class="table-wrap"><table class="mini-table farm-responsive-table"><thead><tr><th>วันที่/เอกสาร</th><th>พื้นที่/ผู้ส่ง</th><th>น้ำหนักต้นทาง</th><th>จัดสรรแล้ว</th><th>คงเหลือ</th><th></th></tr></thead>
+    <tbody>${available.map((row) => `<tr><td>${esc(row.doc_date || "-")}<small>${esc(row.doc_no || row.record_key)}</small></td><td>${esc(row.source_area_key || "-")}<small>${esc(row.supplier_name || "-")}</small></td>
+      <td class="num">${fmt(row.source_net_weight_kg)}</td><td class="num">${fmt(row.allocated_weight_kg)}</td><td class="num">${fmt(row.remaining_weight_kg)}</td>
+      <td><button type="button" data-farm-link-ticket="${esc(row.transport_source_record_id)}" data-ticket-remaining="${esc(row.remaining_weight_kg)}"
+        ${!result || linkedSourceIds.has(row.transport_source_record_id) || n(row.remaining_weight_kg) <= 0 ? "disabled" : ""}>ผูกน้ำหนักคงเหลือ</button></td></tr>`).join("")
+      || `<tr><td colspan="6">ไม่พบใบชั่งรับเข้าที่จัดสรรได้</td></tr>`}</tbody></table></div>
+  </section>`;
+}
+
+function renderFarmDailyMaterials() {
+  const order = farmResultSelectedOrder();
+  const orderId = order ? farmWorkOrderDbId(order) || order.id : "";
+  const row = farmRowsByKey("v_inventory_work_order_workspace").find((item) => item.work_order_id === orderId);
+  if (!row) return "";
+  return `<section class="farm-panel farm-daily-special-panel"><div class="section-head"><h3>สรุปวัสดุและใบจ่าย</h3><span>${esc(row.next_action || "-")}</span></div>
+    <section class="farm-workspace-metrics"><article><span>แผน</span><strong>${fmt(row.planned_quantity)}</strong></article><article><span>จ่ายแล้ว</span><strong>${fmt(row.issued_quantity)}</strong></article>
+      <article><span>ใช้จริง</span><strong>${fmt(row.used_quantity)}</strong></article><article><span>คืน</span><strong>${fmt(row.returned_quantity)}</strong></article>
+      <article><span>ยังไม่จ่าย</span><strong>${fmt(row.outstanding_issue_quantity)}</strong></article></section>
+    <button type="button" data-farm-prepare-goods-issue="${esc(orderId)}">เตรียมใบจ่ายจากใบงาน</button>
+  </section>`;
+}
+
+function renderFarmDailyVehicles() {
+  const result = farmDailyCurrentResult();
+  const rows = result ? farmRowsByKey("v_work_result_vehicle_fuel_detail").filter((row) => row.work_result_id === result.id) : [];
+  return `<section class="farm-panel farm-daily-special-panel"><div class="section-head"><h3>การใช้รถและน้ำมัน</h3><span>น้ำมันเติมไม่ถือเป็นน้ำมันใช้ จะแสดงเฉพาะ allocation</span></div>
+    <div class="table-wrap"><table class="mini-table farm-responsive-table"><thead><tr><th>รถ/คนขับ</th><th>เวลา</th><th>เลขไมล์/ชม.</th><th>ระยะทาง</th><th>ชม.เครื่อง</th><th>น้ำมันจัดสรร</th><th>ต้นทุน</th><th>ประสิทธิภาพ</th></tr></thead>
+    <tbody>${rows.map((row) => `<tr><td>${esc(row.vehicle_name || row.vehicle_code)}<small>${esc(row.driver_name || "-")}</small></td><td>${esc(row.start_at || "-")}<small>${esc(row.end_at || "-")}</small></td>
+      <td>${fmt(row.start_odometer || row.start_hour_meter)} – ${fmt(row.end_odometer || row.end_hour_meter)}</td><td class="num">${fmt(row.distance_km)}</td><td class="num">${fmt(row.engine_hours)}</td>
+      <td class="num">${fmt(row.allocated_fuel_liter)} ลิตร</td><td class="num">${moneyNf.format(n(row.fuel_cost_amount))}</td><td class="num">${fmt(row.fuel_efficiency_pct)}%</td></tr>`).join("")
+      || `<tr><td colspan="8">ยังไม่มีข้อมูลรถและการจัดสรรน้ำมัน</td></tr>`}</tbody></table></div></section>`;
+}
+
+function renderFarmDailyAttachments() {
+  const order = farmResultSelectedOrder();
+  const result = farmDailyCurrentResult(order);
+  const responses = farmRowsByKey("survey_responses").filter((row) => row.work_order_id === (farmWorkOrderDbId(order) || order?.id)
+    || row.work_result_id === result?.id);
+  const responseIds = new Set(responses.map((row) => row.id));
+  const links = farmRowsByKey("survey_response_attachments").filter((row) => responseIds.has(row.response_id));
+  const attachments = new Map(farmRowsByKey("attachments").map((row) => [row.id, row]));
+  return `<section class="farm-panel farm-daily-special-panel"><div class="section-head"><h3>เอกสารแนบ</h3><span>ชนิดไฟล์/ขนาดต้องตรวจฝั่ง Server ก่อนเก็บ Metadata</span></div>
+    <div class="farm-attachment-grid">${links.map((link) => {
+      const file = attachments.get(link.attachment_id);
+      return `<article><strong>${esc(file?.file_name || link.caption || "ไฟล์จำลอง")}</strong><span>${esc(file?.file_type || "placeholder")}</span>
+        <small>${file?.storage_path ? "มี Metadata ใน Storage" : "Placeholder — ยังไม่มีไฟล์จริง"}</small></article>`;
+    }).join("") || `<article><strong>ยังไม่มีเอกสารแนบ</strong><span>Placeholder</span><small>ระบบไม่รับ URL จากผู้ใช้โดยตรง</small></article>`}</div>
+    <button type="button" disabled title="จะเปิดเมื่อ Storage upload endpoint ผ่านการตรวจความปลอดภัย">แนบไฟล์ (ยังไม่เปิดใช้งาน)</button>
+  </section>`;
+}
+
+function renderFarmDailyReview() {
+  const order = farmResultSelectedOrder();
+  const result = farmDailyCurrentResult(order);
+  const findings = result ? farmRowsByKey("survey_findings").filter((finding) =>
+    farmRowsByKey("survey_responses").some((response) => response.id === finding.response_id && response.work_result_id === result.id)) : [];
+  const status = result?.result_status || "not_started";
+  const next = status === "draft" ? ["submit_work_result", "ส่งตรวจ"] : status === "submitted" ? ["verify_work_result", "ยืนยันผล"]
+    : status === "verified" ? ["close_work_result", "ปิดผลการทำงาน"] : null;
+  return `<section class="farm-panel farm-daily-special-panel"><div class="section-head"><h3>ตรวจสอบและปิดงาน</h3><span>สถานะ ${esc(farmTranslateValue(status))}</span></div>
+    <section class="farm-workspace-metrics"><article><span>ผลงาน</span><strong>${fmt(result?.actual_quantity || 0)} ${esc(result?.actual_unit || "")}</strong></article>
+      <article><span>คนงาน</span><strong>${fmt(result?.worker_count || 0)}</strong></article><article><span>ใบชั่ง</span><strong>${fmt(result?.weigh_ticket_count || 0)}</strong></article>
+      <article><span>น้ำมัน</span><strong>${fmt(result?.actual_fuel_liter || 0)} ลิตร</strong></article><article><span>Survey</span><strong>${esc(result?.survey_status || "pending")}</strong></article>
+      <article><span>Findings เปิด</span><strong>${fmt(findings.filter((row) => ["open", "in_progress"].includes(row.status)).length)}</strong></article></section>
+    ${next ? `<button type="button" class="farm-danger-confirm" data-farm-result-action="${next[0]}" data-result-id="${esc(result?.id || "")}" ${!result ? "disabled" : ""}>${esc(next[1])}</button>` : `<p>ไม่มีขั้นตอนสถานะถัดไป</p>`}
+  </section>`;
+}
+
+function renderFarmDailyWorkspace() {
+  const active = FARM_DAILY_WORKSPACE_TABS.some(([key]) => key === state.farmDailyWorkspaceTab)
+    ? state.farmDailyWorkspaceTab : "results";
+  state.farmDailyWorkspaceTab = active;
+  const extras = active === "materials" ? renderFarmDailyMaterials()
+    : active === "weigh-tickets" ? renderFarmDailyWeighTickets()
+      : active === "vehicles" ? renderFarmDailyVehicles()
+        : active === "attachments" ? renderFarmDailyAttachments()
+          : active === "review" ? renderFarmDailyReview() : "";
+  return `${renderFarmWorkspaceTabs(FARM_DAILY_WORKSPACE_TABS, active, "farm-result")}
+    <div class="farm-daily-workspace daily-tab-${esc(active)}">${renderFarmResultPanel()}${extras}</div>`;
+}
+
 function renderFarmPage() {
   const module = selectedFarmModule();
   if (module.id === "farm-management-dashboard") return renderFarmManagementDashboard();
@@ -22306,9 +22800,9 @@ function renderFarmPage() {
       ${isTeamPage ? renderFarmTeamsBoard() : ""}
       ${isPeoplePage ? renderFarmPeopleBoard(table, rows, tables) : ""}
       ${isInventoryPage ? renderFarmInventoryBoard() : ""}
-      ${isWorkPage ? `${renderFarmWorkBoard({ title: "Planner", subtitle: "ตารางแผนงานแบบย่อ แสดง Activity, Block, ทีม และสถานะในแถวเดียว" })}${renderFarmWorkPlanner()}` : ""}
+      ${isWorkPage ? renderFarmWorkWorkspace() : ""}
       ${isDispatchPage ? `${renderFarmWorkBoard({ title: "Scheduler", subtitle: "ตารางงานสำหรับผู้จัดการ ใช้ดูแผนก่อนหยิบไปสั่งงาน", showKpis: false })}${renderFarmDispatchPanel()}${renderFarmActivityModal()}` : ""}
-      ${isResultPage ? `${renderFarmResultPanel()}` : ""}
+      ${isResultPage ? renderFarmDailyWorkspace() : ""}
       ${isInventoryIssuePage ? renderFarmInventoryIssueQueue() : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
@@ -23126,6 +23620,16 @@ async function init() {
   applySidebarState();
   state.view = initialViewFromUrl();
   if (isFarmView(state.view) || requestedWorkspaceRouteFromUrl()) await loadWorkspaceShell();
+  window.addEventListener("popstate", () => {
+    const requestedRoute = requestedWorkspaceRouteFromUrl();
+    if (requestedRoute) applyWorkspaceRoute(requestedRoute);
+    state.view = initialViewFromUrl();
+    const tab = workspaceTabFromUrl(state.view);
+    if (state.view === "farm-work" && tab) state.farmWorkWorkspaceTab = tab;
+    if (state.view === "farm-result" && tab) state.farmDailyWorkspaceTab = tab;
+    render();
+    loadFarmCurrentViewTables({ silent: true });
+  });
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
@@ -23255,6 +23759,11 @@ async function init() {
     setView("dashboard");
   });
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.matches("[data-farm-workspace-filter]")) {
+      state.farmWorkWorkspaceFilters[e.target.dataset.farmWorkspaceFilter] = e.target.value;
+      render();
+      return;
+    }
     if (e.target.matches("[data-action-center-filter]")) {
       state.actionCenterFilters[e.target.dataset.actionCenterFilter] = e.target.value;
       render();
@@ -23756,6 +24265,67 @@ async function init() {
     }
   });
   els.reportPage.addEventListener("click", async (e) => {
+    const workspaceTab = e.target.closest("[data-farm-workspace-tab]");
+    if (workspaceTab) {
+      setFarmWorkspaceTab(workspaceTab.dataset.farmWorkspaceView, workspaceTab.dataset.farmWorkspaceTab);
+      return;
+    }
+    const workspaceOpen = e.target.closest("[data-workspace-open]");
+    if (workspaceOpen) {
+      openWorkspaceRoute(workspaceOpen.dataset.workspaceOpen);
+      return;
+    }
+    const planOrder = e.target.closest("[data-farm-create-order-from-plan]");
+    if (planOrder) {
+      if (!window.confirm("ยืนยันสร้างใบสั่งงานจากรายการแผนนี้?")) return;
+      await runFarmAction("create_work_order_from_plan_item", {
+        planned_work_item_id: planOrder.dataset.farmCreateOrderFromPlan,
+      }, { confirmed: true, reason: "สร้างจาก Phase 3 Work Planning Workspace" }).catch(() => {});
+      return;
+    }
+    const openOrder = e.target.closest("[data-farm-open-work-order]");
+    if (openOrder) {
+      state.farmWorkDetailId = openOrder.dataset.farmOpenWorkOrder;
+      state.farmResultWorkOrderId = openOrder.dataset.farmOpenWorkOrder;
+      setFarmWorkspaceTab("farm-work", "work-orders");
+      return;
+    }
+    const orderAction = e.target.closest("[data-farm-work-order-action]");
+    if (orderAction) {
+      const label = orderAction.textContent.trim();
+      if (!window.confirm(`ยืนยัน${label}ใบสั่งงานนี้?`)) return;
+      await runFarmAction(orderAction.dataset.farmWorkOrderAction, {
+        work_order_id: orderAction.dataset.workOrderId,
+        reason: `Phase 3 Workspace: ${label}`,
+      }, { confirmed: true, reason: `Phase 3 Workspace: ${label}` }).catch(() => {});
+      return;
+    }
+    const ticket = e.target.closest("[data-farm-link-ticket]");
+    if (ticket) {
+      const result = farmDailyCurrentResult();
+      if (!result || !window.confirm(`ยืนยันผูกน้ำหนักคงเหลือ ${fmt(ticket.dataset.ticketRemaining)} กก.?`)) return;
+      await runFarmAction("link_inbound_weight_ticket", {
+        work_result_id: result.id,
+        transport_source_record_id: ticket.dataset.farmLinkTicket,
+        allocated_weight_kg: n(ticket.dataset.ticketRemaining),
+      }, { confirmed: true, reason: "ผูกใบชั่งรับเข้าจาก Daily Workspace" }).catch(() => {});
+      return;
+    }
+    const goodsIssue = e.target.closest("[data-farm-prepare-goods-issue]");
+    if (goodsIssue) {
+      await runFarmAction("prepare_goods_issue_from_work_order", {
+        work_order_id: goodsIssue.dataset.farmPrepareGoodsIssue,
+      }, { reason: "เตรียมใบจ่ายจาก Daily Workspace" }).catch(() => {});
+      return;
+    }
+    const resultAction = e.target.closest("[data-farm-result-action]");
+    if (resultAction) {
+      if (!window.confirm(`ยืนยัน${resultAction.textContent.trim()}?`)) return;
+      await runFarmAction(resultAction.dataset.farmResultAction, {
+        result_id: resultAction.dataset.resultId,
+      }, { confirmed: true, reason: "Daily Workspace review action" }).catch(() => {});
+      return;
+    }
     const routeButton = e.target.closest("[data-workspace-route]");
     if (routeButton) {
       openWorkspaceRoute(routeButton.dataset.workspaceRoute);
@@ -23767,6 +24337,12 @@ async function init() {
     }
   });
   els.reportPage.addEventListener("input", (e) => {
+    if (e.target.matches("[data-farm-workspace-filter]")) {
+      state.farmWorkWorkspaceFilters[e.target.dataset.farmWorkspaceFilter] = e.target.value.trim();
+      clearTimeout(state.estSearchTimer);
+      state.estSearchTimer = setTimeout(render, 180);
+      return;
+    }
     if (["palmFromDate", "palmToDate"].includes(e.target.id)) {
       const key = e.target.id === "palmFromDate" ? "from" : "to";
       const iso = dateValue(e.target);
@@ -23816,7 +24392,11 @@ async function init() {
       }, 350);
       return;
     }
-    if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote"].includes(e.target.id)) {
+    if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality",
+      "farmResultWorkQuality", "farmResultSurveyStatus", "farmResultSurveyNote", "farmResultStartAt",
+      "farmResultEndAt", "farmResultAreaRai", "farmResultTreeCount", "farmResultLaborHours",
+      "farmResultStoppage", "farmResultCompletion", "farmResultRework", "farmResultWeather",
+      "farmResultTerrain", "farmResultNote"].includes(e.target.id)) {
       handleFarmResultFormFieldChange(e.target);
       return;
     }
@@ -24210,7 +24790,7 @@ async function init() {
       return;
     }
     if (e.target.closest("[data-farm-result-save]")) {
-      saveFarmResultEntry();
+      saveFarmDailyEntry();
       return;
     }
     if (e.target.closest("[data-farm-result-fill-share]")) {
@@ -24297,12 +24877,16 @@ async function init() {
     }
     const workApprove = e.target.closest("[data-farm-work-approve]");
     if (workApprove) {
-      updateFarmWorkOrderDecision(workApprove.dataset.farmWorkApprove, "approved");
+      if (window.confirm("ยืนยันอนุมัติใบสั่งงานนี้?")) runFarmAction("approve_work_order", {
+        work_order_id: workApprove.dataset.farmWorkApprove,
+      }, { confirmed: true, reason: "อนุมัติจาก Work Order detail" }).catch(() => {});
       return;
     }
     const workReject = e.target.closest("[data-farm-work-reject]");
     if (workReject) {
-      updateFarmWorkOrderDecision(workReject.dataset.farmWorkReject, "rejected");
+      if (window.confirm("ยืนยันไม่อนุมัติใบสั่งงานนี้?")) runFarmAction("reject_work_order", {
+        work_order_id: workReject.dataset.farmWorkReject,
+      }, { confirmed: true, reason: "ไม่อนุมัติจาก Work Order detail" }).catch(() => {});
       return;
     }
     const deleteWorkOrder = e.target.closest("[data-farm-delete-work-order]");

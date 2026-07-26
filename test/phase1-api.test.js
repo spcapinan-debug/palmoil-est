@@ -370,7 +370,7 @@ test("server APIs have no Supabase URL or anonymous-key fallback", () => {
 });
 
 test("local Supabase secrets are ignored and only empty server variables are documented", () => {
-  const example = fs.readFileSync(path.join(__dirname, "..", ".env.example"), "utf8").trim();
+  const example = fs.readFileSync(path.join(__dirname, "..", ".env.example"), "utf8").trim().replaceAll("\r\n", "\n");
   const ignore = fs.readFileSync(path.join(__dirname, "..", ".gitignore"), "utf8");
   assert.equal(example, "SUPABASE_URL=\nSUPABASE_SERVICE_ROLE_KEY=");
   assert.match(ignore, /^\.env$/m);

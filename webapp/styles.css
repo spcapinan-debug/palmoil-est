@@ -15348,3 +15348,243 @@ tfoot td,
 @media (max-width: 780px) {
   .farm-result-work-history { grid-column: auto; grid-row: auto; }
 }
+/* Phase 3 work-planning and daily-operation workspaces */
+.farm-workspace-tabs {
+  display: flex;
+  gap: .5rem;
+  margin: 0 0 1rem;
+  padding: .4rem;
+  overflow-x: auto;
+  border: 1px solid #dfe7e2;
+  border-radius: 14px;
+  background: #f7faf8;
+  scrollbar-width: thin;
+}
+
+.farm-workspace-tabs button {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: .65rem .9rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #355047;
+  font-weight: 700;
+}
+
+.farm-workspace-tabs button.active {
+  background: #126b4d;
+  color: #fff;
+  box-shadow: 0 5px 15px rgb(18 107 77 / 18%);
+}
+
+.farm-workspace-content,
+.farm-daily-workspace {
+  min-width: 0;
+}
+
+.farm-workspace-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+
+.farm-workspace-metrics article {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #dfe7e2;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.farm-workspace-metrics span,
+.farm-card-table article span,
+.farm-card-table article small {
+  display: block;
+  color: #65766f;
+}
+
+.farm-workspace-metrics strong {
+  display: block;
+  margin-top: .35rem;
+  color: #153f32;
+  font-size: 1.55rem;
+}
+
+.farm-workspace-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(130px, 1fr));
+  gap: .65rem;
+  margin-bottom: 1rem;
+}
+
+.farm-workspace-filters label {
+  min-width: 0;
+  color: #54665f;
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+.farm-workspace-filters input,
+.farm-workspace-filters select {
+  width: 100%;
+  min-height: 40px;
+  margin-top: .25rem;
+}
+
+.farm-card-table {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: .8rem;
+}
+
+.farm-card-table > article {
+  padding: 1rem;
+  border: 1px solid #dfe7e2;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.farm-card-table header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.farm-card-table dl {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: .5rem;
+}
+
+.farm-card-table dt {
+  color: #65766f;
+  font-size: .75rem;
+}
+
+.farm-card-table dd {
+  margin: 0;
+  color: #153f32;
+  font-weight: 800;
+}
+
+.farm-card-table progress {
+  width: 100%;
+}
+
+.farm-responsive-table td small,
+.farm-responsive-table td strong {
+  display: block;
+}
+
+.farm-workspace-empty {
+  padding: 2rem;
+  text-align: center;
+  color: #65766f;
+}
+
+.farm-daily-special-panel {
+  margin-top: 1rem;
+}
+
+.farm-attachment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: .75rem;
+  margin: .75rem 0;
+}
+
+.farm-attachment-grid article {
+  padding: .9rem;
+  border: 1px dashed #aebdb7;
+  border-radius: 12px;
+  background: #fafcfb;
+}
+
+.farm-attachment-grid strong,
+.farm-attachment-grid span,
+.farm-attachment-grid small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.farm-danger-confirm {
+  margin-top: 1rem;
+  background: #a52c2c;
+  color: #fff;
+}
+
+.farm-result-note-field {
+  grid-column: 1 / -1;
+}
+
+.farm-result-note-field textarea {
+  min-height: 80px;
+}
+
+.farm-daily-workspace [data-daily-section] {
+  display: none;
+}
+
+.farm-daily-workspace [data-daily-section="all"],
+.farm-daily-workspace.daily-tab-results [data-daily-section="results"],
+.farm-daily-workspace.daily-tab-workers [data-daily-section="workers"],
+.farm-daily-workspace.daily-tab-materials [data-daily-section="materials"],
+.farm-daily-workspace.daily-tab-weigh-tickets [data-daily-section="weigh-tickets"],
+.farm-daily-workspace.daily-tab-vehicles [data-daily-section="vehicles"],
+.farm-daily-workspace.daily-tab-survey [data-daily-section="survey"],
+.farm-daily-workspace.daily-tab-review [data-daily-section="review"] {
+  display: block;
+}
+
+@media (max-width: 900px) {
+  .farm-workspace-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .farm-workspace-tabs {
+    margin-inline: -.25rem;
+  }
+
+  .farm-workspace-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .farm-workspace-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .farm-responsive-table thead {
+    display: none;
+  }
+
+  .farm-responsive-table,
+  .farm-responsive-table tbody,
+  .farm-responsive-table tr,
+  .farm-responsive-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .farm-responsive-table tr {
+    margin-bottom: .75rem;
+    padding: .6rem;
+    border: 1px solid #dfe7e2;
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  .farm-responsive-table td {
+    padding: .4rem .25rem;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .farm-card-table {
+    grid-template-columns: 1fr;
+  }
+}

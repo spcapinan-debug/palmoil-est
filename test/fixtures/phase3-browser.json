@@ -1,0 +1,97 @@
+{
+  "ok": true,
+  "tables": {
+    "system_settings": [
+      { "setting_key": "system.dynamic_menu_enabled", "setting_value": "false" }
+    ],
+    "v_app_navigation": [
+      { "id": "nav-dashboard", "workspace_key": "dashboard", "route": "/farm/dashboard", "legacy_view_key": "farm-management-dashboard" },
+      { "id": "nav-master", "workspace_key": "farm.master", "route": "/farm/master", "legacy_view_key": "farm-area" },
+      { "id": "nav-work", "workspace_key": "farm.work", "route": "/farm/work", "legacy_view_key": "farm-work" },
+      { "id": "nav-daily", "workspace_key": "farm.daily", "route": "/farm/daily", "legacy_view_key": "farm-result" },
+      { "id": "nav-inventory", "workspace_key": "inventory.stock", "route": "/inventory", "legacy_view_key": "farm-inventory" },
+      { "id": "nav-fuel", "workspace_key": "inventory.fuel", "route": "/inventory/fuel", "legacy_view_key": "farm-inventory" },
+      { "id": "nav-people", "workspace_key": "hr.people", "route": "/hr/people", "legacy_view_key": "farm-people" },
+      { "id": "nav-payroll", "workspace_key": "payroll", "route": "/payroll", "legacy_view_key": "farm-payroll" },
+      { "id": "nav-budget", "workspace_key": "budget", "route": "/budget", "legacy_view_key": "farm-budget" },
+      { "id": "nav-reports", "workspace_key": "reports", "route": "/reports", "legacy_view_key": "farm-reports" },
+      { "id": "nav-access", "workspace_key": "system.access", "route": "/system/access", "legacy_view_key": "farm-governance" }
+    ],
+    "v_app_workspace_tabs": [
+      { "id": "nav-dashboard", "is_primary": true, "is_hidden": false },
+      { "id": "nav-master", "is_primary": true, "is_hidden": false },
+      { "id": "nav-work", "is_primary": true, "is_hidden": false },
+      { "id": "nav-daily", "is_primary": true, "is_hidden": false },
+      { "id": "nav-inventory", "is_primary": true, "is_hidden": false },
+      { "id": "nav-fuel", "is_primary": true, "is_hidden": false },
+      { "id": "nav-people", "is_primary": true, "is_hidden": false },
+      { "id": "nav-payroll", "is_primary": true, "is_hidden": false },
+      { "id": "nav-budget", "is_primary": true, "is_hidden": false },
+      { "id": "nav-reports", "is_primary": true, "is_hidden": false },
+      { "id": "nav-access", "is_primary": true, "is_hidden": false }
+    ],
+    "v_app_workspace_definition": [],
+    "v_management_action_center": [
+      { "action_key": "close_result", "action_label": "งานรอปิดผล", "item_count": 1, "priority": "high", "route": "/farm/daily?tab=review" }
+    ],
+    "v_system_module_readiness": [],
+    "annual_work_plans": [
+      { "id": "10000000-0000-4000-8000-000000000001", "plan_year": 2569, "plan_name": "WEBTEST-2569", "status": "approved" }
+    ],
+    "planned_work_items": [
+      {
+        "id": "20000000-0000-4000-8000-000000000001",
+        "annual_plan_id": "10000000-0000-4000-8000-000000000001",
+        "block_id": "30000000-0000-4000-8000-000000000001",
+        "activity_id": "40000000-0000-4000-8000-000000000001",
+        "planned_start_date": "2026-07-01",
+        "planned_end_date": "2026-07-31",
+        "target_quantity": 20,
+        "target_unit": "กระสอบ",
+        "planned_budget": 10000,
+        "status": "planned"
+      }
+    ],
+    "blocks": [
+      { "id": "30000000-0000-4000-8000-000000000001", "block_code": "WEBTEST-BLOCK", "block_name": "แปลงทดสอบ", "ap_code": "WEBTEST-2569", "area_rai": 30, "tree_count": 660 }
+    ],
+    "activities": [
+      { "id": "40000000-0000-4000-8000-000000000001", "activity_code": "FERT", "activity_name": "ใส่ปุ๋ย", "default_unit": "กระสอบ" },
+      { "id": "40000000-0000-4000-8000-000000000002", "activity_code": "HARV", "activity_name": "เก็บเกี่ยว", "default_unit": "กก.", "requires_weigh_ticket": true }
+    ],
+    "teams": [
+      { "id": "50000000-0000-4000-8000-000000000001", "team_code": "TEAM-A", "team_name": "ทีม WEBTEST", "supervisor_employee_id": "60000000-0000-4000-8000-000000000001", "status": "active" }
+    ],
+    "employees": [
+      { "id": "60000000-0000-4000-8000-000000000001", "employee_code": "EMP-001", "full_name": "หัวหน้าทีมทดสอบ", "status": "active" }
+    ],
+    "work_orders": [
+      { "id": "70000000-0000-4000-8000-000000000001", "work_order_no": "WEBTEST-2569-WO-FERT-001", "planned_work_item_id": "20000000-0000-4000-8000-000000000001", "block_id": "30000000-0000-4000-8000-000000000001", "activity_id": "40000000-0000-4000-8000-000000000001", "team_id": "50000000-0000-4000-8000-000000000001", "scheduled_date": "2026-07-01", "planned_quantity": 20, "planned_unit": "กระสอบ", "status": "closed" },
+      { "id": "70000000-0000-4000-8000-000000000002", "work_order_no": "WEBTEST-2569-WO-HARV-001", "block_id": "30000000-0000-4000-8000-000000000001", "activity_id": "40000000-0000-4000-8000-000000000002", "team_id": "50000000-0000-4000-8000-000000000001", "scheduled_date": "2026-07-02", "planned_quantity": 22250, "planned_unit": "กก.", "status": "in_progress" },
+      { "id": "70000000-0000-4000-8000-000000000003", "work_order_no": "WEBTEST-2569-WO-GRASS-DRAFT", "block_id": "30000000-0000-4000-8000-000000000001", "activity_id": "40000000-0000-4000-8000-000000000001", "team_id": "50000000-0000-4000-8000-000000000001", "scheduled_date": "2026-07-03", "planned_quantity": 30, "planned_unit": "ไร่", "status": "in_progress" },
+      { "id": "70000000-0000-4000-8000-000000000004", "work_order_no": "WEBTEST-2569-WO-GRASS-READY", "block_id": "30000000-0000-4000-8000-000000000001", "activity_id": "40000000-0000-4000-8000-000000000001", "team_id": "50000000-0000-4000-8000-000000000001", "scheduled_date": "2026-07-04", "planned_quantity": 24, "planned_unit": "ไร่", "status": "approved" }
+    ],
+    "work_results": [
+      { "id": "80000000-0000-4000-8000-000000000001", "work_order_id": "70000000-0000-4000-8000-000000000001", "result_date": "2026-07-01", "result_status": "closed", "actual_quantity": 20, "actual_unit": "กระสอบ", "quality_score": 95, "completion_pct": 100, "worker_count": 5, "actual_fuel_liter": 12 },
+      { "id": "80000000-0000-4000-8000-000000000002", "work_order_id": "70000000-0000-4000-8000-000000000002", "result_date": "2026-07-02", "result_status": "verified", "actual_quantity": 22250, "actual_unit": "กก.", "quality_score": 79, "completion_pct": 100, "weigh_ticket_count": 2, "actual_fuel_liter": 6 },
+      { "id": "80000000-0000-4000-8000-000000000003", "work_order_id": "70000000-0000-4000-8000-000000000003", "result_date": "2026-07-03", "result_status": "draft", "actual_quantity": 12, "actual_unit": "ไร่", "quality_score": 87.5, "completion_pct": 40 }
+    ],
+    "work_result_weight_tickets": [
+      { "id": "92000000-0000-4000-8000-000000000001", "work_result_id": "80000000-0000-4000-8000-000000000002", "transport_source_record_id": "91000000-0000-4000-8000-000000000001", "source_doc_no": "WT-001", "allocated_weight_kg": 11000, "link_status": "verified" },
+      { "id": "92000000-0000-4000-8000-000000000002", "work_result_id": "80000000-0000-4000-8000-000000000002", "transport_source_record_id": "91000000-0000-4000-8000-000000000002", "source_doc_no": "WT-002", "allocated_weight_kg": 11250, "link_status": "verified" }
+    ],
+    "v_farm_workflow_workspace": [
+      { "work_order_id": "70000000-0000-4000-8000-000000000001", "work_order_no": "WEBTEST-2569-WO-FERT-001", "work_order_status": "closed", "scheduled_date": "2026-07-01", "planned_work_item_id": "20000000-0000-4000-8000-000000000001", "block_code": "WEBTEST-BLOCK", "activity_name": "ใส่ปุ๋ย", "team_name": "ทีม WEBTEST", "planned_quantity": 20, "planned_unit": "กระสอบ", "worker_count": 5, "material_count": 1, "machine_count": 1, "planned_total_cost": 10000, "result_id": "80000000-0000-4000-8000-000000000001", "result_status": "closed", "actual_quantity": 20, "next_action": "view_closed" },
+      { "work_order_id": "70000000-0000-4000-8000-000000000002", "work_order_no": "WEBTEST-2569-WO-HARV-001", "work_order_status": "in_progress", "scheduled_date": "2026-07-02", "block_code": "WEBTEST-BLOCK", "activity_name": "เก็บเกี่ยว", "team_name": "ทีม WEBTEST", "planned_quantity": 22250, "planned_unit": "กก.", "worker_count": 4, "machine_count": 1, "result_id": "80000000-0000-4000-8000-000000000002", "result_status": "verified", "actual_quantity": 22250, "next_action": "close_result" },
+      { "work_order_id": "70000000-0000-4000-8000-000000000003", "work_order_no": "WEBTEST-2569-WO-GRASS-DRAFT", "work_order_status": "in_progress", "scheduled_date": "2026-07-03", "block_code": "WEBTEST-BLOCK", "activity_name": "ตัดหญ้า", "team_name": "ทีม WEBTEST", "planned_quantity": 30, "planned_unit": "ไร่", "worker_count": 4, "result_id": "80000000-0000-4000-8000-000000000003", "result_status": "draft", "actual_quantity": 12, "completion_pct": 40, "next_action": "continue_result" },
+      { "work_order_id": "70000000-0000-4000-8000-000000000004", "work_order_no": "WEBTEST-2569-WO-GRASS-READY", "work_order_status": "approved", "scheduled_date": "2026-07-04", "block_code": "WEBTEST-BLOCK", "activity_name": "ตัดหญ้า", "team_name": "ทีม WEBTEST", "planned_quantity": 24, "planned_unit": "ไร่", "worker_count": 4, "next_action": "record_result" }
+    ],
+    "v_available_inbound_weight_tickets": [
+      { "transport_source_record_id": "91000000-0000-4000-8000-000000000001", "record_key": "WT-001", "doc_no": "WT-001", "doc_date": "2026-07-02", "supplier_name": "WEBTEST", "source_area_key": "WEBTEST-BLOCK", "source_net_weight_kg": 11000, "allocated_weight_kg": 11000, "remaining_weight_kg": 0 },
+      { "transport_source_record_id": "91000000-0000-4000-8000-000000000002", "record_key": "WT-002", "doc_no": "WT-002", "doc_date": "2026-07-02", "supplier_name": "WEBTEST", "source_area_key": "WEBTEST-BLOCK", "source_net_weight_kg": 11250, "allocated_weight_kg": 11250, "remaining_weight_kg": 0 }
+    ]
+  },
+  "errors": {},
+  "warnings": {},
+  "source": { "mode": "mock-webtest-2569", "rowCount": 4 }
+}

@@ -16,6 +16,53 @@ const {
 } = require("../lib/server/farm-api");
 
 const ACTIONS = {
+  create_work_order_from_plan_item: {
+    permission: "farm.work_order.create", confirmation: true, execute: createWorkOrderFromPlanItem,
+    params: (args, actor) => ({ args, actor }),
+    entity: "work_orders", entityId: (args) => args.planned_work_item_id,
+  },
+  submit_work_order: {
+    permission: "farm.work_order.create", confirmation: true,
+    execute: ({ args, actor }) => changeWorkOrderStatus(args, actor, ["draft"], "submitted"),
+    params: (args, actor) => ({ args, actor }),
+    entity: "work_orders", entityId: (args) => args.work_order_id,
+  },
+  approve_work_order: {
+    permission: "farm.plan.approve", confirmation: true,
+    execute: ({ args, actor }) => changeWorkOrderStatus(args, actor, ["submitted", "pending_approval"], "approved"),
+    params: (args, actor) => ({ args, actor }),
+    entity: "work_orders", entityId: (args) => args.work_order_id,
+  },
+  reject_work_order: {
+    permission: "farm.plan.approve", confirmation: true,
+    execute: ({ args, actor }) => changeWorkOrderStatus(args, actor, ["submitted", "pending_approval"], "rejected"),
+    params: (args, actor) => ({ args, actor }),
+    entity: "work_orders", entityId: (args) => args.work_order_id,
+  },
+  dispatch_work_order: {
+    permission: "farm.work_order.dispatch", confirmation: true,
+    execute: ({ args, actor }) => changeWorkOrderStatus(args, actor, ["approved"], "dispatched"),
+    params: (args, actor) => ({ args, actor }),
+    entity: "work_orders", entityId: (args) => args.work_order_id,
+  },
+  start_work_order: {
+    permission: "farm.work_order.dispatch", confirmation: true,
+    execute: ({ args, actor }) => changeWorkOrderStatus(args, actor, ["dispatched"], "in_progress", { validateStart: true }),
+    params: (args, actor) => ({ args, actor }),
+    entity: "work_orders", entityId: (args) => args.work_order_id,
+  },
+  complete_work_order: {
+    permission: "farm.result.record", confirmation: true,
+    execute: ({ args, actor }) => changeWorkOrderStatus(args, actor, ["in_progress"], "completed"),
+    params: (args, actor) => ({ args, actor }),
+    entity: "work_orders", entityId: (args) => args.work_order_id,
+  },
+  close_work_order: {
+    permission: "farm.result.close", confirmation: true,
+    execute: ({ args, actor }) => changeWorkOrderStatus(args, actor, ["completed"], "closed"),
+    params: (args, actor) => ({ args, actor }),
+    entity: "work_orders", entityId: (args) => args.work_order_id,
+  },
   get_or_create_work_result: {
     permission: "farm.result.record",
     rpc: "get_or_create_work_result",
@@ -215,6 +262,166 @@ async function one(path, label) {
   return row;
 }
 
+function actorIsAdmin(actor) {
+  return [...actor.roles].some((role) => ADMIN_ROLES.has(role));
+}
+
+async function authorizeWorkOrderScope(actor, order) {
+  if (actorIsAdmin(actor)) return;
+  const scopes = await rest(
+    `user_access_scopes?profile_id=eq.${actor.profile.id}&status=eq.active&select=estate_id,plot_id,block_id`,
+  ).then(({ data }) => data || []);
+  // Existing installations without explicit scope rows retain their permission-based access.
+  if (!scopes.length) return;
+  const allowed = scopes.some((scope) =>
+    (!scope.estate_id || scope.estate_id === order.estate_id)
+    && (!scope.plot_id || scope.plot_id === order.plot_id)
+    && (!scope.block_id || scope.block_id === order.block_id));
+  if (!allowed) throw new ApiError(403, "SCOPE_FORBIDDEN", "Work order is outside your assigned scope");
+}
+
+async function createWorkOrderFromPlanItem({ args, actor }) {
+  const plannedWorkItemId = requireUuid(args.planned_work_item_id, "planned_work_item_id");
+  const existing = await rest(
+    `work_orders?planned_work_item_id=eq.${plannedWorkItemId}&select=*&order=created_at.asc&limit=1`,
+  ).then(({ data }) => data?.[0]);
+  if (existing) return { ...existing, already_exists: true };
+  const item = await one(
+    `planned_work_items?id=eq.${plannedWorkItemId}&select=*&limit=1`,
+    "Planned work item",
+  );
+  const annual = item.annual_plan_id
+    ? await one(`annual_work_plans?id=eq.${item.annual_plan_id}&select=id,plan_year,estate_id,status&limit=1`, "Annual work plan")
+    : null;
+  const team = item.suggested_team_id
+    ? await one(`teams?id=eq.${item.suggested_team_id}&select=id,supervisor_employee_id,contractor_id,status&limit=1`, "Suggested team")
+    : null;
+  const scopeTarget = { estate_id: annual?.estate_id || null, plot_id: item.plot_id, block_id: item.block_id };
+  await authorizeWorkOrderScope(actor, scopeTarget);
+  const row = {
+    work_order_no: `WO-${annual?.plan_year || new Date().getFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`,
+    planned_work_item_id: plannedWorkItemId,
+    estate_id: annual?.estate_id || null,
+    plot_id: item.plot_id,
+    block_id: item.block_id,
+    ap_code: item.ap_code,
+    activity_id: item.activity_id,
+    scheduled_date: item.planned_start_date,
+    team_id: team?.id || null,
+    supervisor_employee_id: team?.supervisor_employee_id || null,
+    contractor_id: team?.contractor_id || null,
+    status: "draft",
+    planned_quantity: item.target_quantity,
+    planned_unit: item.target_unit,
+    planned_total_cost: item.planned_budget || 0,
+    workflow_source: "annual_plan",
+    created_by_profile_id: actor.profile.id,
+    note: args.note == null ? item.note : String(args.note).slice(0, 2000),
+  };
+  let created;
+  try {
+    created = await rest("work_orders", {
+      method: "POST", body: JSON.stringify([row]), headers: { Prefer: "return=representation" },
+    }).then(({ data }) => data?.[0]);
+  } catch (error) {
+    if (error?.details?.postgresCode !== "23505") throw error;
+    const winner = await rest(
+      `work_orders?planned_work_item_id=eq.${plannedWorkItemId}&select=*&order=created_at.asc&limit=1`,
+    ).then(({ data }) => data?.[0]);
+    if (winner) return { ...winner, already_exists: true };
+    throw error;
+  }
+  if (!created) throw new ApiError(500, "WRITE_FAILED", "Work order could not be created");
+  const members = team?.id
+    ? await rest(`team_members?team_id=eq.${team.id}&is_active=eq.true&select=employee_id,member_role`)
+      .then(({ data }) => data || [])
+    : [];
+  const uniqueMembers = [...new Map(members.map((member) => [member.employee_id, member])).values()];
+  if (uniqueMembers.length) {
+    await rest("work_order_workers?on_conflict=work_order_id,employee_id", {
+      method: "POST",
+      body: JSON.stringify(uniqueMembers.map((member) => ({
+        work_order_id: created.id,
+        employee_id: member.employee_id,
+        role: member.member_role || "worker",
+        status: "active",
+      }))),
+      headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+    });
+  }
+  return { ...created, copied_worker_count: uniqueMembers.length, already_exists: false };
+}
+
+async function validateWorkOrderStart(order) {
+  const missing = [];
+  if (!order.block_id || !order.activity_id) missing.push("area/activity");
+  if (!order.team_id && !order.contractor_id) missing.push("team/contractor");
+  if (!order.supervisor_employee_id) missing.push("supervisor");
+  const [workers, activity, assignments, responses] = await Promise.all([
+    rest(`work_order_workers?work_order_id=eq.${order.id}&status=neq.inactive&select=id&limit=1`).then(({ data }) => data || []),
+    rest(`activities?id=eq.${order.activity_id}&select=requires_material_detail,requires_machine_detail&limit=1`).then(({ data }) => data?.[0] || {}),
+    rest("survey_template_assignments?required=eq.true&status=eq.active&trigger_event=eq.before_start&select=template_id,activity_id,block_id,team_id,effective_from,effective_to")
+      .then(({ data }) => data || []),
+    rest(`survey_responses?work_order_id=eq.${order.id}&select=template_id,status`).then(({ data }) => data || []),
+  ]);
+  if (!workers.length) missing.push("workers");
+  if (activity.requires_material_detail) {
+    const [materials, issues] = await Promise.all([
+      rest(`work_order_materials?work_order_id=eq.${order.id}&select=id&limit=1`).then(({ data }) => data || []),
+      rest(`goods_issues?work_order_id=eq.${order.id}&status=in.(approved,posted)&select=id&limit=1`).then(({ data }) => data || []),
+    ]);
+    if (!materials.length || !issues.length) missing.push("material issue");
+  }
+  if (activity.requires_machine_detail) {
+    const machines = await rest(`work_order_machines?work_order_id=eq.${order.id}&status=neq.inactive&select=id&limit=1`)
+      .then(({ data }) => data || []);
+    if (!machines.length) missing.push("vehicle/machine");
+  }
+  const scheduledDate = order.scheduled_date || new Date().toISOString().slice(0, 10);
+  const required = assignments.filter((assignment) =>
+    (!assignment.activity_id || assignment.activity_id === order.activity_id)
+    && (!assignment.block_id || assignment.block_id === order.block_id)
+    && (!assignment.team_id || assignment.team_id === order.team_id)
+    && (!assignment.effective_from || assignment.effective_from <= scheduledDate)
+    && (!assignment.effective_to || assignment.effective_to >= scheduledDate));
+  const completed = new Set(responses
+    .filter((response) => ["submitted", "verified", "closed"].includes(response.status))
+    .map((response) => response.template_id));
+  if (required.some((assignment) => !completed.has(assignment.template_id))) missing.push("required before-start survey");
+  if (missing.length) throw new ApiError(409, "WORK_ORDER_NOT_READY", `Work order is not ready: ${missing.join(", ")}`);
+}
+
+async function changeWorkOrderStatus(args, actor, allowedFrom, to, options = {}) {
+  const workOrderId = requireUuid(args.work_order_id, "work_order_id");
+  const order = await one(`work_orders?id=eq.${workOrderId}&select=*&limit=1`, "Work order");
+  await authorizeWorkOrderScope(actor, order);
+  if (!allowedFrom.includes(order.status)) {
+    throw new ApiError(409, "INVALID_STATE", `Work order must be ${allowedFrom.join(" or ")} before it can be ${to}`);
+  }
+  if (options.validateStart) await validateWorkOrderStart(order);
+  const now = new Date().toISOString();
+  const patch = { status: to, last_action_at: now, updated_at: now };
+  if (to === "approved") Object.assign(patch, { approved_by_profile_id: actor.profile.id, approved_at: now });
+  if (to === "dispatched") Object.assign(patch, { dispatched_by_profile_id: actor.profile.id, dispatched_at: now });
+  if (to === "closed") Object.assign(patch, { closed_by_profile_id: actor.profile.id, closed_at: now });
+  const updated = await rest(`work_orders?id=eq.${workOrderId}&status=eq.${encodeURIComponent(order.status)}`, {
+    method: "PATCH", body: JSON.stringify(patch), headers: { Prefer: "return=representation" },
+  }).then(({ data }) => data?.[0]);
+  if (!updated) throw new ApiError(409, "STATE_CONFLICT", "Work order state changed before this action");
+  await rest("work_order_status_logs", {
+    method: "POST",
+    body: JSON.stringify([{
+      work_order_id: workOrderId,
+      from_status: order.status,
+      to_status: to,
+      changed_by: actor.profile.id,
+      note: args.reason == null ? null : String(args.reason).slice(0, 1000),
+    }]),
+    headers: { Prefer: "return=minimal" },
+  });
+  return updated;
+}
+
 async function createSurveyResponse({ args, actor }) {
   const templateId = requireUuid(args.template_id, "template_id");
   const template = await one(
@@ -245,9 +452,19 @@ async function linkInboundWeightTicket({ args, actor }) {
   if (!Number.isFinite(allocatedWeight) || allocatedWeight <= 0) {
     throw new ApiError(400, "VALIDATION_ERROR", "allocated_weight_kg must be greater than zero");
   }
+  const workResultId = requireUuid(args.work_result_id, "work_result_id");
+  await workResultContext(workResultId, actor);
+  const transportSourceRecordId = requireUuid(args.transport_source_record_id, "transport_source_record_id");
+  const source = await one(
+    `v_available_inbound_weight_tickets?transport_source_record_id=eq.${transportSourceRecordId}&select=transport_source_record_id,remaining_weight_kg&limit=1`,
+    "Available inbound weight ticket",
+  );
+  if (allocatedWeight > Number(source.remaining_weight_kg || 0)) {
+    throw new ApiError(409, "WEIGHT_OVER_ALLOCATED", "Allocated weight exceeds the remaining inbound weight");
+  }
   const row = {
-    work_result_id: requireUuid(args.work_result_id, "work_result_id"),
-    transport_source_record_id: requireUuid(args.transport_source_record_id, "transport_source_record_id"),
+    work_result_id: workResultId,
+    transport_source_record_id: transportSourceRecordId,
     allocated_weight_kg: allocatedWeight,
     allocation_method: String(args.allocation_method || "manual").slice(0, 80),
     linked_by_profile_id: actor.profile.id,
@@ -268,12 +485,9 @@ function optionalNumber(value, field, { minimum = 0 } = {}) {
   return number;
 }
 
-async function saveWorkResultDraft({ args }) {
+async function saveWorkResultDraft({ args, actor }) {
   const resultId = requireUuid(args.result_id, "result_id");
-  const result = await one(
-    `work_results?id=eq.${resultId}&select=id,work_order_id,result_date,result_status&limit=1`,
-    "Work result",
-  );
+  const { result } = await workResultContext(resultId, actor);
   if (result.result_status !== "draft") throw new ApiError(409, "INVALID_STATE", "Only draft work results can be edited");
   const workers = Array.isArray(args.workers) ? args.workers : [];
   const materials = Array.isArray(args.materials) ? args.materials : [];
@@ -282,9 +496,20 @@ async function saveWorkResultDraft({ args }) {
     throw new ApiError(400, "VALIDATION_ERROR", "Draft detail exceeds the maximum row count");
   }
   const resultPatch = {
+    actual_start_at: args.actual_start_at == null ? null : requireTimestamp(args.actual_start_at, "actual_start_at"),
+    actual_end_at: args.actual_end_at == null ? null : requireTimestamp(args.actual_end_at, "actual_end_at"),
     actual_quantity: optionalNumber(args.actual_quantity, "actual_quantity"),
     actual_unit: args.actual_unit == null ? null : String(args.actual_unit).slice(0, 80),
+    actual_area_rai: optionalNumber(args.actual_area_rai, "actual_area_rai"),
+    actual_tree_count: optionalNumber(args.actual_tree_count, "actual_tree_count"),
+    total_labor_hours: optionalNumber(args.total_labor_hours, "total_labor_hours"),
+    working_minutes: optionalNumber(args.working_minutes, "working_minutes"),
+    stoppage_minutes: optionalNumber(args.stoppage_minutes, "stoppage_minutes"),
     quality_score: optionalNumber(args.quality_score, "quality_score"),
+    completion_pct: optionalNumber(args.completion_pct, "completion_pct"),
+    rework_quantity: optionalNumber(args.rework_quantity, "rework_quantity"),
+    weather_condition: args.weather_condition == null ? null : String(args.weather_condition).slice(0, 120),
+    terrain_condition: args.terrain_condition == null ? null : String(args.terrain_condition).slice(0, 120),
     worker_count: workers.length,
     survey_status: String(args.survey_status || "pending").slice(0, 80),
     note: args.note == null ? null : String(args.note).slice(0, 2000),
@@ -367,6 +592,12 @@ async function saveWorkResultDraft({ args }) {
   return { result: savedResult, workers: workers.length, materials: materials.length, vehicles: vehicles.length };
 }
 
+function requireTimestamp(value, field) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new ApiError(400, "VALIDATION_ERROR", `${field} must be a valid timestamp`);
+  return date.toISOString();
+}
+
 async function issueFuel({ args, actor }) {
   const issuedLiter = optionalNumber(args.issued_liter, "issued_liter", { minimum: Number.EPSILON });
   if (issuedLiter == null) throw new ApiError(400, "VALIDATION_ERROR", "issued_liter is required");
@@ -388,15 +619,17 @@ async function issueFuel({ args, actor }) {
   return data[0];
 }
 
-async function workResultContext(resultId) {
+async function workResultContext(resultId, actor = null) {
   const result = await one(
     `work_results?id=eq.${resultId}&select=id,work_order_id,result_date,result_status,actual_quantity&limit=1`,
     "Work result",
   );
+  if (!result.work_order_id) throw new ApiError(409, "RESULT_INCOMPLETE", "Work result is not linked to a work order");
   const order = await one(
-    `work_orders?id=eq.${result.work_order_id}&select=id,activity_id,block_id,team_id,status&limit=1`,
+    `work_orders?id=eq.${result.work_order_id}&select=id,estate_id,plot_id,activity_id,block_id,team_id,status&limit=1`,
     "Work order",
   );
+  if (actor) await authorizeWorkOrderScope(actor, order);
   const activity = await one(
     `activities?id=eq.${order.activity_id}&select=id,requires_weigh_ticket,requires_worker_detail,requires_material_detail,requires_machine_detail&limit=1`,
     "Activity",
@@ -434,7 +667,7 @@ async function validateRequiredSurveys(context, acceptedStatuses) {
 
 async function submitWorkResult({ args, actor }) {
   const resultId = requireUuid(args.result_id, "result_id");
-  const context = await workResultContext(resultId);
+  const context = await workResultContext(resultId, actor);
   if (context.result.result_status !== "draft") throw new ApiError(409, "INVALID_STATE", "Only draft results can be submitted");
   if (!(Number(context.result.actual_quantity) > 0)) throw new ApiError(409, "RESULT_INCOMPLETE", "Actual quantity is required");
   if (context.activity.requires_weigh_ticket) {
@@ -459,14 +692,14 @@ async function submitWorkResult({ args, actor }) {
     );
   }
   await validateRequiredSurveys(context, new Set(["submitted", "verified", "closed"]));
-  return changeWorkResultStatus(args, actor, "draft", "submitted");
+  return changeWorkResultStatus(args, actor, "draft", "submitted", context);
 }
 
-async function changeWorkResultStatus(args, actor, from, to) {
+async function changeWorkResultStatus(args, actor, from, to, context = null) {
   const resultId = requireUuid(args.result_id, "result_id");
+  const authorizedContext = context || await workResultContext(resultId, actor);
   if (to === "closed") {
-    const context = await workResultContext(resultId);
-    await validateRequiredSurveys(context, new Set(["verified", "closed"]));
+    await validateRequiredSurveys(authorizedContext, new Set(["verified", "closed"]));
   }
   const now = new Date().toISOString();
   const patch = { result_status: to, updated_at: now };
