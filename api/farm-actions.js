@@ -2,6 +2,7 @@ const { createHash, randomUUID } = require("node:crypto");
 const {
   ADMIN_ROLES,
   ApiError,
+  actorIsUat,
   audit,
   authenticate,
   authorize,
@@ -245,6 +246,28 @@ const ACTIONS = {
   },
 };
 
+const UAT_MUTATION_ACTIONS = new Set([
+  "create_work_order_from_plan_item",
+  "submit_work_order",
+  "approve_work_order",
+  "reject_work_order",
+  "dispatch_work_order",
+  "start_work_order",
+  "complete_work_order",
+  "close_work_order",
+  "get_or_create_work_result",
+  "save_work_result_draft",
+  "submit_work_result",
+  "verify_work_result",
+  "close_work_result",
+  "link_inbound_weight_ticket",
+  "create_survey_response",
+  "save_survey_draft",
+  "submit_survey_response",
+  "verify_survey_response",
+  "close_survey_response",
+]);
+
 function requireWebTestCode(value) {
   if (value !== "WEBTEST-2569") throw new ApiError(400, "VALIDATION_ERROR", "Only WEBTEST-2569 is allowed");
   return value;
@@ -264,6 +287,70 @@ async function one(path, label) {
 
 function actorIsAdmin(actor) {
   return [...actor.roles].some((role) => ADMIN_ROLES.has(role));
+}
+
+function requireUatWorkOrder(order) {
+  if (!String(order?.work_order_no || "").startsWith("WEBTEST-UAT-")) {
+    throw new ApiError(403, "UAT_WRITE_FORBIDDEN", "UAT writes are restricted to WEBTEST-UAT records");
+  }
+  return order;
+}
+
+async function uatOrderFromArgs(action, args) {
+  if (action === "create_work_order_from_plan_item") {
+    const itemId = requireUuid(args.planned_work_item_id, "planned_work_item_id");
+    const item = await one(`planned_work_items?id=eq.${itemId}&select=id,annual_plan_id&limit=1`, "Planned work item");
+    const plan = await one(`annual_work_plans?id=eq.${item.annual_plan_id}&select=id,plan_name,note&limit=1`, "Annual work plan");
+    if (!String(plan.plan_name || plan.note || "").startsWith("WEBTEST-UAT-")) {
+      throw new ApiError(403, "UAT_WRITE_FORBIDDEN", "UAT writes are restricted to WEBTEST-UAT records");
+    }
+    return null;
+  }
+  if (args.work_order_id) {
+    return one(
+      `work_orders?id=eq.${requireUuid(args.work_order_id, "work_order_id")}&select=id,work_order_no,estate_id,plot_id,block_id&limit=1`,
+      "Work order",
+    );
+  }
+  if (args.result_id || args.work_result_id) {
+    const resultId = requireUuid(args.result_id || args.work_result_id, "result_id");
+    const result = await one(`work_results?id=eq.${resultId}&select=id,work_order_id&limit=1`, "Work result");
+    return one(
+      `work_orders?id=eq.${result.work_order_id}&select=id,work_order_no,estate_id,plot_id,block_id&limit=1`,
+      "Work order",
+    );
+  }
+  if (args.response_id) {
+    const responseId = requireUuid(args.response_id, "response_id");
+    const response = await one(
+      `survey_responses?id=eq.${responseId}&select=id,work_order_id,work_result_id&limit=1`,
+      "Survey response",
+    );
+    if (response.work_order_id) {
+      return one(
+        `work_orders?id=eq.${response.work_order_id}&select=id,work_order_no,estate_id,plot_id,block_id&limit=1`,
+        "Work order",
+      );
+    }
+    const result = await one(`work_results?id=eq.${response.work_result_id}&select=id,work_order_id&limit=1`, "Work result");
+    return one(
+      `work_orders?id=eq.${result.work_order_id}&select=id,work_order_no,estate_id,plot_id,block_id&limit=1`,
+      "Work order",
+    );
+  }
+  return null;
+}
+
+async function enforceUatMutation(actor, action, args) {
+  if (!actorIsUat(actor)) return;
+  if (!UAT_MUTATION_ACTIONS.has(action)) {
+    throw new ApiError(403, "UAT_ACTION_FORBIDDEN", "This action is disabled for UAT identities");
+  }
+  const order = await uatOrderFromArgs(action, args);
+  if (order) {
+    await authorizeWorkOrderScope(actor, order);
+    requireUatWorkOrder(order);
+  }
 }
 
 async function authorizeWorkOrderScope(actor, order) {
@@ -299,7 +386,9 @@ async function createWorkOrderFromPlanItem({ args, actor }) {
   const scopeTarget = { estate_id: annual?.estate_id || null, plot_id: item.plot_id, block_id: item.block_id };
   await authorizeWorkOrderScope(actor, scopeTarget);
   const row = {
-    work_order_no: `WO-${annual?.plan_year || new Date().getFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`,
+    work_order_no: actorIsUat(actor)
+      ? `WEBTEST-UAT-WO-${randomUUID().slice(0, 8).toUpperCase()}`
+      : `WO-${annual?.plan_year || new Date().getFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`,
     planned_work_item_id: plannedWorkItemId,
     estate_id: annual?.estate_id || null,
     plot_id: item.plot_id,
@@ -891,11 +980,12 @@ async function handler(req, res) {
     } else {
       authorize(actor, { permissions: [definition.permission] });
     }
+    const args = body.args && typeof body.args === "object" && !Array.isArray(body.args) ? body.args : {};
+    await enforceUatMutation(actor, action, args);
     if (definition.confirmation && body.confirmed !== true) {
       throw new ApiError(409, "CONFIRMATION_REQUIRED", "This action requires confirmed=true");
     }
     idempotencyKey = requireText(req.headers?.["idempotency-key"] || body.idempotency_key, "idempotency_key", 200);
-    const args = body.args && typeof body.args === "object" && !Array.isArray(body.args) ? body.args : {};
     const hash = requestHash(action, args, actor);
     const claim = await claimIdempotency(idempotencyKey, action, hash, actor);
     if (!claim.claimed) return json(res, 200, claim.response);
@@ -921,4 +1011,6 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
-module.exports._test = { ACTIONS, requireWebTestCode, requestHash };
+module.exports._test = {
+  ACTIONS, UAT_MUTATION_ACTIONS, enforceUatMutation, requireUatWorkOrder, requireWebTestCode, requestHash,
+};

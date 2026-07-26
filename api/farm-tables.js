@@ -1,5 +1,6 @@
 const {
   ApiError,
+  actorIsUat,
   audit,
   authenticate,
   authorize,
@@ -183,6 +184,198 @@ function clearCache() {
   cache.clear();
 }
 
+const UAT_OPERATIONAL_TABLES = new Set([
+  "annual_work_plans", "planned_work_items", "planned_work_materials",
+  "work_orders", "work_order_workers", "work_order_materials", "work_order_machines",
+  "work_order_approvals", "work_order_qr_codes", "work_order_locations", "work_order_status_logs",
+  "work_attendance", "work_results", "work_result_workers", "work_result_weight_tickets",
+  "work_result_vehicle_usage", "work_performance_metrics", "cost_entries",
+  "survey_responses", "survey_answers", "survey_response_attachments",
+  "survey_answer_attachments", "survey_findings",
+  "payroll_periods", "payroll_period_lines", "payroll_employee_summaries",
+  "payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines",
+]);
+
+function setOf(rows, field) {
+  return new Set(rows.map((row) => row[field]).filter(Boolean));
+}
+
+async function uatReadContext(actor) {
+  const blockIds = new Set(actor.scopes.map((scope) => scope.block_id).filter(Boolean));
+  if (!blockIds.size) throw new ApiError(403, "SCOPE_FORBIDDEN", "UAT identity has no active block scope");
+  const orders = await rest(
+    `work_orders?block_id=in.(${[...blockIds].join(",")})&select=id,work_order_no,planned_work_item_id,status,team_id,contractor_id`,
+  )
+    .then(({ data }) => (data || []).filter((row) =>
+      String(row.work_order_no || "").startsWith("WEBTEST-2569")
+      || String(row.work_order_no || "").startsWith("WEBTEST-UAT-")));
+  const workOrderIds = setOf(orders, "id");
+  const plannedItemIds = setOf(orders, "planned_work_item_id");
+  const items = plannedItemIds.size
+    ? await rest(`planned_work_items?id=in.(${[...plannedItemIds].join(",")})&select=id,annual_plan_id`)
+      .then(({ data }) => data || [])
+    : [];
+  const annualPlanIds = setOf(items, "annual_plan_id");
+  const results = workOrderIds.size
+    ? await rest(`work_results?work_order_id=in.(${[...workOrderIds].join(",")})&select=id,work_order_id,result_status`)
+      .then(({ data }) => data || [])
+    : [];
+  const workResultIds = setOf(results, "id");
+  const responses = workOrderIds.size
+    ? await rest(`survey_responses?work_order_id=in.(${[...workOrderIds].join(",")})&select=id,work_order_id,work_result_id`)
+      .then(({ data }) => data || [])
+    : [];
+  const resultResponses = workResultIds.size
+    ? await rest(`survey_responses?work_result_id=in.(${[...workResultIds].join(",")})&select=id,work_order_id,work_result_id`)
+      .then(({ data }) => data || [])
+    : [];
+  const surveyResponseIds = setOf([...responses, ...resultResponses], "id");
+  const surveyAnswers = surveyResponseIds.size
+    ? await rest(`survey_answers?response_id=in.(${[...surveyResponseIds].join(",")})&select=id,response_id`)
+      .then(({ data }) => data || [])
+    : [];
+  const surveyAnswerIds = setOf(surveyAnswers, "id");
+  const [responseAttachments, answerAttachments, payrollPeriods] = await Promise.all([
+    surveyResponseIds.size
+      ? rest(`survey_response_attachments?response_id=in.(${[...surveyResponseIds].join(",")})&select=attachment_id`)
+        .then(({ data }) => data || [])
+      : [],
+    surveyAnswerIds.size
+      ? rest(`survey_answer_attachments?answer_id=in.(${[...surveyAnswerIds].join(",")})&select=attachment_id`)
+        .then(({ data }) => data || [])
+      : [],
+    rest("payroll_periods?select=id,period_code").then(({ data }) =>
+      (data || []).filter((row) => String(row.period_code || "").startsWith("WEBTEST-"))),
+  ]);
+  return {
+    annualPlanIds, blockIds, orders, payrollPeriodIds: setOf(payrollPeriods, "id"),
+    plannedItemIds, results, surveyAnswerIds,
+    surveyAttachmentIds: setOf([...responseAttachments, ...answerAttachments], "attachment_id"),
+    surveyResponseIds, workOrderIds, workResultIds,
+  };
+}
+
+function uatActionCenterRows(rows, context) {
+  const counts = {
+    record_result: context.orders.filter((row) => ["dispatched", "in_progress"].includes(row.status)).length,
+    prepare_material_issue: context.orders.filter((row) => ["approved", "dispatched", "in_progress"].includes(row.status)).length,
+    assign_resource: context.orders.filter((row) => !row.team_id && !row.contractor_id).length,
+    continue_result: context.results.filter((row) => row.result_status === "draft").length,
+    close_result: context.results.filter((row) => row.result_status === "verified").length,
+    complete_order: context.orders.filter((row) => row.status === "in_progress").length,
+    draft: context.results.filter((row) => row.result_status === "draft").length,
+  };
+  return rows
+    .filter((row) => ["farm.work", "farm.daily"].includes(row.module_key) && counts[row.action_key] != null)
+    .map((row) => ({ ...row, item_count: counts[row.action_key] }));
+}
+
+function uatRowAllowed(table, row, context) {
+  if (!UAT_OPERATIONAL_TABLES.has(table)) {
+    if (table === "blocks") return context.blockIds.has(row.id);
+    if (table === "attachments") return context.surveyAttachmentIds.has(row.id);
+    if (table === "v_management_action_center") return ["farm.work", "farm.daily"].includes(row.module_key);
+    if (table === "v_available_inbound_weight_tickets") {
+      return Object.values(row).some((value) => String(value || "").startsWith("WEBTEST-2569"));
+    }
+    if (table.startsWith("v_") && !["v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs", "v_system_module_readiness"].includes(table)) {
+      return context.workOrderIds.has(row.work_order_id)
+        || context.workOrderIds.has(row.entity_id)
+        || context.workResultIds.has(row.work_result_id)
+        || context.surveyResponseIds.has(row.response_id)
+        || context.blockIds.has(row.block_id)
+        || Object.values(row).some((value) => /^WEBTEST-(2569|UAT-)/.test(String(value || "")));
+    }
+    return true;
+  }
+  if (table === "annual_work_plans") return context.annualPlanIds.has(row.id);
+  if (table === "planned_work_items") return context.plannedItemIds.has(row.id);
+  if (table === "planned_work_materials") return context.plannedItemIds.has(row.planned_work_item_id);
+  if (table === "work_orders") return context.workOrderIds.has(row.id);
+  if (table.startsWith("work_order_") || table === "work_attendance") return context.workOrderIds.has(row.work_order_id);
+  if (table === "work_results") return context.workResultIds.has(row.id);
+  if (table.startsWith("work_result_") || table === "work_performance_metrics") {
+    return context.workResultIds.has(row.work_result_id);
+  }
+  if (table === "cost_entries") {
+    return context.workOrderIds.has(row.work_order_id) || context.workResultIds.has(row.work_result_id);
+  }
+  if (table === "survey_responses") return context.surveyResponseIds.has(row.id);
+  if (table === "survey_answers" || table === "survey_response_attachments" || table === "survey_findings") {
+    return context.surveyResponseIds.has(row.response_id);
+  }
+  if (table === "survey_answer_attachments") return context.surveyAnswerIds.has(row.answer_id);
+  if (table === "payroll_periods") return context.payrollPeriodIds.has(row.id);
+  if (table.startsWith("payroll_")) return context.payrollPeriodIds.has(row.payroll_period_id);
+  return false;
+}
+
+async function uatPlanForItem(itemId) {
+  const item = await rest(`planned_work_items?id=eq.${encodeURIComponent(itemId)}&select=id,annual_plan_id,block_id&limit=1`)
+    .then(({ data }) => data?.[0]);
+  if (!item) throw new ApiError(404, "NOT_FOUND", "Planned work item was not found");
+  const plan = await rest(`annual_work_plans?id=eq.${item.annual_plan_id}&select=id,plan_name,note&limit=1`)
+    .then(({ data }) => data?.[0]);
+  if (!plan) throw new ApiError(404, "NOT_FOUND", "Annual work plan was not found");
+  return { item, plan };
+}
+
+function requireUatPlan(plan) {
+  if (!String(plan?.plan_name || plan?.note || "").startsWith("WEBTEST-UAT-")) {
+    throw new ApiError(403, "UAT_WRITE_FORBIDDEN", "UAT plan writes are restricted to WEBTEST-UAT records");
+  }
+}
+
+function requireUatBlock(actor, blockId) {
+  if (!blockId || !actor.scopes.some((scope) => scope.block_id === blockId)) {
+    throw new ApiError(403, "SCOPE_FORBIDDEN", "Plan item is outside your assigned block scope");
+  }
+}
+
+async function enforceUatTableWrite(actor, table, rows) {
+  if (!actorIsUat(actor)) return;
+  if (table === "annual_work_plans") {
+    for (const row of rows) {
+      const existing = row.id
+        ? await rest(`annual_work_plans?id=eq.${encodeURIComponent(row.id)}&select=id,plan_name,note&limit=1`)
+          .then(({ data }) => data?.[0])
+        : null;
+      requireUatPlan({ ...existing, ...row });
+    }
+    return;
+  }
+  if (table === "planned_work_items") {
+    for (const row of rows) {
+      const existing = row.id
+        ? await rest(`planned_work_items?id=eq.${encodeURIComponent(row.id)}&select=id,annual_plan_id,block_id&limit=1`)
+          .then(({ data }) => data?.[0])
+        : null;
+      const annualPlanId = row.annual_plan_id || existing?.annual_plan_id;
+      if (!annualPlanId) throw new ApiError(400, "VALIDATION_ERROR", "annual_plan_id is required");
+      const plan = await rest(`annual_work_plans?id=eq.${encodeURIComponent(annualPlanId)}&select=id,plan_name,note&limit=1`)
+        .then(({ data }) => data?.[0]);
+      requireUatPlan(plan);
+      requireUatBlock(actor, row.block_id || existing?.block_id);
+    }
+    return;
+  }
+  if (table === "planned_work_materials") {
+    for (const row of rows) {
+      const existing = row.id
+        ? await rest(`planned_work_materials?id=eq.${encodeURIComponent(row.id)}&select=id,planned_work_item_id&limit=1`)
+          .then(({ data }) => data?.[0])
+        : null;
+      const itemId = row.planned_work_item_id || existing?.planned_work_item_id;
+      if (!itemId) throw new ApiError(400, "VALIDATION_ERROR", "planned_work_item_id is required");
+      const { item, plan } = await uatPlanForItem(itemId);
+      requireUatPlan(plan);
+      requireUatBlock(actor, item.block_id);
+    }
+    return;
+  }
+  throw new ApiError(403, "UAT_ACTION_REQUIRED", "UAT writes must use an allowlisted farm action");
+}
+
 async function handleGet(req, res, url, actor) {
   const tables = requestedTables(url.searchParams.get("tables") ?? url.searchParams.get("table"));
   tables.forEach((table) => readPermission(actor, table));
@@ -190,13 +383,21 @@ async function handleGet(req, res, url, actor) {
   const page = Math.max(Number(url.searchParams.get("page") || 1), 1);
   const offsetParam = url.searchParams.get("offset");
   const offset = offsetParam == null ? (page - 1) * limit : Math.max(Number(offsetParam), 0);
-  const cacheKey = JSON.stringify({ tables: [...tables].sort(), limit, offset });
+  const cacheKey = JSON.stringify({ actor: actor.profile.id, tables: [...tables].sort(), limit, offset });
   const cached = cache.get(cacheKey);
   if (url.searchParams.get("refresh") !== "1" && cached && Date.now() - cached.at < CACHE_MS) {
     return json(res, 200, { ...cached.payload, source: { ...cached.payload.source, cache: "hit" } });
   }
 
-  const reads = await parallelMap(tables, 8, (table) => readTable(table, limit, offset));
+  const context = actorIsUat(actor) ? await uatReadContext(actor) : null;
+  const reads = await parallelMap(tables, 8, async (table) => {
+    const read = await readTable(table, limit, offset);
+    if (!context) return read;
+    const rows = table === "v_management_action_center"
+      ? uatActionCenterRows(read.rows, context)
+      : read.rows.filter((row) => uatRowAllowed(table, row, context));
+    return { ...read, rows, total: rows.length };
+  });
   const payload = {
     ok: true,
     tables: Object.fromEntries(reads.map((item) => [item.table, item.rows])),
@@ -232,6 +433,7 @@ async function handlePost(req, res, actor) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   if (rows.length > 500) throw new ApiError(400, "VALIDATION_ERROR", "A request may write at most 500 rows");
+  await enforceUatTableWrite(actor, table, rows);
   const conflict = String(body.onConflict || CONFLICT_KEYS[table] || "id");
   if (!/^[a-z_][a-z0-9_]*$/i.test(conflict)) throw new ApiError(400, "VALIDATION_ERROR", "Invalid onConflict column");
   const { data } = await rest(`${table}?on_conflict=${encodeURIComponent(conflict)}`, {
@@ -253,6 +455,9 @@ async function handleDelete(req, res, url, actor) {
   }
   const table = tableName(body.table || url.searchParams.get("table"));
   writePermission(actor, table);
+  if (actorIsUat(actor)) {
+    throw new ApiError(403, "UAT_DELETE_FORBIDDEN", "UAT identities cannot delete records");
+  }
   if (ACTION_ONLY_TABLES.has(table)) {
     throw new ApiError(409, "ACTION_REQUIRED", `${table} must be changed through /api/farm-actions`);
   }
@@ -297,5 +502,6 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports._test = {
-  ACTION_ONLY_TABLES, TABLES, cache, clearCache, parallelMap, requestedTables, tableName,
+  ACTION_ONLY_TABLES, TABLES, UAT_OPERATIONAL_TABLES, cache, clearCache, parallelMap,
+  enforceUatTableWrite, requestedTables, tableName, uatActionCenterRows, uatRowAllowed,
 };
