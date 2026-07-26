@@ -3,6 +3,7 @@ const {
   audit,
   authenticate,
   authorize,
+  config,
   errorResponse,
   json,
   readBody,
@@ -268,7 +269,8 @@ async function handler(req, res) {
   try {
     const url = new URL(req.url, "http://localhost");
     if (req.method === "GET" && url.searchParams.get("healthcheck") === "1") {
-      return json(res, 200, { ok: true, route: "farm-tables", authRequired: true });
+      config();
+      return json(res, 200, { ok: true, route: "farm-tables", configured: true, authRequired: true });
     }
     const actor = await authenticate(req);
     if (req.method === "GET") return handleGet(req, res, url, actor);

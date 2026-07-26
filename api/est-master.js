@@ -17,9 +17,12 @@ async function readBody(req) {
 }
 
 function supabaseConfig() {
-  const url = process.env.SUPABASE_URL || "https://xhtwmzlorceebsemqkww.supabase.co";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  const url = String(process.env.SUPABASE_URL || "").trim();
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Server configuration requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
+  if (String(key).startsWith("sb_publishable_")) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY must be server-only");
+  }
   return { url: url.replace(/\/$/, ""), key };
 }
 
@@ -85,11 +88,11 @@ module.exports = async function handler(req, res) {
       const category = requestUrl.searchParams.get("category") || "areas";
       if (!validCategory(category)) return json(res, 400, { ok: false, error: "Invalid category" });
       if (category === "healthcheck") {
+        supabaseConfig();
         return json(res, 200, {
           ok: true,
           route: "est-master",
-          hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
-          hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+          configured: true,
         });
       }
       const rows = await supabaseFetch(`est_master_records?category=eq.${encodeURIComponent(category)}&order=updated_at.desc&limit=50000`);

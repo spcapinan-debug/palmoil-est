@@ -5,6 +5,7 @@ const test = require("node:test");
 
 const farmTables = require("../api/farm-tables");
 const farmActions = require("../api/farm-actions");
+const farmApi = require("../api/_farm-api");
 
 const EXPECTED_TABLES = `
 v_app_navigation v_app_workspace_definition v_app_workspace_tabs v_management_action_center v_system_module_readiness
@@ -41,6 +42,76 @@ test("GET requires an explicit requested table list", () => {
   assert.throws(() => farmTables._test.requestedTables("not_a_real_table"), (error) => error.code === "INVALID_TABLE");
 });
 
+test("authenticated API smoke reads the Phase 2 and WEBTEST-2569 tables only", async () => {
+  const previousFetch = global.fetch;
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const requested = [];
+  const rows = {
+    v_app_navigation: [{ menu_key: "dashboard", route: "/farm/dashboard" }],
+    v_app_workspace_definition: [{ workspace_key: "farm.work" }],
+    v_app_workspace_tabs: [{ menu_key: "farm.work_orders", route: "/farm/work" }],
+    v_management_action_center: [{ action_key: "test", item_count: 1 }],
+    v_system_module_readiness: [{ module_key: "farm.work", readiness_status: "ready" }],
+    annual_work_plans: [{ plan_name: "WEBTEST-2569" }],
+    work_orders: [
+      { work_order_no: "WEBTEST-2569-WO-FERT-001", status: "closed" },
+      { work_order_no: "WEBTEST-2569-WO-HARV-001", status: "in_progress" },
+      { work_order_no: "WEBTEST-2569-WO-GRASS-DRAFT", status: "approved" },
+      { work_order_no: "WEBTEST-2569-WO-GRASS-READY", status: "approved" },
+    ],
+    work_results: Array.from({ length: 4 }, (_, index) => ({ id: `result-${index + 1}` })),
+    survey_templates: Array.from({ length: 4 }, (_, index) => ({ template_code: `WEBTEST-2569-SURVEY-${index + 1}` })),
+    survey_questions: [{ question_code: "WEBTEST-2569-Q-1" }],
+    survey_responses: Array.from({ length: 4 }, (_, index) => ({ response_no: `WEBTEST-2569-R-${index + 1}` })),
+    survey_findings: Array.from({ length: 3 }, (_, index) => ({ finding_no: `WEBTEST-2569-F-${index + 1}` })),
+  };
+  try {
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-test-key";
+    global.fetch = async (url) => {
+      const text = String(url);
+      if (text.endsWith("/auth/v1/user")) return new Response(JSON.stringify({ id: "user-1" }), { status: 200 });
+      const resource = text.split("/rest/v1/")[1]?.split("?")[0] || "";
+      requested.push(resource);
+      if (resource === "profiles") {
+        return new Response(JSON.stringify([{ id: "user-1", status: "active", role: "super_admin" }]), { status: 200 });
+      }
+      if (resource === "profile_roles" || resource === "user_access_scopes") {
+        return new Response("[]", { status: 200 });
+      }
+      const data = rows[resource] || [];
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { "content-range": `0-${Math.max(data.length - 1, 0)}/${data.length}` },
+      });
+    };
+    farmTables._test.clearCache();
+    const tableList = Object.keys(rows).join(",");
+    const res = responseRecorder();
+    await farmTables({
+      method: "GET",
+      url: `/api/farm-tables?tables=${tableList}&limit=5000&refresh=1`,
+      headers: { authorization: "Bearer user-access-token" },
+    }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.tables.annual_work_plans.length, 1);
+    assert.deepEqual([...new Set(res.body.tables.work_orders.map((row) => row.status))].sort(), ["approved", "closed", "in_progress"]);
+    assert.equal(res.body.tables.survey_templates.length, 4);
+    assert.equal(res.body.tables.survey_responses.length, 4);
+    assert.equal(res.body.tables.survey_findings.length, 3);
+    assert.equal(requested.some((name) => name.startsWith("transport_")), false);
+  } finally {
+    global.fetch = previousFetch;
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+    farmTables._test.clearCache();
+  }
+});
+
 test("parallel reads respect the configured concurrency", async () => {
   let running = 0;
   let maximum = 0;
@@ -55,11 +126,41 @@ test("parallel reads respect the configured concurrency", async () => {
   assert.equal(values[19], 38);
 });
 
-test("farm table healthcheck does not expose secret metadata", async () => {
-  const res = responseRecorder();
-  await farmTables({ method: "GET", url: "/api/farm-tables?healthcheck=1", headers: {} }, res);
-  assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body, { ok: true, route: "farm-tables", authRequired: true });
+test("farm table healthcheck validates server configuration without exposing secrets", async () => {
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  try {
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-test-key";
+    const res = responseRecorder();
+    await farmTables({ method: "GET", url: "/api/farm-tables?healthcheck=1", headers: {} }, res);
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, { ok: true, route: "farm-tables", configured: true, authRequired: true });
+    assert.doesNotMatch(JSON.stringify(res.body), /server-only-test-key|SUPABASE_SERVICE_ROLE_KEY/);
+  } finally {
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+  }
+});
+
+test("Supabase server configuration fails fast without both required variables", () => {
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  try {
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    assert.throws(() => farmApi.config(), (error) => (
+      error.code === "SERVER_CONFIG_ERROR"
+      && /SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY/.test(error.message)
+    ));
+  } finally {
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+  }
 });
 
 test("write implementation has no fallback or silent column stripping", () => {
@@ -130,4 +231,22 @@ test("security migration keeps flags off and hardens views and RPC grants", () =
   assert.match(sql, /'performance\.activity_metrics_enabled', 'false'/);
   assert.match(sql, /'performance\.budget_recommendations_enabled', 'false'/);
   assert.doesNotMatch(sql, /setting_value[^;]*'true'/s);
+});
+
+test("server APIs have no Supabase URL or anonymous-key fallback", () => {
+  for (const file of [
+    "_farm-api.js", "est-master.js", "farm-budget-cleanup.js", "farm-budget-sync.js", "transport-sync.js",
+  ]) {
+    const source = fs.readFileSync(path.join(__dirname, "..", "api", file), "utf8");
+    assert.doesNotMatch(source, /xhtwmzlorceebsemqkww\.supabase\.co|SUPABASE_ANON_KEY/);
+  }
+});
+
+test("local Supabase secrets are ignored and only empty server variables are documented", () => {
+  const example = fs.readFileSync(path.join(__dirname, "..", ".env.example"), "utf8").trim();
+  const ignore = fs.readFileSync(path.join(__dirname, "..", ".gitignore"), "utf8");
+  assert.equal(example, "SUPABASE_URL=\nSUPABASE_SERVICE_ROLE_KEY=");
+  assert.match(ignore, /^\.env$/m);
+  assert.match(ignore, /^\.env\.local$/m);
+  assert.match(ignore, /^\.env\.\*\.local$/m);
 });

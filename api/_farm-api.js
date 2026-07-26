@@ -43,9 +43,15 @@ async function readBody(req) {
 }
 
 function config() {
-  const url = String(process.env.SUPABASE_URL || "https://xhtwmzlorceebsemqkww.supabase.co").replace(/\/$/, "");
+  const url = String(process.env.SUPABASE_URL || "").trim().replace(/\/$/, "");
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceKey) throw new ApiError(500, "SERVER_CONFIG_ERROR", "Missing SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) {
+    throw new ApiError(
+      500,
+      "SERVER_CONFIG_ERROR",
+      "Server configuration requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY"
+    );
+  }
   if (String(serviceKey).startsWith("sb_publishable_")) {
     throw new ApiError(500, "SERVER_CONFIG_ERROR", "SUPABASE_SERVICE_ROLE_KEY must be server-only");
   }

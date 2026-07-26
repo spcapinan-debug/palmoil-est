@@ -5,7 +5,6 @@ const TABLES = [
   "transport_mill_weight_records",
   "transport_mill_reconciliations",
 ];
-const DEFAULT_SUPABASE_URL = "https://xhtwmzlorceebsemqkww.supabase.co";
 
 function json(res, status, payload) {
   res.statusCode = status;
@@ -25,17 +24,17 @@ async function readBody(req) {
 }
 
 function supabaseConfig() {
-  const url = process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  const url = String(process.env.SUPABASE_URL || "").trim();
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Server configuration requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
   if (String(key).startsWith("sb_publishable_")) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is a publishable key. Use the Supabase service_role/secret key for server writes.");
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY must be server-only");
   }
   return { url: url.replace(/\/$/, ""), key };
 }
 
 function keyKind() {
-  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "");
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
   if (!key) return "missing";
   if (key.startsWith("sb_publishable_")) return "publishable";
   if (key.startsWith("sb_secret_")) return "secret";
@@ -234,7 +233,7 @@ module.exports = async function handler(req, res) {
           ok: Object.values(checks).every((value) => value === "ok"),
           route: "transport-sync",
           checks,
-          hasSupabaseUrl: Boolean(process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL),
+          hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
           hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
           keyKind: keyKind(),
         });

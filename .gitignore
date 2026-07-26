@@ -1,1 +1,13 @@
 webapp/data/local_api_server.*.log
+
+# Local environment and secret files
+.env
+.env.local
+.env.*.local
+.vercel
+*.pem
+*.key
+*.p12
+*.pfx
+
+!.env.example

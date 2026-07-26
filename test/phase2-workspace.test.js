@@ -67,6 +67,34 @@ test("legacy and new route helpers resolve executable route fixtures", () => {
   assert.equal(sandbox.result.workspaceRoutePath("/farm/work?year=2569"), "/farm/work");
 });
 
+test("all Phase 2 workspace routes retain a valid legacy destination", () => {
+  const start = appSource.indexOf("function workspaceLegacyView");
+  const end = appSource.indexOf("function workspaceCanAccess", start);
+  assert.ok(start >= 0 && end > start);
+  const knownViews = new Set([
+    "farm-management-dashboard", "farm-area", "farm-work", "farm-result", "farm-inventory",
+    "farm-people", "farm-payroll", "farm-budget", "farm-reports", "farm-governance",
+  ]);
+  const sandbox = { isFarmView: (view) => knownViews.has(view) };
+  vm.runInNewContext(`${appSource.slice(start, end)}; result = { workspaceLegacyView };`, sandbox);
+  const routes = {
+    "/farm/dashboard": ["dashboard", "farm-management-dashboard"],
+    "/farm/master": ["farm.master", "farm-area"],
+    "/farm/work": ["farm.work", "farm-work"],
+    "/farm/daily": ["farm.daily", "farm-result"],
+    "/inventory": ["inventory.stock", "farm-inventory"],
+    "/inventory/fuel": ["inventory.fuel", "farm-inventory"],
+    "/hr/people": ["hr.people", "farm-people"],
+    "/payroll": ["payroll", "farm-payroll"],
+    "/budget": ["budget", "farm-budget"],
+    "/reports": ["reports", "farm-reports"],
+    "/system/access": ["system.access", "farm-governance"],
+  };
+  for (const [route, [workspaceKey, expectedView]] of Object.entries(routes)) {
+    assert.equal(sandbox.result.workspaceLegacyView({ route, workspace_key: workspaceKey }), expectedView, route);
+  }
+});
+
 test("database navigation stays behind the dynamic-menu feature flag", () => {
   assert.match(appSource, /if\s*\(!state\.dynamicMenuEnabled\s*\|\|\s*!els\.farmMenuSection\)\s*return/);
   assert.match(appSource, /workspaceFlag\(payload\.tables\?\.system_settings,\s*"system\.dynamic_menu_enabled"\)/);

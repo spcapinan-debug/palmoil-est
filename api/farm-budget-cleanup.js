@@ -6,11 +6,11 @@ function json(res, status, payload) {
 }
 
 function supabaseConfig() {
-  const url = process.env.SUPABASE_URL || "https://xhtwmzlorceebsemqkww.supabase.co";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  const url = String(process.env.SUPABASE_URL || "").trim();
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Server configuration requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
   if (String(key).startsWith("sb_publishable_")) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is a publishable key. Use the Supabase service_role/secret key for server writes.");
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY must be server-only");
   }
   return { url: url.replace(/\/$/, ""), key };
 }
