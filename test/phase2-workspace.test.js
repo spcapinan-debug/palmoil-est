@@ -135,4 +135,5 @@ test("transport startup does not call protected workspace APIs", () => {
 
 test("daily workspace renders its empty state without a selected work order", () => {
   assert.match(appSource, /function farmResultRateCodesFromOrder\(order = \{\}\)\s*\{\s*order = order \|\| \{\};/);
+  assert.match(appSource, /if\s*\(!order\)\s*\{[\s\S]*ยังไม่มีใบสั่งงานที่พร้อมบันทึกผลงาน/);
 });

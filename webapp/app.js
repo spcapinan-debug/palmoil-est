@@ -18056,6 +18056,17 @@ function printFarmSurveyReport() {
 function renderFarmResultPanel() {
   const orders = farmResultCandidateOrders();
   const order = farmResultSelectedOrder();
+  if (!order) {
+    return `
+      <section class="farm-result-page">
+        <div class="section-head">
+          <h3>บันทึกงานประจำวัน</h3>
+          <span>หัวหน้าทีมบันทึกผลงานจริงจากใบสั่งงาน</span>
+        </div>
+        ${renderFarmResultWorkSearch(null, orders)}
+        <div class="farm-result-order-empty">ยังไม่มีใบสั่งงานที่พร้อมบันทึกผลงาน</div>
+      </section>`;
+  }
   const calc = farmResultCalculation(order);
   const draft = calc.draft;
   const area = [order?.plot?.plot_code, order?.block?.block_code || order?.block?.block_name, order?.block?.ap_code || order?.block?.AP_code].filter(Boolean).join(" / ") || "-";
