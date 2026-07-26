@@ -105,3 +105,8 @@ test("Preview routing serves the SPA entry point for direct workspace routes", (
   assert.match(indexHtml, /href="\/styles\.css/);
   assert.match(indexHtml, /src="\/app\.js/);
 });
+
+test("current farm hierarchy remains usable when the legacy areas table is absent", () => {
+  assert.equal(farmTables._test.OPTIONAL_TABLES.has("areas"), true);
+  assert.equal(farmTables._test.OPTIONAL_TABLES.has("blocks"), false);
+});

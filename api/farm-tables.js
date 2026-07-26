@@ -114,7 +114,9 @@ const CONFLICT_KEYS = {
   survey_questions: "question_code",
 };
 
-const OPTIONAL_TABLES = new Set([...TABLES].filter((name) => name.startsWith("v_")));
+// `areas` is a legacy compatibility source; the current project uses
+// estates/zones/plots/blocks and must not fail an otherwise valid workspace read.
+const OPTIONAL_TABLES = new Set([...TABLES].filter((name) => name.startsWith("v_")).concat("areas"));
 const CACHE_MS = 30_000;
 const cache = new Map();
 const ACTION_ONLY_TABLES = new Set([
@@ -502,6 +504,6 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports._test = {
-  ACTION_ONLY_TABLES, TABLES, UAT_OPERATIONAL_TABLES, cache, clearCache, parallelMap,
+  ACTION_ONLY_TABLES, OPTIONAL_TABLES, TABLES, UAT_OPERATIONAL_TABLES, cache, clearCache, parallelMap,
   enforceUatTableWrite, requestedTables, tableName, uatActionCenterRows, uatRowAllowed,
 };
