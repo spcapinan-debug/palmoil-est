@@ -36,10 +36,12 @@ test("UAT action guard allows clone records and rejects reference records", () =
     (error) => error.status === 403 && error.code === "UAT_WRITE_FORBIDDEN",
   );
   for (const action of [
-    "approve_goods_issue", "post_goods_issue", "prepare_payroll_period",
-    "approve_payroll_period", "close_payroll_period", "issue_fuel",
+    "prepare_payroll_period", "approve_payroll_period", "close_payroll_period", "issue_fuel",
   ]) {
     assert.equal(farmActions._test.UAT_MUTATION_ACTIONS.has(action), false, action);
+  }
+  for (const action of ["approve_goods_issue", "post_goods_issue"]) {
+    assert.equal(farmActions._test.UAT_MUTATION_ACTIONS.has(action), true, action);
   }
 });
 

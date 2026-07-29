@@ -103,24 +103,137 @@ const ACTIONS = {
     entity: "work_result_weight_tickets",
   },
   prepare_goods_issue_from_work_order: {
-    permission: "inventory.manage",
-    rpc: "prepare_goods_issue_from_work_order",
+    permissions: ["inventory.issue.prepare", "inventory.manage"],
+    execute: prepareGoodsIssueFromWorkOrder,
     params: (args, actor) => ({
-      p_work_order_id: requireUuid(args.work_order_id, "work_order_id"),
-      p_warehouse_id: optionalUuid(args.warehouse_id, "warehouse_id"),
-      p_profile_id: actor.profile.id,
+      args,
+      actor,
     }),
     entity: "goods_issues",
   },
   approve_goods_issue: {
-    permission: "inventory.manage", confirmation: true, rpc: "approve_goods_issue",
+    permissions: ["inventory.issue.approve", "inventory.manage"], confirmation: true, rpc: "approve_goods_issue",
     params: (args, actor) => ({ p_issue_id: requireUuid(args.issue_id, "issue_id"), p_profile_id: actor.profile.id }),
     entity: "goods_issues", entityId: (args) => args.issue_id,
   },
   post_goods_issue: {
-    permission: "inventory.manage", confirmation: true, rpc: "post_goods_issue",
+    permissions: ["inventory.issue.post", "inventory.manage"], confirmation: true, rpc: "post_goods_issue",
     params: (args, actor) => ({ p_issue_id: requireUuid(args.issue_id, "issue_id"), p_profile_id: actor.profile.id }),
     entity: "goods_issues", entityId: (args) => args.issue_id,
+  },
+  "calculate-material-issue-quantity": {
+    permissions: ["inventory.issue.prepare", "inventory.conversion.view", "inventory.manage"],
+    rpc: "calculate_material_issue_quantity",
+    params: (args) => ({
+      p_material_id: requireUuid(args.material_id, "material_id"),
+      p_required_quantity: requiredNumber(args.required_quantity, "required_quantity", { minimum: Number.EPSILON }),
+      p_required_unit_id: requireUuid(args.required_unit_id, "required_unit_id"),
+      p_issue_unit_id: requireUuid(args.issue_unit_id, "issue_unit_id"),
+      p_allow_fraction: booleanValue(args.allow_fraction, "allow_fraction", false),
+    }),
+    entity: "sku_conversions",
+  },
+  "configure-goods-issue-period": {
+    permissions: ["inventory.issue.prepare", "inventory.manage"],
+    confirmation: true,
+    rpc: "configure_goods_issue_period",
+    params: (args, actor) => ({
+      p_issue_id: requireUuid(args.issue_id, "issue_id"),
+      p_issue_start_date: requiredDate(args.issue_start_date, "issue_start_date"),
+      p_issue_end_date: requiredDate(args.issue_end_date, "issue_end_date"),
+      p_allow_multi_day: booleanValue(args.allow_multi_day, "allow_multi_day", false),
+      p_profile_id: actor.profile.id,
+    }),
+    entity: "goods_issues", entityId: (args) => args.issue_id,
+  },
+  "record-goods-issue-daily-usage": {
+    permissions: ["inventory.issue.usage.record", "inventory.manage"],
+    rpc: "record_goods_issue_daily_usage",
+    params: (args, actor, context) => ({
+      p_issue_id: requireUuid(args.issue_id, "issue_id"),
+      p_issue_line_id: requireUuid(args.goods_issue_line_id || args.goodsIssueLineId, "goods_issue_line_id"),
+      p_usage_date: requiredDate(args.usage_date, "usage_date"),
+      p_work_result_id: optionalUuid(args.work_result_id, "work_result_id"),
+      p_material_id: requireUuid(args.material_id, "material_id"),
+      p_quantity: requiredNumber(args.quantity, "quantity", { minimum: Number.EPSILON }),
+      p_unit_id: requireUuid(args.unit_id, "unit_id"),
+      p_profile_id: actor.profile.id,
+      p_note: optionalText(args.note, 2000),
+      p_idempotency_key: context.idempotencyKey,
+    }),
+    entity: "goods_issue_daily_usage", entityId: (args) => args.goods_issue_line_id || args.goodsIssueLineId,
+  },
+  "prepare-goods-return": {
+    permissions: ["inventory.return.prepare", "inventory.manage"],
+    rpc: "prepare_goods_return_from_issue",
+    params: (args, actor) => ({
+      p_issue_id: requireUuid(args.issue_id, "issue_id"),
+      p_profile_id: actor.profile.id,
+      p_return_date: requiredDate(args.return_date, "return_date"),
+      p_work_result_id: optionalUuid(args.work_result_id, "work_result_id"),
+    }),
+    entity: "goods_returns",
+  },
+  "update-goods-return-line": {
+    permissions: ["inventory.return.edit", "inventory.manage"],
+    rpc: "update_goods_return_line",
+    params: (args, actor) => ({
+      p_return_line_id: requireUuid(args.return_line_id, "return_line_id"),
+      p_quantity: requiredNumber(args.quantity, "quantity", { minimum: Number.EPSILON }),
+      p_unit_id: requireUuid(args.unit_id, "unit_id"),
+      p_condition_status: enumValue(
+        args.condition_status,
+        "condition_status",
+        ["good", "damaged", "expired", "contaminated", "quarantine"],
+      ),
+      p_destination_bin_id: requireUuid(args.destination_bin_id, "destination_bin_id"),
+      p_profile_id: actor.profile.id,
+    }),
+    entity: "goods_return_lines", entityId: (args) => args.return_line_id,
+  },
+  "approve-goods-return": {
+    permissions: ["inventory.return.approve", "inventory.manage"],
+    confirmation: true,
+    rpc: "approve_goods_return",
+    params: (args, actor) => ({
+      p_return_id: requireUuid(args.return_id, "return_id"),
+      p_profile_id: actor.profile.id,
+    }),
+    entity: "goods_returns", entityId: (args) => args.return_id,
+  },
+  "post-goods-return": {
+    permissions: ["inventory.return.post", "inventory.manage"],
+    confirmation: true,
+    rpc: "post_goods_return",
+    params: (args, actor) => ({
+      p_return_id: requireUuid(args.return_id, "return_id"),
+      p_profile_id: actor.profile.id,
+    }),
+    entity: "goods_returns", entityId: (args) => args.return_id,
+  },
+  "close-goods-issue-usage": {
+    permissions: ["inventory.issue.close", "inventory.manage"],
+    confirmation: true,
+    rpc: "close_goods_issue_usage",
+    params: (args, actor) => ({
+      p_issue_id: requireUuid(args.issue_id, "issue_id"),
+      p_profile_id: actor.profile.id,
+    }),
+    entity: "goods_issues", entityId: (args) => args.issue_id,
+  },
+  "save-material-conversion": {
+    permissions: ["inventory.conversion.manage", "inventory.manage"],
+    confirmation: true,
+    rpc: "save_material_conversion",
+    params: (args, actor) => ({
+      p_material_id: requireUuid(args.material_id, "material_id"),
+      p_from_unit_id: requireUuid(args.from_unit_id, "from_unit_id"),
+      p_to_unit_id: requireUuid(args.to_unit_id, "to_unit_id"),
+      p_conversion_rate: requiredNumber(args.conversion_rate, "conversion_rate", { minimum: Number.EPSILON }),
+      p_status: enumValue(args.status || "active", "status", ["active", "inactive"]),
+      p_profile_id: actor.profile.id,
+    }),
+    entity: "sku_conversions", entityId: (args) => args.material_id,
   },
   prepare_payroll_period: {
     permission: "payroll.calculate", rpc: "prepare_payroll_period",
@@ -266,6 +379,33 @@ const UAT_MUTATION_ACTIONS = new Set([
   "submit_survey_response",
   "verify_survey_response",
   "close_survey_response",
+  "prepare_goods_issue_from_work_order",
+  "approve_goods_issue",
+  "post_goods_issue",
+  "calculate-material-issue-quantity",
+  "configure-goods-issue-period",
+  "record-goods-issue-daily-usage",
+  "prepare-goods-return",
+  "update-goods-return-line",
+  "approve-goods-return",
+  "post-goods-return",
+  "close-goods-issue-usage",
+  "save-material-conversion",
+]);
+
+const INVENTORY_UAT_ACTIONS = new Set([
+  "prepare_goods_issue_from_work_order",
+  "approve_goods_issue",
+  "post_goods_issue",
+  "calculate-material-issue-quantity",
+  "configure-goods-issue-period",
+  "record-goods-issue-daily-usage",
+  "prepare-goods-return",
+  "update-goods-return-line",
+  "approve-goods-return",
+  "post-goods-return",
+  "close-goods-issue-usage",
+  "save-material-conversion",
 ]);
 
 function requireWebTestCode(value) {
@@ -277,6 +417,41 @@ function dateOrToday(value, field = "response_date") {
   const date = String(value || new Date().toISOString().slice(0, 10));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ApiError(400, "VALIDATION_ERROR", `${field} must be YYYY-MM-DD`);
   return date;
+}
+
+function requiredDate(value, field) {
+  const date = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
+    throw new ApiError(400, "VALIDATION_ERROR", `${field} must be YYYY-MM-DD`, { field });
+  }
+  return date;
+}
+
+function requiredNumber(value, field, options = {}) {
+  const number = optionalNumber(value, field, options);
+  if (number == null) throw new ApiError(400, "VALIDATION_ERROR", `${field} is required`, { field });
+  return number;
+}
+
+function booleanValue(value, field, fallback) {
+  if (value == null || value === "") return fallback;
+  if (typeof value !== "boolean") {
+    throw new ApiError(400, "VALIDATION_ERROR", `${field} must be a boolean`, { field });
+  }
+  return value;
+}
+
+function enumValue(value, field, values) {
+  const text = String(value || "");
+  if (!values.includes(text)) {
+    throw new ApiError(400, "VALIDATION_ERROR", `${field} is invalid`, { field });
+  }
+  return text;
+}
+
+function optionalText(value, max) {
+  if (value == null || value === "") return null;
+  return String(value).slice(0, max);
 }
 
 async function one(path, label) {
@@ -294,6 +469,92 @@ function requireUatWorkOrder(order) {
     throw new ApiError(403, "UAT_WRITE_FORBIDDEN", "UAT writes are restricted to WEBTEST-UAT records");
   }
   return order;
+}
+
+function requireInventoryUatIssue(issue) {
+  if (!String(issue?.issue_no || "").startsWith("WEBTEST-UAT-INV-")) {
+    throw new ApiError(
+      403,
+      "UAT_WRITE_FORBIDDEN",
+      "Inventory UAT writes are restricted to WEBTEST-UAT-INV records",
+    );
+  }
+  return issue;
+}
+
+async function inventoryIssueFromArgs(action, args, { requireUatPrefix = true } = {}) {
+  if (action === "calculate-material-issue-quantity") return null;
+  if (action === "save-material-conversion") {
+    const materialId = requireUuid(args.material_id, "material_id");
+    const material = await one(
+      `materials?id=eq.${materialId}&select=id,material_code&limit=1`,
+      "Material",
+    );
+    if (requireUatPrefix && !String(material.material_code || "").startsWith("WEBTEST-UAT-INV-")) {
+      throw new ApiError(
+        403,
+        "UAT_WRITE_FORBIDDEN",
+        "Inventory UAT conversion writes are restricted to WEBTEST-UAT-INV materials",
+      );
+    }
+    return null;
+  }
+  if (action === "prepare_goods_issue_from_work_order") {
+    return one(
+      `work_orders?id=eq.${requireUuid(args.work_order_id, "work_order_id")}`
+      + "&select=id,work_order_no,estate_id,plot_id,block_id&limit=1",
+      "Work order",
+    );
+  }
+
+  let issueId = args.issue_id || null;
+  if (!issueId && (args.goods_issue_line_id || args.goodsIssueLineId)) {
+    const lineId = requireUuid(
+      args.goods_issue_line_id || args.goodsIssueLineId,
+      "goods_issue_line_id",
+    );
+    const line = await one(
+      `goods_issue_lines?id=eq.${lineId}&select=id,issue_id&limit=1`,
+      "Goods issue line",
+    );
+    issueId = line.issue_id;
+  }
+  if (!issueId && args.return_line_id) {
+    const returnLine = await one(
+      `goods_return_lines?id=eq.${requireUuid(args.return_line_id, "return_line_id")}`
+      + "&select=id,return_id&limit=1",
+      "Goods return line",
+    );
+    args = { ...args, return_id: returnLine.return_id };
+  }
+  if (!issueId && args.return_id) {
+    const goodsReturn = await one(
+      `goods_returns?id=eq.${requireUuid(args.return_id, "return_id")}`
+      + "&select=id,goods_issue_id&limit=1",
+      "Goods return",
+    );
+    issueId = goodsReturn.goods_issue_id;
+  }
+  const issue = await one(
+    `goods_issues?id=eq.${requireUuid(issueId, "issue_id")}`
+    + "&select=id,issue_no,work_order_id&limit=1",
+    "Goods issue",
+  );
+  if (requireUatPrefix) requireInventoryUatIssue(issue);
+  if (!issue.work_order_id) {
+    throw new ApiError(403, "SCOPE_FORBIDDEN", "Goods issue is not linked to a scoped work order");
+  }
+  return one(
+    `work_orders?id=eq.${issue.work_order_id}`
+    + "&select=id,work_order_no,estate_id,plot_id,block_id&limit=1",
+    "Work order",
+  );
+}
+
+async function enforceActionScope(actor, action, args) {
+  if (!INVENTORY_UAT_ACTIONS.has(action)) return;
+  const order = await inventoryIssueFromArgs(action, args, { requireUatPrefix: false });
+  if (order) await authorizeWorkOrderScope(actor, order);
 }
 
 async function uatOrderFromArgs(action, args) {
@@ -346,7 +607,9 @@ async function enforceUatMutation(actor, action, args) {
   if (!UAT_MUTATION_ACTIONS.has(action)) {
     throw new ApiError(403, "UAT_ACTION_FORBIDDEN", "This action is disabled for UAT identities");
   }
-  const order = await uatOrderFromArgs(action, args);
+  const order = INVENTORY_UAT_ACTIONS.has(action)
+    ? await inventoryIssueFromArgs(action, args)
+    : await uatOrderFromArgs(action, args);
   if (order) {
     await authorizeWorkOrderScope(actor, order);
     requireUatWorkOrder(order);
@@ -365,6 +628,40 @@ async function authorizeWorkOrderScope(actor, order) {
     && (!scope.plot_id || scope.plot_id === order.plot_id)
     && (!scope.block_id || scope.block_id === order.block_id));
   if (!allowed) throw new ApiError(403, "SCOPE_FORBIDDEN", "Work order is outside your assigned scope");
+}
+
+async function prepareGoodsIssueFromWorkOrder({ args, actor }) {
+  const workOrderId = requireUuid(args.work_order_id, "work_order_id");
+  const warehouseId = optionalUuid(args.warehouse_id, "warehouse_id");
+  const order = await one(
+    `work_orders?id=eq.${workOrderId}`
+    + "&select=id,work_order_no,estate_id,plot_id,block_id&limit=1",
+    "Work order",
+  );
+  await authorizeWorkOrderScope(actor, order);
+  if (actorIsUat(actor)) requireUatWorkOrder(order);
+
+  const result = await rpc("prepare_goods_issue_from_work_order", {
+    p_work_order_id: workOrderId,
+    p_warehouse_id: warehouseId,
+    p_profile_id: actor.profile.id,
+  });
+  let issue = Array.isArray(result) ? result[0] : result;
+  if (!issue?.id) throw new ApiError(500, "WRITE_FAILED", "Goods issue could not be prepared");
+
+  if (actorIsUat(actor) && !String(issue.issue_no || "").startsWith("WEBTEST-UAT-INV-")) {
+    const issueNo = `WEBTEST-UAT-INV-GI-${Date.now()}-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const { data } = await rest(`goods_issues?id=eq.${issue.id}&status=eq.draft`, {
+      method: "PATCH",
+      body: JSON.stringify({ issue_no: issueNo }),
+      headers: { Prefer: "return=representation" },
+    });
+    if (!data?.length) {
+      throw new ApiError(409, "STATE_CONFLICT", "Prepared goods issue could not be marked for inventory UAT");
+    }
+    [issue] = data;
+  }
+  return issue;
 }
 
 async function createWorkOrderFromPlanItem({ args, actor }) {
@@ -941,7 +1238,11 @@ async function claimIdempotency(key, action, hash, actor) {
   const existing = await rest(`farm_action_idempotency?idempotency_key=eq.${encodeURIComponent(key)}&select=*&limit=1`)
     .then(({ data: rows }) => rows?.[0]);
   if (!existing || existing.request_hash !== hash) {
-    throw new ApiError(409, "IDEMPOTENCY_CONFLICT", "The idempotency key was already used for a different request");
+    throw new ApiError(
+      409,
+      "IDEMPOTENCY_PAYLOAD_MISMATCH",
+      "The idempotency key was already used for a different request payload",
+    );
   }
   if (existing.status === "completed") return { claimed: false, response: existing.response_json };
   throw new ApiError(409, "ACTION_IN_PROGRESS", "An action with this idempotency key is already processing");
@@ -978,9 +1279,12 @@ async function handler(req, res) {
     if (definition.admin) {
       if (![...actor.roles].some((role) => ADMIN_ROLES.has(role))) throw new ApiError(403, "FORBIDDEN", "Admin role required");
     } else {
-      authorize(actor, { permissions: [definition.permission] });
+      authorize(actor, {
+        permissions: definition.permissions || [definition.permission],
+      });
     }
     const args = body.args && typeof body.args === "object" && !Array.isArray(body.args) ? body.args : {};
+    await enforceActionScope(actor, action, args);
     await enforceUatMutation(actor, action, args);
     if (definition.confirmation && body.confirmed !== true) {
       throw new ApiError(409, "CONFIRMATION_REQUIRED", "This action requires confirmed=true");
@@ -990,7 +1294,7 @@ async function handler(req, res) {
     const claim = await claimIdempotency(idempotencyKey, action, hash, actor);
     if (!claim.claimed) return json(res, 200, claim.response);
 
-    const params = definition.params(args, actor);
+    const params = definition.params(args, actor, { idempotencyKey });
     await audit(req, actor, `farm_action.requested.${action}`, definition.entity, definition.entityId?.(args), {
       reason: String(body.reason || args.reason || "").slice(0, 500),
       idempotency_key: idempotencyKey,
@@ -1001,7 +1305,9 @@ async function handler(req, res) {
     await finishIdempotency(idempotencyKey, response);
     return json(res, 200, response);
   } catch (error) {
-    if (idempotencyKey && error?.code !== "ACTION_IN_PROGRESS" && error?.code !== "IDEMPOTENCY_CONFLICT") {
+    if (idempotencyKey
+        && error?.code !== "ACTION_IN_PROGRESS"
+        && error?.code !== "IDEMPOTENCY_PAYLOAD_MISMATCH") {
       await finishIdempotency(idempotencyKey, null, {
         code: error?.code || "INTERNAL_ERROR", message: error?.message || "Unexpected error",
       }).catch(() => {});
@@ -1012,5 +1318,6 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports._test = {
-  ACTIONS, UAT_MUTATION_ACTIONS, enforceUatMutation, requireUatWorkOrder, requireWebTestCode, requestHash,
+  ACTIONS, INVENTORY_UAT_ACTIONS, UAT_MUTATION_ACTIONS, enforceActionScope, enforceUatMutation,
+  requireInventoryUatIssue, requireUatWorkOrder, requireWebTestCode, requestHash,
 };

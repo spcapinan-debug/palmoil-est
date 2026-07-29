@@ -28,8 +28,11 @@ const TABLES = new Set([
   "work_order_materials", "work_order_machines", "work_order_approvals", "work_order_qr_codes",
   "work_order_locations", "work_order_status_logs", "work_attendance", "work_results",
   "work_result_workers", "work_result_weight_tickets", "work_result_vehicle_usage",
-  "warehouses", "bin_locations", "stock_transactions", "stock_balances", "goods_issues",
-  "goods_issue_lines", "budget_years", "budget_activity_rates", "budget_rate_blocks",
+  "warehouses", "bin_locations", "stock_transactions", "stock_balances",
+  "goods_receipts", "goods_receipt_lines", "goods_issues", "goods_issue_lines",
+  "goods_issue_daily_usage", "goods_returns", "goods_return_lines",
+  "stock_transfers", "stock_adjustments", "stock_counts", "stock_count_lines",
+  "budget_years", "budget_activity_rates", "budget_rate_blocks",
   "budget_rate_materials", "budget_rate_roles", "budget_rate_rule_sets", "budget_rate_rules",
   "budget_rate_rule_conditions", "budget_rate_rule_blocks", "budget_rate_block_snapshots",
   "activity_budget_rate_recommendations", "activity_performance_standards",
@@ -52,6 +55,8 @@ const TABLES = new Set([
   "v_budget_rate_rule_editor", "v_budget_rate_announcement_matrix",
   "v_survey_response_summary", "v_survey_question_analysis", "v_survey_finding_followup",
   "v_survey_action_center", "v_available_inbound_weight_tickets",
+  "v_goods_issue_multi_day_status", "v_goods_return_readiness",
+  "v_material_unit_conversion_options",
 ]);
 
 const READ_RESTRICTED = {
@@ -62,6 +67,18 @@ const READ_RESTRICTED = {
   permissions: "system.role.manage",
   role_permissions: "system.role.manage",
   user_access_scopes: "system.user.manage",
+  goods_issue_daily_usage: ["inventory.view", "inventory.manage"],
+  goods_issues: ["inventory.view", "inventory.manage"],
+  goods_issue_lines: ["inventory.view", "inventory.manage"],
+  goods_returns: ["inventory.view", "inventory.manage"],
+  goods_return_lines: ["inventory.view", "inventory.manage"],
+  sku_conversions: ["inventory.conversion.view", "inventory.manage"],
+  stock_balances: ["inventory.stock.view", "inventory.manage"],
+  stock_transactions: ["inventory.stock.view", "inventory.manage"],
+  unit_conversions: ["inventory.conversion.view", "inventory.manage"],
+  v_goods_issue_multi_day_status: ["inventory.view", "inventory.manage"],
+  v_goods_return_readiness: ["inventory.view", "inventory.manage"],
+  v_material_unit_conversion_options: ["inventory.conversion.view", "inventory.manage"],
 };
 
 const WRITE_PERMISSIONS = {
@@ -133,7 +150,9 @@ const OPTIONAL_TABLES = new Set([...TABLES].filter((name) => name.startsWith("v_
 const CACHE_MS = 30_000;
 const cache = new Map();
 const ACTION_ONLY_TABLES = new Set([
-  "stock_transactions", "stock_balances", "goods_issues", "goods_issue_lines",
+  "goods_issue_daily_usage", "goods_issues", "goods_issue_lines",
+  "goods_returns", "goods_return_lines", "sku_conversions", "unit_conversions",
+  "stock_balances", "stock_transactions",
   "fuel_issues", "vehicle_fuel_balances", "vehicle_fuel_consumption_periods",
   "payroll_periods", "payroll_period_lines", "payroll_employee_summaries",
   "payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines",
@@ -154,8 +173,10 @@ function requestedTables(value) {
 }
 
 function readPermission(actor, table) {
-  const permission = READ_RESTRICTED[table];
-  if (permission) authorize(actor, { permissions: [permission] });
+  const permissions = READ_RESTRICTED[table];
+  if (permissions) authorize(actor, {
+    permissions: Array.isArray(permissions) ? permissions : [permissions],
+  });
 }
 
 function writePermission(actor, table) {
@@ -207,6 +228,9 @@ const UAT_OPERATIONAL_TABLES = new Set([
   "work_result_vehicle_usage", "work_performance_metrics", "cost_entries",
   "survey_responses", "survey_answers", "survey_response_attachments",
   "survey_answer_attachments", "survey_findings",
+  "goods_issues", "goods_issue_lines", "goods_issue_daily_usage",
+  "goods_returns", "goods_return_lines", "stock_balances", "stock_transactions",
+  "sku_conversions",
   "payroll_periods", "payroll_period_lines", "payroll_employee_summaries",
   "payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines",
 ]);
@@ -236,6 +260,25 @@ async function uatReadContext(actor) {
       .then(({ data }) => data || [])
     : [];
   const workResultIds = setOf(results, "id");
+  const goodsIssues = workOrderIds.size
+    ? await rest(`goods_issues?work_order_id=in.(${[...workOrderIds].join(",")})&select=id,issue_no,work_order_id`)
+      .then(({ data }) => (data || []).filter((row) =>
+        String(row.issue_no || "").startsWith("WEBTEST-2569")
+        || String(row.issue_no || "").startsWith("WEBTEST-UAT-INV-")))
+    : [];
+  const goodsIssueIds = setOf(goodsIssues, "id");
+  const goodsIssueLines = goodsIssueIds.size
+    ? await rest(`goods_issue_lines?issue_id=in.(${[...goodsIssueIds].join(",")})&select=id,issue_id,material_id,material_lot_id`)
+      .then(({ data }) => data || [])
+    : [];
+  const goodsIssueLineIds = setOf(goodsIssueLines, "id");
+  const inventoryMaterialIds = setOf(goodsIssueLines, "material_id");
+  const inventoryLotIds = setOf(goodsIssueLines, "material_lot_id");
+  const goodsReturns = goodsIssueIds.size
+    ? await rest(`goods_returns?goods_issue_id=in.(${[...goodsIssueIds].join(",")})&select=id,goods_issue_id`)
+      .then(({ data }) => data || [])
+    : [];
+  const goodsReturnIds = setOf(goodsReturns, "id");
   const responses = workOrderIds.size
     ? await rest(`survey_responses?work_order_id=in.(${[...workOrderIds].join(",")})&select=id,work_order_id,work_result_id`)
       .then(({ data }) => data || [])
@@ -264,6 +307,7 @@ async function uatReadContext(actor) {
   ]);
   return {
     annualPlanIds, blockIds, orders, payrollPeriodIds: setOf(payrollPeriods, "id"),
+    goodsIssueIds, goodsIssueLineIds, goodsReturnIds, inventoryLotIds, inventoryMaterialIds,
     plannedItemIds, results, surveyAnswerIds,
     surveyAttachmentIds: setOf([...responseAttachments, ...answerAttachments], "attachment_id"),
     surveyResponseIds, workOrderIds, workResultIds,
@@ -307,6 +351,19 @@ function uatRowAllowed(table, row, context) {
   if (table === "planned_work_items") return context.plannedItemIds.has(row.id);
   if (table === "planned_work_materials") return context.plannedItemIds.has(row.planned_work_item_id);
   if (table === "work_orders") return context.workOrderIds.has(row.id);
+  if (table === "goods_issues") return context.goodsIssueIds.has(row.id);
+  if (table === "goods_issue_lines") {
+    return context.goodsIssueIds.has(row.issue_id) || context.goodsIssueLineIds.has(row.id);
+  }
+  if (table === "goods_issue_daily_usage") {
+    return context.goodsIssueIds.has(row.goods_issue_id)
+      && context.goodsIssueLineIds.has(row.goods_issue_line_id);
+  }
+  if (table === "goods_returns") return context.goodsReturnIds.has(row.id);
+  if (table === "goods_return_lines") return context.goodsReturnIds.has(row.return_id);
+  if (table === "stock_balances" || table === "stock_transactions" || table === "sku_conversions") {
+    return context.inventoryMaterialIds.has(row.material_id);
+  }
   if (table.startsWith("work_order_") || table === "work_attendance") return context.workOrderIds.has(row.work_order_id);
   if (table === "work_results") return context.workResultIds.has(row.id);
   if (table.startsWith("work_result_") || table === "work_performance_metrics") {
@@ -450,10 +507,10 @@ async function handlePost(req, res, actor) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   const table = tableName(body.table);
-  writePermission(actor, table);
   if (ACTION_ONLY_TABLES.has(table)) {
-    throw new ApiError(409, "ACTION_REQUIRED", `${table} must be changed through /api/farm-actions`);
+    throw new ApiError(403, "ACTION_REQUIRED", `${table} must be changed through /api/farm-actions`);
   }
+  writePermission(actor, table);
   const rows = Array.isArray(body.rows) ? body.rows : (body.row && typeof body.row === "object" ? [body.row] : []);
   if (!rows.length || rows.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
@@ -480,13 +537,13 @@ async function handleDelete(req, res, url, actor) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   const table = tableName(body.table || url.searchParams.get("table"));
-  writePermission(actor, table);
   if (actorIsUat(actor)) {
     throw new ApiError(403, "UAT_DELETE_FORBIDDEN", "UAT identities cannot delete records");
   }
   if (ACTION_ONLY_TABLES.has(table)) {
-    throw new ApiError(409, "ACTION_REQUIRED", `${table} must be changed through /api/farm-actions`);
+    throw new ApiError(403, "ACTION_REQUIRED", `${table} must be changed through /api/farm-actions`);
   }
+  writePermission(actor, table);
   if (body.all === true) throw new ApiError(403, "DELETE_ALL_DISABLED", "Bulk table deletion is disabled");
   const id = requireUuid(body.id || url.searchParams.get("id"), "id");
   const { data } = await rest(`${table}?id=eq.${encodeURIComponent(id)}`, {
