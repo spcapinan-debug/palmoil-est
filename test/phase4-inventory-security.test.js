@@ -17,6 +17,16 @@ const migration = fs.readFileSync(
   ),
   "utf8",
 );
+const returnLineGuardMigration = fs.readFileSync(
+  path.join(
+    __dirname,
+    "..",
+    "supabase",
+    "migrations",
+    "20260729090000_phase4_return_line_overage_guard.sql",
+  ),
+  "utf8",
+);
 
 const PHASE4_ACTIONS = [
   "calculate-material-issue-quantity",
@@ -121,6 +131,21 @@ test("integrity hotfix locks and recomputes returns before stock upsert", () => 
   assert.match(migration, /goods_issue_id,idempotency_key/);
   assert.match(migration, /p_issue_line_id uuid/);
   assert.doesNotMatch(migration, /delete\s+from\s+public\./i);
+});
+
+test("draft return-line edits validate overage before returning success", () => {
+  assert.match(
+    returnLineGuardMigration,
+    /perform public\.validate_goods_return_integrity\(v_header\.id\)/,
+  );
+  assert.match(
+    returnLineGuardMigration,
+    /revoke execute on function public\.update_goods_return_line/,
+  );
+  assert.match(
+    returnLineGuardMigration,
+    /grant execute on function public\.update_goods_return_line[\s\S]*to service_role/,
+  );
 });
 
 test("inventory domain errors map to safe HTTP responses", () => {
