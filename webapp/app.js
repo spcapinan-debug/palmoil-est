@@ -46,6 +46,10 @@ const state = {
   farmFilters: { query: "", status: "all", role: "super_admin" },
   farmNewDefaults: {},
   farmInventoryCategoryMajor: "",
+  farmInventoryWorkspaceTab: "overview",
+  farmInventoryIssueLineId: "",
+  farmInventoryReturnId: "",
+  farmInventoryCalculation: null,
   farmSelectedTeamId: "",
   farmActivityModalTable: "",
   farmBudgetContract: {
@@ -149,6 +153,20 @@ const FARM_DAILY_WORKSPACE_TABS = [
   ["survey", "Survey"],
   ["attachments", "เอกสารแนบ"],
   ["review", "ตรวจสอบและปิดงาน"],
+];
+
+const FARM_INVENTORY_WORKSPACE_TABS = [
+  ["overview", "ภาพรวมคลัง"],
+  ["stock", "Stock คงเหลือ"],
+  ["receipts", "รับพัสดุ"],
+  ["issues", "จ่ายพัสดุ"],
+  ["daily-usage", "การใช้รายวัน"],
+  ["returns", "คืนพัสดุ"],
+  ["conversions", "แปลงหน่วย/SKU"],
+  ["stock-card", "Stock Card"],
+  ["transfers", "โอนคลัง"],
+  ["counts", "ตรวจนับ"],
+  ["adjustments", "ปรับยอด"],
 ];
 
 const farmDerivedCache = {
@@ -634,7 +652,16 @@ const FARM_MODULES = [
     group: "Inventory",
     accent: "Stock Transactions",
     description: "รับพัสดุ จ่ายพัสดุ คืนพัสดุ โอนย้าย ปรับยอด ตรวจนับ แปลง SKU รถ เครื่องจักร และน้ำมัน",
-    tables: ["inventory_master", "warehouses", "inventory_documents", "inventory_document_lines", "stock_transactions", "stock_balances", "unit_conversions", "sku_conversions", "material_lots"],
+    tables: [
+      "inventory_master", "material_categories", "materials", "units", "warehouses",
+      "bin_locations", "inventory_documents", "inventory_document_lines",
+      "goods_receipts", "goods_receipt_lines", "goods_issues", "goods_issue_lines",
+      "goods_issue_daily_usage", "goods_returns", "goods_return_lines",
+      "stock_transactions", "stock_balances", "stock_transfers", "stock_adjustments",
+      "stock_counts", "unit_conversions", "sku_conversions", "material_lots",
+      "v_goods_issue_multi_day_status", "v_goods_return_readiness",
+      "v_material_unit_conversion_options",
+    ],
     fields: [
       ["code", "รหัส", "MAT-001"],
       ["name", "รายการ", "ปุ๋ย 25kg"],
@@ -2368,6 +2395,10 @@ const FARM_TABLE_SCHEMAS = {
       F("warehouse_id", "คลัง", { references: "warehouses", required: true }),
       F("work_order_id", "ใบสั่งงาน", { references: "work_orders" }),
       F("issue_date", "วันที่จ่าย", { type: "date" }),
+      F("issue_start_date", "วันที่เริ่มใช้", { type: "date" }),
+      F("issue_end_date", "วันที่สิ้นสุด", { type: "date" }),
+      F("allow_multi_day", "ใช้ต่อเนื่องหลายวัน", { type: "boolean" }),
+      F("usage_status", "สถานะการใช้"),
       F("issued_to_employee_id", "ผู้รับ", { references: "employees" }),
       F("status", "สถานะ", { type: "status" }),
     ],
@@ -2385,6 +2416,12 @@ const FARM_TABLE_SCHEMAS = {
       F("quantity", "จำนวน", { type: "number" }),
       F("unit_id", "หน่วย", { references: "units" }),
       F("bin_id", "ตำแหน่งเก็บ", { references: "bin_locations" }),
+      F("requested_quantity", "จำนวนที่ต้องการ", { type: "number" }),
+      F("requested_unit_id", "หน่วยที่ต้องการ", { references: "units" }),
+      F("base_quantity", "จำนวนหน่วยฐาน", { type: "number" }),
+      F("base_unit_id", "หน่วยฐาน", { references: "units" }),
+      F("conversion_rate_snapshot", "อัตราแปลง", { type: "number" }),
+      F("rounding_difference", "ส่วนต่างการปัด", { type: "number" }),
     ],
     seed: [],
   },
@@ -2399,6 +2436,8 @@ const FARM_TABLE_SCHEMAS = {
       F("warehouse_id", "คลัง", { references: "warehouses", required: true }),
       F("work_order_id", "ใบสั่งงาน", { references: "work_orders" }),
       F("return_date", "วันที่คืน", { type: "date" }),
+      F("goods_issue_id", "ใบจ่าย", { references: "goods_issues" }),
+      F("work_result_id", "ผลงาน", { references: "work_results" }),
       F("returned_by_employee_id", "ผู้คืน", { references: "employees" }),
       F("status", "สถานะ", { type: "status" }),
     ],
@@ -2415,8 +2454,60 @@ const FARM_TABLE_SCHEMAS = {
       F("material_id", "วัสดุ", { references: "materials", required: true }),
       F("quantity", "จำนวน", { type: "number" }),
       F("unit_id", "หน่วย", { references: "units" }),
+      F("goods_issue_line_id", "รายการใบจ่าย", { references: "goods_issue_lines" }),
+      F("material_lot_id", "ล็อต", { references: "material_lots" }),
+      F("destination_bin_id", "ตำแหน่งรับคืน", { references: "bin_locations" }),
+      F("condition_status", "สภาพ"),
       F("condition_note", "สภาพ/หมายเหตุ"),
     ],
+    seed: [],
+  },
+  goods_issue_daily_usage: {
+    moduleId: "farm-inventory",
+    title: "การใช้พัสดุรายวัน",
+    primaryKey: "id",
+    codeField: "usage_date",
+    labelField: "goods_issue_line_id",
+    fields: [
+      F("goods_issue_id", "ใบจ่าย", { references: "goods_issues", required: true }),
+      F("goods_issue_line_id", "รายการใบจ่าย", { references: "goods_issue_lines", required: true }),
+      F("work_order_id", "ใบสั่งงาน", { references: "work_orders" }),
+      F("work_result_id", "ผลงาน", { references: "work_results" }),
+      F("usage_date", "วันที่ใช้", { type: "date" }),
+      F("material_id", "วัสดุ", { references: "materials" }),
+      F("quantity", "จำนวน", { type: "number" }),
+      F("unit_id", "หน่วย", { references: "units" }),
+      F("issue_unit_quantity", "จำนวนหน่วยจ่าย", { type: "number" }),
+      F("base_quantity", "จำนวนหน่วยฐาน", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+    ],
+    seed: [],
+  },
+  v_goods_issue_multi_day_status: {
+    moduleId: "farm-inventory",
+    title: "สถานะใบจ่ายหลายวัน",
+    primaryKey: "goods_issue_line_id",
+    codeField: "issue_no",
+    labelField: "material_name",
+    fields: [],
+    seed: [],
+  },
+  v_goods_return_readiness: {
+    moduleId: "farm-inventory",
+    title: "ความพร้อมคืนพัสดุ",
+    primaryKey: "goods_issue_line_id",
+    codeField: "issue_no",
+    labelField: "return_readiness",
+    fields: [],
+    seed: [],
+  },
+  v_material_unit_conversion_options: {
+    moduleId: "farm-inventory",
+    title: "ตัวเลือกแปลงหน่วย",
+    primaryKey: "id",
+    codeField: "from_unit_code",
+    labelField: "to_unit_name",
+    fields: [],
     seed: [],
   },
   stock_transactions: {
@@ -3146,6 +3237,7 @@ function applyWorkspaceFallbackRoute(route) {
   const requestedTab = workspaceTabFromUrl(state.view);
   if (state.view === "farm-work" && requestedTab) state.farmWorkWorkspaceTab = requestedTab;
   if (state.view === "farm-result" && requestedTab) state.farmDailyWorkspaceTab = requestedTab;
+  if (state.view === "farm-inventory" && requestedTab) state.farmInventoryWorkspaceTab = requestedTab;
   ensureFarmViewState(state.view);
   return true;
 }
@@ -3153,20 +3245,28 @@ function applyWorkspaceFallbackRoute(route) {
 function workspaceTabFromUrl(view = state.view) {
   const requested = new URLSearchParams(window.location.search).get("tab") || "";
   const tabs = view === "farm-work" ? FARM_WORK_WORKSPACE_TABS
-    : view === "farm-result" ? FARM_DAILY_WORKSPACE_TABS : [];
+    : view === "farm-result" ? FARM_DAILY_WORKSPACE_TABS
+      : view === "farm-inventory" ? FARM_INVENTORY_WORKSPACE_TABS : [];
   return tabs.some(([key]) => key === requested) ? requested : "";
 }
 
 function setFarmWorkspaceTab(view, tab, { replace = false } = {}) {
-  const tabs = view === "farm-work" ? FARM_WORK_WORKSPACE_TABS : FARM_DAILY_WORKSPACE_TABS;
+  const tabs = view === "farm-work" ? FARM_WORK_WORKSPACE_TABS
+    : view === "farm-result" ? FARM_DAILY_WORKSPACE_TABS
+      : view === "farm-inventory" ? FARM_INVENTORY_WORKSPACE_TABS : [];
   if (!tabs.some(([key]) => key === tab)) return false;
   if (view === "farm-work") state.farmWorkWorkspaceTab = tab;
-  else state.farmDailyWorkspaceTab = tab;
+  else if (view === "farm-result") state.farmDailyWorkspaceTab = tab;
+  else state.farmInventoryWorkspaceTab = tab;
   const url = new URL(window.location.href);
-  url.searchParams.set("route", view === "farm-work" ? "/farm/work" : "/farm/daily");
+  url.searchParams.set(
+    "route",
+    view === "farm-work" ? "/farm/work" : view === "farm-result" ? "/farm/daily" : "/inventory",
+  );
   url.searchParams.set("tab", tab);
   (replace ? window.history.replaceState : window.history.pushState).call(window.history, {}, "", url);
   render();
+  if (view === "farm-inventory") loadFarmCurrentViewTables({ silent: true });
   return true;
 }
 
@@ -3266,6 +3366,9 @@ function applyWorkspaceRoute(route) {
   const requestedTab = workspaceTabFromUrl(state.view);
   if (state.view === "farm-work") state.farmWorkWorkspaceTab = requestedTab || item.workspace_tab || state.farmWorkWorkspaceTab;
   if (state.view === "farm-result") state.farmDailyWorkspaceTab = requestedTab || item.workspace_tab || state.farmDailyWorkspaceTab;
+  if (state.view === "farm-inventory") {
+    state.farmInventoryWorkspaceTab = requestedTab || item.workspace_tab || state.farmInventoryWorkspaceTab;
+  }
   ensureFarmViewState(state.view);
   return true;
 }
@@ -3519,22 +3622,42 @@ function normalizeFarmDbRows(tableKey, rows = []) {
 function farmDatabaseTablesForView(view = state.view) {
   if (!isFarmView(view)) return [];
   const module = farmModuleMap()[view] || null;
-  const tableSet = new Set(module?.tables || []);
+  const tableSet = new Set(view === "farm-inventory" ? [] : (module?.tables || []));
   if (view === "farm-inventory") {
-    [
+    const sharedTables = [
       "inventory_master",
       "material_categories",
       "materials",
       "units",
       "warehouses",
-      "vehicles",
-      "inventory_documents",
-      "inventory_document_lines",
-      "stock_transactions",
-      "stock_balances",
-      "unit_conversions",
-      "sku_conversions",
+      "bin_locations",
       "material_lots",
+    ];
+    const inventoryTablesByTab = {
+      overview: ["vehicles", "inventory_documents", "inventory_document_lines", "stock_balances"],
+      stock: ["stock_balances"],
+      receipts: ["goods_receipts", "goods_receipt_lines"],
+      issues: [
+        "goods_issues", "goods_issue_lines", "goods_returns", "work_orders", "work_results",
+        "employees", "v_goods_issue_multi_day_status", "v_goods_return_readiness",
+      ],
+      "daily-usage": [
+        "goods_issues", "goods_issue_lines", "goods_issue_daily_usage", "work_orders",
+        "work_results", "v_goods_issue_multi_day_status",
+      ],
+      returns: [
+        "goods_issues", "goods_issue_lines", "goods_returns", "goods_return_lines",
+        "v_goods_return_readiness",
+      ],
+      conversions: ["unit_conversions", "sku_conversions", "v_material_unit_conversion_options"],
+      "stock-card": ["stock_transactions"],
+      transfers: ["stock_transfers"],
+      counts: ["stock_counts"],
+      adjustments: ["stock_adjustments"],
+    };
+    [
+      ...sharedTables,
+      ...(inventoryTablesByTab[state.farmInventoryWorkspaceTab] || inventoryTablesByTab.overview),
     ].forEach((key) => tableSet.add(key));
   }
   if (view === "farm-inventory-issue") {
@@ -3671,7 +3794,8 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
   if (farmDbTableInflight.has(requestKey)) return farmDbTableInflight.get(requestKey);
 
   const request = (async () => {
-    const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(tableKeys.join(","))}&t=${Date.now()}`;
+    const limit = state.view === "farm-inventory" ? 500 : 5000;
+    const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(tableKeys.join(","))}&limit=${limit}&t=${Date.now()}`;
     const payload = await fetch(url, { cache: "no-store", headers: farmApiHeaders() }).then((res) => res.json());
     if (!payload || !payload.tables) throw new Error(farmApiErrorMessage(payload, "No farm table payload"));
     const nextRows = Object.fromEntries(
@@ -16975,7 +17099,7 @@ function farmInventoryQuantityForItem(itemId) {
     }, 0);
 }
 
-function renderFarmInventoryBoard() {
+function renderFarmInventoryLegacyOverview() {
   if (!FARM_INVENTORY_TABLES.includes(state.farmTableId)) state.farmTableId = "inventory_master";
   const items = farmRowsByKey("inventory_master");
   const warehouses = farmRowsByKey("warehouses");
@@ -17085,8 +17209,8 @@ function renderFarmInventoryBoard() {
       <div class="farm-inventory-flow">
         <button type="button" data-farm-inventory-quick="receipt">รับเข้า</button>
         <button type="button" data-farm-inventory-quick="issue">เบิกจ่าย</button>
-        <button type="button" data-farm-inventory-add="unit_conversions">แปลงหน่วย</button>
-        <button type="button" data-farm-inventory-add="sku_conversions">แปลง SKU</button>
+        <button type="button" data-farm-workspace-tab="conversions" data-farm-workspace-view="farm-inventory">แปลงหน่วย</button>
+        <button type="button" data-farm-workspace-tab="conversions" data-farm-workspace-view="farm-inventory">แปลง SKU</button>
       </div>
       <div class="farm-activity-toolbar farm-inventory-toolbar">
         <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหารหัส ชื่อ หมวด ทะเบียน คลัง"></label>
@@ -17177,7 +17301,357 @@ function renderFarmInventoryBoard() {
           </table>
         </div>
       </section>
+    </section>`;
+}
+
+function farmInventoryCan(permission) {
+  const admin = ["super_admin", "director", "estate_manager"].some((role) =>
+    state.workspaceRoles.has(role));
+  return admin
+    || state.workspacePermissions.has("inventory.manage")
+    || state.workspacePermissions.has(permission)
+    || (!state.workspaceRoles.size && state.farmFilters.role === "super_admin");
+}
+
+function farmInventoryIssueWorkspaceRows() {
+  return farmRowsByKey("v_goods_issue_multi_day_status").map((summary) => {
+    const issue = farmLookup("goods_issues", summary.goods_issue_id) || {};
+    const line = farmLookup("goods_issue_lines", summary.goods_issue_line_id) || {};
+    return {
+      ...issue,
+      ...line,
+      ...summary,
+      id: summary.goods_issue_line_id,
+      goods_issue_id: summary.goods_issue_id || issue.id,
+      goods_issue_line_id: summary.goods_issue_line_id || line.id,
+    };
+  });
+}
+
+function renderFarmInventoryDataState(content, {
+  empty = "ยังไม่มีข้อมูล",
+  colspan = 1,
+  table = "",
+} = {}) {
+  if (content) return content;
+  const error = state.farmDbErrors?.[table] || state.farmDbErrors?.api;
+  if (error) {
+    return `<tr><td colspan="${colspan}" class="inventory-state error">
+      โหลดข้อมูลไม่สำเร็จ <button type="button" data-inventory-retry>ลองใหม่</button>
+    </td></tr>`;
+  }
+  if (farmDbTableInflight.size) {
+    return `<tr><td colspan="${colspan}" class="inventory-state loading">กำลังโหลดข้อมูล…</td></tr>`;
+  }
+  return `<tr><td colspan="${colspan}" class="inventory-state">${esc(empty)}</td></tr>`;
+}
+
+function renderFarmInventoryStock() {
+  const rows = farmRowsByKey("stock_balances").map((row) => `
+    <tr>
+      <td>${esc(farmLookupLabel("warehouses", row.warehouse_id) || "-")}</td>
+      <td>${esc(farmLookupLabel("bin_locations", row.bin_id) || "-")}</td>
+      <td><strong>${esc(farmLookupLabel("materials", row.material_id) || "-")}</strong></td>
+      <td>${esc(farmLookupLabel("material_lots", row.material_lot_id) || "-")}</td>
+      <td class="num">${moneyNf.format(n(row.quantity_on_hand))}</td>
+      <td>${esc(farmLookupLabel("units", row.unit_id) || "-")}</td>
+      <td>${esc(displayDate(row.updated_at) || "-")}</td>
+    </tr>`).join("");
+  return `<section class="farm-panel inventory-workspace-panel">
+    <div class="section-head"><div><h3>Stock คงเหลือ</h3><span>แยกตามคลัง ตำแหน่งเก็บ วัสดุ Lot และหน่วยฐาน</span></div></div>
+    <div class="table-wrap"><table class="mini-table farm-table">
+      <thead><tr><th>คลัง</th><th>Bin</th><th>วัสดุ</th><th>Lot</th><th>คงเหลือ</th><th>หน่วย</th><th>อัปเดต</th></tr></thead>
+      <tbody>${renderFarmInventoryDataState(rows, { empty: "ยังไม่มียอดคงเหลือ", colspan: 7, table: "stock_balances" })}</tbody>
+    </table></div>
+  </section>`;
+}
+
+function renderFarmInventoryReceipts() {
+  const receipts = farmRowsByKey("goods_receipts");
+  const lines = farmRowsByKey("goods_receipt_lines");
+  const rows = receipts.map((receipt) => {
+    const receiptLines = lines.filter((line) => line.receipt_id === receipt.id);
+    return `<tr data-farm-inventory-table="goods_receipts" data-farm-row="${esc(receipt.id)}">
+      <td><strong>${esc(receipt.receipt_no || "-")}</strong></td>
+      <td>${esc(displayDate(receipt.receipt_date) || "-")}</td>
+      <td>${esc(farmLookupLabel("warehouses", receipt.warehouse_id) || "-")}</td>
+      <td>${esc(receipt.supplier_name || "-")}</td>
+      <td class="num">${fmt(receiptLines.length)}</td>
+      <td>${esc(farmTranslateValue(receipt.status) || "-")}</td>
+    </tr>`;
+  }).join("");
+  return `<section class="farm-panel inventory-workspace-panel">
+    <div class="section-head">
+      <div><h3>รับพัสดุ</h3><span>เอกสารรับและจำนวนรายการที่รับเข้าคลัง</span></div>
+      <button type="button" data-farm-inventory-add="goods_receipts">เพิ่มเอกสารรับ</button>
+    </div>
+    <div class="table-wrap"><table class="mini-table farm-table">
+      <thead><tr><th>เลขที่รับ</th><th>วันที่</th><th>คลัง</th><th>ผู้ขาย</th><th>รายการ</th><th>สถานะ</th></tr></thead>
+      <tbody>${renderFarmInventoryDataState(rows, { empty: "ยังไม่มีเอกสารรับพัสดุ", colspan: 6, table: "goods_receipts" })}</tbody>
+    </table></div>
+  </section>`;
+}
+
+function renderFarmInventoryIssueSheet(row) {
+  const canUsage = farmInventoryCan("inventory.issue.usage.record");
+  const canReturn = farmInventoryCan("inventory.return.prepare");
+  const canClose = farmInventoryCan("inventory.issue.close");
+  const canPrepare = farmInventoryCan("inventory.issue.prepare");
+  const canApprove = farmInventoryCan("inventory.issue.approve");
+  const canPost = farmInventoryCan("inventory.issue.post");
+  const existingReturn = farmRowsByKey("goods_returns").find((item) =>
+    item.goods_issue_id === row.goods_issue_id && item.status !== "cancelled");
+  const values = [
+    ["เลขใบจ่าย", row.issue_no || "-"],
+    ["คลัง", farmLookupLabel("warehouses", row.warehouse_id) || "-"],
+    ["ใบงาน", farmLookupLabel("work_orders", row.work_order_id) || "-"],
+    ["ผู้รับ", farmLookupLabel("employees", row.issued_to_employee_id) || "-"],
+    ["วันที่จ่าย", displayDate(row.issue_date) || "-"],
+    ["วันเริ่มใช้", displayDate(row.issue_start_date) || "-"],
+    ["วันสิ้นสุด", displayDate(row.issue_end_date) || "-"],
+    ["หลายวัน", row.allow_multi_day ? "ใช่" : "ไม่ใช่"],
+    ["Status", farmTranslateValue(row.status) || "-"],
+    ["Usage Status", farmTranslateValue(row.usage_status) || "-"],
+    ["จำนวนที่ต้องการ", moneyNf.format(n(row.requested_quantity || row.issued_quantity))],
+    ["หน่วยที่ต้องการ", farmLookupLabel("units", row.requested_unit_id) || row.issued_unit_name || "-"],
+    ["หน่วยจ่าย", row.issued_unit_name || farmLookupLabel("units", row.issued_unit_id) || "-"],
+    ["Conversion Rate", moneyNf.format(n(row.conversion_rate_snapshot || 1))],
+    ["Raw Quantity", moneyNf.format(n(row.raw_issue_quantity || row.requested_quantity || row.issued_quantity))],
+    ["Rounded Quantity", moneyNf.format(n(row.issued_quantity))],
+    ["Base Quantity", moneyNf.format(n(row.base_quantity || row.issued_quantity))],
+    ["Rounding Difference", moneyNf.format(n(row.rounding_difference))],
+    ["Used", moneyNf.format(n(row.used_quantity))],
+    ["Returned", moneyNf.format(n(row.returned_quantity))],
+    ["Outstanding", moneyNf.format(n(row.outstanding_quantity))],
+    ["Usage Day Count", fmt(n(row.usage_day_count))],
+  ];
+  return `<article class="inventory-issue-sheet" data-inventory-issue-line="${esc(row.goods_issue_line_id)}">
+    <div class="inventory-issue-heading">
+      <div><strong>${esc(row.issue_no || "-")}</strong><span>${esc(row.material_code || "")} · ${esc(row.material_name || farmLookupLabel("materials", row.material_id) || "-")}</span></div>
+      <div class="inventory-action-row">
+        <button type="button" data-inventory-approve-issue="${esc(row.goods_issue_id)}" ${["draft", "pending_approval"].includes(row.status) && canApprove ? "" : "disabled"}>อนุมัติใบจ่าย</button>
+        <button type="button" data-inventory-post-issue="${esc(row.goods_issue_id)}" ${row.status === "approved" && canPost ? "" : "disabled"}>Post ใบจ่าย</button>
+        <button type="button" data-inventory-open-usage="${esc(row.goods_issue_line_id)}" ${canUsage ? "" : "disabled"}>บันทึกการใช้รายวัน</button>
+        <button type="button" data-inventory-prepare-return="${esc(row.goods_issue_id)}" ${canReturn ? "" : "disabled"}>เตรียมใบคืน</button>
+        ${existingReturn ? `<button type="button" data-inventory-open-return="${esc(existingReturn.id)}">เปิดใบคืน</button>` : ""}
+        <button type="button" class="danger" data-inventory-close-issue="${esc(row.goods_issue_id)}" ${canClose ? "" : "disabled"}>ปิดใบจ่าย</button>
+      </div>
+    </div>
+    <dl class="inventory-issue-fields">
+      ${values.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join("")}
+    </dl>
+    <div class="inventory-period-editor">
+      <label>เริ่มใช้<input data-issue-period-field="start" type="date" value="${esc(row.issue_start_date || row.issue_date || todayIso())}"></label>
+      <label>สิ้นสุด<input data-issue-period-field="end" type="date" value="${esc(row.issue_end_date || row.issue_date || todayIso())}"></label>
+      <label class="check"><input data-issue-period-field="multi" type="checkbox"${row.allow_multi_day ? " checked" : ""}> ใช้ต่อเนื่องหลายวัน</label>
+      <button type="button" data-inventory-configure-period="${esc(row.goods_issue_id)}" ${canPrepare ? "" : "disabled"}>บันทึกช่วงใช้</button>
+    </div>
+  </article>`;
+}
+
+function renderFarmInventoryIssues() {
+  const rows = farmInventoryIssueWorkspaceRows();
+  const canPrepare = farmInventoryCan("inventory.issue.prepare");
+  const workOrders = farmRowsByKey("work_orders").filter((row) => !["closed", "rejected"].includes(row.status));
+  const warehouses = farmRowsByKey("warehouses");
+  return `<section class="inventory-workspace-stack">
+    <section class="farm-panel inventory-prepare-strip">
+      <div><h3>จ่ายพัสดุ</h3><p>เตรียมใบจ่ายจากใบงาน แล้วกำหนดช่วงใช้งานก่อนอนุมัติและ Post</p></div>
+      <label>ใบงาน<select id="inventoryPrepareWorkOrder">
+        <option value="">เลือกใบงาน</option>
+        ${workOrders.map((row) => `<option value="${esc(row.id)}">${esc(row.work_order_no || row.id)}</option>`).join("")}
+      </select></label>
+      <label>คลัง<select id="inventoryPrepareWarehouse">
+        <option value="">คลังตามค่าเริ่มต้น</option>
+        ${warehouses.map((row) => `<option value="${esc(row.id)}">${esc(row.warehouse_name || row.warehouse_code)}</option>`).join("")}
+      </select></label>
+      <button type="button" data-inventory-prepare-issue ${canPrepare ? "" : "disabled"}>เตรียมใบจ่าย</button>
     </section>
+    <section class="inventory-issue-list">
+      ${rows.map(renderFarmInventoryIssueSheet).join("") || `<div class="farm-panel inventory-state">ยังไม่มีใบจ่ายหลายวัน <button type="button" data-inventory-retry>ลองใหม่</button></div>`}
+    </section>
+  </section>`;
+}
+
+function renderFarmInventoryDailyUsage() {
+  const issueRows = farmInventoryIssueWorkspaceRows();
+  const selected = issueRows.find((row) => row.goods_issue_line_id === state.farmInventoryIssueLineId)
+    || issueRows[0] || null;
+  if (selected && state.farmInventoryIssueLineId !== selected.goods_issue_line_id) {
+    state.farmInventoryIssueLineId = selected.goods_issue_line_id;
+  }
+  const usages = farmRowsByKey("goods_issue_daily_usage")
+    .filter((row) => !selected || row.goods_issue_line_id === selected.goods_issue_line_id)
+    .sort((a, b) => String(b.usage_date).localeCompare(String(a.usage_date)));
+  const workResults = farmRowsByKey("work_results").filter((row) =>
+    !selected || row.work_order_id === selected.work_order_id);
+  const units = farmRowsByKey("units");
+  const rows = usages.map((row) => `<tr>
+    <td>${esc(displayDate(row.usage_date) || "-")}</td>
+    <td>${esc(farmLookupLabel("work_results", row.work_result_id) || "-")}</td>
+    <td class="num">${moneyNf.format(n(row.quantity))}</td>
+    <td>${esc(farmLookupLabel("units", row.unit_id) || "-")}</td>
+    <td class="num">${moneyNf.format(n(row.issue_unit_quantity))}</td>
+    <td class="num">${moneyNf.format(n(row.base_quantity))}</td>
+    <td>${esc(farmTranslateValue(row.status) || "-")}</td>
+  </tr>`).join("");
+  return `<section class="inventory-workspace-grid">
+    <form class="farm-panel inventory-action-form" id="inventoryUsageForm">
+      <div class="section-head"><div><h3>บันทึกการใช้รายวัน</h3><span>ระบุ Goods Issue Line โดยตรงเพื่อรองรับหลาย Lot / Bin</span></div></div>
+      <label>รายการใบจ่าย<select id="inventoryUsageLine">
+        ${issueRows.map((row) => `<option value="${esc(row.goods_issue_line_id)}"${selected?.goods_issue_line_id === row.goods_issue_line_id ? " selected" : ""}>${esc(row.issue_no || "-")} · ${esc(row.material_name || row.material_code || "-")} · Lot ${esc(farmLookupLabel("material_lots", row.material_lot_id) || "-")}</option>`).join("")}
+      </select></label>
+      <label>วันที่ใช้<input id="inventoryUsageDate" type="date" value="${esc(todayIso())}"></label>
+      <label>ผลงาน<select id="inventoryUsageResult"><option value="">ไม่ระบุ</option>${workResults.map((row) => `<option value="${esc(row.id)}">${esc(displayDate(row.result_date) || row.id)}</option>`).join("")}</select></label>
+      <div class="inventory-form-pair">
+        <label>จำนวน<input id="inventoryUsageQuantity" type="number" min="0.000001" step="any" required></label>
+        <label>หน่วย<select id="inventoryUsageUnit">${units.map((row) => `<option value="${esc(row.id)}"${row.id === selected?.issued_unit_id ? " selected" : ""}>${esc(row.unit_name || row.unit_code)}</option>`).join("")}</select></label>
+      </div>
+      <label>หมายเหตุ<textarea id="inventoryUsageNote" rows="3"></textarea></label>
+      <button type="button" data-inventory-record-usage ${selected && farmInventoryCan("inventory.issue.usage.record") ? "" : "disabled"}>บันทึกการใช้</button>
+    </form>
+    <section class="farm-panel">
+      <div class="section-head"><div><h3>ประวัติการใช้</h3><span>${selected ? `${esc(selected.issue_no)} · ${esc(selected.material_name || "-")}` : "ยังไม่มีรายการใบจ่าย"}</span></div></div>
+      <div class="table-wrap"><table class="mini-table farm-table">
+        <thead><tr><th>วันที่</th><th>ผลงาน</th><th>จำนวน</th><th>หน่วย</th><th>หน่วยจ่าย</th><th>หน่วยฐาน</th><th>สถานะ</th></tr></thead>
+        <tbody>${renderFarmInventoryDataState(rows, { empty: "ยังไม่มีประวัติการใช้รายวัน", colspan: 7, table: "goods_issue_daily_usage" })}</tbody>
+      </table></div>
+    </section>
+  </section>`;
+}
+
+function renderFarmInventoryReturns() {
+  const returns = [...farmRowsByKey("goods_returns")].sort((a, b) =>
+    String(b.return_date || "").localeCompare(String(a.return_date || "")));
+  const selected = returns.find((row) => row.id === state.farmInventoryReturnId) || returns[0] || null;
+  if (selected && selected.id !== state.farmInventoryReturnId) state.farmInventoryReturnId = selected.id;
+  const lines = farmRowsByKey("goods_return_lines").filter((row) => row.return_id === selected?.id);
+  const units = farmRowsByKey("units");
+  const bins = farmRowsByKey("bin_locations").filter((row) =>
+    !selected || row.warehouse_id === selected.warehouse_id);
+  const lineRows = lines.map((line) => `<tr data-inventory-return-line="${esc(line.id)}">
+    <td>${esc(farmLookupLabel("materials", line.material_id) || "-")}<small>Lot ${esc(farmLookupLabel("material_lots", line.material_lot_id) || "-")}</small></td>
+    <td><input data-return-field="quantity" type="number" min="0.000001" step="any" value="${esc(line.quantity)}"></td>
+    <td><select data-return-field="unit_id">${units.map((unit) => `<option value="${esc(unit.id)}"${unit.id === line.unit_id ? " selected" : ""}>${esc(unit.unit_name || unit.unit_code)}</option>`).join("")}</select></td>
+    <td><select data-return-field="condition_status">${["good", "damaged", "expired", "contaminated", "quarantine"].map((status) => `<option value="${status}"${status === line.condition_status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}</select></td>
+    <td><select data-return-field="destination_bin_id"><option value="">เลือก Bin</option>${bins.map((bin) => `<option value="${esc(bin.id)}"${bin.id === line.destination_bin_id ? " selected" : ""}>${esc(bin.bin_name || bin.bin_code)}</option>`).join("")}</select></td>
+    <td><button type="button" data-inventory-save-return-line="${esc(line.id)}" ${selected?.status === "draft" && farmInventoryCan("inventory.return.edit") ? "" : "disabled"}>บันทึก</button></td>
+  </tr>`).join("");
+  return `<section class="inventory-workspace-grid returns">
+    <section class="farm-panel inventory-return-list">
+      <div class="section-head"><div><h3>คืนพัสดุ</h3><span>เลือกใบคืนเพื่อแก้ไข อนุมัติ และ Post</span></div></div>
+      ${returns.map((row) => `<button type="button" class="inventory-return-choice${row.id === selected?.id ? " active" : ""}" data-inventory-open-return="${esc(row.id)}"><strong>${esc(row.return_no || "-")}</strong><span>${esc(displayDate(row.return_date) || "-")} · ${esc(farmTranslateValue(row.status))}</span></button>`).join("") || `<div class="inventory-state">ยังไม่มีใบคืน</div>`}
+    </section>
+    <section class="farm-panel inventory-return-detail">
+      <div class="section-head">
+        <div><h3>${esc(selected?.return_no || "ยังไม่ได้เลือกใบคืน")}</h3><span>${selected ? `${esc(farmLookupLabel("warehouses", selected.warehouse_id) || "-")} · ${esc(farmTranslateValue(selected.status))}` : "เตรียมใบคืนจากแท็บจ่ายพัสดุ"}</span></div>
+        <div class="inventory-action-row">
+          <button type="button" data-inventory-approve-return="${esc(selected?.id || "")}" ${selected && ["draft", "pending_approval"].includes(selected.status) && farmInventoryCan("inventory.return.approve") ? "" : "disabled"}>อนุมัติใบคืน</button>
+          <button type="button" class="danger" data-inventory-post-return="${esc(selected?.id || "")}" ${selected?.status === "approved" && farmInventoryCan("inventory.return.post") ? "" : "disabled"}>Post ใบคืน</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table class="mini-table farm-table">
+        <thead><tr><th>วัสดุ / Lot</th><th>จำนวน</th><th>หน่วย</th><th>สภาพ</th><th>Destination Bin</th><th></th></tr></thead>
+        <tbody>${renderFarmInventoryDataState(lineRows, { empty: "ยังไม่มีรายการคืน", colspan: 6, table: "goods_return_lines" })}</tbody>
+      </table></div>
+      <p class="inventory-form-note">เฉพาะสภาพ “ดี” เท่านั้นที่ Post กลับ Available Stock; สภาพอื่นต้องผ่านกระบวนการ Quarantine</p>
+    </section>
+  </section>`;
+}
+
+function renderFarmInventoryConversions() {
+  const options = farmRowsByKey("v_material_unit_conversion_options");
+  const materials = farmRowsByKey("materials");
+  const units = farmRowsByKey("units");
+  const rows = options.map((row) => `<tr>
+    <td>${esc(row.conversion_scope === "material" ? "SKU" : "หน่วยกลาง")}</td>
+    <td>${esc(row.material_name || "-")}</td>
+    <td>${esc(row.from_unit_name || row.from_unit_code || "-")}</td>
+    <td>${esc(row.to_unit_name || row.to_unit_code || "-")}</td>
+    <td class="num">${moneyNf.format(n(row.conversion_rate))}</td>
+    <td>${esc(farmTranslateValue(row.status) || "-")}</td>
+  </tr>`).join("");
+  const calculation = state.farmInventoryCalculation;
+  return `<section class="inventory-workspace-grid conversions">
+    <form class="farm-panel inventory-action-form">
+      <div class="section-head"><div><h3>แปลงหน่วย / SKU</h3><span>บันทึกผ่าน Server Action เท่านั้น</span></div></div>
+      <label>วัสดุ<select id="inventoryConversionMaterial">${materials.map((row) => `<option value="${esc(row.id)}">${esc(row.material_name || row.material_code)}</option>`).join("")}</select></label>
+      <div class="inventory-form-pair">
+        <label>จากหน่วย<select id="inventoryConversionFrom">${units.map((row) => `<option value="${esc(row.id)}">${esc(row.unit_name || row.unit_code)}</option>`).join("")}</select></label>
+        <label>เป็นหน่วย<select id="inventoryConversionTo">${units.map((row) => `<option value="${esc(row.id)}">${esc(row.unit_name || row.unit_code)}</option>`).join("")}</select></label>
+      </div>
+      <label>อัตราแปลง<input id="inventoryConversionRate" type="number" min="0.000001" step="any"></label>
+      <button type="button" data-inventory-save-conversion ${farmInventoryCan("inventory.conversion.manage") ? "" : "disabled"}>บันทึก Conversion</button>
+      <hr>
+      <label>จำนวนที่ต้องการ<input id="inventoryRequiredQuantity" type="number" min="0.000001" step="any"></label>
+      <button type="button" class="secondary" data-inventory-calculate-quantity>คำนวณจำนวนจ่าย</button>
+      ${calculation ? `<div class="inventory-calculation-result"><strong>${moneyNf.format(n(calculation.issue_quantity))}</strong><span>Raw ${moneyNf.format(n(calculation.raw_issue_quantity))} · ส่วนต่าง ${moneyNf.format(n(calculation.rounding_difference))}</span></div>` : ""}
+    </form>
+    <section class="farm-panel">
+      <div class="section-head"><div><h3>รายการ Conversion</h3><span>Material-specific ก่อน Global conversion</span></div></div>
+      <div class="table-wrap"><table class="mini-table farm-table">
+        <thead><tr><th>ชนิด</th><th>วัสดุ</th><th>จาก</th><th>เป็น</th><th>อัตรา</th><th>สถานะ</th></tr></thead>
+        <tbody>${renderFarmInventoryDataState(rows, { empty: "ยังไม่มีข้อมูลแปลงหน่วย", colspan: 6, table: "v_material_unit_conversion_options" })}</tbody>
+      </table></div>
+    </section>
+  </section>`;
+}
+
+function renderFarmInventoryStockCard() {
+  const rows = [...farmRowsByKey("stock_transactions")]
+    .sort((a, b) => String(b.transaction_date || b.created_at || "").localeCompare(String(a.transaction_date || a.created_at || "")))
+    .slice(0, 500)
+    .map((row) => `<tr>
+      <td>${esc(displayDate(row.transaction_date || row.created_at) || "-")}</td>
+      <td>${esc(farmTranslateValue(row.transaction_type) || "-")}</td>
+      <td>${esc(farmLookupLabel("materials", row.material_id) || "-")}</td>
+      <td>${esc(farmLookupLabel("warehouses", row.warehouse_id) || "-")}</td>
+      <td class="num">${moneyNf.format(n(row.quantity_in))}</td>
+      <td class="num">${moneyNf.format(n(row.quantity_out))}</td>
+      <td>${esc(farmLookupLabel("units", row.unit_id) || "-")}</td>
+      <td>${esc(row.source_table || "-")}</td>
+      <td>${esc(farmTranslateValue(row.status) || "-")}</td>
+    </tr>`).join("");
+  return `<section class="farm-panel inventory-workspace-panel">
+    <div class="section-head"><div><h3>Stock Card</h3><span>แสดงล่าสุดไม่เกิน 500 รายการ เพื่อลดการโหลด transaction พร้อมกัน</span></div></div>
+    <div class="table-wrap"><table class="mini-table farm-table">
+      <thead><tr><th>วันที่</th><th>ประเภท</th><th>วัสดุ</th><th>คลัง</th><th>รับ</th><th>จ่าย</th><th>หน่วย</th><th>แหล่งที่มา</th><th>สถานะ</th></tr></thead>
+      <tbody>${renderFarmInventoryDataState(rows, { empty: "ยังไม่มี Stock Card", colspan: 9, table: "stock_transactions" })}</tbody>
+    </table></div>
+  </section>`;
+}
+
+function renderFarmInventoryLegacyOperation(tableKey, title, subtitle) {
+  const schema = FARM_TABLE_SCHEMAS[tableKey];
+  const rows = farmRowsByKey(tableKey);
+  return `<section class="farm-panel inventory-workspace-panel">
+    <div class="section-head">
+      <div><h3>${esc(title)}</h3><span>${esc(subtitle)}</span></div>
+      <button type="button" data-farm-inventory-add="${esc(tableKey)}">เปิดหน้า${esc(title)}</button>
+    </div>
+    <div class="inventory-legacy-summary"><strong>${fmt(rows.length)}</strong><span>${esc(schema?.title || title)} ในระบบเดิมยังคงใช้งานได้</span></div>
+  </section>`;
+}
+
+function renderFarmInventoryBoard() {
+  const active = FARM_INVENTORY_WORKSPACE_TABS.some(([key]) => key === state.farmInventoryWorkspaceTab)
+    ? state.farmInventoryWorkspaceTab : "overview";
+  state.farmInventoryWorkspaceTab = active;
+  const content = active === "overview" ? renderFarmInventoryLegacyOverview()
+    : active === "stock" ? renderFarmInventoryStock()
+      : active === "receipts" ? renderFarmInventoryReceipts()
+        : active === "issues" ? renderFarmInventoryIssues()
+          : active === "daily-usage" ? renderFarmInventoryDailyUsage()
+            : active === "returns" ? renderFarmInventoryReturns()
+              : active === "conversions" ? renderFarmInventoryConversions()
+                : active === "stock-card" ? renderFarmInventoryStockCard()
+                  : active === "transfers"
+                    ? renderFarmInventoryLegacyOperation("stock_transfers", "โอนคลัง", "คงหน้าการโอนคลังเดิมไว้")
+                    : active === "counts"
+                      ? renderFarmInventoryLegacyOperation("stock_counts", "ตรวจนับ", "คงหน้าตรวจนับเดิมไว้")
+                      : renderFarmInventoryLegacyOperation("stock_adjustments", "ปรับยอด", "คงหน้าปรับยอดเดิมไว้");
+  return `${renderFarmWorkspaceTabs(FARM_INVENTORY_WORKSPACE_TABS, active, "farm-inventory")}
+    <div class="farm-inventory-workspace tab-${esc(active)}">${content}</div>
     ${renderFarmActivityModal()}`;
 }
 
@@ -23791,6 +24265,11 @@ async function init() {
     setView("dashboard");
   });
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.id === "inventoryUsageLine") {
+      state.farmInventoryIssueLineId = e.target.value;
+      render();
+      return;
+    }
     if (e.target.matches("[data-farm-workspace-filter]")) {
       state.farmWorkWorkspaceFilters[e.target.dataset.farmWorkspaceFilter] = e.target.value;
       render();
@@ -24300,6 +24779,151 @@ async function init() {
     const workspaceTab = e.target.closest("[data-farm-workspace-tab]");
     if (workspaceTab) {
       setFarmWorkspaceTab(workspaceTab.dataset.farmWorkspaceView, workspaceTab.dataset.farmWorkspaceTab);
+      return;
+    }
+    if (e.target.closest("[data-inventory-retry]")) {
+      await loadFarmCurrentViewTables({ silent: true, force: true });
+      return;
+    }
+    if (e.target.closest("[data-inventory-prepare-issue]")) {
+      const workOrderId = document.querySelector("#inventoryPrepareWorkOrder")?.value;
+      const warehouseId = document.querySelector("#inventoryPrepareWarehouse")?.value;
+      if (!workOrderId) {
+        state.farmSyncStatus = "error";
+        state.farmSyncMessage = "กรุณาเลือกใบงาน";
+        render();
+        return;
+      }
+      await runFarmAction("prepare_goods_issue_from_work_order", {
+        work_order_id: workOrderId,
+        warehouse_id: warehouseId || null,
+      }, { reason: "เตรียมใบจ่ายจาก Phase 4 Inventory Workspace" }).catch(() => {});
+      return;
+    }
+    const configurePeriod = e.target.closest("[data-inventory-configure-period]");
+    if (configurePeriod) {
+      const sheet = configurePeriod.closest("[data-inventory-issue-line]");
+      const periodField = (name) => sheet?.querySelector(`[data-issue-period-field="${name}"]`);
+      await runFarmAction("configure-goods-issue-period", {
+        issue_id: configurePeriod.dataset.inventoryConfigurePeriod,
+        issue_start_date: periodField("start")?.value,
+        issue_end_date: periodField("end")?.value,
+        allow_multi_day: Boolean(periodField("multi")?.checked),
+      }, { confirmed: true, reason: "กำหนดช่วงใช้จาก Phase 4 Inventory Workspace" }).catch(() => {});
+      return;
+    }
+    const approveIssue = e.target.closest("[data-inventory-approve-issue]");
+    if (approveIssue) {
+      if (!window.confirm("ยืนยันอนุมัติใบจ่าย?")) return;
+      await runFarmAction("approve_goods_issue", {
+        issue_id: approveIssue.dataset.inventoryApproveIssue,
+      }, { confirmed: true, reason: "อนุมัติใบจ่ายจาก Phase 4 Inventory Workspace" }).catch(() => {});
+      return;
+    }
+    const postIssue = e.target.closest("[data-inventory-post-issue]");
+    if (postIssue) {
+      if (!window.confirm("ยืนยัน Post ใบจ่ายและตัด Stock?")) return;
+      await runFarmAction("post_goods_issue", {
+        issue_id: postIssue.dataset.inventoryPostIssue,
+      }, { confirmed: true, reason: "Post ใบจ่ายจาก Phase 4 Inventory Workspace" }).catch(() => {});
+      return;
+    }
+    const openUsage = e.target.closest("[data-inventory-open-usage]");
+    if (openUsage) {
+      state.farmInventoryIssueLineId = openUsage.dataset.inventoryOpenUsage;
+      setFarmWorkspaceTab("farm-inventory", "daily-usage");
+      return;
+    }
+    const prepareReturn = e.target.closest("[data-inventory-prepare-return]");
+    if (prepareReturn) {
+      const issueId = prepareReturn.dataset.inventoryPrepareReturn;
+      const result = await runFarmAction("prepare-goods-return", {
+        issue_id: issueId,
+        return_date: todayIso(),
+      }, { reason: "เตรียมใบคืนจาก Phase 4 Inventory Workspace" }).catch(() => null);
+      const row = Array.isArray(result) ? result[0] : result;
+      if (row?.id) state.farmInventoryReturnId = row.id;
+      if (row) setFarmWorkspaceTab("farm-inventory", "returns");
+      return;
+    }
+    const openReturn = e.target.closest("[data-inventory-open-return]");
+    if (openReturn) {
+      state.farmInventoryReturnId = openReturn.dataset.inventoryOpenReturn;
+      setFarmWorkspaceTab("farm-inventory", "returns");
+      return;
+    }
+    const closeIssue = e.target.closest("[data-inventory-close-issue]");
+    if (closeIssue) {
+      if (!window.confirm("ยืนยันปิดใบจ่าย? ระบบจะตรวจว่ายอดใช้และคืนครบแล้ว")) return;
+      await runFarmAction("close-goods-issue-usage", {
+        issue_id: closeIssue.dataset.inventoryCloseIssue,
+      }, { confirmed: true, reason: "ปิดยอดใช้และคืนจาก Phase 4 Inventory Workspace" }).catch(() => {});
+      return;
+    }
+    if (e.target.closest("[data-inventory-record-usage]")) {
+      const lineId = document.querySelector("#inventoryUsageLine")?.value;
+      const line = farmInventoryIssueWorkspaceRows().find((row) => row.goods_issue_line_id === lineId);
+      await runFarmAction("record-goods-issue-daily-usage", {
+        issue_id: line?.goods_issue_id,
+        goodsIssueLineId: lineId,
+        usage_date: document.querySelector("#inventoryUsageDate")?.value,
+        work_result_id: document.querySelector("#inventoryUsageResult")?.value || null,
+        material_id: line?.material_id,
+        quantity: document.querySelector("#inventoryUsageQuantity")?.value,
+        unit_id: document.querySelector("#inventoryUsageUnit")?.value,
+        note: document.querySelector("#inventoryUsageNote")?.value || null,
+      }, { reason: "บันทึกการใช้รายวันจาก Phase 4 Inventory Workspace" }).catch(() => {});
+      return;
+    }
+    const saveReturnLine = e.target.closest("[data-inventory-save-return-line]");
+    if (saveReturnLine) {
+      const row = saveReturnLine.closest("[data-inventory-return-line]");
+      const field = (name) => row?.querySelector(`[data-return-field="${name}"]`)?.value;
+      await runFarmAction("update-goods-return-line", {
+        return_line_id: saveReturnLine.dataset.inventorySaveReturnLine,
+        quantity: field("quantity"),
+        unit_id: field("unit_id"),
+        condition_status: field("condition_status"),
+        destination_bin_id: field("destination_bin_id"),
+      }, { reason: "แก้ไขรายการคืนจาก Phase 4 Inventory Workspace" }).catch(() => {});
+      return;
+    }
+    const approveReturn = e.target.closest("[data-inventory-approve-return]");
+    if (approveReturn?.dataset.inventoryApproveReturn) {
+      if (!window.confirm("ยืนยันอนุมัติใบคืน? ระบบจะคำนวณยอดที่คืนได้ใหม่")) return;
+      await runFarmAction("approve-goods-return", {
+        return_id: approveReturn.dataset.inventoryApproveReturn,
+      }, { confirmed: true, reason: "อนุมัติใบคืนจาก Phase 4 Inventory Workspace" }).catch(() => {});
+      return;
+    }
+    const postReturn = e.target.closest("[data-inventory-post-return]");
+    if (postReturn?.dataset.inventoryPostReturn) {
+      if (!window.confirm("ยืนยัน Post ใบคืนเข้าคลัง? รายการนี้กระทบ Stock")) return;
+      await runFarmAction("post-goods-return", {
+        return_id: postReturn.dataset.inventoryPostReturn,
+      }, { confirmed: true, reason: "Post ใบคืนจาก Phase 4 Inventory Workspace" }).catch(() => {});
+      return;
+    }
+    if (e.target.closest("[data-inventory-save-conversion]")) {
+      await runFarmAction("save-material-conversion", {
+        material_id: document.querySelector("#inventoryConversionMaterial")?.value,
+        from_unit_id: document.querySelector("#inventoryConversionFrom")?.value,
+        to_unit_id: document.querySelector("#inventoryConversionTo")?.value,
+        conversion_rate: document.querySelector("#inventoryConversionRate")?.value,
+        status: "active",
+      }, { confirmed: true, reason: "บันทึก Conversion จาก Phase 4 Inventory Workspace" }).catch(() => {});
+      return;
+    }
+    if (e.target.closest("[data-inventory-calculate-quantity]")) {
+      const result = await runFarmAction("calculate-material-issue-quantity", {
+        material_id: document.querySelector("#inventoryConversionMaterial")?.value,
+        required_quantity: document.querySelector("#inventoryRequiredQuantity")?.value,
+        required_unit_id: document.querySelector("#inventoryConversionFrom")?.value,
+        issue_unit_id: document.querySelector("#inventoryConversionTo")?.value,
+        allow_fraction: false,
+      }, { reason: "คำนวณจำนวนจ่ายจาก Phase 4 Inventory Workspace" }).catch(() => null);
+      state.farmInventoryCalculation = Array.isArray(result) ? result[0] : result;
+      render();
       return;
     }
     const workspaceOpen = e.target.closest("[data-workspace-open]");
