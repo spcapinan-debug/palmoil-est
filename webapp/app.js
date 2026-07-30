@@ -113,6 +113,8 @@ const state = {
   farmResultRoleTab: "",
   farmDailyWorkspaceTab: "results",
   farmResultDraft: { resultDate: "", ticketText: "", actualQuantity: "", actualUnit: "", qualityScore: "", surveyStatus: "pending", surveyNote: "", note: "", surveyAnswers: {}, workerEntries: {}, materialEntries: {}, machineEntries: {} },
+  farmResultDrafts: {},
+  farmResultDraftDates: {},
   farmResultRenderTimer: null,
   farmTableId: "",
   farmDetailId: "",
@@ -3362,6 +3364,7 @@ const WORKSPACE_ROUTE_FALLBACKS = {
   "/farm/dashboard": ["dashboard", "farm-management-dashboard"],
   "/farm/master": ["farm.master", "farm-area"],
   "/farm/work": ["farm.work", "farm-work"],
+  "/farm/dispatch": ["farm.dispatch", "farm-dispatch"],
   "/farm/daily": ["farm.daily", "farm-result"],
   "/inventory": ["inventory.stock", "farm-inventory"],
   "/inventory/fuel": ["inventory.fuel", "farm-inventory"],
@@ -3374,6 +3377,172 @@ const WORKSPACE_ROUTE_FALLBACKS = {
 
 function workspaceRoutePath(route) {
   return String(route || "").split("?")[0].replace(/\/+$/, "") || "/";
+}
+
+const FARM_RESULT_DRAFT_CACHE_KEY = "palmoil.farm-result-drafts.v1";
+const FARM_WORKFLOW_QUERY_KEYS = {
+  work: {
+    activityGroup: "activity", team: "team", zone: "zone", plotGroup: "plot_group",
+    status: "status", query: "q", startDate: "start", endDate: "end",
+  },
+  dispatch: {
+    activity: "activity", zone: "zone", plotGroup: "plot_group", startDate: "start", endDate: "end",
+  },
+  result: { query: "q", activity: "activity", status: "status" },
+};
+
+function farmWorkflowRouteForView(view = state.view) {
+  if (view === "farm-work") return "/farm/work";
+  if (view === "farm-dispatch") return "/farm/dispatch";
+  if (view === "farm-result") return "/farm/daily";
+  return "";
+}
+
+function farmWorkflowModeFromUrl() {
+  return new URLSearchParams(window.location.search).get("mode") === "workspace" ? "workspace" : "entry";
+}
+
+function updateFarmWorkflowUrl(values = {}, { push = false } = {}) {
+  const route = farmWorkflowRouteForView();
+  if (!route) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("route", route);
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) continue;
+    if (value === null || value === "" || value === "all" || value === false) url.searchParams.delete(key);
+    else url.searchParams.set(key, String(value));
+  }
+  (push ? window.history.pushState : window.history.replaceState).call(window.history, {}, "", url);
+}
+
+function setFarmWorkflowMode(mode, { replace = false } = {}) {
+  if (!farmWorkflowRouteForView()) return false;
+  if (state.view === "farm-result" && document.querySelector("#farmResultDate")) syncFarmResultDraftFromForm();
+  const selectedOrderId = state.view === "farm-work" ? state.farmWorkDetailId
+    : state.view === "farm-dispatch" ? state.farmDispatchWorkOrderId
+      : state.farmResultWorkOrderId;
+  updateFarmWorkflowUrl({
+    work_order: selectedOrderId || "",
+    date: state.view === "farm-result" ? state.farmResultDraft?.resultDate || "" : null,
+  });
+  const url = new URL(window.location.href);
+  url.searchParams.set("route", farmWorkflowRouteForView());
+  if (mode === "workspace") url.searchParams.set("mode", "workspace");
+  else {
+    url.searchParams.delete("mode");
+    url.searchParams.delete("tab");
+  }
+  (replace ? window.history.replaceState : window.history.pushState).call(window.history, {}, "", url);
+  render();
+  return true;
+}
+
+function farmResultDraftCacheKey(orderId = state.farmResultWorkOrderId, resultDate = state.farmResultDraft?.resultDate) {
+  const id = String(orderId || "").trim();
+  const day = isoDay(resultDate) || String(resultDate || "").trim();
+  return id && day ? `${id}::${day}` : "";
+}
+
+function loadFarmResultDraftCache() {
+  try {
+    const saved = JSON.parse(window.sessionStorage.getItem(FARM_RESULT_DRAFT_CACHE_KEY) || "{}");
+    state.farmResultDrafts = saved.drafts && typeof saved.drafts === "object" ? saved.drafts : {};
+    state.farmResultDraftDates = saved.dates && typeof saved.dates === "object" ? saved.dates : {};
+  } catch {
+    state.farmResultDrafts = {};
+    state.farmResultDraftDates = {};
+  }
+}
+
+function rememberFarmResultDraft(orderId = state.farmResultWorkOrderId, draft = state.farmResultDraft) {
+  const key = farmResultDraftCacheKey(orderId, draft?.resultDate);
+  if (!key || !draft) return;
+  state.farmResultDrafts[key] = structuredClone(draft);
+  state.farmResultDraftDates[String(orderId)] = isoDay(draft.resultDate) || draft.resultDate;
+  try {
+    window.sessionStorage.setItem(FARM_RESULT_DRAFT_CACHE_KEY, JSON.stringify({
+      drafts: state.farmResultDrafts,
+      dates: state.farmResultDraftDates,
+    }));
+  } catch {
+    // In-memory preservation remains available when sessionStorage is unavailable.
+  }
+}
+
+function restoreFarmResultDraft(order, preferredDate = "") {
+  const orderId = String(order?.id || state.farmResultWorkOrderId || "").trim();
+  const resultDate = isoDay(preferredDate) || state.farmResultDraftDates[orderId] || "";
+  const cached = resultDate ? state.farmResultDrafts[farmResultDraftCacheKey(orderId, resultDate)] : null;
+  const draft = cached ? structuredClone(cached) : farmResultBlankDraft(order);
+  if (resultDate) {
+    draft.resultDate = resultDate;
+    draft.surveyAnswers = { ...(draft.surveyAnswers || {}), POSTING_DATE: resultDate };
+  }
+  state.farmResultDraft = draft;
+  rememberFarmResultDraft(orderId, draft);
+  return draft;
+}
+
+function selectFarmResultOrder(orderId, { push = true, preferredDate = "" } = {}) {
+  const previousOrderId = state.farmResultWorkOrderId;
+  if (push && previousOrderId) {
+    updateFarmWorkflowUrl({
+      work_order: previousOrderId,
+      date: state.farmResultDraft?.resultDate || "",
+    });
+  }
+  if (document.querySelector("#farmResultDate")) syncFarmResultDraftFromForm();
+  rememberFarmResultDraft();
+  const id = String(orderId || "").trim();
+  state.farmResultWorkOrderId = id;
+  state.farmWorkDetailId = id;
+  state.farmDispatchWorkOrderId = id;
+  state.farmResultRoleTab = "";
+  const order = farmResultCandidateOrders().find((row) => String(row.id) === id)
+    || farmResultOrderList().find((row) => String(row.id) === id)
+    || farmLookup("work_orders", id)
+    || farmResultSelectedOrder();
+  const draft = restoreFarmResultDraft(order, preferredDate);
+  updateFarmWorkflowUrl({ work_order: id, date: draft.resultDate }, { push });
+}
+
+function hydrateFarmWorkflowStateFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const orderId = params.get("work_order") || "";
+  if (state.view === "farm-work") {
+    state.farmWorkDetailId = orderId;
+    for (const [stateKey, queryKey] of Object.entries(FARM_WORKFLOW_QUERY_KEYS.work)) {
+      const emptyValue = ["activityGroup", "team", "zone", "plotGroup", "status"].includes(stateKey) ? "all" : "";
+      state.farmWorkFilters[stateKey] = params.has(queryKey) ? params.get(queryKey) || emptyValue : emptyValue;
+    }
+  }
+  if (state.view === "farm-dispatch") {
+    state.farmDispatchWorkOrderId = orderId;
+    state.farmWorkDetailId = orderId;
+    for (const [stateKey, queryKey] of Object.entries(FARM_WORKFLOW_QUERY_KEYS.dispatch)) {
+      const emptyValue = ["activity", "zone", "plotGroup"].includes(stateKey) ? "all" : "";
+      state.farmDispatchListFilters[stateKey] = params.has(queryKey) ? params.get(queryKey) || emptyValue : emptyValue;
+    }
+  }
+  if (state.view === "farm-result") {
+    for (const [stateKey, queryKey] of Object.entries(FARM_WORKFLOW_QUERY_KEYS.result)) {
+      const emptyValue = ["activity", "status"].includes(stateKey) ? "all" : "";
+      farmResultFilterState()[stateKey] = params.has(queryKey) ? params.get(queryKey) || emptyValue : emptyValue;
+    }
+    if (orderId) selectFarmResultOrder(orderId, { push: false, preferredDate: params.get("date") || "" });
+    else if (params.get("date")) state.farmResultDraft.resultDate = params.get("date");
+  }
+}
+
+function syncFarmWorkflowFiltersToUrl() {
+  const source = state.view === "farm-work" ? state.farmWorkFilters
+    : state.view === "farm-dispatch" ? state.farmDispatchListFilters
+      : state.view === "farm-result" ? farmResultFilterState() : null;
+  const mapping = state.view === "farm-work" ? FARM_WORKFLOW_QUERY_KEYS.work
+    : state.view === "farm-dispatch" ? FARM_WORKFLOW_QUERY_KEYS.dispatch
+      : state.view === "farm-result" ? FARM_WORKFLOW_QUERY_KEYS.result : null;
+  if (!source || !mapping) return;
+  updateFarmWorkflowUrl(Object.fromEntries(Object.entries(mapping).map(([stateKey, queryKey]) => [queryKey, source[stateKey]])));
 }
 
 function applyWorkspaceFallbackRoute(route) {
@@ -3412,6 +3581,7 @@ function setFarmWorkspaceTab(view, tab, { replace = false } = {}) {
     view === "farm-work" ? "/farm/work" : view === "farm-result" ? "/farm/daily" : "/inventory",
   );
   url.searchParams.set("tab", tab);
+  if (view === "farm-work" || view === "farm-result") url.searchParams.set("mode", "workspace");
   (replace ? window.history.replaceState : window.history.pushState).call(window.history, {}, "", url);
   render();
   if (view === "farm-inventory") loadFarmCurrentViewTables({ silent: true });
@@ -3453,6 +3623,7 @@ function workspaceLegacyView(item) {
   const key = String(item?.workspace_key || "");
   if (key === "dashboard") return "farm-management-dashboard";
   if (key.startsWith("farm.master")) return "farm-area";
+  if (String(item?.route || "").split("?")[0].replace(/\/+$/, "") === "/farm/dispatch" || key.startsWith("farm.dispatch")) return "farm-dispatch";
   if (key.startsWith("farm.work")) return "farm-work";
   if (key.startsWith("farm.daily")) return "farm-result";
   if (key.startsWith("farm.performance")) return "farm-performance";
@@ -3525,7 +3696,12 @@ function openWorkspaceRoute(route) {
   const target = workspaceRouteWithFilters(route);
   if (!applyWorkspaceRoute(target)) return false;
   const url = new URL(window.location.href);
-  url.searchParams.set("route", workspaceRoutePath(route));
+  const routePath = workspaceRoutePath(route);
+  url.searchParams.set("route", routePath);
+  if (["/farm/work", "/farm/dispatch", "/farm/daily"].includes(routePath) && !String(route).includes("mode=workspace")) {
+    url.searchParams.delete("mode");
+    url.searchParams.delete("tab");
+  }
   for (const [key, value] of Object.entries(state.actionCenterFilters)) {
     if (value) url.searchParams.set(key, value);
   }
@@ -17926,7 +18102,7 @@ function renderFarmResultWorkSearch(order, allOrders = farmResultCandidateOrders
           <h4>ค้นหาใบสั่งงานเพื่อบันทึกงาน</h4>
           <p>ค้นหาจาก WO, กิจกรรม, Block, ทีม หรือกรองตามกิจกรรมก่อนบันทึกผลงานจริง</p>
         </div>
-        ${order ? `<button type="button" data-farm-result-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกงาน</button>` : ""}
+        ${order ? `<button type="button" data-farm-result-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกร่าง</button>` : ""}
       </div>
       <div class="farm-result-search-controls">
         <label>ค้นหา
@@ -19175,7 +19351,7 @@ function renderFarmResultPanel() {
             <p><strong>ค่าแรงตามเรทบทบาท</strong><span>${moneyNf.format(calc.wageTotal)} บาท</span></p>
             <p><strong>สุทธิรายคนรวม</strong><span>${moneyNf.format(calc.payrollTotal)} บาท</span></p>
           </div>
-          <button type="button" class="farm-result-primary-save" data-farm-result-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกงานและสร้างค่าแรงรายคน</button>
+          <button type="button" class="farm-result-primary-save" data-farm-result-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกร่าง</button>
         </article>
       </div>
     </section>`;
@@ -19224,7 +19400,9 @@ function syncFarmResultDraftFromForm() {
     workerEntries,
     materialEntries,
     machineEntries,
+    existingResultId: state.farmResultDraft?.existingResultId || "",
   };
+  rememberFarmResultDraft();
 }
 
 function handleFarmResultFormFieldChange(target) {
@@ -19232,8 +19410,33 @@ function handleFarmResultFormFieldChange(target) {
   const scrollX = window.scrollX;
   const scrollY = window.scrollY;
   const pageScrollTop = document.scrollingElement?.scrollTop ?? scrollY;
+  const selectedDate = shouldRefreshResultForm ? dateValue(target) : "";
+  const cachedForSelectedDate = shouldRefreshResultForm
+    ? state.farmResultDrafts[farmResultDraftCacheKey(state.farmResultWorkOrderId, selectedDate)]
+    : null;
+  if (shouldRefreshResultForm) {
+    const previousDraft = structuredClone(state.farmResultDraft || {});
+    rememberFarmResultDraft(state.farmResultWorkOrderId, previousDraft);
+  }
   syncFarmResultDraftFromForm();
-  if (!shouldRefreshResultForm) return;
+  if (shouldRefreshResultForm) {
+    const order = farmResultSelectedOrder();
+    if (cachedForSelectedDate) state.farmResultDraft = structuredClone(cachedForSelectedDate);
+    else {
+      state.farmResultDraft = farmResultBlankDraft(order);
+      state.farmResultDraft.resultDate = selectedDate;
+      state.farmResultDraft.surveyAnswers = { POSTING_DATE: selectedDate };
+      rememberFarmResultDraft();
+    }
+    updateFarmWorkflowUrl({ work_order: order?.id || "", date: selectedDate });
+  }
+  if (!shouldRefreshResultForm) {
+    updateFarmWorkflowUrl({
+      work_order: state.farmResultWorkOrderId || farmResultSelectedOrder()?.id || "",
+      date: state.farmResultDraft?.resultDate || "",
+    });
+    return;
+  }
   render();
   const restoreResultScroll = () => {
     window.scrollTo(scrollX, scrollY);
@@ -23103,9 +23306,99 @@ async function saveFarmDailyEntry() {
       })),
     });
     state.farmResultDraft.existingResultId = resultId;
+    rememberFarmResultDraft(state.farmResultWorkOrderId || order.id, state.farmResultDraft);
+    updateFarmWorkflowUrl({
+      work_order: state.farmResultWorkOrderId || order.id,
+      date: state.farmResultDraft.resultDate,
+    });
   } catch (error) {
+    rememberFarmResultDraft();
     console.error("Daily result save failed", error.message);
   }
+}
+
+function renderFarmWorkflowModeBar({ workspaceLabel, entryLabel }) {
+  const workspaceMode = farmWorkflowModeFromUrl() === "workspace";
+  return `<nav class="farm-entry-mode-bar" aria-label="สลับแบบฟอร์มและพื้นที่ติดตามงาน">
+    <div>
+      <strong>${workspaceMode ? "Workspace ติดตามงาน" : "แบบฟอร์มทำงาน"}</strong>
+      <span>${workspaceMode ? "ดูสถานะและรายละเอียดเพิ่มเติม โดยข้อมูลที่กรอกไว้ยังอยู่ครบ" : "เริ่มทำรายการได้ทันที แล้วเปิด Workspace เมื่อต้องติดตามรายละเอียด"}</span>
+    </div>
+    <button type="button" class="${workspaceMode ? "farm-entry-return" : "farm-entry-secondary"}"
+      data-farm-workflow-mode="${workspaceMode ? "entry" : "workspace"}">${esc(workspaceMode ? entryLabel : workspaceLabel)}</button>
+  </nav>`;
+}
+
+function renderFarmWorkEntry() {
+  return `${renderFarmWorkflowModeBar({
+    workspaceLabel: "ดู Workspace และติดตามงาน",
+    entryLabel: "กลับหน้าวางแผน",
+  })}
+    ${renderFarmWorkBoard({
+      title: "Planner",
+      subtitle: "ตารางแผนงานแบบย่อ แสดง Activity, Block, ทีม และสถานะในแถวเดียว",
+    })}
+    ${renderFarmWorkPlanner()}`;
+}
+
+function renderFarmDispatchEntry() {
+  return `${renderFarmWorkflowModeBar({
+    workspaceLabel: "ติดตามสถานะ",
+    entryLabel: "กลับหน้าสั่งงาน",
+  })}
+    ${renderFarmWorkBoard({
+      title: "Scheduler",
+      subtitle: "ตารางงานสำหรับผู้จัดการ ใช้ดูแผนก่อนหยิบไปสั่งงาน",
+      showKpis: false,
+    })}
+    ${renderFarmDispatchPanel()}
+    ${renderFarmActivityModal()}`;
+}
+
+function renderFarmDispatchWorkspace() {
+  return `${renderFarmWorkflowModeBar({
+    workspaceLabel: "ติดตามสถานะ",
+    entryLabel: "กลับหน้าสั่งงาน",
+  })}
+    ${renderFarmWorkBoard({
+      title: "ติดตามสถานะการสั่งงาน",
+      subtitle: "ตรวจแผน ทีม ช่วงวัน และสถานะใบสั่งงานก่อนกลับไปแก้ไขคำสั่ง",
+      showKpis: false,
+    })}
+    ${renderFarmWorkspaceWorkOrders({ pendingOnly: true })}`;
+}
+
+function renderFarmDailyEntryActions() {
+  const result = farmDailyCurrentResult();
+  const canSubmit = result?.result_status === "draft";
+  return `<nav class="farm-daily-entry-actions" aria-label="การบันทึกงานและรายละเอียด">
+    <div class="farm-daily-primary-actions">
+      <button type="button" data-farm-result-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกร่าง</button>
+      <button type="button" class="farm-danger-confirm" data-farm-result-action="submit_work_result"
+        data-result-id="${esc(result?.id || "")}" ${state.farmSyncBusy || !canSubmit ? "disabled" : ""}>ส่งตรวจ</button>
+    </div>
+    <div class="farm-daily-detail-actions">
+      <span>ไปยังรายละเอียด</span>
+      ${[
+        ["workers", "คนงานและเวลา"],
+        ["materials", "วัสดุ"],
+        ["vehicles", "รถและน้ำมัน"],
+        ["survey", "Survey"],
+        ["weigh-tickets", "ใบชั่ง"],
+        ["review", "ตรวจสอบและปิดงาน"],
+      ].map(([section, label]) => `<button type="button" data-farm-daily-jump="${section}">${label}</button>`).join("")}
+      <button type="button" data-farm-daily-detail-tab="attachments">เอกสารแนบ</button>
+    </div>
+  </nav>`;
+}
+
+function renderFarmDailyEntry() {
+  return `${renderFarmWorkflowModeBar({
+    workspaceLabel: "ดู Workspace และรายละเอียด",
+    entryLabel: "กลับหน้าบันทึกงาน",
+  })}
+    ${renderFarmDailyEntryActions()}
+    <div class="farm-daily-entry">${renderFarmResultPanel()}</div>`;
 }
 
 function renderFarmWorkspaceTabs(tabs, active, view) {
@@ -23391,7 +23684,11 @@ function renderFarmDailyWorkspace() {
       : active === "vehicles" ? renderFarmDailyVehicles()
         : active === "attachments" ? renderFarmDailyAttachments()
           : active === "review" ? renderFarmDailyReview() : "";
-  return `${renderFarmWorkspaceTabs(FARM_DAILY_WORKSPACE_TABS, active, "farm-result")}
+  return `${renderFarmWorkflowModeBar({
+      workspaceLabel: "ดู Workspace และรายละเอียด",
+      entryLabel: "กลับหน้าบันทึกงาน",
+    })}
+    ${renderFarmWorkspaceTabs(FARM_DAILY_WORKSPACE_TABS, active, "farm-result")}
     <div class="farm-daily-workspace daily-tab-${esc(active)}">${renderFarmResultPanel()}${extras}</div>`;
 }
 
@@ -23456,9 +23753,12 @@ function renderFarmPage() {
       ${isTeamPage ? renderFarmTeamsBoard() : ""}
       ${isPeoplePage ? renderFarmPeopleBoard(table, rows, tables) : ""}
       ${isInventoryPage ? renderFarmInventoryBoard() : ""}
-      ${isWorkPage ? renderFarmWorkWorkspace() : ""}
-      ${isDispatchPage ? `${renderFarmWorkBoard({ title: "Scheduler", subtitle: "ตารางงานสำหรับผู้จัดการ ใช้ดูแผนก่อนหยิบไปสั่งงาน", showKpis: false })}${renderFarmDispatchPanel()}${renderFarmActivityModal()}` : ""}
-      ${isResultPage ? renderFarmDailyWorkspace() : ""}
+      ${isWorkPage ? (farmWorkflowModeFromUrl() === "workspace" ? `${renderFarmWorkflowModeBar({
+        workspaceLabel: "ดู Workspace และติดตามงาน",
+        entryLabel: "กลับหน้าวางแผน",
+      })}${renderFarmWorkWorkspace()}` : renderFarmWorkEntry()) : ""}
+      ${isDispatchPage ? (farmWorkflowModeFromUrl() === "workspace" ? renderFarmDispatchWorkspace() : renderFarmDispatchEntry()) : ""}
+      ${isResultPage ? (farmWorkflowModeFromUrl() === "workspace" ? renderFarmDailyWorkspace() : renderFarmDailyEntry()) : ""}
       ${isInventoryIssuePage ? renderFarmInventoryIssueQueue() : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
@@ -24274,11 +24574,14 @@ function downloadCsv() {
 async function init() {
   ensurePrintPreviewElements();
   applySidebarState();
+  loadFarmResultDraftCache();
   state.view = initialViewFromUrl();
   const initialWorkspaceRoute = requestedWorkspaceRouteFromUrl();
   if (initialWorkspaceRoute) applyWorkspaceFallbackRoute(initialWorkspaceRoute);
   if (isFarmView(state.view) || initialWorkspaceRoute) await loadWorkspaceShell();
+  hydrateFarmWorkflowStateFromUrl();
   window.addEventListener("popstate", () => {
+    if (state.view === "farm-result" && document.querySelector("#farmResultDate")) syncFarmResultDraftFromForm();
     const requestedRoute = requestedWorkspaceRouteFromUrl();
     if (requestedRoute) {
       if (!applyWorkspaceRoute(requestedRoute)) applyWorkspaceFallbackRoute(requestedRoute);
@@ -24288,6 +24591,7 @@ async function init() {
     const tab = workspaceTabFromUrl(state.view);
     if (state.view === "farm-work" && tab) state.farmWorkWorkspaceTab = tab;
     if (state.view === "farm-result" && tab) state.farmDailyWorkspaceTab = tab;
+    hydrateFarmWorkflowStateFromUrl();
     render();
     loadFarmCurrentViewTables({ silent: true });
   });
@@ -24461,30 +24765,35 @@ async function init() {
     if (e.target.id === "farmWorkActivityGroup") {
       state.farmWorkFilters.activityGroup = e.target.value;
       state.farmWorkDetailId = "";
+      syncFarmWorkflowFiltersToUrl();
       render();
       return;
     }
     if (e.target.id === "farmWorkTeam") {
       state.farmWorkFilters.team = e.target.value;
       state.farmWorkDetailId = "";
+      syncFarmWorkflowFiltersToUrl();
       render();
       return;
     }
     if (e.target.id === "farmWorkZone") {
       state.farmWorkFilters.zone = e.target.value;
       state.farmWorkDetailId = "";
+      syncFarmWorkflowFiltersToUrl();
       render();
       return;
     }
     if (e.target.id === "farmWorkPlotGroup") {
       state.farmWorkFilters.plotGroup = e.target.value;
       state.farmWorkDetailId = "";
+      syncFarmWorkflowFiltersToUrl();
       render();
       return;
     }
     if (e.target.id === "farmWorkStatus") {
       state.farmWorkFilters.status = e.target.value;
       state.farmWorkDetailId = "";
+      syncFarmWorkflowFiltersToUrl();
       render();
       return;
     }
@@ -24495,6 +24804,7 @@ async function init() {
       }
       normalizeDateInput(e.target);
       state.farmWorkDetailId = "";
+      syncFarmWorkflowFiltersToUrl();
       render();
       return;
     }
@@ -24502,6 +24812,7 @@ async function init() {
       state.farmWorkFilters.endDate = dateValue(e.target);
       normalizeDateInput(e.target);
       state.farmWorkDetailId = "";
+      syncFarmWorkflowFiltersToUrl();
       render();
       return;
     }
@@ -24513,6 +24824,7 @@ async function init() {
       }
       state.farmDispatchPrintSelectedIds = [];
       normalizeDateInput(e.target);
+      syncFarmWorkflowFiltersToUrl();
       render();
       return;
     }
@@ -24520,6 +24832,7 @@ async function init() {
       state.farmDispatchListFilters = { ...(state.farmDispatchListFilters || {}), endDate: dateValue(e.target) };
       state.farmDispatchPrintSelectedIds = [];
       normalizeDateInput(e.target);
+      syncFarmWorkflowFiltersToUrl();
       render();
       return;
     }
@@ -24538,12 +24851,16 @@ async function init() {
       return;
     }
     if (e.target.id === "farmDispatchOrderSelect") {
+      if (state.farmDispatchWorkOrderId) {
+        updateFarmWorkflowUrl({ work_order: state.farmDispatchWorkOrderId });
+      }
       state.farmDispatchWorkOrderId = e.target.value;
       state.farmWorkDetailId = e.target.value;
       state.farmDispatchTeamId = "";
       state.farmDispatchExtraWorkers = [];
       state.farmDispatchExtraMaterials = [];
       state.farmDispatchExtraVehicles = [];
+      updateFarmWorkflowUrl({ work_order: e.target.value }, { push: true });
       render();
       return;
     }
@@ -24555,12 +24872,7 @@ async function init() {
       return;
     }
     if (e.target.id === "farmResultOrderSelect") {
-      state.farmResultWorkOrderId = e.target.value;
-      state.farmWorkDetailId = e.target.value;
-      const selectedOrder = farmResultOrderList().find((row) => String(row.id) === String(e.target.value))
-        || farmLookup("work_orders", e.target.value)
-        || farmResultSelectedOrder();
-      state.farmResultDraft = farmResultBlankDraft(selectedOrder);
+      selectFarmResultOrder(e.target.value);
       render();
       return;
     }
@@ -24568,6 +24880,7 @@ async function init() {
       const filters = farmResultFilterState();
       if (e.target.id === "farmResultActivityFilter") filters.activity = e.target.value || "all";
       if (e.target.id === "farmResultStatusFilter") filters.status = e.target.value || "all";
+      syncFarmWorkflowFiltersToUrl();
       render();
       return;
     }
@@ -24931,6 +25244,23 @@ async function init() {
     }
   });
   els.reportPage.addEventListener("click", async (e) => {
+    const workflowMode = e.target.closest("[data-farm-workflow-mode]");
+    if (workflowMode) {
+      setFarmWorkflowMode(workflowMode.dataset.farmWorkflowMode);
+      return;
+    }
+    const dailyJump = e.target.closest("[data-farm-daily-jump]");
+    if (dailyJump) {
+      document.querySelector(`[data-daily-section="${dailyJump.dataset.farmDailyJump}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    const dailyDetailTab = e.target.closest("[data-farm-daily-detail-tab]");
+    if (dailyDetailTab) {
+      setFarmWorkflowMode("workspace");
+      setFarmWorkspaceTab("farm-result", dailyDetailTab.dataset.farmDailyDetailTab, { replace: true });
+      return;
+    }
     const workspaceTab = e.target.closest("[data-farm-workspace-tab]");
     if (workspaceTab) {
       setFarmWorkspaceTab(workspaceTab.dataset.farmWorkspaceView, workspaceTab.dataset.farmWorkspaceTab);
@@ -25163,6 +25493,7 @@ async function init() {
     if (e.target.id === "farmWorkSearch") {
       state.farmWorkFilters.query = e.target.value.trim();
       state.farmWorkDetailId = "";
+      syncFarmWorkflowFiltersToUrl();
       clearTimeout(state.estSearchTimer);
       const cursor = e.target.selectionStart ?? e.target.value.length;
       state.estSearchTimer = setTimeout(() => {
@@ -25191,6 +25522,7 @@ async function init() {
     }
     if (e.target.id === "farmResultWorkSearch") {
       farmResultFilterState().query = e.target.value.trim();
+      syncFarmWorkflowFiltersToUrl();
       clearTimeout(state.farmResultRenderTimer);
       const cursor = e.target.selectionStart ?? e.target.value.length;
       state.farmResultRenderTimer = setTimeout(() => {
@@ -25589,6 +25921,7 @@ async function init() {
         [dispatchListFilter.dataset.farmDispatchListFilter]: dispatchListFilter.value || "all",
       };
       state.farmDispatchPrintSelectedIds = [];
+      syncFarmWorkflowFiltersToUrl();
       render();
       return;
     }
@@ -25636,15 +25969,7 @@ async function init() {
       e.preventDefault();
       e.stopPropagation();
       const id = resultOrderPick.dataset.farmResultOrderPick;
-      state.farmResultWorkOrderId = id;
-      state.farmWorkDetailId = id;
-      state.farmDispatchWorkOrderId = id;
-      state.farmResultRoleTab = "";
-      const selectedOrder = farmResultCandidateOrders().find((row) => String(row.id) === String(id))
-        || farmResultOrderList().find((row) => String(row.id) === String(id))
-        || farmLookup("work_orders", id)
-        || farmResultSelectedOrder();
-      state.farmResultDraft = farmResultBlankDraft(selectedOrder);
+      selectFarmResultOrder(id);
       render();
       return;
     }
@@ -25664,7 +25989,9 @@ async function init() {
       const timelineScrollers = [...document.querySelectorAll(".farm-work-gantt, .farm-work-rows, .farm-work-layout")]
         .map((element, index) => ({ index, left: element.scrollLeft, top: element.scrollTop }));
       workDetail.blur?.();
+      if (state.farmWorkDetailId) updateFarmWorkflowUrl({ work_order: state.farmWorkDetailId });
       selectFarmWorkOrderFromTimeline(workDetail.dataset.farmWorkDetail);
+      updateFarmWorkflowUrl({ work_order: state.farmWorkDetailId }, { push: true });
       render();
       const restoreScroll = () => {
         window.scrollTo(scrollX, scrollY);

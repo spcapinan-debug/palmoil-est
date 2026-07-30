@@ -15752,6 +15752,126 @@ tfoot td,
   .farm-result-work-history { grid-column: auto; grid-row: auto; }
 }
 /* Phase 3 work-planning and daily-operation workspaces */
+.farm-entry-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  padding: .85rem 1rem;
+  border: 1px solid #d9e6df;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f7fbf9, #eef7f2);
+}
+
+.farm-entry-mode-bar div {
+  min-width: 0;
+}
+
+.farm-entry-mode-bar strong,
+.farm-entry-mode-bar span {
+  display: block;
+}
+
+.farm-entry-mode-bar strong {
+  color: #153f32;
+}
+
+.farm-entry-mode-bar span {
+  margin-top: .2rem;
+  color: #65766f;
+  font-size: .82rem;
+}
+
+.farm-entry-mode-bar button {
+  flex: 0 0 auto;
+  min-height: 42px;
+  border-radius: 10px;
+  font-weight: 800;
+}
+
+.farm-entry-secondary {
+  border: 1px solid #126b4d;
+  background: #fff;
+  color: #126b4d;
+}
+
+.farm-entry-return {
+  background: #126b4d;
+  color: #fff;
+}
+
+.farm-daily-entry-actions {
+  position: sticky;
+  top: .5rem;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: .75rem;
+  margin-bottom: 1rem;
+  padding: .65rem;
+  border: 1px solid rgb(31 41 55 / 12%);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 10px 28px rgb(15 23 42 / 12%);
+  backdrop-filter: blur(10px);
+}
+
+.farm-daily-primary-actions,
+.farm-daily-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+}
+
+.farm-daily-primary-actions button {
+  min-height: 42px;
+  font-weight: 800;
+}
+
+.farm-daily-primary-actions button:first-child {
+  background: #126b4d;
+  color: #fff;
+}
+
+.farm-daily-primary-actions .farm-danger-confirm {
+  margin-top: 0;
+}
+
+.farm-daily-detail-actions {
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.farm-daily-detail-actions span,
+.farm-daily-detail-actions button {
+  flex: 0 0 auto;
+}
+
+.farm-daily-detail-actions span {
+  color: #65766f;
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.farm-daily-detail-actions button {
+  min-height: 36px;
+  padding: .45rem .7rem;
+  border: 1px solid #d9e6df;
+  border-radius: 999px;
+  background: #f7faf8;
+  color: #234b3f;
+}
+
+.farm-daily-entry,
+.farm-daily-entry > *,
+.farm-workspace-content {
+  min-width: 0;
+}
+
 .farm-workspace-tabs {
   display: flex;
   gap: .5rem;
@@ -15943,12 +16063,39 @@ tfoot td,
 }
 
 @media (max-width: 900px) {
+  .farm-daily-entry-actions {
+    grid-template-columns: 1fr;
+  }
+
   .farm-workspace-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 600px) {
+  .farm-entry-mode-bar {
+    align-items: stretch;
+    flex-direction: column;
+    padding: .75rem;
+  }
+
+  .farm-entry-mode-bar button {
+    width: 100%;
+  }
+
+  .farm-daily-entry-actions {
+    position: static;
+  }
+
+  .farm-daily-primary-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .farm-daily-primary-actions button {
+    width: 100%;
+  }
+
   .farm-workspace-tabs {
     margin-inline: -.25rem;
   }
