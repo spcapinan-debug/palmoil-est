@@ -101,11 +101,11 @@
             <button class="topbar-notification" type="button" aria-label="แจ้งเตือน">
               <span>!</span>
             </button>
-            <button class="topbar-user" type="button" aria-label="ผู้ใช้งาน">
+            <button id="farmAuthButton" class="topbar-user" type="button" aria-label="เข้าสู่ระบบ" aria-haspopup="dialog">
               <span class="user-avatar">D</span>
               <span class="user-meta">
-                <strong>Director</strong>
-                <small>Admin</small>
+                <strong>เข้าสู่ระบบ</strong>
+                <small>UAT</small>
               </span>
               <span class="user-caret">⌄</span>
             </button>
@@ -189,6 +189,37 @@
         </section>
       </main>
     </div>
+
+    <dialog id="farmAuthDialog" class="farm-auth-dialog" aria-labelledby="farmAuthTitle">
+      <form id="farmAuthForm" class="farm-auth-form">
+        <div class="farm-auth-head">
+          <div>
+            <p class="eyebrow">Secure UAT session</p>
+            <h2 id="farmAuthTitle">เข้าสู่ระบบ</h2>
+          </div>
+          <button id="farmAuthClose" class="farm-auth-close" type="button" aria-label="ปิด">×</button>
+        </div>
+        <p id="farmAuthDescription" class="farm-auth-description">
+          ใช้บัญชี UAT ของระบบ ข้อมูลรหัสผ่านจะถูกส่งตรงไปยัง API และไม่ถูกบันทึกในเบราว์เซอร์
+        </p>
+        <div id="farmAuthFields" class="farm-auth-fields">
+          <label>
+            อีเมล
+            <input id="farmAuthEmail" name="email" type="email" autocomplete="username" required>
+          </label>
+          <label>
+            รหัสผ่าน
+            <input id="farmAuthPassword" name="password" type="password" autocomplete="current-password" required>
+          </label>
+        </div>
+        <p id="farmAuthStatus" class="farm-auth-status" role="status" aria-live="polite"></p>
+        <div class="farm-auth-actions">
+          <button id="farmAuthCancel" type="button">ยกเลิก</button>
+          <button id="farmAuthSignOut" class="danger hidden" type="button">ออกจากระบบ</button>
+          <button id="farmAuthSubmit" type="submit">เข้าสู่ระบบ</button>
+        </div>
+      </form>
+    </dialog>
 
     <div id="printPreviewModal" class="print-preview-modal hidden" aria-hidden="true">
       <div class="print-preview-panel">

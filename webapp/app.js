@@ -129,6 +129,9 @@ const state = {
   workspaceTab: "",
   workspaceRoute: "",
   dynamicMenuEnabled: false,
+  farmSession: null,
+  farmAuthRequired: false,
+  farmAuthBusy: false,
   actionCenterFilters: {
     year: "", from: "", to: "", ap: "", block: "", team: "", activity: "", rspo: "",
   },
@@ -220,6 +223,18 @@ const els = {
   printPreviewBody: document.querySelector("#printPreviewBody"),
   previewPrintBtn: document.querySelector("#previewPrintBtn"),
   previewCloseBtn: document.querySelector("#previewCloseBtn"),
+  farmAuthButton: document.querySelector("#farmAuthButton"),
+  farmAuthDialog: document.querySelector("#farmAuthDialog"),
+  farmAuthForm: document.querySelector("#farmAuthForm"),
+  farmAuthClose: document.querySelector("#farmAuthClose"),
+  farmAuthCancel: document.querySelector("#farmAuthCancel"),
+  farmAuthFields: document.querySelector("#farmAuthFields"),
+  farmAuthEmail: document.querySelector("#farmAuthEmail"),
+  farmAuthPassword: document.querySelector("#farmAuthPassword"),
+  farmAuthDescription: document.querySelector("#farmAuthDescription"),
+  farmAuthStatus: document.querySelector("#farmAuthStatus"),
+  farmAuthSubmit: document.querySelector("#farmAuthSubmit"),
+  farmAuthSignOut: document.querySelector("#farmAuthSignOut"),
   applyBtn: document.querySelector("#applyBtn"),
   csvBtn: document.querySelector("#csvBtn"),
   clearDate: document.querySelector("#clearDate"),
@@ -245,6 +260,7 @@ const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_wei
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
 const FARM_SESSION_API = window.__FARM_SESSION_API__ || "/api/farm-session";
+const FARM_AUTH_API = window.__FARM_AUTH_API__ || "/api/farm-auth";
 const FARM_ACTIONS_API = window.__FARM_ACTIONS_API__ || "/api/farm-actions";
 const FARM_BUDGET_SYNC_API = window.__FARM_BUDGET_SYNC_API__ || "/api/farm-budget-sync";
 const FARM_DB_TABLE_CACHE_MS = 30 * 1000;
@@ -255,12 +271,144 @@ const FARM_BUDGET_RATE_DATA_URL = "";
 const TRANSPORT_VIEWS = new Set(["dashboard", "stock", "mill", "rspo", "daily", "summary", "clear"]);
 
 function farmApiHeaders(extra = {}) {
-  const token = window.__SUPABASE_ACCESS_TOKEN__ || localStorage.getItem("supabaseAccessToken") || "";
+  const token = window.__SUPABASE_ACCESS_TOKEN__ || "";
   return token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
 }
 
 function farmApiErrorMessage(payload, fallback) {
   return payload?.error?.message || payload?.message || payload?.error || fallback;
+}
+
+function farmRoleLabel(role = "") {
+  const labels = {
+    super_admin: "ผู้ดูแลระบบ",
+    director: "ผู้อำนวยการ",
+    estate_manager: "ผู้จัดการสวน",
+    uat_manager: "UAT Manager",
+    supervisor: "หัวหน้างาน",
+    uat_supervisor: "UAT Supervisor",
+    inventory_officer: "เจ้าหน้าที่พัสดุ",
+  };
+  return labels[String(role).toLowerCase()] || role || "UAT";
+}
+
+function renderFarmAuthState() {
+  if (!els.farmAuthButton) return;
+  const displayName = state.farmSession?.profile?.displayName || "เข้าสู่ระบบ";
+  const primaryRole = [...state.workspaceRoles][0] || "";
+  const authenticated = Boolean(state.farmSession?.ok);
+  const avatar = authenticated ? String(displayName).trim().charAt(0).toUpperCase() || "U" : "↪";
+  els.farmAuthButton.querySelector(".user-avatar").textContent = avatar;
+  els.farmAuthButton.querySelector(".user-meta strong").textContent = displayName;
+  els.farmAuthButton.querySelector(".user-meta small").textContent = authenticated
+    ? farmRoleLabel(primaryRole)
+    : "UAT";
+  els.farmAuthButton.setAttribute("aria-label", authenticated ? `ผู้ใช้งาน ${displayName}` : "เข้าสู่ระบบ");
+}
+
+function setFarmAuthDialogMode() {
+  const authenticated = Boolean(state.farmSession?.ok);
+  const displayName = state.farmSession?.profile?.displayName || "";
+  const roles = [...state.workspaceRoles].map(farmRoleLabel).join(", ");
+  els.farmAuthFields?.classList.toggle("hidden", authenticated);
+  els.farmAuthSubmit?.classList.toggle("hidden", authenticated);
+  els.farmAuthSignOut?.classList.toggle("hidden", !authenticated);
+  if (els.farmAuthDescription) {
+    els.farmAuthDescription.textContent = authenticated
+      ? `เข้าสู่ระบบเป็น ${displayName}${roles ? ` · ${roles}` : ""}`
+      : "ใช้บัญชี UAT ของระบบ ข้อมูลรหัสผ่านจะถูกส่งตรงไปยัง API และไม่ถูกบันทึกในเบราว์เซอร์";
+  }
+  if (els.farmAuthStatus) els.farmAuthStatus.textContent = "";
+}
+
+function openFarmAuthDialog() {
+  if (!els.farmAuthDialog) return;
+  setFarmAuthDialogMode();
+  if (!els.farmAuthDialog.open) els.farmAuthDialog.showModal();
+  if (!state.farmSession?.ok) els.farmAuthEmail?.focus();
+}
+
+function closeFarmAuthDialog() {
+  if (els.farmAuthDialog?.open) els.farmAuthDialog.close();
+  if (els.farmAuthPassword) els.farmAuthPassword.value = "";
+}
+
+function resetFarmAuthenticatedData() {
+  farmDbTableLoadedAt.clear();
+  farmDbTableInflight.clear();
+  state.farmDbRows = {};
+  state.farmDbErrors = {};
+  state.workspacePermissions = new Set();
+  state.workspaceRoles = new Set();
+  state.workspaceNavigation = [];
+  state.workspaceDefinitions = [];
+  state.workspaceTabs = [];
+  state.workspaceActionCenter = [];
+  state.workspaceReadiness = [];
+  resetFarmDerivedCaches();
+}
+
+async function submitFarmSignIn() {
+  if (state.farmAuthBusy) return;
+  const email = els.farmAuthEmail?.value.trim() || "";
+  const password = els.farmAuthPassword?.value || "";
+  if (!email || !password) {
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = "กรุณากรอกอีเมลและรหัสผ่าน";
+    return;
+  }
+  state.farmAuthBusy = true;
+  if (els.farmAuthSubmit) els.farmAuthSubmit.disabled = true;
+  if (els.farmAuthStatus) els.farmAuthStatus.textContent = "กำลังเข้าสู่ระบบ…";
+  try {
+    const response = await fetch(FARM_AUTH_API, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "sign_in", email, password }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "เข้าสู่ระบบไม่สำเร็จ"));
+    if (els.farmAuthPassword) els.farmAuthPassword.value = "";
+    resetFarmAuthenticatedData();
+    const loaded = await loadWorkspaceShell();
+    if (!loaded || !state.farmSession?.ok) throw new Error("ไม่สามารถโหลด session หลังเข้าสู่ระบบ");
+    await loadFarmCurrentViewTables({ silent: true, force: true });
+    closeFarmAuthDialog();
+    render();
+  } catch (error) {
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
+  } finally {
+    state.farmAuthBusy = false;
+    if (els.farmAuthSubmit) els.farmAuthSubmit.disabled = false;
+  }
+}
+
+async function submitFarmSignOut() {
+  if (state.farmAuthBusy) return;
+  state.farmAuthBusy = true;
+  if (els.farmAuthSignOut) els.farmAuthSignOut.disabled = true;
+  if (els.farmAuthStatus) els.farmAuthStatus.textContent = "กำลังออกจากระบบ…";
+  try {
+    const response = await fetch(FARM_AUTH_API, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "sign_out" }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "ออกจากระบบไม่สำเร็จ"));
+    state.farmSession = null;
+    state.farmAuthRequired = true;
+    resetFarmAuthenticatedData();
+    renderFarmAuthState();
+    closeFarmAuthDialog();
+    render();
+  } catch (error) {
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
+  } finally {
+    state.farmAuthBusy = false;
+    if (els.farmAuthSignOut) els.farmAuthSignOut.disabled = false;
+  }
 }
 const DAILY_HEADERS = [
   "วันที่",
@@ -3401,6 +3549,8 @@ async function loadWorkspaceShell() {
     if (!session?.ok || !payload?.ok) {
       throw new Error(farmApiErrorMessage(session?.ok ? payload : session, "Workspace navigation unavailable"));
     }
+    state.farmSession = session;
+    state.farmAuthRequired = false;
     state.workspacePermissions = new Set(session.permissions || []);
     state.workspaceRoles = new Set(session.roles || []);
     const tabs = payload.tables?.v_app_workspace_tabs || [];
@@ -3419,10 +3569,14 @@ async function loadWorkspaceShell() {
     const requestedRoute = requestedWorkspaceRouteFromUrl();
     if (requestedRoute) applyWorkspaceRoute(requestedRoute);
     renderDynamicWorkspaceMenu();
+    renderFarmAuthState();
     return true;
   } catch (error) {
+    state.farmSession = null;
+    state.farmAuthRequired = /access token|invalid token|expired|auth_required/i.test(String(error.message || ""));
     state.dynamicMenuEnabled = false;
     state.farmDbErrors = { ...(state.farmDbErrors || {}), workspace_navigation: error.message };
+    renderFarmAuthState();
     return false;
   }
 }
@@ -13729,20 +13883,21 @@ function farmShortBlockText(row) {
 }
 
 function farmResolveBlockIdForPlanner(order = {}) {
+  const source = order && typeof order === "object" ? order : {};
   const areaBlocks = farmRowsByKey("areas").filter((area) => !area.area_level || area.area_level === "block");
   const blocks = areaBlocks.length ? areaBlocks : farmRowsByKey("blocks");
-  const directId = order.block?.id || order.block_id || "";
+  const directId = source.block?.id || source.block_id || "";
   if (directId && blocks.some((block) => block.id === directId)) return directId;
   const rawValues = [
-    order.block_id,
-    order.block?.block_code,
-    order.block?.block_name,
-    order.block?.area_code,
-    order.block?.terrain_code,
+    source.block_id,
+    source.block?.block_code,
+    source.block?.block_name,
+    source.block?.area_code,
+    source.block?.terrain_code,
   ].filter(Boolean);
   const normalizedValues = new Set(rawValues.map(farmNormalizeKey).filter(Boolean));
   const comparableValues = new Set(rawValues.map(farmNormalizeComparable).filter(Boolean));
-  const apKey = farmNormalizeKey(order.ap_code || order.AP_code || order.block?.ap_code || order.block?.AP_code);
+  const apKey = farmNormalizeKey(source.ap_code || source.AP_code || source.block?.ap_code || source.block?.AP_code);
   const match = blocks.find((block) => {
     const candidates = [
       block.id,
@@ -25974,6 +26129,17 @@ async function init() {
   });
   els.printBtn.addEventListener("click", openPrintPreview);
   els.refreshTransportBtn?.addEventListener("click", refreshTransportFromQuery);
+  els.farmAuthButton?.addEventListener("click", openFarmAuthDialog);
+  els.farmAuthClose?.addEventListener("click", closeFarmAuthDialog);
+  els.farmAuthCancel?.addEventListener("click", closeFarmAuthDialog);
+  els.farmAuthForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitFarmSignIn();
+  });
+  els.farmAuthSignOut?.addEventListener("click", submitFarmSignOut);
+  els.farmAuthDialog?.addEventListener("click", (event) => {
+    if (event.target === els.farmAuthDialog) closeFarmAuthDialog();
+  });
   els.previewCloseBtn.addEventListener("click", closePrintPreview);
   els.previewPrintBtn.addEventListener("click", () => {
     if (state.view === "stock") renderStock(yardScope());
@@ -25998,6 +26164,7 @@ async function init() {
     render();
   });
 
+  renderFarmAuthState();
   render();
   startLiveRefresh();
   if (new URLSearchParams(window.location.search).has("autoRefresh")) autoRefreshTransportFromQuery();
