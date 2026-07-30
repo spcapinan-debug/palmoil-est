@@ -64,6 +64,7 @@ test("daily entry renders one continuous result form with primary save and submi
   assert.match(match[1], /renderFarmResultPanel\(\)/);
   assert.match(appSource, /data-farm-result-save[^>]*>บันทึกร่าง</);
   assert.match(appSource, /data-farm-result-action="submit_work_result"/);
+  assert.match(appSource, /state\.farmSyncBusy \|\| !order \? "disabled"/);
   for (const section of ["workers", "materials", "vehicles", "survey", "weigh-tickets", "review"]) {
     assert.match(appSource, new RegExp(`data-farm-daily-jump="\\$\\{section\\}"|\\["${section}",`));
   }

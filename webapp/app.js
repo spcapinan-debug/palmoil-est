@@ -23370,11 +23370,12 @@ function renderFarmDispatchWorkspace() {
 }
 
 function renderFarmDailyEntryActions() {
-  const result = farmDailyCurrentResult();
+  const order = farmResultSelectedOrder();
+  const result = farmDailyCurrentResult(order);
   const canSubmit = result?.result_status === "draft";
   return `<nav class="farm-daily-entry-actions" aria-label="การบันทึกงานและรายละเอียด">
     <div class="farm-daily-primary-actions">
-      <button type="button" data-farm-result-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกร่าง</button>
+      <button type="button" data-farm-result-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกร่าง</button>
       <button type="button" class="farm-danger-confirm" data-farm-result-action="submit_work_result"
         data-result-id="${esc(result?.id || "")}" ${state.farmSyncBusy || !canSubmit ? "disabled" : ""}>ส่งตรวจ</button>
     </div>
