@@ -49,6 +49,14 @@ test("dispatch entry opens scheduler, assignment form, and activity modal withou
   assert.match(appSource, /"\/farm\/dispatch":\s*\["farm\.dispatch",\s*"farm-dispatch"\]/);
 });
 
+test("dispatch empty state formats a missing work order without crashing the route", () => {
+  const match = appSource.match(/function farmShortWorkOrderNo\(order = \{\}\) \{([\s\S]*?)\n\}/);
+  assert.ok(match);
+  const factory = new Function("farmThaiYearSuffix", "farmToday", `${match[0]}; return farmShortWorkOrderNo;`);
+  const shortNo = factory(() => "69", () => "2026-07-30");
+  assert.equal(shortNo(null), "W69-001");
+});
+
 test("daily entry renders one continuous result form with primary save and submit actions", () => {
   const match = appSource.match(/function renderFarmDailyEntry\(\) \{([\s\S]*?)\n\}/);
   assert.ok(match);

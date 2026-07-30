@@ -13191,6 +13191,7 @@ function farmThaiYearSuffix(dateValue = farmToday()) {
 }
 
 function farmShortWorkOrderNo(order = {}) {
+  order = order || {};
   const sourceNo = String(order.work_order_no || order.orderNo || order.id || "").trim();
   const date = order.scheduled_date || order.planned_start_date || order.orderDate || farmToday();
   const yearSuffix = farmThaiYearSuffix(date);
