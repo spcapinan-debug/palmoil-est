@@ -242,12 +242,13 @@ function setOf(rows, field) {
 async function uatReadContext(actor) {
   const blockIds = new Set(actor.scopes.map((scope) => scope.block_id).filter(Boolean));
   if (!blockIds.size) throw new ApiError(403, "SCOPE_FORBIDDEN", "UAT identity has no active block scope");
-  const orders = await rest(
-    `work_orders?block_id=in.(${[...blockIds].join(",")})&select=id,work_order_no,planned_work_item_id,status,team_id,contractor_id`,
-  )
-    .then(({ data }) => (data || []).filter((row) =>
-      String(row.work_order_no || "").startsWith("WEBTEST-2569")
-      || String(row.work_order_no || "").startsWith("WEBTEST-UAT-")));
+  const [orders, blocks] = await Promise.all([
+    rest(`work_orders?block_id=in.(${[...blockIds].join(",")})&select=id,work_order_no,planned_work_item_id,status,team_id,contractor_id`)
+      .then(({ data }) => data || []),
+    rest(`blocks?id=in.(${[...blockIds].join(",")})&select=id,block_code,block_name`)
+      .then(({ data }) => data || []),
+  ]);
+  const blockKeys = new Set(blocks.flatMap((row) => [row.id, row.block_code, row.block_name]).filter(Boolean));
   const workOrderIds = setOf(orders, "id");
   const plannedItemIds = setOf(orders, "planned_work_item_id");
   const items = plannedItemIds.size
@@ -262,9 +263,7 @@ async function uatReadContext(actor) {
   const workResultIds = setOf(results, "id");
   const goodsIssues = workOrderIds.size
     ? await rest(`goods_issues?work_order_id=in.(${[...workOrderIds].join(",")})&select=id,issue_no,work_order_id`)
-      .then(({ data }) => (data || []).filter((row) =>
-        String(row.issue_no || "").startsWith("WEBTEST-2569")
-        || String(row.issue_no || "").startsWith("WEBTEST-UAT-INV-")))
+      .then(({ data }) => data || [])
     : [];
   const goodsIssueIds = setOf(goodsIssues, "id");
   const goodsIssueLines = goodsIssueIds.size
@@ -293,7 +292,7 @@ async function uatReadContext(actor) {
       .then(({ data }) => data || [])
     : [];
   const surveyAnswerIds = setOf(surveyAnswers, "id");
-  const [responseAttachments, answerAttachments, payrollPeriods] = await Promise.all([
+  const [responseAttachments, answerAttachments, payrollPeriodLines] = await Promise.all([
     surveyResponseIds.size
       ? rest(`survey_response_attachments?response_id=in.(${[...surveyResponseIds].join(",")})&select=attachment_id`)
         .then(({ data }) => data || [])
@@ -302,11 +301,20 @@ async function uatReadContext(actor) {
       ? rest(`survey_answer_attachments?answer_id=in.(${[...surveyAnswerIds].join(",")})&select=attachment_id`)
         .then(({ data }) => data || [])
       : [],
-    rest("payroll_periods?select=id,period_code").then(({ data }) =>
-      (data || []).filter((row) => String(row.period_code || "").startsWith("WEBTEST-"))),
+    workResultIds.size
+      ? rest(`payroll_period_lines?work_result_id=in.(${[...workResultIds].join(",")})&select=id,payroll_period_id,work_result_id`)
+        .then(({ data }) => data || [])
+      : [],
   ]);
+  const payrollPeriodIds = setOf(payrollPeriodLines, "payroll_period_id");
+  const payrollSummaries = payrollPeriodIds.size
+    ? await rest(`payroll_employee_summaries?payroll_period_id=in.(${[...payrollPeriodIds].join(",")})&select=id,payroll_period_id`)
+      .then(({ data }) => data || [])
+    : [];
   return {
-    annualPlanIds, blockIds, orders, payrollPeriodIds: setOf(payrollPeriods, "id"),
+    annualPlanIds, blockIds, blockKeys, orders, payrollPeriodIds,
+    payrollPeriodLineIds: setOf(payrollPeriodLines, "id"),
+    payrollSummaryIds: setOf(payrollSummaries, "id"),
     goodsIssueIds, goodsIssueLineIds, goodsReturnIds, inventoryLotIds, inventoryMaterialIds,
     plannedItemIds, results, surveyAnswerIds,
     surveyAttachmentIds: setOf([...responseAttachments, ...answerAttachments], "attachment_id"),
@@ -335,7 +343,7 @@ function uatRowAllowed(table, row, context) {
     if (table === "attachments") return context.surveyAttachmentIds.has(row.id);
     if (table === "v_management_action_center") return ["farm.work", "farm.daily"].includes(row.module_key);
     if (table === "v_available_inbound_weight_tickets") {
-      return Object.values(row).some((value) => String(value || "").startsWith("WEBTEST-2569"));
+      return context.blockKeys.has(row.source_area_key);
     }
     if (table.startsWith("v_") && !["v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs", "v_system_module_readiness"].includes(table)) {
       return context.workOrderIds.has(row.work_order_id)
@@ -343,7 +351,7 @@ function uatRowAllowed(table, row, context) {
         || context.workResultIds.has(row.work_result_id)
         || context.surveyResponseIds.has(row.response_id)
         || context.blockIds.has(row.block_id)
-        || Object.values(row).some((value) => /^WEBTEST-(2569|UAT-)/.test(String(value || "")));
+        || context.blockKeys.has(row.source_area_key);
     }
     return true;
   }
@@ -378,8 +386,18 @@ function uatRowAllowed(table, row, context) {
   }
   if (table === "survey_answer_attachments") return context.surveyAnswerIds.has(row.answer_id);
   if (table === "payroll_periods") return context.payrollPeriodIds.has(row.id);
-  if (table.startsWith("payroll_")) return context.payrollPeriodIds.has(row.payroll_period_id);
+  if (table === "payroll_period_lines") return context.payrollPeriodLineIds.has(row.id);
+  if (table === "payroll_employee_summaries") return context.payrollSummaryIds.has(row.id);
+  if (["payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines"].includes(table)) {
+    return context.payrollSummaryIds.has(row.payroll_summary_id);
+  }
   return false;
+}
+
+function safeTableError(error) {
+  return error?.status && error.status < 500
+    ? { code: error.code || "TABLE_READ_FAILED", message: error.message || "Table read failed" }
+    : { code: "TABLE_READ_FAILED", message: "Table read failed" };
 }
 
 async function uatPlanForItem(itemId) {
@@ -474,16 +492,29 @@ async function handleGet(req, res, url, actor) {
     if (deniedTables.has(table)) {
       return { table, rows: [], total: 0, warning: "Table is not available to this UAT role" };
     }
-    const read = await readTable(table, limit, offset);
-    if (!context) return read;
-    const rows = table === "v_management_action_center"
-      ? uatActionCenterRows(read.rows, context)
-      : read.rows.filter((row) => uatRowAllowed(table, row, context));
-    return { ...read, rows, total: rows.length };
+    try {
+      const read = await readTable(table, limit, offset);
+      if (!context) return { ...read, rawTotal: read.total };
+      const rows = table === "v_management_action_center"
+        ? uatActionCenterRows(read.rows, context)
+        : read.rows.filter((row) => uatRowAllowed(table, row, context));
+      return { ...read, rows, rawTotal: read.total, total: rows.length };
+    } catch (error) {
+      return { table, rows: [], total: null, rawTotal: null, error: safeTableError(error) };
+    }
   });
   const payload = {
     ok: true,
-    tables: Object.fromEntries(reads.map((item) => [item.table, item.rows])),
+    tables: Object.fromEntries(reads.filter((item) => !item.error).map((item) => [item.table, item.rows])),
+    tableMeta: Object.fromEntries(reads.map((item) => [item.table, {
+      ok: !item.error,
+      rows: item.rows.length,
+      count: item.rawTotal,
+      scopedCount: item.rows.length,
+      source: item.table,
+      warning: item.warning || null,
+    }])),
+    errors: Object.fromEntries(reads.filter((item) => item.error).map((item) => [item.table, item.error])),
     warnings: Object.fromEntries(reads.filter((item) => item.warning).map((item) => [item.table, item.warning])),
     pagination: Object.fromEntries(reads.map((item) => [item.table, {
       limit, offset, page: Math.floor(offset / limit) + 1, total: item.total,
@@ -492,12 +523,13 @@ async function handleGet(req, res, url, actor) {
     source: {
       mode: "supabase-real-only",
       tableCount: tables.length,
+      failedTableCount: reads.filter((item) => item.error).length,
       rowCount: reads.reduce((sum, item) => sum + item.rows.length, 0),
       cache: "miss",
       generatedAt: new Date().toISOString(),
     },
   };
-  cache.set(cacheKey, { at: Date.now(), payload });
+  if (!reads.some((item) => item.error)) cache.set(cacheKey, { at: Date.now(), payload });
   return json(res, 200, payload);
 }
 
@@ -586,5 +618,5 @@ async function handler(req, res) {
 module.exports = handler;
 module.exports._test = {
   ACTION_ONLY_TABLES, OPTIONAL_TABLES, TABLES, UAT_OPERATIONAL_TABLES, cache, clearCache, parallelMap,
-  enforceUatTableWrite, requestedTables, tableName, uatActionCenterRows, uatRowAllowed,
+  enforceUatTableWrite, requestedTables, safeTableError, tableName, uatActionCenterRows, uatRowAllowed,
 };

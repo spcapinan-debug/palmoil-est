@@ -281,6 +281,93 @@ function farmApiErrorMessage(payload, fallback) {
   return payload?.error?.message || payload?.message || payload?.error || fallback;
 }
 
+function farmPreviewDiagnostic(event, details = {}) {
+  const hostname = String(window.location?.hostname || "").toLowerCase();
+  if (!hostname.endsWith(".vercel.app") || hostname === "palmoil-est.vercel.app") return;
+  console.info(`[farm-preview] ${event}`, details);
+}
+
+function farmPreviewRenderDiagnostic(tableKeys = [], tableMeta = {}) {
+  const report = () => {
+    const renderedIds = new Set([...document.querySelectorAll(
+      "[data-farm-work-order-row],[data-farm-work-detail],[data-farm-result-order-pick],[data-farm-workspace-order]",
+    )].map((node) => node.dataset.farmWorkOrderRow
+      || node.dataset.farmWorkDetail
+      || node.dataset.farmResultOrderPick
+      || node.dataset.farmWorkspaceOrder).filter(Boolean));
+    const filteredCount = state.view === "farm-dispatch" ? farmDispatchCandidateOrders().length
+      : state.view === "farm-daily" || state.view === "farm-result" ? farmResultCandidateOrders().length
+        : farmWorkOrders().length;
+    farmPreviewDiagnostic("visibility", {
+      route: state.view,
+      mode: state.farmWorkflowModes?.[state.view] || "entry",
+      requestedTables: tableKeys,
+      tableCounts: Object.fromEntries(tableKeys.map((key) => [key, {
+        raw: tableMeta[key]?.count ?? null,
+        scoped: tableMeta[key]?.scopedCount ?? null,
+        client: farmRowsByKey(key).length,
+      }])),
+      filteredCount,
+      renderedCount: renderedIds.size,
+      selectedWorkOrder: state.farmWorkDetailId || state.farmDispatchWorkOrderId || state.farmResultWorkOrderId || null,
+      activeFilterKeys: Object.entries(state.farmWorkFilters || {}).filter(([, value]) => value && value !== "all").map(([key]) => key),
+    });
+  };
+  if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(report);
+  else window.setTimeout(report, 0);
+}
+
+function farmWorkflowEmptyState(kind, { candidateCount = 0, filteredCount = candidateCount } = {}) {
+  const meta = state.farmDbTableMeta?.work_orders || {};
+  const clientCount = farmRowsByKey("work_orders").length;
+  let title = "ยังไม่มีข้อมูลในฐานข้อมูล";
+  let detail = "ฐานข้อมูลยังไม่มีใบสั่งงานสำหรับหน้าจอนี้";
+  if (state.farmAuthRequired) {
+    title = "Session หมดอายุ";
+    detail = "กรุณาเข้าสู่ระบบใหม่ แล้วโหลดข้อมูลอีกครั้ง";
+  } else if (state.farmDbErrors?.work_orders || state.farmDbErrors?.api) {
+    title = "API โหลดข้อมูลไม่สำเร็จ";
+    detail = "ข้อมูลเดิมที่โหลดสำเร็จยังคงอยู่ กด Retry เพื่อเรียกตารางนี้ใหม่";
+  } else if (Number(meta.count) > 0 && Number(meta.scopedCount) === 0) {
+    title = "ไม่มีข้อมูลใน Scope";
+    detail = "ฐานข้อมูลมีใบสั่งงาน แต่ไม่มีรายการที่อยู่ใน Block Scope ของผู้ใช้นี้";
+  } else if (clientCount > 0 && candidateCount === 0) {
+    title = "ไม่มีข้อมูลตาม Status";
+    detail = kind === "daily"
+      ? "หน้านี้แสดงเฉพาะใบงานที่สั่งงานแล้วหรือกำลังทำงาน"
+      : "ไม่มีใบงานสถานะอนุมัติที่พร้อมสั่งงาน";
+  } else if (candidateCount > 0 && filteredCount === 0) {
+    title = "ไม่มีข้อมูลตามตัวกรอง";
+    detail = "ลองล้างคำค้นหา หรือตัวกรองกิจกรรมและสถานะ";
+  }
+  return `<div class="farm-result-order-empty" data-farm-empty-reason="${esc(title)}">
+    <strong>${esc(title)}</strong><span>${esc(detail)}</span>
+    <button type="button" class="ghost compact" data-farm-db-refresh>Retry</button>
+  </div>`;
+}
+
+async function farmJsonRequest(url, options = {}, { retrySession = true } = {}) {
+  const response = await fetch(url, {
+    ...options,
+    credentials: "same-origin",
+    headers: farmApiHeaders(options.headers || {}),
+  });
+  const payload = await response.json().catch(() => null);
+  if (response.status === 401 && retrySession && url !== FARM_SESSION_API) {
+    const sessionResponse = await fetch(FARM_SESSION_API, {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: farmApiHeaders(),
+    });
+    const sessionPayload = await sessionResponse.json().catch(() => null);
+    if (sessionResponse.ok && sessionPayload?.ok) {
+      state.farmSession = sessionPayload;
+      return farmJsonRequest(url, options, { retrySession: false });
+    }
+  }
+  return { response, payload };
+}
+
 function farmRoleLabel(role = "") {
   const labels = {
     super_admin: "ผู้ดูแลระบบ",
@@ -340,6 +427,7 @@ function resetFarmAuthenticatedData() {
   farmDbTableInflight.clear();
   state.farmDbRows = {};
   state.farmDbErrors = {};
+  state.farmDbTableMeta = {};
   state.workspacePermissions = new Set();
   state.workspaceRoles = new Set();
   state.workspaceNavigation = [];
@@ -1056,7 +1144,7 @@ const FARM_SURVEY_QUESTIONS = [
 
 const VERSIONED_FARM_TABLES = new Set(["people", "employees", "contractors", "payroll_rates"]);
 
-const FARM_STATUS_OPTIONS = ["all", "active", "draft", "planned", "scheduled", "submitted", "pending_approval", "approved", "received", "issued", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed", "rejected", "open", "ready", "inactive"];
+const FARM_STATUS_OPTIONS = ["all", "active", "draft", "planned", "scheduled", "submitted", "pending_approval", "approved", "received", "issued", "dispatched", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed", "rejected", "open", "ready", "inactive"];
 
 const FARM_VALUE_LABELS = {
   all: "ทั้งหมด",
@@ -1071,6 +1159,7 @@ const FARM_VALUE_LABELS = {
   approved: "อนุมัติแล้ว",
   received: "รับแล้ว",
   issued: "จ่ายแล้ว",
+  dispatched: "สั่งงานแล้ว",
   sent_to_mobile: "ส่งเข้ามือถือ",
   rescheduled: "เลื่อนวัน",
   in_progress: "กำลังทำงาน",
@@ -3716,13 +3805,16 @@ async function loadWorkspaceShell() {
       "system_settings", "v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs",
       "v_management_action_center", "v_system_module_readiness",
     ].join(",");
-    const [session, payload] = await Promise.all([
-      fetch(FARM_SESSION_API, { cache: "no-store", headers: farmApiHeaders() }).then((res) => res.json()),
-      fetch(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000`, {
-        cache: "no-store", headers: farmApiHeaders(),
-      }).then((res) => res.json()),
-    ]);
-    if (!session?.ok || !payload?.ok) {
+    const sessionRequest = await farmJsonRequest(FARM_SESSION_API, { cache: "no-store" }, { retrySession: false });
+    const session = sessionRequest.payload;
+    if (!sessionRequest.response.ok || !session?.ok) {
+      throw new Error(farmApiErrorMessage(session, "Workspace session unavailable"));
+    }
+    const tableRequest = await farmJsonRequest(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000`, {
+      cache: "no-store",
+    });
+    const payload = tableRequest.payload;
+    if (!tableRequest.response.ok || !payload?.ok) {
       throw new Error(farmApiErrorMessage(session?.ok ? payload : session, "Workspace navigation unavailable"));
     }
     state.farmSession = session;
@@ -3740,6 +3832,13 @@ async function loadWorkspaceShell() {
     state.workspaceTabs = tabs;
     state.workspaceActionCenter = payload.tables?.v_management_action_center || [];
     state.workspaceReadiness = payload.tables?.v_system_module_readiness || [];
+    farmPreviewDiagnostic("session", {
+      ok: true,
+      httpStatus: sessionRequest.response.status,
+      profileId: session.profile?.id || null,
+      roles: session.roles || [],
+      scopeCount: session.scopes?.length || 0,
+    });
     state.dynamicMenuEnabled = workspaceFlag(payload.tables?.system_settings, "system.dynamic_menu_enabled");
     readActionCenterFiltersFromUrl();
     const requestedRoute = requestedWorkspaceRouteFromUrl();
@@ -4126,18 +4225,29 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
   const request = (async () => {
     const limit = state.view === "farm-inventory" ? 500 : 5000;
     const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(tableKeys.join(","))}&limit=${limit}&t=${Date.now()}`;
-    const payload = await fetch(url, { cache: "no-store", headers: farmApiHeaders() }).then((res) => res.json());
-    if (!payload || !payload.tables) throw new Error(farmApiErrorMessage(payload, "No farm table payload"));
+    const { response, payload } = await farmJsonRequest(url, { cache: "no-store" });
+    if (!response.ok || !payload?.ok || !payload.tables) {
+      throw new Error(farmApiErrorMessage(payload, "No farm table payload"));
+    }
     const nextRows = Object.fromEntries(
       Object.entries(payload.tables).map(([tableKey, rows]) => [tableKey, normalizeFarmDbRows(tableKey, Array.isArray(rows) ? rows : [])])
     );
-    state.farmDbRows = replacesAll ? nextRows : { ...(state.farmDbRows || {}), ...nextRows };
+    const replaceSnapshot = replacesAll && !Object.keys(payload.errors || {}).length;
+    state.farmDbRows = replaceSnapshot ? nextRows : { ...(state.farmDbRows || {}), ...nextRows };
     resetFarmDerivedCaches();
     state.farmDbSource = payload.source || null;
-    state.farmDbErrors = replacesAll ? (payload.errors || {}) : { ...(state.farmDbErrors || {}), ...(payload.errors || {}) };
-    state.farmDbWarnings = replacesAll ? (payload.warnings || {}) : { ...(state.farmDbWarnings || {}), ...(payload.warnings || {}) };
+    state.farmDbTableMeta = replaceSnapshot ? (payload.tableMeta || {}) : { ...(state.farmDbTableMeta || {}), ...(payload.tableMeta || {}) };
+    state.farmDbErrors = replaceSnapshot ? (payload.errors || {}) : { ...(state.farmDbErrors || {}), ...(payload.errors || {}) };
+    state.farmDbWarnings = replaceSnapshot ? (payload.warnings || {}) : { ...(state.farmDbWarnings || {}), ...(payload.warnings || {}) };
     farmMarkTablesLoaded(Object.keys(nextRows));
     if (silent) render();
+    farmPreviewDiagnostic("table-load", {
+      ok: true,
+      httpStatus: response.status,
+      requestedTables: tableKeys,
+      failedTables: Object.keys(payload.errors || {}),
+    });
+    farmPreviewRenderDiagnostic(tableKeys, payload.tableMeta || {});
     return true;
   })();
 
@@ -4152,6 +4262,7 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
     state.farmDbSource = { mode: "supabase-real-only", error: error.message };
     state.farmDbErrors = { ...(state.farmDbErrors || {}), api: error.message };
     state.farmDbWarnings = state.farmDbWarnings || {};
+    farmPreviewDiagnostic("table-load", { ok: false, requestedTables: tableKeys, error: error.message });
     return false;
   } finally {
     if (farmDbTableInflight.get(requestKey) === request) farmDbTableInflight.delete(requestKey);
@@ -12888,7 +12999,7 @@ function farmDisplayValue(field, row) {
 }
 
 const FARM_WORK_COMPLETED_STATUS_KEYS = new Set(["completed", "closed", "recorded", "result_recorded", "work_recorded"]);
-const FARM_WORK_DISPATCHED_STATUS_KEYS = new Set(["sent_to_mobile", "rescheduled", "in_progress", "completed", "closed", "recorded", "result_recorded", "work_recorded"]);
+const FARM_WORK_DISPATCHED_STATUS_KEYS = new Set(["dispatched", "sent_to_mobile", "rescheduled", "in_progress", "completed", "closed", "recorded", "result_recorded", "work_recorded"]);
 
 function farmNormalizeWorkStatusKey(value = "") {
   const key = String(value || "").trim().toLowerCase();
@@ -13178,6 +13289,7 @@ function farmWorkStatusMeta(order) {
   if (status === "closed") return { key: "closed", label: "ปิดงาน", color: "#0f172a", tone: "done" };
   if (status === "completed") return { key: "completed", label: "ทำเสร็จ", color: "#16a34a", tone: "done" };
   if (status === "in_progress") return { key: "in_progress", label: "กำลังทำ", color: "#2563eb", tone: "active" };
+  if (status === "dispatched" || dispatch === "dispatched") return { key: "dispatched", label: "สั่งงานแล้ว", color: "#06b6d4", tone: "active" };
   if (status === "sent_to_mobile" || dispatch === "sent_to_mobile") return { key: "sent_to_mobile", label: "ส่งเข้ามือถือ", color: "#06b6d4", tone: "active" };
   if (isRescheduled || status === "rescheduled") return { key: "rescheduled", label: "เลื่อนวัน", color: "#a855f7", tone: "shift" };
   if (approval === "approved" || status === "approved" || status === "scheduled" || status === "planned" || status === "draft") return { key: "approved", label: "อนุมัติแล้ว", color: "#22c55e", tone: "done" };
@@ -13356,6 +13468,7 @@ function farmWorkOrderStatusRank(order = {}) {
   if (status === "closed") return 80;
   if (status === "completed") return 70;
   if (status === "in_progress") return 60;
+  if (status === "dispatched" || dispatch === "dispatched") return 50;
   if (status === "sent_to_mobile" || dispatch === "sent_to_mobile") return 50;
   if (status === "rescheduled" || dispatch === "rescheduled" || order.rescheduled_date) return 45;
   if (status === "approved" || String(order.approval_status || "").toLowerCase() === "approved") return 35;
@@ -15946,6 +16059,11 @@ function farmDispatchMachineCandidates(order) {
 function renderFarmDispatchPanel() {
   const orders = farmDispatchCandidateOrders();
   const order = farmDispatchSelectedOrder(orders);
+  if (!order) {
+    return `<section class="farm-dispatch-panel"><div class="section-head"><h3>สั่งงานจากแผน</h3>
+      <span>เลือกใบงานที่อนุมัติแล้วเพื่อจัดทีม คนงาน พัสดุ และรถ</span></div>
+      ${farmWorkflowEmptyState("dispatch", { candidateCount: orders.length })}</section>`;
+  }
   const teams = farmRowsByKey("teams");
   const activeTeamId = state.farmDispatchTeamId || order?.team_id || "";
   const workers = farmDispatchWorkerCandidates(order, activeTeamId);
@@ -17990,19 +18108,12 @@ function renderFarmInventoryBoard() {
 function farmResultCandidateOrders() {
   if (farmDerivedCache.resultCandidateOrders) return farmDerivedCache.resultCandidateOrders;
   const rows = farmWorkOrders();
-  const allowed = new Set(["sent_to_mobile", "in_progress", "rescheduled", "approved", "completed"]);
-  if (!farmDerivedCache.workOrderWorkerIds) {
-    farmDerivedCache.workOrderWorkerIds = new Set(
-      farmRowsByKey("work_order_workers").map((worker) => String(worker.work_order_id || "")).filter(Boolean)
-    );
-  }
+  const allowed = new Set(["dispatched", "sent_to_mobile", "in_progress", "rescheduled"]);
   const preferred = rows.filter((row) => {
     const meta = farmEffectiveWorkStatusMeta(row);
-    return allowed.has(meta.key) || farmDerivedCache.workOrderWorkerIds.has(String(row.id || ""));
+    return allowed.has(meta.key);
   });
-  farmDerivedCache.resultCandidateOrders = preferred.length
-    ? preferred
-    : rows.filter((row) => !["closed", "rejected"].includes(farmEffectiveWorkStatusMeta(row).key));
+  farmDerivedCache.resultCandidateOrders = preferred;
   return farmDerivedCache.resultCandidateOrders;
 }
 
@@ -18142,7 +18253,7 @@ function renderFarmResultWorkSearch(order, allOrders = farmResultCandidateOrders
               <span>${esc(farmResultOrderDateLabel(row))}</span>
               <em>${esc(farmEffectiveWorkStatusMeta(row)?.label || "-")}</em>
             </button>`;
-        }).join("") || `<div class="farm-result-order-empty">ไม่พบใบสั่งงานตามเงื่อนไข</div>`}
+        }).join("") || farmWorkflowEmptyState("daily", { candidateCount: allOrders.length, filteredCount: filtered.length })}
       </div>
     </section>`;
 }
@@ -19064,10 +19175,10 @@ function renderFarmResultPanel() {
       <section class="farm-result-page">
         <div class="section-head">
           <h3>บันทึกงานประจำวัน</h3>
-          <span>หัวหน้าทีมบันทึกผลงานจริงจากใบสั่งงาน</span>
+          <span>ยังไม่มีใบสั่งงานที่พร้อมบันทึกผลงาน — ดูสาเหตุและกด Retry ด้านล่าง</span>
         </div>
         ${renderFarmResultWorkSearch(null, orders)}
-        <div class="farm-result-order-empty">ยังไม่มีใบสั่งงานที่พร้อมบันทึกผลงาน</div>
+        ${farmWorkflowEmptyState("daily", { candidateCount: orders.length })}
       </section>`;
   }
   const calc = farmResultCalculation(order);

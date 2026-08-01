@@ -3,13 +3,20 @@ const {
   authenticate,
   errorResponse,
   json,
+  refreshAuthentication,
 } = require("../lib/server/farm-api");
 
 async function handler(req, res) {
   if (req.method === "OPTIONS") return json(res, 200, { ok: true });
   if (req.method !== "GET") return errorResponse(res, new ApiError(405, "METHOD_NOT_ALLOWED", "Method not allowed"));
   try {
-    const actor = await authenticate(req);
+    let actor;
+    try {
+      actor = await authenticate(req);
+    } catch (error) {
+      if (error?.status !== 401) throw error;
+      actor = await refreshAuthentication(req, res);
+    }
     return json(res, 200, {
       ok: true,
       profile: {

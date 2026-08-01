@@ -1,24 +1,16 @@
 const {
   ApiError,
   authenticate,
+  authCookie,
   bearerToken,
+  clearAuthCookies,
   config,
   errorResponse,
   json,
   readBody,
   requireText,
+  setAuthCookies,
 } = require("../lib/server/farm-api");
-
-function authCookie(name, value, maxAge) {
-  return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
-}
-
-function clearCookies(res) {
-  res.setHeader("Set-Cookie", [
-    authCookie("farm-access-token", "", 0),
-    authCookie("farm-refresh-token", "", 0),
-  ]);
-}
 
 async function signIn(req, res, body) {
   const email = requireText(body.email, "email", 320);
@@ -36,11 +28,7 @@ async function signIn(req, res, body) {
   if (!response.ok || !session?.access_token || !session?.refresh_token) {
     throw new ApiError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
   }
-  const maxAge = Math.max(Number(session.expires_in || 3600), 60);
-  res.setHeader("Set-Cookie", [
-    authCookie("farm-access-token", session.access_token, maxAge),
-    authCookie("farm-refresh-token", session.refresh_token, 60 * 60 * 24 * 30),
-  ]);
+  const maxAge = setAuthCookies(res, session);
   return json(res, 200, {
     ok: true,
     user: { id: session.user?.id || null },
@@ -55,7 +43,7 @@ async function signOut(req, res) {
     method: "POST",
     headers: { apikey: serviceKey, Authorization: `Bearer ${token}` },
   }).catch(() => null);
-  clearCookies(res);
+  clearAuthCookies(res);
   return json(res, 200, { ok: true });
 }
 
