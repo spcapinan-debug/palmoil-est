@@ -5247,7 +5247,7 @@ function applyTransportPayload(payload, { silent = false } = {}) {
 }
 
 async function loadPayload({ silent = false } = {}) {
-  const payload = window.__PALM_DATA__ || await fetch(`./data/data.json?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
+  const payload = window.__PALM_DATA__ || await fetch(`/data/data.json?t=${Date.now()}`, { cache: "no-store" }).then((res) => res.json());
   const changed = applyTransportPayload(payload, { silent });
   if (silent && !changed) return false;
   if (!silent) return true;

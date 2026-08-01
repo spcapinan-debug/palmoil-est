@@ -100,3 +100,24 @@ test("Vercel serves bundled data files before the SPA catch-all", () => {
   const catchAll = vercelConfig.routes.findIndex((route) => route.src === "/(.*)");
   assert.ok(dataRoute >= 0 && dataRoute < catchAll);
 });
+
+test("live refresh keeps the data request at the site root on nested routes", async () => {
+  const start = appSource.indexOf("async function loadPayload");
+  const end = appSource.indexOf("function applyMillWeightPayload", start);
+  assert.ok(start >= 0 && end > start, "loadPayload must remain executable as a unit");
+  const requests = [];
+  const sandbox = {
+    Date: { now: () => 123 },
+    window: {},
+    fetch(url, options) {
+      requests.push({ url, options });
+      return Promise.resolve({ json: () => Promise.resolve({ source: {}, records: [] }) });
+    },
+    applyTransportPayload: () => false,
+    render() {},
+  };
+  vm.runInNewContext(`${appSource.slice(start, end)}\nresult = loadPayload;`, sandbox);
+  await sandbox.result({ silent: true });
+  assert.equal(requests[0].url, "/data/data.json?t=123");
+  assert.equal(requests[0].options.cache, "no-store");
+});
