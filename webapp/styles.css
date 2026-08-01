@@ -16238,3 +16238,116 @@ tfoot td,
     grid-template-columns: 1fr;
   }
 }
+/* Phase 5 HR workspace: isolated, permission-aware Preview UI. */
+.side-nav a[data-hr5-link] {
+  align-items: center;
+  border-radius: 8px;
+  color: inherit;
+  display: flex;
+  font: inherit;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 12px;
+  text-decoration: none;
+}
+
+.side-nav a[data-hr5-link]:hover,
+.side-nav a[data-hr5-link]:focus-visible { background: rgb(255 255 255 / 9%); }
+.hr5-report-page { max-width: none; padding: 0; }
+.hr5-page { color: #173327; display: grid; gap: 18px; padding: 24px; }
+.hr5-header { align-items: end; background: linear-gradient(135deg, #123e2d, #1c6347); border-radius: 18px; color: #fff; display: flex; justify-content: space-between; padding: 24px 28px; }
+.hr5-header span { color: #c6e6d5; font-size: .72rem; font-weight: 800; letter-spacing: .14em; }
+.hr5-header h2 { color: #fff; font-size: clamp(1.5rem, 3vw, 2.35rem); margin: 6px 0; }
+.hr5-header p { color: #dcefe5; margin: 0; }
+.hr5-header > b { background: #fff3c9; border-radius: 999px; color: #735300; font-size: .78rem; padding: 8px 12px; white-space: nowrap; }
+.hr5-nav { align-items: center; background: #fff; border: 1px solid #d9e6df; border-radius: 12px; display: flex; gap: 4px; overflow-x: auto; padding: 5px; }
+.hr5-nav a { border-radius: 8px; color: #4e675b; font-weight: 700; padding: 9px 13px; text-decoration: none; white-space: nowrap; }
+.hr5-nav a.active { background: #e4f3eb; color: #0b6040; }
+.hr5-readiness { align-items: center; background: #eaf7ef; border: 1px solid #b8dfc8; border-radius: 14px; display: flex; justify-content: space-between; padding: 15px 18px; }
+.hr5-readiness strong { color: #0b6040; }
+.hr5-readiness p { color: #4f6c5d; margin: 3px 0 0; }
+.hr5-readiness > span { background: #fff; border-radius: 999px; color: #0b6040; font-weight: 800; padding: 8px 12px; white-space: nowrap; }
+.hr5-metrics { display: grid; gap: 12px; grid-template-columns: repeat(7, minmax(135px, 1fr)); }
+.hr5-metric { background: #fff; border: 1px solid #dce7e1; border-radius: 14px; display: grid; gap: 5px; min-height: 122px; padding: 15px; }
+.hr5-metric > span { color: #61776b; font-size: .8rem; }
+.hr5-metric strong { color: #143e2d; font-size: 1.75rem; }
+.hr5-metric small { color: #75877e; line-height: 1.35; }
+.hr5-metric.good { border-top: 3px solid #2b9f68; }
+.hr5-metric.warning { border-top: 3px solid #d49a20; }
+.hr5-metric.danger { border-top: 3px solid #c54a4a; }
+.hr5-grid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hr5-panel { background: #fff; border: 1px solid #dae7e0; border-radius: 15px; min-width: 0; padding: 18px; }
+.hr5-panel > header { align-items: start; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 14px; }
+.hr5-panel h3 { color: #173d2e; margin: 0 0 4px; }
+.hr5-panel p { color: #6c7f75; margin: 0; }
+.hr5-panel a { color: #08734a; font-weight: 700; }
+.hr5-list { display: grid; gap: 7px; }
+.hr5-list > a { align-items: center; border: 1px solid #edf2ef; border-radius: 10px; color: inherit; display: flex; justify-content: space-between; padding: 10px 12px; text-decoration: none; }
+.hr5-list > a:hover { background: #f3faf6; border-color: #cce4d5; }
+.hr5-list > a div { display: grid; gap: 3px; }
+.hr5-list > a div:last-child { justify-items: end; }
+.hr5-list span, .hr5-pipeline small { color: #73857c; font-size: .77rem; }
+.hr5-list .danger, .hr5-status.danger { color: #b12d2d; }
+.hr5-pipeline { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hr5-pipeline > div { background: #f5f9f7; border-radius: 10px; display: grid; gap: 5px; padding: 12px; }
+.hr5-pipeline strong { color: #154a35; font-size: 1.45rem; }
+.hr5-vault, .hr5-actions { align-items: center; display: flex; justify-content: space-between; }
+.hr5-page button { background: #176b4b; border: 0; border-radius: 8px; color: #fff; cursor: pointer; font: inherit; font-weight: 700; min-height: 38px; padding: 8px 13px; }
+.hr5-page button.secondary { background: #eef4f1; color: #2f5846; }
+.hr5-page button:disabled { background: #e4e9e6; color: #8a9890; cursor: not-allowed; }
+.hr5-page button:focus-visible, .hr5-page a:focus-visible, .hr5-page input:focus-visible, .hr5-page select:focus-visible { outline: 3px solid #f2b84b; outline-offset: 2px; }
+.hr5-toolbar { align-items: end; background: #fff; border: 1px solid #dae7e0; border-radius: 13px; display: flex; flex-wrap: wrap; gap: 10px; padding: 13px; }
+.hr5-toolbar label { color: #4f675b; display: grid; font-size: .78rem; font-weight: 700; gap: 5px; }
+.hr5-toolbar label > span { align-items: center; display: flex; position: relative; }
+.hr5-toolbar input, .hr5-toolbar select { background: #fff; border: 1px solid #cbdad2; border-radius: 8px; color: #173327; font: inherit; min-height: 40px; min-width: 210px; padding: 8px 36px 8px 10px; }
+.hr5-toolbar kbd { color: #829187; position: absolute; right: 10px; }
+.hr5-table-wrap { overflow-x: auto; width: 100%; }
+.hr5-table { border-collapse: collapse; min-width: 720px; width: 100%; }
+.hr5-table th { background: #f3f7f5; color: #587064; font-size: .72rem; letter-spacing: .03em; padding: 10px; text-align: left; text-transform: uppercase; }
+.hr5-table td { border-top: 1px solid #e7efeb; color: #294638; padding: 11px 10px; vertical-align: top; }
+.hr5-table td small { color: #75887e; display: block; margin-top: 3px; }
+.hr5-table tr[data-hr5-employee] { cursor: pointer; }
+.hr5-table tr[data-hr5-employee]:hover, .hr5-table tr[data-hr5-employee]:focus { background: #f1faf5; outline: none; }
+.hr5-status { background: #edf5f1; border-radius: 999px; display: inline-flex; font-size: .75rem; font-weight: 700; padding: 4px 8px; white-space: nowrap; }
+.hr5-status.danger { background: #fff0f0; }
+.hr5-pagination { align-items: center; display: flex; justify-content: space-between; padding-top: 14px; }
+.hr5-actions { background: #fff; border: 1px solid #dae7e0; border-radius: 12px; padding: 10px 13px; }
+.hr5-actions > div { display: flex; gap: 7px; }
+.hr5-tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
+.hr5-tabs button { background: #eef4f1; color: #476455; white-space: nowrap; }
+.hr5-tabs button.active { background: #176b4b; color: #fff; }
+.hr5-tab-panel { min-height: 240px; }
+.hr5-profile { display: grid; gap: 11px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.hr5-profile article { background: #fff; border: 1px solid #dae7e0; border-radius: 12px; display: grid; gap: 7px; padding: 14px; }
+.hr5-profile span { color: #6b7f74; font-size: .77rem; }
+.hr5-panel dl { display: grid; grid-template-columns: 120px 1fr; margin: 14px 0 0; }
+.hr5-panel dt, .hr5-panel dd { border-top: 1px solid #e5ede9; margin: 0; padding: 9px; }
+.hr5-panel dt { color: #6b7d73; }
+.hr5-empty { color: #75877e; padding: 24px 12px; text-align: center; }
+.hr5-state { align-items: center; background: #fff; border: 1px solid #dae7e0; border-radius: 14px; display: grid; gap: 10px; justify-items: center; min-height: 260px; padding: 30px; text-align: center; }
+.hr5-state i { animation: hr5-spin .8s linear infinite; border: 4px solid #dceae3; border-radius: 50%; border-top-color: #176b4b; height: 32px; width: 32px; }
+.hr5-state.error strong { color: #a62828; }
+@keyframes hr5-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 1180px) {
+  .hr5-metrics { grid-template-columns: repeat(4, minmax(135px, 1fr)); }
+  .hr5-profile { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 820px) {
+  .hr5-page { padding: 16px; }
+  .hr5-header { align-items: start; flex-direction: column; gap: 14px; }
+  .hr5-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hr5-grid { grid-template-columns: 1fr; }
+  .hr5-readiness, .hr5-vault { align-items: start; flex-direction: column; gap: 12px; }
+}
+@media (max-width: 480px) {
+  .hr5-page { gap: 12px; padding: 10px; }
+  .hr5-header { border-radius: 13px; padding: 18px; }
+  .hr5-metrics { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .hr5-metric { min-height: 108px; padding: 12px; }
+  .hr5-profile { grid-template-columns: 1fr 1fr; }
+  .hr5-toolbar { align-items: stretch; display: grid; }
+  .hr5-toolbar input, .hr5-toolbar select { min-width: 0; width: 100%; }
+  .hr5-actions { align-items: start; flex-direction: column; gap: 10px; }
+  .hr5-pagination span { display: none; }
+}

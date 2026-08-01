@@ -24843,6 +24843,7 @@ function render() {
   enhanceTables(els.reportPage);
   enhanceTables(els.clearPage);
   applyBudgetCheckboxStates();
+  window.phase5HrRouteRender?.();
 }
 
 function applyBudgetCheckboxStates(root = document) {

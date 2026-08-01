@@ -20,7 +20,7 @@
       "dest": "/webapp/data/$1"
     },
     {
-      "src": "/(app\\.js|styles\\.css)",
+      "src": "/(app\\.js|hr-phase5\\.js|styles\\.css)",
       "dest": "/webapp/$1"
     },
     {
