@@ -21,6 +21,7 @@ function navigationHarness() {
       "/farm/dispatch": ["farm.dispatch", "farm-dispatch"],
       "/farm/daily": ["farm.daily", "farm-result"],
       "/inventory": ["inventory.stock", "farm-inventory"],
+      "/inventory/fuel": ["inventory.fuel", "farm-inventory"],
       "/payroll": ["payroll", "farm-payroll"],
       "/reports": ["reports", "farm-reports"],
       "/system/access": ["system.access", "farm-governance"],

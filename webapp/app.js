@@ -24624,9 +24624,11 @@ function setView(view) {
   loadFarmCurrentViewTables({ silent: true });
 }
 
-const STATIC_MENU_ROUTE_BY_VIEW = Object.freeze(Object.fromEntries(
-  Object.entries(WORKSPACE_ROUTE_FALLBACKS).map(([route, [, view]]) => [view, route]),
-));
+const STATIC_MENU_ROUTE_BY_VIEW = Object.freeze(Object.entries(WORKSPACE_ROUTE_FALLBACKS)
+  .reduce((routes, [route, [, view]]) => {
+    if (!routes[view]) routes[view] = route;
+    return routes;
+  }, {}));
 
 function menuRouteForView(view, explicitRoute = "") {
   return String(explicitRoute || STATIC_MENU_ROUTE_BY_VIEW[view] || "").trim();
