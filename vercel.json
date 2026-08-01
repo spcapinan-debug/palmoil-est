@@ -16,6 +16,10 @@
       "dest": "/api/$1.js"
     },
     {
+      "src": "/data/(.*)",
+      "dest": "/webapp/data/$1"
+    },
+    {
       "src": "/(app\\.js|styles\\.css)",
       "dest": "/webapp/$1"
     },

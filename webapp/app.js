@@ -24624,6 +24624,127 @@ function setView(view) {
   loadFarmCurrentViewTables({ silent: true });
 }
 
+const STATIC_MENU_ROUTE_BY_VIEW = Object.freeze(Object.fromEntries(
+  Object.entries(WORKSPACE_ROUTE_FALLBACKS).map(([route, [, view]]) => [view, route]),
+));
+
+function menuRouteForView(view, explicitRoute = "") {
+  return String(explicitRoute || STATIC_MENU_ROUTE_BY_VIEW[view] || "").trim();
+}
+
+function pushMenuRoute(view, explicitRoute = "") {
+  const route = menuRouteForView(view, explicitRoute);
+  const url = new URL(window.location.href);
+  if (route) {
+    const target = new URL(route, window.location.origin);
+    url.pathname = target.pathname;
+    url.search = target.search;
+  } else {
+    url.pathname = "/";
+    url.search = "";
+    url.searchParams.set("view", view);
+  }
+  window.history.pushState({}, "", url);
+  return `${url.pathname}${url.search}`;
+}
+
+function activatePrimaryMenu(button) {
+  const selectedModuleBefore = state.view;
+  const view = String(button?.dataset?.view || "").trim();
+  if (!view) return false;
+  const explicitRoute = button.dataset.workspaceRoute || "";
+  const route = pushMenuRoute(view, explicitRoute);
+  state.workspaceRoute = menuRouteForView(view, explicitRoute);
+  state.workspaceTab = button.dataset.workspaceTab || "";
+  setView(view);
+  farmPreviewDiagnostic("navigation", {
+    menuKey: explicitRoute || view,
+    route,
+    selectedModuleBefore,
+    selectedModuleAfter: state.view,
+    sessionOk: Boolean(state.farmSession?.ok),
+    permissionCount: state.workspacePermissions.size,
+  });
+  return true;
+}
+
+function handlePrimaryMenuClick(event) {
+  const summary = event.target.closest?.(".menu-dropdown > summary");
+  if (summary && state.sidebarCollapsed) {
+    event.preventDefault();
+    openSidebarFlyout(summary.closest(".menu-dropdown"));
+    return;
+  }
+  const jumpButton = event.target.closest?.("button[data-view-jump]");
+  if (jumpButton) {
+    activatePrimaryMenu({ dataset: { view: jumpButton.dataset.viewJump } });
+    return;
+  }
+  const button = event.target.closest?.("button[data-view]");
+  if (button && activatePrimaryMenu(button)) closeSidebarFlyouts();
+}
+
+function handlePrimaryPopstate() {
+  if (state.view === "farm-result" && document.querySelector("#farmResultDate")) syncFarmResultDraftFromForm();
+  const requestedRoute = requestedWorkspaceRouteFromUrl();
+  if (requestedRoute) {
+    if (!applyWorkspaceRoute(requestedRoute)) applyWorkspaceFallbackRoute(requestedRoute);
+  } else {
+    state.view = initialViewFromUrl();
+  }
+  const tab = workspaceTabFromUrl(state.view);
+  if (state.view === "farm-work" && tab) state.farmWorkWorkspaceTab = tab;
+  if (state.view === "farm-result" && tab) state.farmDailyWorkspaceTab = tab;
+  hydrateFarmWorkflowStateFromUrl();
+  render();
+  loadFarmCurrentViewTables({ silent: true });
+}
+
+let criticalUiEventsBound = false;
+
+function bindCriticalUiEvents() {
+  if (criticalUiEventsBound) return false;
+  criticalUiEventsBound = true;
+  window.addEventListener("popstate", handlePrimaryPopstate);
+  els.tabs?.addEventListener("click", handlePrimaryMenuClick);
+  els.tabs?.addEventListener("pointerenter", (event) => {
+    const summary = event.target.closest?.(".menu-dropdown > summary");
+    if (summary) openSidebarFlyout(summary.closest(".menu-dropdown"));
+  }, true);
+  els.tabs?.addEventListener("pointerleave", (event) => {
+    const detail = event.target.closest?.(".menu-dropdown");
+    if (detail) scheduleSidebarFlyoutClose(detail);
+  }, true);
+  els.tabs?.addEventListener("pointermove", (event) => {
+    const detail = event.target.closest?.(".menu-dropdown[open]");
+    if (detail && state.sidebarCollapsed) window.clearTimeout(sidebarFlyoutTimer);
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (state.sidebarCollapsed && !event.target.closest?.("#tabs")) closeSidebarFlyouts();
+  });
+  els.sidebarToggle?.addEventListener("click", () => {
+    state.sidebarCollapsed = !state.sidebarCollapsed;
+    localStorage.setItem("sidebarIconRailExpandedV2", state.sidebarCollapsed ? "0" : "1");
+    applySidebarState();
+  });
+  document.querySelector(".brand-lockup")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    activatePrimaryMenu({ dataset: { view: "dashboard" } });
+  });
+  els.farmAuthButton?.addEventListener("click", openFarmAuthDialog);
+  els.farmAuthClose?.addEventListener("click", closeFarmAuthDialog);
+  els.farmAuthCancel?.addEventListener("click", closeFarmAuthDialog);
+  els.farmAuthForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitFarmSignIn();
+  });
+  els.farmAuthSignOut?.addEventListener("click", submitFarmSignOut);
+  els.farmAuthDialog?.addEventListener("click", (event) => {
+    if (event.target === els.farmAuthDialog) closeFarmAuthDialog();
+  });
+  return true;
+}
+
 function ensureFarmViewState(view = state.view) {
   if (!isFarmView(view)) return;
   const module = farmModuleMap()[view] || FARM_MODULES[0];
@@ -24691,23 +24812,9 @@ async function init() {
   state.view = initialViewFromUrl();
   const initialWorkspaceRoute = requestedWorkspaceRouteFromUrl();
   if (initialWorkspaceRoute) applyWorkspaceFallbackRoute(initialWorkspaceRoute);
+  bindCriticalUiEvents();
   if (isFarmView(state.view) || initialWorkspaceRoute) await loadWorkspaceShell();
   hydrateFarmWorkflowStateFromUrl();
-  window.addEventListener("popstate", () => {
-    if (state.view === "farm-result" && document.querySelector("#farmResultDate")) syncFarmResultDraftFromForm();
-    const requestedRoute = requestedWorkspaceRouteFromUrl();
-    if (requestedRoute) {
-      if (!applyWorkspaceRoute(requestedRoute)) applyWorkspaceFallbackRoute(requestedRoute);
-    } else {
-      state.view = initialViewFromUrl();
-    }
-    const tab = workspaceTabFromUrl(state.view);
-    if (state.view === "farm-work" && tab) state.farmWorkWorkspaceTab = tab;
-    if (state.view === "farm-result" && tab) state.farmDailyWorkspaceTab = tab;
-    hydrateFarmWorkflowStateFromUrl();
-    render();
-    loadFarmCurrentViewTables({ silent: true });
-  });
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
@@ -24723,9 +24830,22 @@ async function init() {
       await loadFarmTablesFromDatabase({ silent: false, tables: priorityFarmTables });
     }
   } else {
-    await Promise.all([loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(), loadSummaryPalmoilAreas(), loadBlockMapData(), loadFarmBudgetRateData(), loadClearOverridesFromServer()]);
-    setDefaultTransportDateRange();
-    setDateValue(els.clearDate, state.payload.source.dateMax);
+    const startupLoads = await Promise.allSettled([
+      loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(),
+      loadSummaryPalmoilAreas(), loadBlockMapData(), loadFarmBudgetRateData(), loadClearOverridesFromServer(),
+    ]);
+    const startupFailures = startupLoads.filter((result) => result.status === "rejected");
+    if (startupFailures.length) {
+      els.sourceInfo.textContent = "โหลดข้อมูลบางส่วนไม่สำเร็จ";
+      farmPreviewDiagnostic("startup-load-error", {
+        failureCount: startupFailures.length,
+        messages: startupFailures.map((result) => String(result.reason?.message || result.reason || "โหลดข้อมูลไม่สำเร็จ")),
+      });
+    }
+    if (state.payload?.source) {
+      setDefaultTransportDateRange();
+      setDateValue(els.clearDate, state.payload.source.dateMax);
+    }
   }
 
   els.startDate.addEventListener("input", () => {
@@ -24790,52 +24910,8 @@ async function init() {
     normalizeDateInput(els.endDate);
     render();
   });
-  els.tabs.addEventListener("click", (e) => {
-    const summary = e.target.closest(".menu-dropdown > summary");
-    if (summary && state.sidebarCollapsed) {
-      e.preventDefault();
-      openSidebarFlyout(summary.closest(".menu-dropdown"));
-      return;
-    }
-    const jumpBtn = e.target.closest("button[data-view-jump]");
-    if (jumpBtn) {
-      setView(jumpBtn.dataset.viewJump);
-      return;
-    }
-    const btn = e.target.closest("button[data-view]");
-    if (btn) {
-      state.workspaceRoute = btn.dataset.workspaceRoute || "";
-      state.workspaceTab = btn.dataset.workspaceTab || "";
-      setView(btn.dataset.view);
-      closeSidebarFlyouts();
-    }
-  });
-  els.tabs.addEventListener("pointerenter", (e) => {
-    const summary = e.target.closest?.(".menu-dropdown > summary");
-    if (summary) openSidebarFlyout(summary.closest(".menu-dropdown"));
-  }, true);
-  els.tabs.addEventListener("pointerleave", (e) => {
-    const detail = e.target.closest?.(".menu-dropdown");
-    if (detail) scheduleSidebarFlyoutClose(detail);
-  }, true);
-  els.tabs.addEventListener("pointermove", (e) => {
-    const detail = e.target.closest?.(".menu-dropdown[open]");
-    if (detail && state.sidebarCollapsed) window.clearTimeout(sidebarFlyoutTimer);
-  });
-  document.addEventListener("pointerdown", (e) => {
-    if (state.sidebarCollapsed && !e.target.closest?.("#tabs")) closeSidebarFlyouts();
-  });
   document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
-  els.sidebarToggle?.addEventListener("click", () => {
-    state.sidebarCollapsed = !state.sidebarCollapsed;
-    localStorage.setItem("sidebarIconRailExpandedV2", state.sidebarCollapsed ? "0" : "1");
-    applySidebarState();
-  });
-  document.querySelector(".brand-lockup")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    setView("dashboard");
-  });
   els.reportPage.addEventListener("change", (e) => {
     if (e.target.id === "inventoryUsageLine") {
       state.farmInventoryIssueLineId = e.target.value;
@@ -26569,17 +26645,6 @@ async function init() {
   });
   els.printBtn.addEventListener("click", openPrintPreview);
   els.refreshTransportBtn?.addEventListener("click", refreshTransportFromQuery);
-  els.farmAuthButton?.addEventListener("click", openFarmAuthDialog);
-  els.farmAuthClose?.addEventListener("click", closeFarmAuthDialog);
-  els.farmAuthCancel?.addEventListener("click", closeFarmAuthDialog);
-  els.farmAuthForm?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    submitFarmSignIn();
-  });
-  els.farmAuthSignOut?.addEventListener("click", submitFarmSignOut);
-  els.farmAuthDialog?.addEventListener("click", (event) => {
-    if (event.target === els.farmAuthDialog) closeFarmAuthDialog();
-  });
   els.previewCloseBtn.addEventListener("click", closePrintPreview);
   els.previewPrintBtn.addEventListener("click", () => {
     if (state.view === "stock") renderStock(yardScope());
