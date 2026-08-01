@@ -46,6 +46,11 @@ const ACTIONS = {
     params: (args, actor) => ({ args, actor }),
     entity: "work_orders", entityId: (args) => args.work_order_id,
   },
+  save_dispatch_assignment: {
+    permission: "farm.work_order.dispatch", confirmation: true, execute: saveDispatchAssignment,
+    params: (args, actor) => ({ args, actor }),
+    entity: "work_orders", entityId: (args) => args.work_order_id,
+  },
   start_work_order: {
     permission: "farm.work_order.dispatch", confirmation: true,
     execute: ({ args, actor }) => changeWorkOrderStatus(args, actor, ["dispatched"], "in_progress", { validateStart: true }),
@@ -365,6 +370,7 @@ const UAT_MUTATION_ACTIONS = new Set([
   "approve_work_order",
   "reject_work_order",
   "dispatch_work_order",
+  "save_dispatch_assignment",
   "start_work_order",
   "complete_work_order",
   "close_work_order",
@@ -806,6 +812,123 @@ async function changeWorkOrderStatus(args, actor, allowedFrom, to, options = {})
     headers: { Prefer: "return=minimal" },
   });
   return updated;
+}
+
+function dispatchRows(value, field, maximum) {
+  const rows = Array.isArray(value) ? value : [];
+  if (rows.length > maximum) throw new ApiError(400, "VALIDATION_ERROR", `${field} exceeds ${maximum} items`);
+  return rows;
+}
+
+function dispatchNoteWithRange(note, startDate, endDate) {
+  const clean = String(note || "")
+    .replace(/\n?\[DISPATCH_START:[^\]]*\]/g, "")
+    .replace(/\n?\[DISPATCH_END:[^\]]*\]/g, "")
+    .trim();
+  return `${clean}${clean ? "\n" : ""}[DISPATCH_START:${startDate}]\n[DISPATCH_END:${endDate}]`.slice(0, 5000);
+}
+
+async function saveDispatchAssignment({ args, actor }) {
+  const workOrderId = requireUuid(args.work_order_id, "work_order_id");
+  const scheduledDate = requiredDate(args.scheduled_date, "scheduled_date");
+  const scheduledEndDate = requiredDate(args.scheduled_end_date || args.scheduled_date, "scheduled_end_date");
+  if (scheduledEndDate < scheduledDate) {
+    throw new ApiError(400, "INVALID_DATE_RANGE", "scheduled_end_date must be on or after scheduled_date");
+  }
+  const teamId = requireUuid(args.team_id, "team_id");
+  const order = await one(
+    `work_orders?id=eq.${workOrderId}&select=id,status,note,estate_id,plot_id,block_id,team_id,supervisor_employee_id&limit=1`,
+    "Work order",
+  );
+  await authorizeWorkOrderScope(actor, order);
+  if (!["approved", "dispatched"].includes(order.status)) {
+    throw new ApiError(409, "INVALID_STATE", "Work order must be approved or dispatched before assignment can be saved");
+  }
+  const team = await one(`teams?id=eq.${teamId}&status=eq.active&select=id,supervisor_employee_id&limit=1`, "Active team");
+  const workers = dispatchRows(args.workers, "workers", 200);
+  const materials = dispatchRows(args.materials, "materials", 200);
+  const vehicles = dispatchRows(args.vehicles, "vehicles", 50);
+  if (!workers.length) throw new ApiError(400, "WORKERS_REQUIRED", "At least one worker is required before dispatch");
+
+  const workerIds = [...new Set(workers.map((row) => requireUuid(row.employee_id, "employee_id")))];
+  if (workerIds.length !== workers.length) throw new ApiError(400, "DUPLICATE_WORKER", "A worker may only appear once in an assignment");
+  const materialIds = [...new Set(materials.map((row) => requireUuid(row.material_id, "material_id")))];
+  if (materialIds.length !== materials.length) throw new ApiError(400, "DUPLICATE_MATERIAL", "A material may only appear once in an assignment");
+  const vehicleIds = [...new Set(vehicles.map((row) => requireUuid(row.vehicle_id, "vehicle_id")))];
+  if (vehicleIds.length !== vehicles.length) throw new ApiError(400, "DUPLICATE_VEHICLE", "A vehicle may only appear once in an assignment");
+  vehicles.forEach((row) => {
+    if (!row.driver_employee_id) throw new ApiError(400, "DRIVER_REQUIRED", "Every assigned vehicle requires a driver");
+    requireUuid(row.driver_employee_id, "driver_employee_id");
+  });
+
+  const now = new Date().toISOString();
+  const orderPatch = {
+    scheduled_date: scheduledDate,
+    team_id: teamId,
+    supervisor_employee_id: team.supervisor_employee_id || order.supervisor_employee_id || null,
+    status: "dispatched",
+    dispatched_by_profile_id: actor.profile.id,
+    dispatched_at: order.status === "approved" ? now : undefined,
+    last_action_at: now,
+    note: dispatchNoteWithRange(order.note, scheduledDate, scheduledEndDate),
+    updated_at: now,
+  };
+  Object.keys(orderPatch).forEach((key) => orderPatch[key] === undefined && delete orderPatch[key]);
+  const updated = await rest(`work_orders?id=eq.${workOrderId}&status=eq.${order.status}`, {
+    method: "PATCH", body: JSON.stringify(orderPatch), headers: { Prefer: "return=representation" },
+  }).then(({ data }) => data?.[0]);
+  if (!updated) throw new ApiError(409, "STATE_CONFLICT", "Work order state changed before assignment was saved");
+
+  await rest(`work_order_workers?work_order_id=eq.${workOrderId}&employee_id=not.in.(${workerIds.join(",")})`, {
+    method: "PATCH", body: JSON.stringify({ status: "cancelled" }), headers: { Prefer: "return=minimal" },
+  });
+  await rest("work_order_workers?on_conflict=work_order_id,employee_id", {
+    method: "POST",
+    body: JSON.stringify(workers.map((row) => ({
+      work_order_id: workOrderId,
+      employee_id: row.employee_id,
+      role: String(row.role || "worker").slice(0, 80),
+      planned_hours: optionalNumber(row.planned_hours, "planned_hours") || 0,
+      rate: optionalNumber(row.rate, "rate") || 0,
+      status: "planned",
+    }))),
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+  });
+
+  if (materials.length) await rest("work_order_materials?on_conflict=work_order_id,material_id", {
+    method: "POST",
+    body: JSON.stringify(materials.map((row) => ({
+      work_order_id: workOrderId,
+      material_id: row.material_id,
+      planned_quantity: optionalNumber(row.planned_quantity, "planned_quantity") || 0,
+      unit_id: optionalUuid(row.unit_id, "unit_id"),
+      status: "planned",
+      note: row.note == null ? null : String(row.note).slice(0, 1000),
+      updated_at: now,
+    }))),
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+  });
+
+  if (vehicles.length) await rest("work_order_machines?on_conflict=work_order_id,vehicle_id", {
+    method: "POST",
+    body: JSON.stringify(vehicles.map((row) => ({
+      work_order_id: workOrderId,
+      vehicle_id: row.vehicle_id,
+      driver_employee_id: row.driver_employee_id,
+      planned_hours: optionalNumber(row.planned_hours, "planned_hours") || 0,
+      fuel_plan_liter: optionalNumber(row.fuel_plan_liter, "fuel_plan_liter") || 0,
+      status: "planned",
+      updated_at: now,
+    }))),
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+  });
+
+  if (order.status !== "dispatched") await rest("work_order_status_logs", {
+    method: "POST",
+    body: JSON.stringify([{ work_order_id: workOrderId, from_status: order.status, to_status: "dispatched", changed_by: actor.profile.id, note: "Mobile dispatch assignment saved" }]),
+    headers: { Prefer: "return=minimal" },
+  });
+  return { work_order: updated, workers: workers.length, materials: materials.length, vehicles: vehicles.length };
 }
 
 async function createSurveyResponse({ args, actor }) {

@@ -23,6 +23,227 @@
   --hard-radius: 8px;
 }
 
+/* Mobile operations workflow: candidate-first dispatch */
+.farm-mobile-candidate-panel {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid #dce8e1;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f7fbf8, #eef7f1);
+}
+
+.farm-mobile-candidate-head,
+.farm-mobile-candidate-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.farm-mobile-candidate-head h4,
+.farm-mobile-candidate-head p,
+.farm-mobile-candidate-card p {
+  margin: 0;
+}
+
+.farm-mobile-candidate-head .eyebrow,
+.farm-mobile-step-label {
+  color: #3b7454;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.farm-mobile-count {
+  flex: 0 0 auto;
+  padding: .35rem .65rem;
+  border-radius: 999px;
+  background: #1c6b43;
+  color: #fff;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.farm-mobile-candidate-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+  margin-top: .85rem;
+}
+
+.farm-mobile-candidate-card {
+  min-width: 0;
+  padding: .85rem;
+  border: 1px solid #d9e3dd;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 5px 14px rgba(25, 65, 44, .06);
+}
+
+.farm-mobile-candidate-card.is-active {
+  border-color: #20754b;
+  box-shadow: 0 0 0 2px rgba(32, 117, 75, .12);
+}
+
+.farm-mobile-candidate-card > strong {
+  display: block;
+  margin: .6rem 0 .2rem;
+  overflow-wrap: anywhere;
+}
+
+.farm-mobile-candidate-card > p,
+.farm-mobile-candidate-top small,
+.farm-mobile-readiness small {
+  color: #65756b;
+  font-size: .76rem;
+}
+
+.farm-mobile-candidate-card button {
+  width: 100%;
+  min-height: 42px;
+  margin-top: .65rem;
+  border: 0;
+  border-radius: 10px;
+  background: #e8f3ec;
+  color: #155c39;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.farm-mobile-candidate-card.is-active button {
+  background: #176b43;
+  color: #fff;
+}
+
+.farm-mobile-readiness {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .5rem;
+  margin-top: .65rem;
+}
+
+.farm-mobile-readiness > span {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e6ece8;
+}
+
+.farm-mobile-readiness i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #35a66c;
+}
+
+.farm-mobile-stepper {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .45rem;
+  margin: 0 0 1rem;
+}
+
+.farm-mobile-stepper button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  min-height: 46px;
+  padding: .45rem;
+  border: 1px solid #d9e3dd;
+  border-radius: 12px;
+  background: #fff;
+  color: #3f5147;
+  cursor: pointer;
+}
+
+.farm-mobile-stepper b {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: #eef2ef;
+  font-size: .75rem;
+}
+
+.farm-mobile-stepper .is-done b {
+  background: #d9f1e2;
+  color: #12633a;
+}
+
+.farm-mobile-step-label {
+  display: none;
+  margin: 0 0 .25rem;
+}
+
+@media (max-width: 760px) {
+  .farm-mobile-candidate-panel {
+    margin-inline: -.15rem;
+    padding: .8rem;
+    border-radius: 15px;
+  }
+
+  .farm-mobile-candidate-head {
+    align-items: flex-start;
+  }
+
+  .farm-mobile-candidate-list {
+    display: flex;
+    margin-inline: -.8rem;
+    padding: 0 .8rem .25rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .farm-mobile-candidate-card {
+    flex: 0 0 min(82vw, 310px);
+    scroll-snap-align: start;
+  }
+
+  .farm-mobile-stepper {
+    position: sticky;
+    top: 0;
+    z-index: 12;
+    display: flex;
+    margin-inline: -.4rem;
+    padding: .45rem .4rem;
+    overflow-x: auto;
+    background: rgba(247, 250, 248, .96);
+    backdrop-filter: blur(8px);
+  }
+
+  .farm-mobile-stepper button {
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding-inline: .65rem;
+  }
+
+  .farm-mobile-stepper span {
+    font-size: .76rem;
+    white-space: nowrap;
+  }
+
+  .farm-mobile-step-label {
+    display: block;
+  }
+
+  [data-farm-dispatch-step] {
+    scroll-margin-top: 62px;
+  }
+
+  .farm-dispatch-actions {
+    position: sticky;
+    bottom: .45rem;
+    z-index: 10;
+    box-shadow: 0 10px 28px rgba(16, 56, 34, .2);
+  }
+}
+
 .farm-auth-dialog {
   width: min(440px, calc(100vw - 32px));
   padding: 0;

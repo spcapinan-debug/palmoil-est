@@ -15555,6 +15555,63 @@ function farmDispatchSelectedOrder(rows = farmDispatchCandidateOrders()) {
   return selected;
 }
 
+function farmDispatchCandidateReadiness(order = {}) {
+  const workers = farmRowsByKey("work_order_workers").filter((row) => String(row.work_order_id || "") === String(order.id || "") && row.status !== "cancelled");
+  const machines = farmRowsByKey("work_order_machines").filter((row) => String(row.work_order_id || "") === String(order.id || "") && row.status !== "cancelled");
+  const checks = [
+    Boolean(order.scheduled_date || order.planned_start_date),
+    Boolean(order.team_id || order.contractor_id),
+    Boolean(order.supervisor_employee_id || farmLookup("teams", order.team_id)?.supervisor_employee_id),
+    workers.length > 0,
+    machines.every((row) => !row.vehicle_id || row.driver_employee_id),
+  ];
+  return { complete: checks.filter(Boolean).length, total: checks.length, ready: checks.every(Boolean) };
+}
+
+function renderFarmDispatchCandidateList(orders = [], selectedOrder = null) {
+  return `
+    <section class="farm-mobile-candidate-panel" aria-labelledby="farmDispatchCandidateTitle">
+      <div class="farm-mobile-candidate-head">
+        <div><p class="eyebrow">งานที่พร้อมสั่ง</p><h4 id="farmDispatchCandidateTitle">เลือกใบงานแล้วทำต่อในหน้าเดียว</h4></div>
+        <span class="farm-mobile-count">${fmt(orders.length)} งาน</span>
+      </div>
+      <div class="farm-mobile-candidate-list">
+        ${orders.map((row) => {
+          const active = String(row.id || "") === String(selectedOrder?.id || "");
+          const readiness = farmDispatchCandidateReadiness(row);
+          const status = farmEffectiveWorkStatusMeta(row);
+          const area = [farmShortBlockText(row), farmWorkTextOption(row, "zone").label].filter((value) => value && value !== "-").join(" · ") || "ไม่ระบุพื้นที่";
+          return `<article class="farm-mobile-candidate-card${active ? " is-active" : ""}" ${active ? 'aria-current="true"' : ""}>
+            <div class="farm-mobile-candidate-top">
+              <span class="status-chip ${esc(status.className || "")}">${esc(status.label || "รอสั่งงาน")}</span>
+              <small>${esc(displayDate(row.scheduled_date || row.planned_start_date) || "ยังไม่กำหนดวัน")}</small>
+            </div>
+            <strong>${esc(farmWorkOrderShortTitle(row))}</strong>
+            <p>${esc(farmShortWorkOrderNo(row))} · ${esc(area)}</p>
+            <div class="farm-mobile-readiness" aria-label="ความพร้อม ${readiness.complete} จาก ${readiness.total}">
+              <span><i style="width:${(readiness.complete / readiness.total) * 100}%"></i></span>
+              <small>${readiness.ready ? "พร้อมส่งงาน" : `พร้อม ${readiness.complete}/${readiness.total}`}</small>
+            </div>
+            <button type="button" data-farm-dispatch-open="${esc(row.id)}">${active ? "กำลังแก้ไขงานนี้" : "เปิดเพื่อสั่งงาน"}</button>
+          </article>`;
+        }).join("") || `<div class="farm-mobile-empty">ยังไม่มีใบงานที่อนุมัติและพร้อมสั่ง</div>`}
+      </div>
+    </section>`;
+}
+
+function renderFarmDispatchMobileStepper(context = {}) {
+  const steps = [
+    ["overview", "1", "งานและวัน", Boolean(context.order && context.date && context.endDate)],
+    ["workers", "2", "ทีมและคน", Boolean(context.teamId && context.workers?.some((row) => row.checked !== false))],
+    ["materials", "3", "พัสดุ", true],
+    ["vehicles", "4", "รถและคนขับ", context.machines?.every((row) => !row.vehicle_id || row.driver_employee_id) !== false],
+    ["review", "5", "ตรวจและส่ง", false],
+  ];
+  return `<nav class="farm-mobile-stepper" aria-label="ขั้นตอนสั่งงาน">
+    ${steps.map(([id, no, label, done]) => `<button type="button" data-farm-dispatch-jump="${id}" class="${done ? "is-done" : ""}"><b>${done ? "✓" : no}</b><span>${label}</span></button>`).join("")}
+  </nav>`;
+}
+
 function farmTeamForEmployee(employeeId = "", preferredTeamId = "") {
   const teams = farmRowsByKey("teams");
   const memberships = farmRowsByKey("team_members").filter((row) => String(row.employee_id || "") === String(employeeId || ""));
@@ -16120,8 +16177,11 @@ function renderFarmDispatchPanel() {
         <h3>สั่งงานจากแผน</h3>
         <span>Estate Manager เลือก Work Order จากแผน ปรับวัน ทีม คนงาน และออกใบเบิกพัสดุให้หัวหน้าทีม</span>
       </div>
+      ${renderFarmDispatchCandidateList(orders, order)}
+      ${renderFarmDispatchMobileStepper({ order, date: dispatchDate, endDate: dispatchEndDate, teamId: activeTeamId || team.id, workers, machines })}
       <div class="farm-dispatch-grid">
-        <article class="farm-dispatch-card farm-dispatch-main">
+        <article class="farm-dispatch-card farm-dispatch-main" id="farm-dispatch-step-overview" data-farm-dispatch-step="overview">
+          <p class="farm-mobile-step-label">ขั้นตอน 1 · งานและวันทำงาน</p>
           <h4>ข้อมูลใบสั่งงาน</h4>
           <div class="farm-dispatch-fields">
             <label>เลือก Work Order
@@ -16145,7 +16205,8 @@ function renderFarmDispatchPanel() {
             <dt>หัวหน้าทีม</dt><dd>${esc(farmRecordLabel(farmTableByKey("employees"), supervisor) || farmLookupLabel("employees", team.supervisor_employee_id))}</dd>
           </dl>
         </article>
-        <article class="farm-dispatch-card">
+        <article class="farm-dispatch-card" id="farm-dispatch-step-workers" data-farm-dispatch-step="workers">
+          <p class="farm-mobile-step-label">ขั้นตอน 2 · ทีมและคนงาน</p>
           <div class="farm-dispatch-card-head">
             <h4>คนงาน / ทีมทำงาน</h4>
             <div class="farm-dispatch-add-control">
@@ -16164,7 +16225,8 @@ function renderFarmDispatchPanel() {
               </label>`).join("") || `<p>ยังไม่มีรายชื่อคนงานในทีมนี้</p>`}
           </div>
         </article>
-        <article class="farm-dispatch-card farm-dispatch-materials">
+        <article class="farm-dispatch-card farm-dispatch-materials" id="farm-dispatch-step-materials" data-farm-dispatch-step="materials">
+          <p class="farm-mobile-step-label">ขั้นตอน 3 · พัสดุ</p>
           <div class="farm-dispatch-card-head">
             <h4>ใบเบิกพัสดุ / ตัดจ่าย</h4>
             <div class="farm-dispatch-add-control">
@@ -16196,7 +16258,8 @@ function renderFarmDispatchPanel() {
             </table>
           </div>
         </article>
-        <article class="farm-dispatch-card farm-dispatch-materials">
+        <article class="farm-dispatch-card farm-dispatch-materials" id="farm-dispatch-step-vehicles" data-farm-dispatch-step="vehicles">
+          <p class="farm-mobile-step-label">ขั้นตอน 4 · รถและคนขับ</p>
           <div class="farm-dispatch-card-head">
             <h4>รถ / เครื่องจักร</h4>
             <div class="farm-dispatch-add-control">
@@ -16223,7 +16286,8 @@ function renderFarmDispatchPanel() {
             </table>
           </div>
         </article>
-        <article class="farm-dispatch-card farm-dispatch-actions">
+        <article class="farm-dispatch-card farm-dispatch-actions" id="farm-dispatch-step-review" data-farm-dispatch-step="review">
+          <p class="farm-mobile-step-label">ขั้นตอน 5 · ตรวจและส่งงาน</p>
           <h4>ส่งงานให้หัวหน้าทีม</h4>
           ${renderFarmQrCard(order, "QR สำหรับหัวหน้าทีม", "dispatch")}
           <p>เมื่อบันทึก ระบบจะตั้งสถานะใบงานเป็น “ส่งเข้ามือถือ” และบันทึกรายการพัสดุ รถ และคนงานไว้กับใบงาน</p>
@@ -16666,6 +16730,84 @@ async function saveFarmDispatchOrder() {
   } finally {
     state.farmSyncBusy = false;
     render();
+  }
+}
+
+async function saveFarmDispatchOrderActionOnly() {
+  const order = farmDispatchSelectedOrder();
+  if (!order) return;
+  const scheduledDate = dateValue(document.querySelector("#farmDispatchDate"));
+  const scheduledEndDate = dateValue(document.querySelector("#farmDispatchEndDate")) || scheduledDate;
+  const teamId = document.querySelector("#farmDispatchTeam")?.value || "";
+  const machines = farmMergeDispatchRows(Array.from(document.querySelectorAll("[data-farm-dispatch-machine]")).map((row) => ({
+    vehicle_id: row.querySelector("[data-farm-dispatch-machine-vehicle]")?.value || row.dataset.farmDispatchMachine,
+    driver_employee_id: row.querySelector("[data-farm-dispatch-machine-driver]")?.value || null,
+    planned_hours: n(row.querySelector("[data-farm-dispatch-machine-hours]")?.value),
+    fuel_plan_liter: n(row.querySelector("[data-farm-dispatch-machine-fuel]")?.value),
+  })).filter((row) => row.vehicle_id), "vehicle_id");
+  const driverIds = machines.map((row) => row.driver_employee_id).filter(Boolean);
+  const workers = farmBudgetUnique([
+    ...Array.from(document.querySelectorAll("[data-farm-dispatch-worker]:checked")).map((input) => input.value),
+    ...driverIds,
+  ]).map((employeeId) => {
+    const employee = farmLookup("employees", employeeId) || {};
+    const vehicle = machines.find((row) => row.driver_employee_id === employeeId);
+    return {
+      employee_id: employeeId,
+      role: vehicle ? `driver:${vehicle.vehicle_id}` : (employee.worker_type || "worker"),
+      planned_hours: 8,
+      rate: vehicle ? farmDispatchDriverRateForOrder(order) : n(employee.daily_wage || employee.hourly_wage_rate),
+    };
+  });
+  const materials = farmMergeDispatchRows(Array.from(document.querySelectorAll("[data-farm-dispatch-material]")).map((row) => {
+    const materialId = row.dataset.farmDispatchMaterial;
+    const material = farmLookup("materials", materialId) || {};
+    const issueFactor = n(row.dataset.farmDispatchIssueFactor || 1) || 1;
+    const issueQuantity = n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value);
+    return {
+      material_id: materialId,
+      planned_quantity: n(row.dataset.farmDispatchPlannedQuantity) || issueQuantity * issueFactor,
+      unit_id: material.base_unit_id || null,
+      note: JSON.stringify({
+        plan_unit_name: farmCleanUnitDisplay(row.dataset.farmDispatchPlanUnitName || ""),
+        issue_unit_name: farmCleanUnitDisplay(row.dataset.farmDispatchUnitName || ""),
+        issue_factor: issueFactor,
+        planned_issue_quantity: issueQuantity,
+      }),
+    };
+  }).filter((row) => row.material_id), "material_id");
+
+  if (!scheduledDate || !scheduledEndDate || scheduledEndDate < scheduledDate) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาตรวจวันที่เริ่มและสิ้นสุดงาน";
+    render();
+    return;
+  }
+  if (!teamId || !workers.length) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "ต้องเลือกทีมและคนงานอย่างน้อย 1 คนก่อนส่งงาน";
+    render();
+    return;
+  }
+  if (machines.some((row) => !row.driver_employee_id)) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "รถและเครื่องจักรทุกคันต้องระบุคนขับ";
+    render();
+    return;
+  }
+  const result = await runFarmAction("save_dispatch_assignment", {
+    work_order_id: order.id,
+    scheduled_date: scheduledDate,
+    scheduled_end_date: scheduledEndDate,
+    team_id: teamId,
+    workers,
+    materials,
+    vehicles: machines,
+  }, { confirmed: true, reason: "บันทึก Mobile Dispatch assignment" }).catch(() => null);
+  if (result) {
+    state.farmDispatchWorkOrderId = result.work_order?.id || order.id;
+    state.farmWorkDetailId = state.farmDispatchWorkOrderId;
+    state.farmSyncMessage = `ส่งงานแล้ว · คนงาน ${fmt(result.workers)} คน · พัสดุ ${fmt(result.materials)} รายการ · รถ ${fmt(result.vehicles)} คัน`;
   }
 }
 
@@ -25306,9 +25448,6 @@ async function init() {
       return;
     }
     if (e.target.id === "farmDispatchOrderSelect") {
-      if (state.farmDispatchWorkOrderId) {
-        updateFarmWorkflowUrl({ work_order: state.farmDispatchWorkOrderId });
-      }
       state.farmDispatchWorkOrderId = e.target.value;
       state.farmWorkDetailId = e.target.value;
       state.farmDispatchTeamId = "";
@@ -25709,6 +25848,26 @@ async function init() {
     }
   });
   els.reportPage.addEventListener("click", async (e) => {
+    const dispatchOpen = e.target.closest("[data-farm-dispatch-open]");
+    if (dispatchOpen) {
+      const orderId = dispatchOpen.dataset.farmDispatchOpen;
+      state.farmDispatchWorkOrderId = orderId;
+      state.farmWorkDetailId = orderId;
+      state.farmDispatchTeamId = "";
+      state.farmDispatchExtraWorkers = [];
+      state.farmDispatchExtraMaterials = [];
+      state.farmDispatchExtraVehicles = [];
+      updateFarmWorkflowUrl({ work_order: orderId }, { push: true });
+      render();
+      requestAnimationFrame(() => document.querySelector("#farm-dispatch-step-overview")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      return;
+    }
+    const dispatchJump = e.target.closest("[data-farm-dispatch-jump]");
+    if (dispatchJump) {
+      document.querySelector(`#farm-dispatch-step-${CSS.escape(dispatchJump.dataset.farmDispatchJump)}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     const workflowMode = e.target.closest("[data-farm-workflow-mode]");
     if (workflowMode) {
       setFarmWorkflowMode(workflowMode.dataset.farmWorkflowMode);
@@ -26325,7 +26484,7 @@ async function init() {
       return;
     }
     if (e.target.closest("[data-farm-dispatch-save]")) {
-      saveFarmDispatchOrder();
+      saveFarmDispatchOrderActionOnly();
       return;
     }
     if (e.target.closest("[data-farm-dispatch-add-worker]")) {
