@@ -18360,6 +18360,22 @@ function farmResultStatusFilterOptions(rows = farmResultCandidateOrders()) {
   return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "th"));
 }
 
+function farmResultResumeInfo(order = {}) {
+  const orderId = farmWorkOrderDbId(order) || order.id;
+  const result = farmRowsByKey("work_results")
+    .filter((row) => String(row.work_order_id || "") === String(orderId || ""))
+    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0];
+  const planned = n(order.planned_quantity);
+  const actual = n(result?.actual_quantity);
+  const progress = Math.max(0, Math.min(100, n(result?.completion_pct) || (planned > 0 ? actual / planned * 100 : 0)));
+  const status = String(result?.result_status || "new");
+  const label = status === "draft" ? "ทำต่อร่าง"
+    : status === "submitted" ? "ส่งตรวจแล้ว"
+      : status === "verified" ? "ตรวจแล้ว"
+        : status === "closed" ? "ปิดผลแล้ว" : "เริ่มบันทึกวันนี้";
+  return { result, status, label, progress };
+}
+
 function renderFarmResultWorkSearch(order, allOrders = farmResultCandidateOrders()) {
   const filters = farmResultFilterState();
   const filtered = farmResultFilteredOrders();
@@ -18413,14 +18429,17 @@ function renderFarmResultWorkSearch(order, allOrders = farmResultCandidateOrders
       <div class="farm-result-search-results" role="listbox" aria-label="รายการใบสั่งงาน">
         ${rows.map((row) => {
           const selected = String(row.id) === String(order?.id);
+          const resume = farmResultResumeInfo(row);
           return `
-            <button type="button" class="farm-result-order-card${selected ? " is-selected" : ""}" data-farm-result-order-pick="${esc(row.id)}" role="option" aria-selected="${selected ? "true" : "false"}">
+            <button type="button" class="farm-result-order-card${selected ? " is-selected" : ""} result-${esc(resume.status)}" data-farm-result-order-pick="${esc(row.id)}" role="option" aria-selected="${selected ? "true" : "false"}">
               <span class="farm-result-order-no">${esc(farmShortWorkOrderNo(row))}</span>
               <span class="farm-result-order-main">${esc(farmShortActivityText(row))}</span>
               <span>${esc(farmShortBlockText(row))}</span>
               <span>${esc(farmLookupLabel("teams", row.team_id) || "-")}</span>
               <span>${esc(farmResultOrderDateLabel(row))}</span>
               <em>${esc(farmEffectiveWorkStatusMeta(row)?.label || "-")}</em>
+              <span class="farm-result-order-progress"><i style="width:${resume.progress}%"></i></span>
+              <strong class="farm-result-order-resume">${esc(resume.label)}${resume.result?.result_date ? ` · ${esc(displayDate(resume.result.result_date))}` : ""}</strong>
             </button>`;
         }).join("") || farmWorkflowEmptyState("daily", { candidateCount: allOrders.length, filteredCount: filtered.length })}
       </div>
@@ -19217,7 +19236,7 @@ function renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, 
   const scoreGroups = farmSurveySectionGroups(scoreQuestions);
   const metaDate = farmSurveyAnswerValue(draft, "POSTING_DATE") || resultDate || farmToday();
   return `
-    <article class="farm-result-card farm-result-survey-card" data-daily-section="survey">
+    <article class="farm-result-card farm-result-survey-card" data-daily-section="survey" id="farm-daily-step-survey">
       <div class="farm-survey-answer-box">
         <div class="section-head">
           <h3>ตรวจงาน / Survey</h3>
@@ -19427,7 +19446,8 @@ function renderFarmResultPanel() {
         <span>หัวหน้าทีมบันทึกผลงานจริง รายชื่อคนทำงาน และค่าแรงรายคนจากใบสั่งงานเดียว</span>
       </div>
       ${renderFarmResultWorkSearch(order, orders)}
-      <div class="farm-result-summary-strip" data-daily-section="all">
+      ${renderFarmDailyMobileStepper(calc, survey)}
+      <div class="farm-result-summary-strip" data-daily-section="summary" id="farm-daily-step-summary">
         <article><span>กิจกรรม</span><strong>${esc(farmLookupLabel("activities", order?.activity_id) || "-")}</strong><small>${esc(area)}</small></article>
         <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(effectiveOrderStatus?.label || "-")}</small></article>
         <article><span>เรทตามบทบาท</span><strong>${fmt(calc.roleSummary.filter((row) => row.count).length || 1)} ชุด</strong><small>${esc(roleRateSummary || rateLabel)}</small></article>
@@ -19435,7 +19455,7 @@ function renderFarmResultPanel() {
         <article><span>วัสดุ / น้ำมัน</span><strong>${fmt(calc.materialLines.length)} / ${fmt(calc.machineLines.length)}</strong><small>น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร</small></article>
         <article><span>แบบตรวจงาน</span><strong>${esc(survey?.template_code || "-")}</strong><small>${esc(surveyAttachment?.file_name || survey?.template_name || "ไม่พบแบบตรวจ")}</small></article>
       </div>
-      <div class="farm-result-entry-grid" data-daily-section="results">
+      <div class="farm-result-entry-grid" data-daily-section="result" id="farm-daily-step-result">
         <article class="farm-result-card farm-result-main-entry">
           <div class="section-head"><h3>ผลงานรวม</h3><span>ใช้ใบชั่งหรือกรอกจำนวนเอง</span></div>
           <div class="farm-result-fields">
@@ -19457,12 +19477,6 @@ function renderFarmResultPanel() {
             <label>จำนวนต้น<input id="farmResultTreeCount" type="number" min="0" step="1" value="${esc(draft.actualTreeCount || "")}"></label>
             <label>ชั่วโมงแรงงาน<input id="farmResultLaborHours" type="number" min="0" step="0.25" value="${esc(draft.totalLaborHours || "")}"></label>
             <label>เวลาหยุด (นาที)<input id="farmResultStoppage" type="number" min="0" step="1" value="${esc(draft.stoppageMinutes || "")}"></label>
-            <label>คุณภาพ %<input id="farmResultWorkQuality" type="number" min="0" max="100" step="0.1" value="${esc(draft.qualityScore || "")}"></label>
-            <label>ความสำเร็จ %<input id="farmResultCompletion" type="number" min="0" max="100" step="0.1" value="${esc(draft.completionPct || "")}"></label>
-            <label>งานแก้ไขซ้ำ<input id="farmResultRework" type="number" min="0" step="0.01" value="${esc(draft.reworkQuantity || "")}"></label>
-            <label>สภาพอากาศ<input id="farmResultWeather" type="text" maxlength="120" value="${esc(draft.weatherCondition || "")}"></label>
-            <label>สภาพพื้นที่<input id="farmResultTerrain" type="text" maxlength="120" value="${esc(draft.terrainCondition || "")}"></label>
-            <label class="farm-result-note-field">หมายเหตุ<textarea id="farmResultNote" maxlength="2000">${esc(draft.note || "")}</textarea></label>
             ${workHistory}
           </div>
         </article>
@@ -19483,7 +19497,7 @@ function renderFarmResultPanel() {
         <span><b>รถ/เครื่องจักร</b>${fmt(calc.machineLines.length)} รายการ</span>
         <span><b>น้ำมันใช้จริง</b>${moneyNf.format(calc.fuelIssueTotal)} ลิตร</span>
       </section>
-      <article class="farm-result-card farm-result-worker-card" data-daily-section="workers">
+      <article class="farm-result-card farm-result-worker-card" data-daily-section="workers" id="farm-daily-step-workers">
         <div class="section-head">
           <h3>บันทึกแรงงานตามบทบาท</h3>
           <span>คนงานและคนขับใช้ rate แยกจากอัตรางบประมาณ แล้วล็อกค่าแรงเป็น snapshot หลังบันทึก</span>
@@ -19562,7 +19576,7 @@ function renderFarmResultPanel() {
         </div>
       </article>
       <div class="farm-result-resource-grid">
-        <article class="farm-result-card farm-result-worker-card" data-daily-section="materials">
+        <article class="farm-result-card farm-result-worker-card" data-daily-section="materials" id="farm-daily-step-materials">
           <div class="section-head">
             <h3>วัสดุที่ใช้จริง</h3>
             <span>ใช้ผลงานจริงเป็นยอดใช้จริง และคำนวณวัสดุรอเบิกจากยอดจ่ายคงเหลือ</span>
@@ -19585,7 +19599,7 @@ function renderFarmResultPanel() {
             </table>
           </div>
         </article>
-        <article class="farm-result-card farm-result-worker-card" data-daily-section="vehicles">
+        <article class="farm-result-card farm-result-worker-card" data-daily-section="vehicles" id="farm-daily-step-vehicles">
           <div class="section-head">
             <h3>รถ/เครื่องจักร และน้ำมัน</h3>
             <span>บันทึกชั่วโมง กม. และน้ำมันที่ใช้จริงจากงานนี้</span>
@@ -19613,6 +19627,17 @@ function renderFarmResultPanel() {
           </div>
         </article>
       </div>
+      <article class="farm-result-card farm-result-quality-card" data-daily-section="quality" id="farm-daily-step-quality">
+        <div class="section-head"><h3>คุณภาพและสภาพหน้างาน</h3><span>ขั้นตอน 6 · ประเมินผลก่อนทำแบบตรวจงาน</span></div>
+        <div class="farm-result-quality-grid">
+          <label>คุณภาพ %<input id="farmResultWorkQuality" type="number" min="0" max="100" step="0.1" value="${esc(draft.qualityScore || "")}"></label>
+          <label>ความสำเร็จ %<input id="farmResultCompletion" type="number" min="0" max="100" step="0.1" value="${esc(draft.completionPct || "")}"></label>
+          <label>งานแก้ไขซ้ำ<input id="farmResultRework" type="number" min="0" step="0.01" value="${esc(draft.reworkQuantity || "")}"></label>
+          <label>สภาพอากาศ<input id="farmResultWeather" type="text" maxlength="120" value="${esc(draft.weatherCondition || "")}"></label>
+          <label>สภาพพื้นที่<input id="farmResultTerrain" type="text" maxlength="120" value="${esc(draft.terrainCondition || "")}"></label>
+          <label class="farm-result-note-field">หมายเหตุ<textarea id="farmResultNote" maxlength="2000">${esc(draft.note || "")}</textarea></label>
+        </div>
+      </article>
       ${renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, draft, resultDate: draft.resultDate || farmToday() })}
       <div class="farm-result-bottom-grid">
         <article class="farm-result-card" data-daily-section="weigh-tickets">
@@ -19624,7 +19649,7 @@ function renderFarmResultPanel() {
             </table>
           </div>
         </article>
-        <article class="farm-result-card" data-daily-section="review">
+        <article class="farm-result-card" data-daily-section="review" id="farm-daily-step-review">
           <div class="section-head"><h3>ตรวจสอบก่อนปิดงาน</h3><span>ส่งต่อค่าแรงและปิดสถานะงาน</span></div>
           <div class="farm-result-review-list">
             <p><strong>ผลงานรวม</strong><span>${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)}</span></p>
@@ -23870,16 +23895,32 @@ function renderFarmDailyEntryActions() {
     </div>
     <div class="farm-daily-detail-actions">
       <span>ไปยังรายละเอียด</span>
-      ${[
-        ["workers", "คนงานและเวลา"],
-        ["materials", "วัสดุ"],
-        ["vehicles", "รถและน้ำมัน"],
-        ["survey", "Survey"],
-        ["weigh-tickets", "ใบชั่ง"],
-        ["review", "ตรวจสอบและปิดงาน"],
-      ].map(([section, label]) => `<button type="button" data-farm-daily-jump="${section}">${label}</button>`).join("")}
+      ${[["summary", "สรุป"], ["result", "ผลงานวันนี้"], ["workers", "คนงาน"], ["materials", "วัสดุ"], ["vehicles", "รถ"], ["quality", "คุณภาพ"], ["survey", "Survey"], ["review", "ตรวจทาน"]]
+        .map(([section, label]) => `<button type="button" data-farm-daily-jump="${section}">${label}</button>`).join("")}
       <button type="button" data-farm-daily-detail-tab="attachments">เอกสารแนบ</button>
     </div>
+  </nav>`;
+}
+
+function renderFarmDailyMobileStepper(calc = {}, survey = null) {
+  const draft = calc.draft || {};
+  const surveyStatus = String(draft.surveyStatus || "pending");
+  const steps = [
+    ["summary", "สรุปงาน", true, false],
+    ["result", "ผลงานวันนี้", n(draft.actualQuantity) > 0, false],
+    ["workers", "คนงาน", calc.workerLines?.length > 0, false],
+    ["materials", "วัสดุ", !calc.materialLines?.length || calc.materialLines.some((row) => n(row.actualQuantity) > 0), false],
+    ["vehicles", "รถ", !calc.machineLines?.length || calc.machineLines.every((row) => !row.vehicle_id || row.driver_employee_id), false],
+    ["quality", "คุณภาพ", draft.qualityScore !== "" && draft.qualityScore != null, false],
+    ["survey", "Survey", Boolean(survey) && ["draft", "submitted", "verified", "closed", "passed"].includes(surveyStatus), false],
+    ["findings", "Finding", false, true],
+    ["evidence", "หลักฐาน", false, true],
+    ["review", "ตรวจทาน", false, false],
+  ];
+  return `<nav class="farm-daily-mobile-stepper" aria-label="10 ขั้นตอนบันทึกงานประจำวัน">
+    ${steps.map(([id, label, complete, upcoming], index) => `<button type="button" data-farm-daily-jump="${id}" class="${complete ? "is-complete" : ""}${upcoming ? " is-upcoming" : ""}" ${upcoming ? "disabled" : ""}>
+      <b>${complete ? "✓" : index + 1}</b><span>${esc(label)}</span>
+    </button>`).join("")}
   </nav>`;
 }
 

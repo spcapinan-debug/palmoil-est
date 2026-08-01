@@ -8838,7 +8838,7 @@ tfoot td {
 
 .farm-result-order-card {
   display: grid;
-  grid-template-columns: 86px minmax(170px, 1.3fr) minmax(88px, .65fr) minmax(120px, .75fr) minmax(150px, .75fr) 94px;
+  grid-template-columns: 86px minmax(170px, 1.3fr) minmax(88px, .65fr) minmax(120px, .75fr) minmax(150px, .75fr) 94px 74px minmax(104px, auto);
   gap: 8px;
   align-items: center;
   min-height: 42px;
@@ -8890,6 +8890,33 @@ tfoot td {
   background: #ecfeff;
   color: #0e7490;
   font-size: 11px;
+}
+
+.farm-result-order-progress {
+  display: block;
+  height: 6px;
+  overflow: hidden !important;
+  border-radius: 999px;
+  background: #e5ebe7;
+}
+
+.farm-result-order-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #38a46d;
+}
+
+.farm-result-order-resume {
+  color: #176944;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.farm-result-order-card.result-submitted .farm-result-order-resume,
+.farm-result-order-card.result-verified .farm-result-order-resume,
+.farm-result-order-card.result-closed .farm-result-order-resume {
+  color: #53697f;
 }
 
 .farm-result-order-empty {
@@ -15616,6 +15643,11 @@ tfoot td,
     font-size: 11px;
   }
 
+  .farm-result-order-progress,
+  .farm-result-order-resume {
+    grid-column: 1 / -1;
+  }
+
   .farm-work-page .farm-plan-selector-card,
   .farm-work-page .farm-plan-summary,
   .farm-plan-selector-card,
@@ -16193,6 +16225,90 @@ tfoot td,
   min-width: 0;
 }
 
+.farm-daily-mobile-stepper {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(74px, 1fr));
+  gap: .35rem;
+  margin: 0 0 1rem;
+  overflow-x: auto;
+  padding: .2rem 0 .45rem;
+  scrollbar-width: thin;
+}
+
+.farm-daily-mobile-stepper button {
+  display: grid;
+  justify-items: center;
+  gap: .25rem;
+  min-width: 74px;
+  min-height: 58px;
+  padding: .4rem .25rem;
+  border: 1px solid #dce5df;
+  border-radius: 11px;
+  background: #fff;
+  color: #52645a;
+  cursor: pointer;
+}
+
+.farm-daily-mobile-stepper b {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 50%;
+  background: #edf1ee;
+  font-size: .72rem;
+}
+
+.farm-daily-mobile-stepper span {
+  font-size: .68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.farm-daily-mobile-stepper .is-complete b {
+  background: #d9f1e2;
+  color: #12633a;
+}
+
+.farm-daily-mobile-stepper .is-upcoming {
+  opacity: .58;
+  cursor: not-allowed;
+}
+
+.farm-result-quality-card {
+  margin-top: 1rem;
+}
+
+.farm-result-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .7rem;
+}
+
+.farm-result-quality-grid label {
+  display: grid;
+  gap: .35rem;
+  color: #53645a;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.farm-result-quality-grid input,
+.farm-result-quality-grid textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid #d8e2dc;
+  border-radius: 9px;
+  padding: .55rem .65rem;
+  background: #fff;
+  font: inherit;
+}
+
+.farm-result-quality-grid .farm-result-note-field {
+  grid-column: 1 / -1;
+}
+
 .farm-workspace-tabs {
   display: flex;
   gap: .5rem;
@@ -16373,7 +16489,9 @@ tfoot td,
 }
 
 .farm-daily-workspace [data-daily-section="all"],
-.farm-daily-workspace.daily-tab-results [data-daily-section="results"],
+.farm-daily-workspace.daily-tab-results [data-daily-section="summary"],
+.farm-daily-workspace.daily-tab-results [data-daily-section="result"],
+.farm-daily-workspace.daily-tab-results [data-daily-section="quality"],
 .farm-daily-workspace.daily-tab-workers [data-daily-section="workers"],
 .farm-daily-workspace.daily-tab-materials [data-daily-section="materials"],
 .farm-daily-workspace.daily-tab-weigh-tickets [data-daily-section="weigh-tickets"],
@@ -16391,6 +16509,10 @@ tfoot td,
   .farm-workspace-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .farm-result-quality-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 600px) {
@@ -16405,7 +16527,26 @@ tfoot td,
   }
 
   .farm-daily-entry-actions {
-    position: static;
+    position: sticky;
+    top: .25rem;
+  }
+
+  .farm-daily-mobile-stepper {
+    position: sticky;
+    top: 106px;
+    z-index: 14;
+    margin-inline: -.35rem;
+    padding: .4rem .35rem;
+    background: rgba(247, 250, 248, .96);
+    backdrop-filter: blur(8px);
+  }
+
+  [data-daily-section] {
+    scroll-margin-top: 170px;
+  }
+
+  .farm-result-quality-grid {
+    grid-template-columns: 1fr;
   }
 
   .farm-daily-primary-actions {
