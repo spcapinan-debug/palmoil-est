@@ -6,6 +6,7 @@ const {
   audit,
   authenticate,
   authorize,
+  config,
   errorResponse,
   json,
   optionalUuid,
@@ -352,6 +353,16 @@ const ACTIONS = {
     params: (args, actor) => ({ args, actor }),
     entity: "survey_findings", entityId: (args) => args.finding_id,
   },
+  create_survey_evidence_upload: {
+    permission: "survey.respond", execute: createSurveyEvidenceUpload,
+    params: (args, actor) => ({ args, actor }),
+    entity: "survey_response_attachments", entityId: (args) => args.response_id,
+  },
+  finalize_survey_evidence: {
+    permission: "survey.respond", execute: finalizeSurveyEvidence,
+    params: (args, actor) => ({ args, actor }),
+    entity: "survey_response_attachments", entityId: (args) => args.response_id,
+  },
   reset_web_test_run: {
     admin: true, confirmation: true, rpc: "cleanup_full_web_test_run",
     params: (args) => ({ p_run_code: requireWebTestCode(args.run_code) }),
@@ -385,6 +396,8 @@ const UAT_MUTATION_ACTIONS = new Set([
   "submit_survey_response",
   "verify_survey_response",
   "close_survey_response",
+  "create_survey_evidence_upload",
+  "finalize_survey_evidence",
   "prepare_goods_issue_from_work_order",
   "approve_goods_issue",
   "post_goods_issue",
@@ -931,6 +944,26 @@ async function saveDispatchAssignment({ args, actor }) {
   return { work_order: updated, workers: workers.length, materials: materials.length, vehicles: vehicles.length };
 }
 
+async function surveyResponseContext(responseId, actor) {
+  const response = await one(
+    `survey_responses?id=eq.${requireUuid(responseId, "response_id")}&select=id,template_id,status,work_order_id,work_result_id,response_date&limit=1`,
+    "Survey response",
+  );
+  if (response.work_order_id) {
+    const order = await one(
+      `work_orders?id=eq.${response.work_order_id}&select=id,work_order_no,estate_id,plot_id,block_id&limit=1`,
+      "Work order",
+    );
+    await authorizeWorkOrderScope(actor, order);
+    return { response, order };
+  }
+  if (response.work_result_id) {
+    const context = await workResultContext(response.work_result_id, actor);
+    return { response, ...context };
+  }
+  throw new ApiError(409, "SURVEY_SCOPE_REQUIRED", "Survey response must be linked to a work order or work result");
+}
+
 async function createSurveyResponse({ args, actor }) {
   const templateId = requireUuid(args.template_id, "template_id");
   const template = await one(
@@ -938,6 +971,28 @@ async function createSurveyResponse({ args, actor }) {
     "Survey template",
   );
   if (template.status !== "active") throw new ApiError(409, "INVALID_STATE", "Survey template is not active");
+  const workResultId = optionalUuid(args.work_result_id, "work_result_id");
+  const workOrderId = optionalUuid(args.work_order_id, "work_order_id");
+  if (!workResultId && !workOrderId) {
+    throw new ApiError(400, "SURVEY_SCOPE_REQUIRED", "work_result_id or work_order_id is required");
+  }
+  let linkedOrderId = workOrderId;
+  if (workResultId) {
+    const context = await workResultContext(workResultId, actor);
+    linkedOrderId = context.result.work_order_id;
+    if (workOrderId && workOrderId !== linkedOrderId) {
+      throw new ApiError(409, "SURVEY_SCOPE_MISMATCH", "work_result_id does not belong to work_order_id");
+    }
+  } else {
+    const order = await one(`work_orders?id=eq.${workOrderId}&select=id,work_order_no,estate_id,plot_id,block_id&limit=1`, "Work order");
+    await authorizeWorkOrderScope(actor, order);
+  }
+  const existingFilter = workResultId
+    ? `work_result_id=eq.${workResultId}`
+    : `work_order_id=eq.${linkedOrderId}&response_date=eq.${dateOrToday(args.response_date)}`;
+  const existing = await rest(`survey_responses?template_id=eq.${templateId}&${existingFilter}&status=in.(draft,submitted,verified,closed)&select=*&order=created_at.desc&limit=1`)
+    .then(({ data }) => data?.[0]);
+  if (existing) return { ...existing, already_exists: true };
   const row = {
     response_no: `SV-${Date.now()}-${randomUUID().slice(0, 8)}`,
     template_id: templateId,
@@ -946,14 +1001,16 @@ async function createSurveyResponse({ args, actor }) {
     response_date: dateOrToday(args.response_date),
     respondent_profile_id: actor.profile.id,
     remarks: args.remarks == null ? null : String(args.remarks).slice(0, 1000),
+    context_snapshot: args.context_snapshot && typeof args.context_snapshot === "object" ? args.context_snapshot : {},
   };
-  for (const field of ["work_order_id", "work_result_id", "employee_id", "team_id", "vehicle_id", "material_id", "block_id"]) {
+  Object.assign(row, { work_order_id: linkedOrderId, work_result_id: workResultId });
+  for (const field of ["employee_id", "team_id", "vehicle_id", "material_id", "block_id"]) {
     row[field] = optionalUuid(args[field], field);
   }
   const { data } = await rest("survey_responses", {
     method: "POST", body: JSON.stringify([row]), headers: { Prefer: "return=representation" },
   });
-  return data[0];
+  return { ...data[0], already_exists: false };
 }
 
 async function linkInboundWeightTicket({ args, actor }) {
@@ -1224,7 +1281,7 @@ async function changeWorkResultStatus(args, actor, from, to, context = null) {
 
 async function saveSurveyDraft({ args, actor }) {
   const responseId = requireUuid(args.response_id, "response_id");
-  const response = await one(`survey_responses?id=eq.${responseId}&select=id,template_id,status&limit=1`, "Survey response");
+  const { response } = await surveyResponseContext(responseId, actor);
   if (response.status !== "draft") throw new ApiError(409, "INVALID_STATE", "Only draft surveys can be edited");
   const answers = Array.isArray(args.answers) ? args.answers : [];
   if (!answers.length || answers.length > 200) throw new ApiError(400, "VALIDATION_ERROR", "answers must contain 1-200 items");
@@ -1266,19 +1323,66 @@ async function saveSurveyDraft({ args, actor }) {
   return { response_id: responseId, saved: data.length };
 }
 
-async function submitSurveyResponse({ args }) {
-  const responseId = requireUuid(args.response_id, "response_id");
-  const response = await one(`survey_responses?id=eq.${responseId}&select=id,template_id,status&limit=1`, "Survey response");
-  if (response.status !== "draft") throw new ApiError(409, "INVALID_STATE", "Only draft surveys can be submitted");
-  const required = await rest(`survey_questions?template_id=eq.${response.template_id}&required=eq.true&status=eq.active&select=id`)
-    .then(({ data }) => data || []);
-  const answered = await rest(`survey_answers?response_id=eq.${responseId}&select=question_id,is_not_applicable,answer_text,answer_number,answer_boolean,answer_date,answer_json`)
-    .then(({ data }) => data || []);
-  const complete = new Set(answered.filter((answer) => answer.is_not_applicable
+function surveyConditionValue(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try { return JSON.parse(value); } catch { return {}; }
+}
+
+function surveyQuestionVisible(question, answerByKey) {
+  const condition = surveyConditionValue(question.conditional_json);
+  if (!Object.keys(condition).length) return true;
+  const sourceKey = condition.question_code || condition.depends_on || condition.question_id || condition.source_question;
+  if (!sourceKey) return true;
+  const source = answerByKey.get(String(sourceKey));
+  const current = source?.answer_boolean ?? source?.answer_number ?? source?.answer_date ?? source?.answer_text
+    ?? source?.answer_json?.values ?? source?.answer_json;
+  const expected = condition.value ?? condition.equals ?? condition.eq;
+  const operator = String(condition.operator || (condition.not_equals !== undefined ? "not_equals" : "equals")).toLowerCase();
+  if (operator === "in") return (Array.isArray(condition.values) ? condition.values : [expected]).map(String).includes(String(current));
+  if (operator === "not_equals" || operator === "neq") return String(current) !== String(condition.not_equals ?? expected);
+  if (operator === "contains") return Array.isArray(current) ? current.map(String).includes(String(expected)) : String(current || "").includes(String(expected || ""));
+  return String(current) === String(expected);
+}
+
+function surveyAnswerComplete(answer) {
+  return Boolean(answer && (answer.is_not_applicable
     || answer.answer_text != null || answer.answer_number != null || answer.answer_boolean != null
-    || answer.answer_date != null || Object.keys(answer.answer_json || {}).length).map((answer) => answer.question_id));
-  const missing = required.filter((question) => !complete.has(question.id));
+    || answer.answer_date != null || Object.keys(answer.answer_json || {}).length));
+}
+
+async function submitSurveyResponse({ args, actor }) {
+  const responseId = requireUuid(args.response_id, "response_id");
+  const { response } = await surveyResponseContext(responseId, actor);
+  if (response.status !== "draft") throw new ApiError(409, "INVALID_STATE", "Only draft surveys can be submitted");
+  const [questions, answered, template, responseAttachments] = await Promise.all([
+    rest(`survey_questions?template_id=eq.${response.template_id}&status=eq.active&select=id,question_code,required,answer_type,conditional_json,attachment_required`).then(({ data }) => data || []),
+    rest(`survey_answers?response_id=eq.${responseId}&select=id,question_id,is_not_applicable,answer_text,answer_number,answer_boolean,answer_date,answer_json,is_compliant`).then(({ data }) => data || []),
+    one(`survey_templates?id=eq.${response.template_id}&select=id,requires_attachment_on_failure&limit=1`, "Survey template"),
+    rest(`survey_response_attachments?response_id=eq.${responseId}&select=attachment_id`).then(({ data }) => data || []),
+  ]);
+  const questionById = new Map(questions.map((question) => [String(question.id), question]));
+  const answerByKey = new Map();
+  answered.forEach((answer) => {
+    answerByKey.set(String(answer.question_id), answer);
+    const code = questionById.get(String(answer.question_id))?.question_code;
+    if (code) answerByKey.set(String(code), answer);
+  });
+  const visible = questions.filter((question) => surveyQuestionVisible(question, answerByKey));
+  const hasResponseEvidence = responseAttachments.length > 0;
+  const missing = visible.filter((question) => question.required && !surveyAnswerComplete(answerByKey.get(String(question.id)))
+    && !(["photo", "image", "file", "signature"].includes(String(question.answer_type)) && hasResponseEvidence));
   if (missing.length) throw new ApiError(409, "SURVEY_INCOMPLETE", `${missing.length} required answer(s) are missing`);
+  const failureAnswers = answered.filter((answer) => answer.is_compliant === false
+    && (template.requires_attachment_on_failure || questionById.get(String(answer.question_id))?.attachment_required));
+  if (failureAnswers.length && !hasResponseEvidence) {
+    const answerIds = failureAnswers.map((answer) => answer.id);
+    const answerEvidence = await rest(`survey_answer_attachments?answer_id=in.(${answerIds.join(",")})&select=answer_id`).then(({ data }) => data || []);
+    const covered = new Set(answerEvidence.map((row) => String(row.answer_id)));
+    if (failureAnswers.some((answer) => !covered.has(String(answer.id)))) {
+      throw new ApiError(409, "SURVEY_EVIDENCE_REQUIRED", "Evidence is required for failed survey answers");
+    }
+  }
   await rpc("recalculate_survey_response", { p_response_id: responseId });
   const { data } = await rest(`survey_responses?id=eq.${responseId}&status=eq.draft`, {
     method: "PATCH",
@@ -1291,6 +1395,7 @@ async function submitSurveyResponse({ args }) {
 
 async function changeSurveyStatus(args, actor, from, to) {
   const responseId = requireUuid(args.response_id, "response_id");
+  await surveyResponseContext(responseId, actor);
   const now = new Date().toISOString();
   const patch = { status: to, updated_at: now };
   if (to === "verified") Object.assign(patch, { evaluator_profile_id: actor.profile.id, verified_at: now });
@@ -1307,9 +1412,11 @@ async function createSurveyFinding({ args, actor }) {
   if (!["low", "medium", "high", "critical"].includes(severity)) {
     throw new ApiError(400, "VALIDATION_ERROR", "Invalid severity");
   }
+  const responseId = requireUuid(args.response_id, "response_id");
+  await surveyResponseContext(responseId, actor);
   const row = {
     finding_no: `FND-${Date.now()}-${randomUUID().slice(0, 8)}`,
-    response_id: requireUuid(args.response_id, "response_id"),
+    response_id: responseId,
     answer_id: optionalUuid(args.answer_id, "answer_id"),
     finding_code: args.finding_code == null ? null : String(args.finding_code).slice(0, 120),
     severity,
@@ -1328,6 +1435,8 @@ async function createSurveyFinding({ args, actor }) {
 
 async function resolveSurveyFinding({ args, actor }) {
   const findingId = requireUuid(args.finding_id, "finding_id");
+  const finding = await one(`survey_findings?id=eq.${findingId}&select=id,response_id,status&limit=1`, "Survey finding");
+  await surveyResponseContext(finding.response_id, actor);
   const { data } = await rest(`survey_findings?id=eq.${findingId}&status=in.(open,in_progress)`, {
     method: "PATCH",
     body: JSON.stringify({
@@ -1341,6 +1450,138 @@ async function resolveSurveyFinding({ args, actor }) {
   });
   if (!data?.length) throw new ApiError(409, "INVALID_STATE", "Only open or in-progress findings can be resolved");
   return data[0];
+}
+
+const SURVEY_EVIDENCE_TYPES = new Map([
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"],
+  ["application/pdf", "pdf"],
+]);
+const SURVEY_EVIDENCE_MAX_BYTES = 10 * 1024 * 1024;
+
+async function storageRequest(path, options = {}) {
+  const { url, serviceKey } = config();
+  const response = await fetch(`${url}/storage/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new ApiError(response.status >= 500 ? 502 : response.status, "STORAGE_ERROR", "Private evidence storage request failed");
+  return data;
+}
+
+function surveyEvidenceInput(args = {}) {
+  const fileName = requireText(args.file_name, "file_name", 180).replace(/[\\/\u0000-\u001f]/g, "-");
+  const contentType = String(args.content_type || "").toLowerCase();
+  const extension = SURVEY_EVIDENCE_TYPES.get(contentType);
+  if (!extension) throw new ApiError(400, "UNSUPPORTED_FILE_TYPE", "Evidence must be JPG, PNG, WEBP, or PDF");
+  const size = Number(args.file_size);
+  if (!Number.isInteger(size) || size <= 0 || size > SURVEY_EVIDENCE_MAX_BYTES) {
+    throw new ApiError(400, "INVALID_FILE_SIZE", "Evidence must be larger than 0 bytes and no more than 10 MB");
+  }
+  return { fileName, contentType, extension, size };
+}
+
+async function createSurveyEvidenceUpload({ args, actor }) {
+  const responseId = requireUuid(args.response_id, "response_id");
+  const { response } = await surveyResponseContext(responseId, actor);
+  if (response.status !== "draft") throw new ApiError(409, "INVALID_STATE", "Evidence may only be added to a draft survey");
+  const file = surveyEvidenceInput(args);
+  const answerId = optionalUuid(args.answer_id, "answer_id");
+  if (answerId) await one(`survey_answers?id=eq.${answerId}&response_id=eq.${responseId}&select=id&limit=1`, "Survey answer");
+  const month = new Date().toISOString().slice(0, 7);
+  const objectPath = `${responseId}/${month}/${randomUUID()}.${file.extension}`;
+  const signed = await storageRequest(`object/upload/sign/survey-evidence/${objectPath}`, {
+    method: "POST",
+    body: JSON.stringify({ upsert: false }),
+  });
+  const signedPath = signed?.url || signed?.signedUrl || signed?.signedURL;
+  if (!signedPath || !signed?.token) throw new ApiError(502, "STORAGE_ERROR", "Signed evidence upload could not be created");
+  const { url } = config();
+  const uploadUrl = /^https?:\/\//i.test(signedPath)
+    ? signedPath
+    : `${url}/storage/v1${String(signedPath).startsWith("/") ? "" : "/"}${signedPath}`;
+  return {
+    bucket: "survey-evidence",
+    object_path: objectPath,
+    upload_url: uploadUrl,
+    token: signed.token,
+    content_type: file.contentType,
+    file_name: file.fileName,
+    file_size: file.size,
+  };
+}
+
+async function finalizeSurveyEvidence({ args, actor }) {
+  const responseId = requireUuid(args.response_id, "response_id");
+  const { response } = await surveyResponseContext(responseId, actor);
+  if (response.status !== "draft") throw new ApiError(409, "INVALID_STATE", "Evidence may only be linked to a draft survey");
+  const file = surveyEvidenceInput(args);
+  const objectPath = requireText(args.object_path, "object_path", 500);
+  if (!objectPath.startsWith(`${responseId}/`) || objectPath.includes("..") || objectPath.startsWith("/")) {
+    throw new ApiError(400, "INVALID_STORAGE_PATH", "Evidence path does not belong to this survey response");
+  }
+  const info = await storageRequest(`object/info/survey-evidence/${objectPath.split("/").map(encodeURIComponent).join("/")}`, { method: "GET" });
+  const storedSize = Number(info?.metadata?.size ?? info?.size);
+  const storedType = String(info?.metadata?.mimetype || info?.metadata?.contentType || info?.mimetype || "").toLowerCase();
+  if (!Number.isFinite(storedSize) || storedSize !== file.size || storedSize > SURVEY_EVIDENCE_MAX_BYTES) {
+    throw new ApiError(409, "EVIDENCE_SIZE_MISMATCH", "Uploaded evidence size does not match the approved upload");
+  }
+  if (storedType && storedType !== file.contentType) {
+    throw new ApiError(409, "EVIDENCE_TYPE_MISMATCH", "Uploaded evidence type does not match the approved upload");
+  }
+  const storagePath = `survey-evidence/${objectPath}`;
+  let attachment = await rest(`attachments?storage_path=eq.${encodeURIComponent(storagePath)}&select=*&limit=1`)
+    .then(({ data }) => data?.[0]);
+  if (!attachment) {
+    attachment = await rest("attachments", {
+      method: "POST",
+      body: JSON.stringify([{
+        module_name: "farm_survey",
+        record_id: responseId,
+        file_name: file.fileName,
+        file_type: file.contentType,
+        storage_path: storagePath,
+        uploaded_by: actor.profile.id,
+        entity_table: "survey_responses",
+        entity_id: responseId,
+        status: "active",
+      }]),
+      headers: { Prefer: "return=representation" },
+    }).then(({ data }) => data?.[0]);
+  }
+  if (!attachment) throw new ApiError(502, "STORAGE_METADATA_FAILED", "Evidence metadata could not be recorded");
+  await rest("survey_response_attachments?on_conflict=response_id,attachment_id", {
+    method: "POST",
+    body: JSON.stringify([{
+      response_id: responseId,
+      attachment_id: attachment.id,
+      attachment_category: String(args.attachment_category || "evidence").slice(0, 80),
+      caption: args.caption == null ? null : String(args.caption).slice(0, 500),
+    }]),
+    headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+  });
+  const answerId = optionalUuid(args.answer_id, "answer_id");
+  if (answerId) {
+    await one(`survey_answers?id=eq.${answerId}&response_id=eq.${responseId}&select=id&limit=1`, "Survey answer");
+    await rest("survey_answer_attachments?on_conflict=answer_id,attachment_id", {
+      method: "POST",
+      body: JSON.stringify([{
+        answer_id: answerId,
+        attachment_id: attachment.id,
+        attachment_category: String(args.attachment_category || "evidence").slice(0, 80),
+        caption: args.caption == null ? null : String(args.caption).slice(0, 500),
+      }]),
+      headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+    });
+  }
+  return { attachment_id: attachment.id, response_id: responseId, storage_path: storagePath };
 }
 
 function requestHash(action, args, actor) {

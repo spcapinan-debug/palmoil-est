@@ -158,6 +158,7 @@ const ACTION_ONLY_TABLES = new Set([
   "payroll_periods", "payroll_period_lines", "payroll_employee_summaries",
   "payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines",
   "budget_rate_block_snapshots", "survey_responses", "survey_answers", "survey_findings",
+  "survey_response_attachments", "survey_answer_attachments",
   "work_result_weight_tickets",
 ]);
 

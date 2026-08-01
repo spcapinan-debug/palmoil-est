@@ -12871,19 +12871,19 @@ function farmSurveyQuestionChoices(question = {}) {
   if (choicePayload) {
     try {
       const parsed = typeof choicePayload === "string" ? JSON.parse(choicePayload) : choicePayload;
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) return parsed.map((choice) => typeof choice === "object" ? choice : { value: String(choice), label: String(choice) });
     } catch (_) {
       // Bad option JSON should not block recording the work result.
     }
   }
-  if (question.answer_type === "yes_no") {
+  if (["yes_no", "boolean"].includes(question.answer_type)) {
     return [
       { value: "yes", label: "ผ่าน / ใช่" },
       { value: "no", label: "ไม่ผ่าน / ไม่ใช่" },
     ];
   }
-  const max = n(question.score_weight);
-  if (question.answer_type === "choice" && max) {
+  const max = farmSurveyQuestionWeight(question);
+  if (["choice", "single_choice", "rating"].includes(question.answer_type) && max) {
     return [
       { value: String(max), label: `ผ่านครบ ${moneyNf.format(max)} คะแนน` },
       { value: String(Math.round(max / 2)), label: "ผ่านบางส่วน" },
@@ -12893,12 +12893,35 @@ function farmSurveyQuestionChoices(question = {}) {
   return [];
 }
 
+function farmSurveyQuestionVisible(question = {}, draft = {}) {
+  const condition = farmSurveyConditionObject(question.conditional_json || question.condition_json);
+  if (!Object.keys(condition).length) return true;
+  const sourceKey = condition.question_code || condition.depends_on || condition.question_id || condition.source_question;
+  if (!sourceKey) return true;
+  const current = farmSurveyAnswerValue(draft, sourceKey);
+  const expected = condition.value ?? condition.equals ?? condition.eq;
+  const operator = String(condition.operator || (condition.not_equals !== undefined ? "not_equals" : "equals")).toLowerCase();
+  if (operator === "in") return (Array.isArray(condition.values) ? condition.values : [expected]).map(String).includes(String(current));
+  if (operator === "not_equals" || operator === "neq") return String(current) !== String(condition.not_equals ?? expected);
+  if (operator === "contains") return Array.isArray(current) ? current.map(String).includes(String(expected)) : String(current || "").includes(String(expected || ""));
+  return String(current) === String(expected);
+}
+
+function farmSurveyQuestionWeight(question = {}) {
+  return n(question.max_score ?? question.score_weight ?? question.weight_pct);
+}
+
+function farmSurveyQuestionUnit(question = {}) {
+  return question.unit_name || question.answer_unit || "";
+}
+
 function farmSurveyScoreQuestions(questions = []) {
-  return questions.filter((question) => question.answer_type === "choice" || n(question.score_weight) > 0);
+  return questions.filter((question) => ["choice", "single_choice", "rating"].includes(question.answer_type) || farmSurveyQuestionWeight(question) > 0);
 }
 
 function farmSurveyReadinessQuestions(questions = []) {
-  return questions.filter((question) => question.answer_type === "yes_no" || String(question.section_title || "").toLowerCase().includes("readiness"));
+  return questions.filter((question) => ["yes_no", "boolean"].includes(question.answer_type)
+    || String(question.section_name || question.section_title || "").toLowerCase().includes("readiness"));
 }
 
 function farmSurveyMeasureQuestions(questions = []) {
@@ -12912,14 +12935,17 @@ function farmSurveyAnswerValue(draft = {}, key = "") {
 
 function farmSurveyScoreTotal(questions = [], draft = {}) {
   const scoreQuestions = farmSurveyScoreQuestions(questions);
-  const max = scoreQuestions.reduce((sum, question) => sum + n(question.score_weight), 0);
-  const score = scoreQuestions.reduce((sum, question) => sum + n(farmSurveyAnswerValue(draft, farmSurveyQuestionKey(question))), 0);
+  const max = scoreQuestions.reduce((sum, question) => sum + farmSurveyQuestionWeight(question), 0);
+  const score = scoreQuestions.reduce((sum, question) => {
+    const value = farmSurveyAnswerValue(draft, farmSurveyQuestionKey(question));
+    return sum + (["yes", true, "true"].includes(value) ? farmSurveyQuestionWeight(question) : n(value));
+  }, 0);
   return { score, max, percent: max ? Math.round((score / max) * 100) : 0 };
 }
 
 function farmSurveySectionGroups(questions = []) {
   return questions.reduce((groups, question) => {
-    const title = question.section_title || "ข้อมูลตรวจงาน";
+    const title = question.section_name || question.section_title || "ข้อมูลตรวจงาน";
     if (!groups[title]) groups[title] = [];
     groups[title].push(question);
     return groups;
@@ -12932,22 +12958,66 @@ function farmSurveyForActivity(activityOrId) {
   const templates = farmSurveyTemplates().filter((row) => String(row.status || "active").toLowerCase() !== "inactive");
   const exact = templates.find((row) => row.activity_id === activity.id);
   if (exact) return exact;
-  const activityText = [activity.activity_code, activity.activity_name, activity.work_type, farmLookupLabel("activity_groups", activity.activity_group_id)]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return templates.find((row) => {
-    const keywords = Array.isArray(row.keywords) ? row.keywords : farmSurveyText(row).split(/\s+/);
-    return keywords.some((keyword) => keyword && activityText.includes(String(keyword).toLowerCase()));
-  }) || null;
+  return templates.find((row) => !row.activity_id && ["work_result", "work_order", "general"].includes(String(row.survey_scope || "general"))) || null;
+}
+
+function farmSurveyConditionObject(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try { return JSON.parse(value); } catch (_) { return {}; }
+}
+
+function farmSurveyAssignmentMatches(assignment = {}, order = {}) {
+  const day = isoDay(state.farmResultDraft?.resultDate) || farmToday();
+  if (String(assignment.status || "active").toLowerCase() !== "active") return false;
+  if (assignment.effective_from && assignment.effective_from > day) return false;
+  if (assignment.effective_to && assignment.effective_to < day) return false;
+  if (assignment.activity_id && String(assignment.activity_id) !== String(order.activity_id || order.activity?.id || "")) return false;
+  if (assignment.block_id && String(assignment.block_id) !== String(order.block_id || order.block?.id || "")) return false;
+  if (assignment.team_id && String(assignment.team_id) !== String(order.team_id || "")) return false;
+  const condition = farmSurveyConditionObject(assignment.condition_json);
+  const activity = order.activity || farmLookup("activities", order.activity_id) || {};
+  if (condition.activity_group_id && String(condition.activity_group_id) !== String(activity.activity_group_id || order.activity_group_id || "")) return false;
+  if (condition.work_type && String(condition.work_type).toLowerCase() !== String(activity.work_type || order.work_type || "").toLowerCase()) return false;
+  return true;
+}
+
+function farmSurveyAssignmentRank(assignment = {}, order = {}) {
+  const condition = farmSurveyConditionObject(assignment.condition_json);
+  let rank = n(assignment.priority);
+  if (assignment.activity_id && String(assignment.activity_id) === String(order.activity_id || order.activity?.id || "")) rank += 5000;
+  else if (condition.activity_group_id) rank += 4000;
+  else if (condition.work_type) rank += 3000;
+  else rank += 2000;
+  if (assignment.block_id) rank += 200;
+  if (assignment.team_id) rank += 100;
+  return rank;
 }
 
 function farmSurveyForOrder(order = {}) {
-  if (order.survey_template_id) {
-    const byId = farmSurveyTemplates().find((row) => row.id === order.survey_template_id);
-    if (byId) return byId;
-  }
-  return farmSurveyForActivity(order.activity || order.activity_id);
+  const templates = farmSurveyTemplates().filter((row) => String(row.status || "active").toLowerCase() === "active");
+  const byId = new Map(templates.map((row) => [String(row.id), row]));
+  const assigned = farmRowsByKey("survey_template_assignments")
+    .filter((row) => farmSurveyAssignmentMatches(row, order) && byId.has(String(row.template_id || "")))
+    .sort((a, b) => farmSurveyAssignmentRank(b, order) - farmSurveyAssignmentRank(a, order))[0];
+  if (assigned) return { ...byId.get(String(assigned.template_id)), assignment: assigned, selection_source: "assignment" };
+  const activity = order.activity || farmLookup("activities", order.activity_id) || {};
+  const exact = templates.find((row) => row.activity_id && String(row.activity_id) === String(activity.id || order.activity_id || ""));
+  if (exact) return { ...exact, selection_source: "activity" };
+  const activityGroup = templates.find((row) => {
+    const config = farmSurveyConditionObject(row.configuration_json);
+    return config.activity_group_id && String(config.activity_group_id) === String(activity.activity_group_id || order.activity_group_id || "");
+  });
+  if (activityGroup) return { ...activityGroup, selection_source: "activity_group" };
+  const workType = templates.find((row) => {
+    const config = farmSurveyConditionObject(row.configuration_json);
+    return config.work_type && String(config.work_type).toLowerCase() === String(activity.work_type || order.work_type || "").toLowerCase();
+  });
+  if (workType) return { ...workType, selection_source: "work_type" };
+  const general = templates.find((row) => !row.activity_id && ["work_result", "work_order", "general"].includes(String(row.survey_scope || "general")));
+  if (general) return { ...general, selection_source: "general" };
+  const manual = byId.get(String(order.survey_template_id || ""));
+  return manual ? { ...manual, selection_source: "manual" } : null;
 }
 
 function farmSurveyAttachmentForOrder(order = {}) {
@@ -18483,6 +18553,17 @@ function farmResultBlankDraft(order = farmResultSelectedOrder()) {
   const existing = farmRowsByKey("work_results")
     .filter((row) => row.work_order_id === orderId && ["draft", "submitted"].includes(row.result_status))
     .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0];
+  const survey = farmSurveyForOrder(order || {});
+  const surveyResponse = farmRowsByKey("survey_responses")
+    .filter((row) => (!existing?.id || String(row.work_result_id || "") === String(existing.id))
+      && (!survey?.id || String(row.template_id || "") === String(survey.id)))
+    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0];
+  const surveyAnswers = Object.fromEntries(farmRowsByKey("survey_answers")
+    .filter((row) => String(row.response_id || "") === String(surveyResponse?.id || ""))
+    .map((row) => [row.question_code_snapshot || row.question_id,
+      row.answer_number ?? row.answer_boolean ?? row.answer_date ?? row.answer_text
+        ?? (Array.isArray(row.answer_json) ? row.answer_json : row.answer_json?.values)
+        ?? (Object.keys(row.answer_json || {}).length ? row.answer_json : "")]));
   return {
     resultDate: existing?.result_date || resultDate,
     ticketText: "",
@@ -18499,11 +18580,12 @@ function farmResultBlankDraft(order = farmResultSelectedOrder()) {
     weatherCondition: existing?.weather_condition || "",
     terrainCondition: existing?.terrain_condition || "",
     qualityScore: existing?.quality_score ?? "",
-    surveyStatus: existing?.survey_status || "pending",
+    surveyStatus: surveyResponse?.status || existing?.survey_status || "pending",
     surveyNote: "",
     note: existing?.note || "",
     existingResultId: existing?.id || "",
-    surveyAnswers: { POSTING_DATE: resultDate },
+    surveyResponseId: surveyResponse?.id || "",
+    surveyAnswers: { POSTING_DATE: existing?.result_date || resultDate, ...surveyAnswers },
     extraWorkerIds: [],
     workerEntries: {},
     materialEntries: {},
@@ -19206,6 +19288,13 @@ function renderFarmSurveyChoiceControl(question, draft) {
         }).join("")}
       </div>`;
   }
+  if (["multi_choice", "multiple_choice", "checkbox"].includes(question.answer_type) && choices.length) {
+    const selected = new Set(Array.isArray(value) ? value.map(String) : String(value || "").split(",").filter(Boolean));
+    return `<div class="farm-survey-multi-choice">${choices.map((choice) => `<label>
+      <input type="checkbox" value="${esc(choice.value)}" data-farm-survey-answer="${esc(key)}" ${selected.has(String(choice.value)) ? "checked" : ""}>
+      <span>${esc(choice.label ?? choice.value)}</span>
+    </label>`).join("")}</div>`;
+  }
   if (choices.length) {
     return `<select data-farm-survey-answer="${esc(key)}">
       <option value="">เลือกผลตรวจ</option>
@@ -19218,41 +19307,74 @@ function renderFarmSurveyChoiceControl(question, draft) {
 function renderFarmSurveyMeasureControl(question, draft) {
   const key = farmSurveyQuestionKey(question);
   const value = farmSurveyAnswerValue(draft, key);
-  const type = question.answer_type === "number" ? "number" : "text";
+  const answerType = String(question.answer_type || "text");
+  const unit = farmSurveyQuestionUnit(question);
+  if (["long_text", "textarea"].includes(answerType)) return `<label>${esc(question.question_text || key)}
+    <textarea data-farm-survey-answer="${esc(key)}" maxlength="5000" placeholder="${esc(question.help_text || "รายละเอียด")}">${esc(value)}</textarea>
+    <small>${String(question.required) === "true" || question.required === true ? "จำเป็น" : ""}</small></label>`;
+  if (answerType === "date") return `<label>${esc(question.question_text || key)}
+    <input data-farm-survey-answer="${esc(key)}" type="date" value="${esc(value)}">
+    <small>${String(question.required) === "true" || question.required === true ? "จำเป็น" : ""}</small></label>`;
+  if (["photo", "image", "file", "signature"].includes(answerType)) return `<label class="farm-survey-evidence-question">${esc(question.question_text || key)}
+    <span>เพิ่มในขั้นตอน 9 · หลักฐาน${answerType === "signature" ? " (ลายเซ็น/ชื่อผู้รับรอง)" : ""}</span>
+    <small>${String(question.required) === "true" || question.required === true ? "จำเป็น" : ""}</small></label>`;
+  const type = ["number", "rating"].includes(answerType) ? "number" : "text";
   return `
     <label>
       ${esc(question.question_text || key)}
-      <input data-farm-survey-answer="${esc(key)}" type="${type}" ${type === "number" ? 'step="0.01"' : ""} value="${esc(value)}" placeholder="${esc(question.answer_unit || "")}">
-      <small>${esc(question.answer_unit || "")}${String(question.required) === "true" ? " · จำเป็น" : ""}</small>
+      <input data-farm-survey-answer="${esc(key)}" type="${type}" ${type === "number" ? `step="0.01"${question.min_value != null ? ` min="${esc(question.min_value)}"` : ""}${question.max_value != null ? ` max="${esc(question.max_value)}"` : ""}` : ""} value="${esc(value)}" placeholder="${esc(unit)}">
+      <small>${esc(unit)}${String(question.required) === "true" || question.required === true ? " · จำเป็น" : ""}</small>
     </label>`;
 }
 
+function farmCurrentSurveyResponse(survey = farmSurveyForOrder(farmResultSelectedOrder()), draft = state.farmResultDraft || {}) {
+  if (!survey) return null;
+  const responseId = draft.surveyResponseId || "";
+  const resultId = draft.existingResultId || "";
+  const order = farmResultSelectedOrder();
+  const orderId = farmWorkOrderDbId(order) || order?.id || "";
+  return farmRowsByKey("survey_responses")
+    .filter((row) => String(row.template_id || "") === String(survey.id || ""))
+    .filter((row) => !responseId || String(row.id || "") === String(responseId))
+    .filter((row) => responseId || (resultId && String(row.work_result_id || "") === String(resultId)) || String(row.work_order_id || "") === String(orderId))
+    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0]
+    || (responseId ? { id: responseId, status: "draft", template_id: survey.id, work_result_id: resultId, work_order_id: orderId } : null);
+}
+
 function renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, draft, resultDate }) {
-  const scoreQuestions = farmSurveyScoreQuestions(surveyQuestions);
-  const measureQuestions = farmSurveyMeasureQuestions(surveyQuestions);
-  const readinessQuestions = farmSurveyReadinessQuestions(surveyQuestions);
-  const score = farmSurveyScoreTotal(surveyQuestions, draft);
+  const visibleQuestions = surveyQuestions.filter((question) => farmSurveyQuestionVisible(question, draft));
+  const scoreQuestions = farmSurveyScoreQuestions(visibleQuestions);
+  const measureQuestions = farmSurveyMeasureQuestions(visibleQuestions);
+  const readinessQuestions = farmSurveyReadinessQuestions(visibleQuestions);
+  const score = farmSurveyScoreTotal(visibleQuestions, draft);
   const scoreValue = draft.qualityScore || (score.max ? String(score.percent) : "");
   const scoreGroups = farmSurveySectionGroups(scoreQuestions);
   const metaDate = farmSurveyAnswerValue(draft, "POSTING_DATE") || resultDate || farmToday();
+  const response = farmCurrentSurveyResponse(survey, draft);
+  const responseStatus = response?.status || (draft.surveyResponseId ? "draft" : "not_started");
   return `
     <article class="farm-result-card farm-result-survey-card" data-daily-section="survey" id="farm-daily-step-survey">
       <div class="farm-survey-answer-box">
         <div class="section-head">
           <h3>ตรวจงาน / Survey</h3>
-          <span>${survey ? `${esc(survey.template_code || "")} · ${esc(survey.template_name || survey.file_name || "")}` : "ยังไม่พบแบบตรวจตามกิจกรรม"}</span>
+          <span>${survey ? `${esc(survey.template_code || "")} · ${esc(survey.template_name || survey.file_name || "")} · v${fmt(survey.version_no || 1)} · ${esc(survey.selection_source || "assignment")}` : "ยังไม่พบแบบตรวจตาม Assignment"}</span>
         </div>
         <div class="farm-survey-report-actions">
           <div>
             <strong>${score.max ? `${moneyNf.format(score.score)} / ${moneyNf.format(score.max)} คะแนน` : "รอกรอกผลประเมิน"}</strong>
             <small>${score.max ? `คิดเป็น ${fmt(score.percent)}%` : esc(surveyAttachment?.file_name || "แนบรายงานตรวจงานจากกิจกรรม")}</small>
           </div>
-          <button type="button" class="ghost" data-farm-survey-print ${!survey ? "disabled" : ""}>พิมพ์ / PDF รายงาน</button>
+          <div class="farm-survey-action-buttons">
+            <span class="farm-survey-response-status status-${esc(responseStatus)}">${esc(responseStatus)}</span>
+            <button type="button" data-farm-survey-save ${!survey || state.farmSyncBusy ? "disabled" : ""}>บันทึกแบบตรวจ</button>
+            <button type="button" class="farm-danger-confirm" data-farm-survey-submit ${!response?.id || responseStatus !== "draft" || state.farmSyncBusy ? "disabled" : ""}>ส่งแบบตรวจ</button>
+            <button type="button" class="ghost" data-farm-survey-print ${!survey ? "disabled" : ""}>พิมพ์ / PDF</button>
+          </div>
         </div>
         <div class="farm-survey-meta-grid">
           <label>External ID
             <input data-farm-survey-answer="EXTERNAL_ID" type="text" value="${esc(farmSurveyAnswerValue(draft, "EXTERNAL_ID"))}" placeholder="อ้างอิงภายนอก">
-            <small>type the id that is in the uploaded navigation file</small>
+            <small>เลขอ้างอิงภายนอก (ถ้ามี)</small>
           </label>
           <label>Posting date
             ${renderDateInputControl({ value: metaDate, extra: 'data-farm-survey-answer="POSTING_DATE"', ariaLabel: "เลือกวันที่ตรวจงาน" })}
@@ -19274,21 +19396,21 @@ function renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, 
             <input id="farmResultSurveyNote" type="text" value="${esc(draft.surveyNote || "")}" placeholder="${esc(survey?.template_name || "รายละเอียดตรวจงาน")}">
           </label>
         </div>
-        ${Object.entries(scoreGroups).map(([title, questions]) => `
-          <section class="farm-survey-score-section">
-            <div>
+        ${Object.entries(scoreGroups).map(([title, questions], groupIndex) => `
+          <details class="farm-survey-score-section" ${groupIndex === 0 ? "open" : ""}>
+            <summary>
               <h4>${esc(title)}</h4>
-              <span>Score ${fmt(questions.reduce((sum, row) => sum + n(row.score_weight), 0))}%</span>
-            </div>
+              <span>Score ${fmt(questions.reduce((sum, row) => sum + farmSurveyQuestionWeight(row), 0))}</span>
+            </summary>
             <div class="farm-survey-score-grid">
               ${questions.map((question) => `
                 <label>
                   <span>${esc(question.question_text || farmSurveyQuestionKey(question))}</span>
                   ${renderFarmSurveyChoiceControl(question, draft)}
-                  <small>Score ${fmt(n(question.score_weight))}${question.answer_unit ? ` · ${esc(question.answer_unit)}` : ""}</small>
+                  <small>Score ${fmt(farmSurveyQuestionWeight(question))}${farmSurveyQuestionUnit(question) ? ` · ${esc(farmSurveyQuestionUnit(question))}` : ""}</small>
                 </label>`).join("")}
             </div>
-          </section>`).join("")}
+          </details>`).join("")}
         ${measureQuestions.length ? `
           <section class="farm-survey-score-section">
             <div><h4>ข้อมูลปริมาณงาน</h4><span>ใช้ประกอบรายงานตรวจงาน</span></div>
@@ -19308,10 +19430,55 @@ function renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, 
                 </div>`).join("")}
             </div>
           </section>` : ""}
-        ${!surveyQuestions.length ? `<p class="farm-muted">ยังไม่มีเกณฑ์ตรวจงานสำหรับกิจกรรมนี้ สามารถเพิ่มได้ที่ ข้อมูลกิจกรรม > คำถามประเมิน</p>` : ""}
-        ${renderFarmSurveyPrintReport({ survey, surveyQuestions, draft, score, resultDate: metaDate })}
+        ${!visibleQuestions.length ? `<p class="farm-muted">ยังไม่มีคำถามที่ตรงตามเงื่อนไขของงานนี้</p>` : ""}
+        ${renderFarmSurveyPrintReport({ survey, surveyQuestions: visibleQuestions, draft, score, resultDate: metaDate })}
       </div>
     </article>`;
+}
+
+function renderFarmSurveyFindingEvidence({ survey, draft }) {
+  const response = farmCurrentSurveyResponse(survey, draft);
+  const findings = farmRowsByKey("survey_findings").filter((row) => String(row.response_id || "") === String(response?.id || ""));
+  const responseLinks = farmRowsByKey("survey_response_attachments").filter((row) => String(row.response_id || "") === String(response?.id || ""));
+  const attachmentById = new Map(farmRowsByKey("attachments").map((row) => [String(row.id), row]));
+  const evidence = responseLinks.map((link) => ({ link, file: attachmentById.get(String(link.attachment_id)) || {} }));
+  return `
+    <div class="farm-survey-followup-grid">
+      <article class="farm-result-card farm-survey-finding-card" data-daily-section="findings" id="farm-daily-step-findings">
+        <div class="section-head"><h3>Finding / สิ่งที่ต้องแก้ไข</h3><span>ขั้นตอน 8 · ${fmt(findings.length)} รายการ</span></div>
+        ${response?.id ? `<div class="farm-survey-finding-form">
+          <label>ระดับ
+            <select id="farmSurveyFindingSeverity"><option value="low">ต่ำ</option><option value="medium">กลาง</option><option value="high">สูง</option><option value="critical">วิกฤต</option></select>
+          </label>
+          <label class="wide">รายละเอียด<input id="farmSurveyFindingDescription" type="text" maxlength="5000" placeholder="สิ่งที่พบและผลกระทบ"></label>
+          <label class="wide">วิธีแก้ไข<input id="farmSurveyFindingAction" type="text" maxlength="5000" placeholder="Corrective action"></label>
+          <label>กำหนดเสร็จ<input id="farmSurveyFindingDueDate" type="date"></label>
+          <button type="button" data-farm-survey-create-finding>เพิ่ม Finding</button>
+        </div>` : `<p class="farm-muted">บันทึกแบบตรวจเป็น Draft ก่อนเพิ่ม Finding</p>`}
+        <div class="farm-survey-finding-list">
+          ${findings.map((row) => `<div class="severity-${esc(row.severity || "low")}">
+            <span>${esc(row.severity || "low")} · ${esc(row.status || "open")}</span>
+            <strong>${esc(row.description || "-")}</strong>
+            <small>${esc(row.corrective_action || "ยังไม่ระบุวิธีแก้")}${row.due_date ? ` · ครบ ${esc(displayDate(row.due_date))}` : ""}</small>
+          </div>`).join("") || `<p class="farm-muted">ยังไม่มี Finding</p>`}
+        </div>
+      </article>
+      <article class="farm-result-card farm-survey-evidence-card" data-daily-section="evidence" id="farm-daily-step-evidence">
+        <div class="section-head"><h3>รูปและเอกสารหลักฐาน</h3><span>ขั้นตอน 9 · private storage</span></div>
+        ${response?.id && response.status === "draft" ? `<div class="farm-survey-evidence-form">
+          <label>เลือกภาพหรือ PDF
+            <input id="farmSurveyEvidenceFile" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" capture="environment">
+            <small>JPG, PNG, WEBP หรือ PDF · ไม่เกิน 10 MB</small>
+          </label>
+          <label>คำอธิบาย<input id="farmSurveyEvidenceCaption" type="text" maxlength="500" placeholder="จุดตรวจ/รายละเอียดหลักฐาน"></label>
+          <button type="button" data-farm-survey-upload-evidence>อัปโหลดหลักฐาน</button>
+        </div>` : `<p class="farm-muted">${response?.id ? "Survey ที่ส่งแล้วไม่สามารถเพิ่มไฟล์ได้" : "บันทึกแบบตรวจเป็น Draft ก่อนแนบหลักฐาน"}</p>`}
+        <div class="farm-survey-evidence-list">
+          ${evidence.map(({ link, file }) => `<div><span aria-hidden="true">▣</span><strong>${esc(file.file_name || `หลักฐาน ${link.attachment_id}`)}</strong><small>${esc(link.caption || file.file_type || "private")}</small></div>`).join("") || `<p class="farm-muted">ยังไม่มีหลักฐาน</p>`}
+        </div>
+        <p class="farm-survey-private-note">ไฟล์เก็บใน bucket <code>survey-evidence</code> แบบ private และไม่มี public URL</p>
+      </article>
+    </div>`;
 }
 
 function renderFarmSurveyPrintReport({ survey, surveyQuestions, draft, score, resultDate }) {
@@ -19639,6 +19806,7 @@ function renderFarmResultPanel() {
         </div>
       </article>
       ${renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, draft, resultDate: draft.resultDate || farmToday() })}
+      ${renderFarmSurveyFindingEvidence({ survey, draft })}
       <div class="farm-result-bottom-grid">
         <article class="farm-result-card" data-daily-section="weigh-tickets">
           <div class="section-head"><h3>ใบชั่ง / แหล่งผลงาน</h3><span>${fmt(calc.tickets.length)} ใบ · ${fmt(calc.ticketKg)} กก.</span></div>
@@ -19675,10 +19843,18 @@ function syncFarmResultDraftFromForm() {
   let actualQuantity = quantityInput?.value || "";
   let actualUnit = unitInput?.value || "";
   const surveyAnswers = { ...(state.farmResultDraft?.surveyAnswers || {}) };
+  const surveyMultiAnswers = new Map();
   document.querySelectorAll("[data-farm-survey-answer]").forEach((input) => {
     if ((input.type === "radio" || input.type === "checkbox") && !input.checked) return;
+    if (input.type === "checkbox") {
+      const key = input.dataset.farmSurveyAnswer;
+      if (!surveyMultiAnswers.has(key)) surveyMultiAnswers.set(key, []);
+      surveyMultiAnswers.get(key).push(input.value);
+      return;
+    }
     surveyAnswers[input.dataset.farmSurveyAnswer] = input.value;
   });
+  surveyMultiAnswers.forEach((values, key) => { surveyAnswers[key] = values; });
   const postingDate = isoDay(surveyAnswers.POSTING_DATE) || surveyAnswers.POSTING_DATE || "";
   if (!surveyAnswers.POSTING_DATE || postingDate === previousResultDate) surveyAnswers.POSTING_DATE = resultDate;
   state.farmResultDraft = {
@@ -19707,6 +19883,7 @@ function syncFarmResultDraftFromForm() {
     materialEntries,
     machineEntries,
     existingResultId: state.farmResultDraft?.existingResultId || "",
+    surveyResponseId: state.farmResultDraft?.surveyResponseId || "",
   };
   rememberFarmResultDraft();
 }
@@ -23757,6 +23934,78 @@ function renderFarmManagementDashboard() {
     </div>`;
 }
 
+function farmSurveyAnswerPayloads(survey, draft = state.farmResultDraft || {}) {
+  return farmSurveyQuestions(survey)
+    .filter((question) => farmLooksUuid(question.id) && farmSurveyQuestionVisible(question, draft))
+    .map((question) => {
+      const key = farmSurveyQuestionKey(question);
+      const value = draft.surveyAnswers?.[key];
+      const answerType = String(question.answer_type || "text");
+      const payload = {
+        question_id: question.id,
+        answer_text: null,
+        answer_number: null,
+        answer_boolean: null,
+        answer_date: null,
+        answer_json: {},
+        score_awarded: 0,
+        is_compliant: null,
+        is_not_applicable: false,
+        note: null,
+      };
+      if (Array.isArray(value)) payload.answer_json = { values: value };
+      else if (["number", "rating"].includes(answerType) && value !== "" && value != null) payload.answer_number = n(value);
+      else if (["yes_no", "boolean"].includes(answerType) && value !== "" && value != null) payload.answer_boolean = ["yes", "true", "1", true].includes(value);
+      else if (answerType === "date" && value) payload.answer_date = isoDay(value);
+      else if (value !== "" && value != null) payload.answer_text = String(value);
+      const weight = farmSurveyQuestionWeight(question);
+      if (weight) payload.score_awarded = ["yes", true, "true"].includes(value) ? weight : Math.min(weight, Math.max(0, n(value)));
+      const expected = farmSurveyConditionObject(question.expected_answer_json);
+      if (expected.value !== undefined) payload.is_compliant = Array.isArray(value)
+        ? value.map(String).includes(String(expected.value)) : String(value) === String(expected.value);
+      else if (["yes_no", "boolean"].includes(answerType) && value !== "" && value != null) payload.is_compliant = payload.answer_boolean;
+      return payload;
+    });
+}
+
+async function ensureFarmDailySurveyDraft(resultId) {
+  const order = farmResultSelectedOrder();
+  const survey = farmSurveyForOrder(order || {});
+  if (!survey || !farmLooksUuid(survey.id)) return null;
+  const workOrderId = farmWorkOrderDbId(order) || order.id;
+  let response = farmCurrentSurveyResponse(survey, state.farmResultDraft);
+  if (!response?.id) response = await runFarmAction("create_survey_response", {
+    template_id: survey.id,
+    survey_scope: survey.survey_scope || "work_result",
+    response_date: state.farmResultDraft.resultDate,
+    work_order_id: workOrderId,
+    work_result_id: resultId,
+    team_id: order.team_id || null,
+    block_id: order.block_id || order.block?.id || null,
+    context_snapshot: {
+      work_order_no: order.work_order_no || farmShortWorkOrderNo(order),
+      activity_id: order.activity_id || null,
+      block_id: order.block_id || order.block?.id || null,
+      team_id: order.team_id || null,
+      result_date: state.farmResultDraft.resultDate,
+    },
+  }, { reason: "สร้าง Survey draft จาก Mobile Daily Entry" });
+  if (!response?.id) throw new Error("ไม่สามารถสร้าง Survey draft ได้");
+  state.farmResultDraft.surveyResponseId = response.id;
+  state.farmResultDraft.surveyStatus = response.status || "draft";
+  if (response.status && response.status !== "draft") {
+    rememberFarmResultDraft();
+    return response;
+  }
+  const answers = farmSurveyAnswerPayloads(survey, state.farmResultDraft);
+  if (answers.length) await runFarmAction("save_survey_draft", {
+    response_id: response.id,
+    answers,
+  }, { reason: "บันทึกคำตอบ Survey จาก Mobile Daily Entry" });
+  rememberFarmResultDraft();
+  return { ...response, status: response.status || "draft" };
+}
+
 async function saveFarmDailyEntry() {
   const order = farmResultSelectedOrder();
   if (!order) return;
@@ -23821,15 +24070,99 @@ async function saveFarmDailyEntry() {
       })),
     });
     state.farmResultDraft.existingResultId = resultId;
+    await ensureFarmDailySurveyDraft(resultId);
     rememberFarmResultDraft(state.farmResultWorkOrderId || order.id, state.farmResultDraft);
     updateFarmWorkflowUrl({
       work_order: state.farmResultWorkOrderId || order.id,
       date: state.farmResultDraft.resultDate,
     });
+    return { resultId, surveyResponseId: state.farmResultDraft.surveyResponseId || "" };
   } catch (error) {
     rememberFarmResultDraft();
     console.error("Daily result save failed", error.message);
+    return null;
   }
+}
+
+async function submitFarmDailySurvey() {
+  syncFarmResultDraftFromForm();
+  const saved = await saveFarmDailyEntry();
+  const responseId = saved?.surveyResponseId || state.farmResultDraft?.surveyResponseId;
+  if (!responseId) return;
+  const result = await runFarmAction("submit_survey_response", { response_id: responseId }, {
+    confirmed: true,
+    reason: "ส่ง Survey จาก Mobile Daily Entry",
+  }).catch(() => null);
+  if (result) {
+    state.farmResultDraft.surveyStatus = result.status || "submitted";
+    rememberFarmResultDraft();
+  }
+}
+
+async function createFarmDailySurveyFinding() {
+  const responseId = state.farmResultDraft?.surveyResponseId || farmCurrentSurveyResponse()?.id;
+  if (!responseId) return;
+  const description = document.querySelector("#farmSurveyFindingDescription")?.value.trim() || "";
+  if (!description) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาระบุรายละเอียด Finding";
+    render();
+    return;
+  }
+  await runFarmAction("create_survey_finding", {
+    response_id: responseId,
+    severity: document.querySelector("#farmSurveyFindingSeverity")?.value || "low",
+    finding_type: "non_compliance",
+    description,
+    corrective_action: document.querySelector("#farmSurveyFindingAction")?.value.trim() || null,
+    due_date: document.querySelector("#farmSurveyFindingDueDate")?.value || null,
+  }, { reason: "สร้าง Finding จาก Mobile Daily Entry" }).catch(() => null);
+}
+
+async function uploadFarmDailySurveyEvidence() {
+  const responseId = state.farmResultDraft?.surveyResponseId || farmCurrentSurveyResponse()?.id;
+  const input = document.querySelector("#farmSurveyEvidenceFile");
+  const file = input?.files?.[0];
+  const caption = document.querySelector("#farmSurveyEvidenceCaption")?.value.trim() || null;
+  if (!responseId || !file) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาบันทึก Survey draft และเลือกไฟล์หลักฐาน";
+    render();
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "ไฟล์หลักฐานต้องไม่เกิน 10 MB";
+    render();
+    return;
+  }
+  const approved = await runFarmAction("create_survey_evidence_upload", {
+    response_id: responseId,
+    file_name: file.name,
+    content_type: file.type,
+    file_size: file.size,
+  }, { reason: "ขอ signed upload สำหรับ Survey evidence" }).catch(() => null);
+  if (!approved?.upload_url) return;
+  const uploadResponse = await fetch(approved.upload_url, {
+    method: "POST",
+    headers: { "Content-Type": approved.content_type || file.type, "cache-control": "3600", "x-upsert": "false" },
+    body: file,
+  });
+  if (!uploadResponse.ok) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "อัปโหลดไฟล์หลักฐานไม่สำเร็จ";
+    render();
+    return;
+  }
+  await runFarmAction("finalize_survey_evidence", {
+    response_id: responseId,
+    object_path: approved.object_path,
+    file_name: approved.file_name,
+    content_type: approved.content_type,
+    file_size: approved.file_size,
+    caption,
+    attachment_category: "evidence",
+  }, { reason: "บันทึก metadata Survey evidence" }).catch(() => null);
 }
 
 function renderFarmWorkflowModeBar({ workspaceLabel, entryLabel }) {
@@ -23905,6 +24238,9 @@ function renderFarmDailyEntryActions() {
 function renderFarmDailyMobileStepper(calc = {}, survey = null) {
   const draft = calc.draft || {};
   const surveyStatus = String(draft.surveyStatus || "pending");
+  const response = farmCurrentSurveyResponse(survey, draft);
+  const findingCount = response ? farmRowsByKey("survey_findings").filter((row) => row.response_id === response.id).length : 0;
+  const evidenceCount = response ? farmRowsByKey("survey_response_attachments").filter((row) => row.response_id === response.id).length : 0;
   const steps = [
     ["summary", "สรุปงาน", true, false],
     ["result", "ผลงานวันนี้", n(draft.actualQuantity) > 0, false],
@@ -23913,8 +24249,8 @@ function renderFarmDailyMobileStepper(calc = {}, survey = null) {
     ["vehicles", "รถ", !calc.machineLines?.length || calc.machineLines.every((row) => !row.vehicle_id || row.driver_employee_id), false],
     ["quality", "คุณภาพ", draft.qualityScore !== "" && draft.qualityScore != null, false],
     ["survey", "Survey", Boolean(survey) && ["draft", "submitted", "verified", "closed", "passed"].includes(surveyStatus), false],
-    ["findings", "Finding", false, true],
-    ["evidence", "หลักฐาน", false, true],
+    ["findings", "Finding", findingCount > 0, !response],
+    ["evidence", "หลักฐาน", evidenceCount > 0, !response],
     ["review", "ตรวจทาน", false, false],
   ];
   return `<nav class="farm-daily-mobile-stepper" aria-label="10 ขั้นตอนบันทึกงานประจำวัน">
@@ -25523,6 +25859,13 @@ async function init() {
       handleFarmResultFormFieldChange(e.target);
       return;
     }
+    if (e.target.matches("[data-farm-survey-answer]")) {
+      const scrollTop = document.scrollingElement?.scrollTop || window.scrollY;
+      syncFarmResultDraftFromForm();
+      render();
+      requestAnimationFrame(() => window.scrollTo({ top: scrollTop }));
+      return;
+    }
     if (e.target.matches("[data-farm-result-worker-field]")) {
       syncFarmResultWorkerDraftFromTable();
       return;
@@ -26593,6 +26936,22 @@ async function init() {
     }
     if (e.target.closest("[data-farm-dispatch-bulk-print]")) {
       printFarmDispatchBulkOrders();
+      return;
+    }
+    if (e.target.closest("[data-farm-survey-save]")) {
+      saveFarmDailyEntry();
+      return;
+    }
+    if (e.target.closest("[data-farm-survey-submit]")) {
+      submitFarmDailySurvey();
+      return;
+    }
+    if (e.target.closest("[data-farm-survey-create-finding]")) {
+      createFarmDailySurveyFinding();
+      return;
+    }
+    if (e.target.closest("[data-farm-survey-upload-evidence]")) {
+      uploadFarmDailySurveyEvidence();
       return;
     }
     if (e.target.closest("[data-farm-survey-print]")) {
