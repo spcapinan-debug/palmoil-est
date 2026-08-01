@@ -101,11 +101,12 @@ test("shared body parser accepts Vercel pre-parsed JSON without rereading the st
 
 test("Preview routing serves the SPA entry point for direct workspace routes", () => {
   assert.deepEqual(vercelConfig.routes.slice(-2), [
-    { src: "/(app\\.js|styles\\.css)", dest: "/webapp/$1" },
+    { src: "/(app\\.js|hr-phase5\\.js|styles\\.css)", dest: "/webapp/$1" },
     { src: "/(.*)", dest: "/webapp/index.html" },
   ]);
   assert.match(indexHtml, /href="\/styles\.css/);
   assert.match(indexHtml, /src="\/app\.js/);
+  assert.match(indexHtml, /src="\/hr-phase5\.js/);
 });
 
 test("current farm hierarchy remains usable when the legacy areas table is absent", () => {
