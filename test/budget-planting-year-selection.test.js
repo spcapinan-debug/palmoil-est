@@ -97,11 +97,13 @@ test("scoped Block input controls the count per planting year", () => {
   assert.deepEqual(Array.from(model.years, (row) => [row.year, row.totalCount]), [[2559, 1], [2560, 1]]);
 });
 
-test("Block, planting-year, and area-group search plus selected-year filter work", () => {
+test("select all years selects every scoped Block and clearing it removes them all", () => {
   const api = plantingHarness();
-  assert.deepEqual(Array.from(api.farmBudgetFilterPlantingBlocks(blocks, "Lower"), (row) => row.id), ["b1", "b2"]);
-  assert.deepEqual(Array.from(api.farmBudgetFilterPlantingBlocks(blocks, "2560"), (row) => row.id), ["b3"]);
-  assert.deepEqual(Array.from(api.farmBudgetFilterPlantingBlocks(blocks, "", [2559], true), (row) => row.id), ["b1", "b2"]);
+  const allIds = api.farmBudgetPlantingYearGroups(blocks, [], "asc").years.flatMap((row) => row.blockIds);
+  const selected = api.farmBudgetToggleBlockIds([], allIds, true);
+  assert.deepEqual(Array.from(selected).sort(), ["b1", "b2", "b3", "b4"]);
+  assert.equal(api.farmBudgetSelectionState(allIds, selected).checked, true);
+  assert.deepEqual(Array.from(api.farmBudgetToggleBlockIds(selected, allIds, false)), []);
 });
 
 test("area-group and planting-year checkboxes share the same checked/mixed state contract", () => {
@@ -181,14 +183,18 @@ test("server verifies planting years against the database Block", async () => {
   }
 });
 
-test("rendered contract includes accessible mixed state, unique payload, and responsive no-overflow rules", () => {
+test("planting years stay inside the original location box with accessible responsive controls", () => {
   assert.match(appSource, /data-budget-planting-year/);
   assert.match(appSource, /aria-checked="\$\{group\.ariaChecked\}"/);
+  assert.match(appSource, /budget-area-tree-card[^`]+พื้นที่ \/ ที่ตั้ง[^`]+budget-tree-scroll[^`]+renderFarmBudgetPlantingYearSelector\(picks\)[^`]+renderFarmBudgetAreaTree\(picks\)/s);
+  assert.doesNotMatch(appSource, /budget-planting-year-panel|budgetBlockSearch|budgetPlantingYearOnly/);
   assert.match(appSource, /selectedBlockIds:\s*farmBudgetUnique/);
   assert.match(appSource, /plantingYearSelectedBlockIds:\s*\[\]/);
-  assert.match(cssSource, /\.budget-planting-year-grid\s*\{[^}]*repeat\(6,/s);
+  assert.match(cssSource, /\.budget-planting-year-grid\s*\{[^}]*repeat\(8,/s);
   assert.match(cssSource, /\.farm-budget-contract\s*\{[^}]*minmax\(0, 1fr\)/s);
-  assert.match(cssSource, /@media \(max-width: 760px\)[\s\S]*?\.budget-planting-year-grid\s*\{[^}]*repeat\(2,/);
-  assert.match(cssSource, /\.budget-planting-year-item\s*\{[^}]*min-height:\s*48px/s);
-  assert.doesNotMatch(cssSource, /\.budget-planting-year-(?:panel|grid)[^{]*\{[^}]*min-width:\s*[5-9]\d{2}px/s);
+  assert.match(cssSource, /@media \(max-width: 1180px\)[\s\S]*?\.budget-planting-year-grid\s*\{[^}]*repeat\(5,/);
+  assert.match(cssSource, /@media \(max-width: 760px\)[\s\S]*?\.budget-planting-year-grid\s*\{[^}]*repeat\(3,/);
+  assert.match(cssSource, /@media \(max-width: 420px\)[\s\S]*?\.budget-planting-year-grid\s*\{[^}]*repeat\(2,/);
+  assert.match(cssSource, /@media \(max-width: 760px\)[\s\S]*?\.budget-planting-year-item\s*\{[^}]*min-height:\s*44px/s);
+  assert.doesNotMatch(cssSource, /\.budget-planting-year-panel|\.budget-planting-year-grid[^{]*\{[^}]*min-width:\s*[5-9]\d{2}px/s);
 });
