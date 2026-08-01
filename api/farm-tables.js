@@ -1,4 +1,5 @@
 const {
+  ADMIN_ROLES,
   ApiError,
   actorIsUat,
   audit,
@@ -394,6 +395,87 @@ function uatRowAllowed(table, row, context) {
   return false;
 }
 
+function normalizePlantingYear(value) {
+  const text = String(value ?? "").trim();
+  const match = text.match(/(?:^|\D)(\d{4})(?:\D|$)/);
+  const year = Number(match?.[1] || (/^\d{4}$/.test(text) ? text : 0));
+  if (year >= 2400 && year <= 2700) return year;
+  if (year >= 1900 && year <= 2200) return year + 543;
+  return 0;
+}
+
+function databaseBlockPlantingYear(block = {}) {
+  for (const field of ["planted_year", "planting_year"]) {
+    const year = normalizePlantingYear(block[field]);
+    if (year) return year;
+  }
+  const dateYear = normalizePlantingYear(String(block.planting_date || "").slice(0, 4));
+  if (dateYear) return dateYear;
+  const code = String(block.block_code || "").toUpperCase();
+  const explicitYear = normalizePlantingYear(code);
+  if (explicitYear) return explicitYear;
+  const shortYear = code.match(/(?:^|[-_/])(\d{2})(?=[-_/]|$)/)?.[1];
+  if (!shortYear) return 0;
+  const year = 2500 + Number(shortYear);
+  return year >= 2450 && year <= new Date().getFullYear() + 544 ? year : 0;
+}
+
+function actorCanAccessBlock(actor, block) {
+  if ([...actor.roles].some((role) => ADMIN_ROLES.has(role))) return true;
+  return actor.scopes.some((scope) => {
+    if (["all", "global"].includes(String(scope.scope_type || "").toLowerCase())) return true;
+    if (scope.block_id) return scope.block_id === block.id;
+    if (scope.plot_id) return scope.plot_id === block.plot_id;
+    if (scope.zone_id) return scope.zone_id === block.zone_id;
+    if (scope.estate_id) return scope.estate_id === block.estate_id;
+    return false;
+  });
+}
+
+async function validateBudgetRateBlockRows(actor, rows, selectedPlantingYears = [], selectedBlockIds = []) {
+  const blockIds = rows.map((row) => requireUuid(row.block_id, "block_id"));
+  if (new Set(blockIds).size !== blockIds.length) {
+    throw new ApiError(400, "DUPLICATE_BLOCK_ID", "selectedBlockIds must not contain duplicate block IDs");
+  }
+  if (!Array.isArray(selectedBlockIds)) {
+    throw new ApiError(400, "VALIDATION_ERROR", "selectedBlockIds must be an array");
+  }
+  const payloadBlockIds = selectedBlockIds.map((id) => requireUuid(id, "selectedBlockIds"));
+  if (new Set(payloadBlockIds).size !== payloadBlockIds.length) {
+    throw new ApiError(400, "DUPLICATE_BLOCK_ID", "selectedBlockIds must not contain duplicate block IDs");
+  }
+  if (JSON.stringify([...payloadBlockIds].sort()) !== JSON.stringify([...blockIds].sort())) {
+    throw new ApiError(400, "BLOCK_SELECTION_MISMATCH", "selectedBlockIds does not match the relation rows");
+  }
+  const { data } = await rest(`blocks?id=in.(${blockIds.join(",")})&select=*`);
+  const blocks = Array.isArray(data) ? data : [];
+  const byId = new Map(blocks.map((block) => [block.id, block]));
+  for (const blockId of blockIds) {
+    const block = byId.get(blockId);
+    if (!block) throw new ApiError(400, "BLOCK_NOT_FOUND", "A selected Block does not exist");
+    if (String(block.status || "").toLowerCase() !== "active") {
+      throw new ApiError(400, "BLOCK_INACTIVE", "A selected Block is not active");
+    }
+    if (!actorCanAccessBlock(actor, block)) {
+      throw new ApiError(403, "SCOPE_FORBIDDEN", "A selected Block is outside your assigned scope");
+    }
+  }
+  if (selectedPlantingYears !== undefined && !Array.isArray(selectedPlantingYears)) {
+    throw new ApiError(400, "VALIDATION_ERROR", "selectedPlantingYears must be an array");
+  }
+  const suppliedYears = [...new Set((selectedPlantingYears || []).map((year) => normalizePlantingYear(year)).filter(Boolean))].sort((a, b) => a - b);
+  if (selectedPlantingYears?.length !== suppliedYears.length) {
+    throw new ApiError(400, "VALIDATION_ERROR", "selectedPlantingYears contains invalid or duplicate years");
+  }
+  if (suppliedYears.length) {
+    const databaseYears = [...new Set(blocks.map(databaseBlockPlantingYear).filter(Boolean))].sort((a, b) => a - b);
+    if (JSON.stringify(databaseYears) !== JSON.stringify(suppliedYears)) {
+      throw new ApiError(400, "PLANTING_YEAR_MISMATCH", "selectedPlantingYears does not match the selected Blocks");
+    }
+  }
+  return blocks;
+}
+
 function safeTableError(error) {
   return error?.status && error.status < 500
     ? { code: error.code || "TABLE_READ_FAILED", message: error.message || "Table read failed" }
@@ -494,6 +576,10 @@ async function handleGet(req, res, url, actor) {
     }
     try {
       const read = await readTable(table, limit, offset);
+      if (table === "blocks" && ![...actor.roles].some((role) => ADMIN_ROLES.has(role))) {
+        const rows = read.rows.filter((row) => actorCanAccessBlock(actor, row));
+        return { ...read, rows, rawTotal: read.total, total: rows.length };
+      }
       if (!context) return { ...read, rawTotal: read.total };
       const rows = table === "v_management_action_center"
         ? uatActionCenterRows(read.rows, context)
@@ -548,6 +634,9 @@ async function handlePost(req, res, actor) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   if (rows.length > 500) throw new ApiError(400, "VALIDATION_ERROR", "A request may write at most 500 rows");
+  if (table === "budget_rate_blocks") {
+    await validateBudgetRateBlockRows(actor, rows, body.selectedPlantingYears, body.selectedBlockIds);
+  }
   await enforceUatTableWrite(actor, table, rows);
   const conflict = String(body.onConflict || CONFLICT_KEYS[table] || "id");
   if (!/^[a-z_][a-z0-9_]*$/i.test(conflict)) throw new ApiError(400, "VALIDATION_ERROR", "Invalid onConflict column");
@@ -618,5 +707,6 @@ async function handler(req, res) {
 module.exports = handler;
 module.exports._test = {
   ACTION_ONLY_TABLES, OPTIONAL_TABLES, TABLES, UAT_OPERATIONAL_TABLES, cache, clearCache, parallelMap,
-  enforceUatTableWrite, requestedTables, safeTableError, tableName, uatActionCenterRows, uatRowAllowed,
+  actorCanAccessBlock, databaseBlockPlantingYear, enforceUatTableWrite, normalizePlantingYear,
+  requestedTables, safeTableError, tableName, uatActionCenterRows, uatRowAllowed, validateBudgetRateBlockRows,
 };

@@ -54,11 +54,15 @@ const state = {
   farmActivityModalTable: "",
   farmBudgetContract: {
     query: "",
+    blockQuery: "",
     contractType: "Role Based Compounded",
     startDate: "",
     endDate: "",
     multiArea: false,
     selectedBlocks: [],
+    plantingYearSelectedBlockIds: [],
+    plantingYearOnly: false,
+    plantingYearSort: "asc",
     selectedActivities: [],
     selectedMaterials: [],
     selectedVehicles: [],
@@ -4327,6 +4331,20 @@ async function persistFarmRowToDatabase(table, row) {
   if (!res.ok || payload?.ok === false) throw new Error(farmApiErrorMessage(payload, `Farm API ${res.status}`));
   const saved = payload.row ? mergeFarmDbRow(table.key, payload.row) : null;
   return { ...payload, row: saved || payload.row || row };
+}
+
+async function persistFarmRowsToDatabase(table, rows, metadata = {}) {
+  const uniqueRows = [...new Map((rows || []).map((row) => [row.id, row])).values()];
+  const res = await fetch(FARM_TABLES_API, {
+    method: "POST",
+    headers: farmApiHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ table: table.key, rows: uniqueRows, ...metadata }),
+    cache: "no-store",
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok || payload?.ok === false) throw new Error(farmApiErrorMessage(payload, `Farm API ${res.status}`));
+  const savedRows = (payload.rows || uniqueRows).map((row) => mergeFarmDbRow(table.key, row) || row);
+  return { ...payload, rows: savedRows };
 }
 
 function farmIsMissingDbTableError(error) {
@@ -11858,7 +11876,7 @@ async function saveFarmRow() {
 
 async function createFarmBudgetRatesFromSelection() {
   const picks = farmBudgetContractState();
-  const blocks = picks.selectedBlocks.map((id) => {
+  const blocks = farmBudgetUnique(picks.selectedBlocks).map((id) => {
     const block = farmLookup("blocks", id);
     if (block) return block;
     const area = farmLookup("areas", id);
@@ -11957,10 +11975,14 @@ async function createFarmBudgetRatesFromSelection() {
       const savedRateId = savedRate.row?.id || rateRow.id;
       created.push(savedRateId);
       createdRows.push(savedRate.row || rateRow);
-      let blockIndex = 1;
-      for (const block of blocks) {
-        await persistFarmRowToDatabase(blockTable, farmBudgetBlockRelationRow(savedRateId, block, blockIndex++));
-      }
+      await persistFarmRowsToDatabase(
+        blockTable,
+        blocks.map((block, index) => farmBudgetBlockRelationRow(savedRateId, block, index + 1)),
+        {
+          selectedBlockIds: blocks.map((item) => item.id),
+          selectedPlantingYears: farmBudgetPlantingSelectionSummary(blocks, blocks.map((item) => item.id)).selectedYears,
+        },
+      );
       for (const material of materials) {
         await persistFarmRowToDatabase(materialTable, {
           id: `budget-material-${nowKey}-${sequence}-${farmBudgetSafeCode(material.id)}`,
@@ -12056,7 +12078,7 @@ async function saveFarmBudgetSelectedRateFromSelection() {
   }
   const picks = farmBudgetContractState();
   const selectedRealBlockId = picks.selectedBlocks.find((value) => !farmBudgetIsVirtualValue(value));
-  const selectedBlocks = picks.selectedBlocks
+  const selectedBlocks = farmBudgetUnique(picks.selectedBlocks)
     .filter((value) => !farmBudgetIsVirtualValue(value))
     .map((value) => farmLookup("blocks", value) || farmLookup("areas", value))
     .filter(Boolean);
@@ -12146,9 +12168,15 @@ async function saveFarmBudgetSelectedRateFromSelection() {
     const savedRate = await persistFarmRowToDatabase(rateTable, rateRow);
     const savedRateId = savedRate.row?.id || rateRow.id;
     await deleteFarmBudgetRelationsForRate(original, savedRateId, materialTable, roleTable, blockTable);
-    let blockIndex = 1;
-    for (const linkedBlock of blocksForRate) {
-      await persistFarmRowToDatabase(blockTable, farmBudgetBlockRelationRow(savedRateId, linkedBlock, blockIndex++));
+    if (blocksForRate.length) {
+      await persistFarmRowsToDatabase(
+        blockTable,
+        blocksForRate.map((linkedBlock, index) => farmBudgetBlockRelationRow(savedRateId, linkedBlock, index + 1)),
+        {
+          selectedBlockIds: blocksForRate.map((item) => item.id),
+          selectedPlantingYears: farmBudgetPlantingSelectionSummary(blocksForRate, blocksForRate.map((item) => item.id)).selectedYears,
+        },
+      );
     }
     let sequence = 1;
     for (const material of materials) {
@@ -20937,11 +20965,15 @@ function farmBudgetContractState() {
   if (!state.farmBudgetContract) {
     state.farmBudgetContract = {
       query: "",
+      blockQuery: "",
       contractType: "Role Based Compounded",
       startDate: "",
       endDate: "",
       multiArea: false,
       selectedBlocks: [],
+      plantingYearSelectedBlockIds: [],
+      plantingYearOnly: false,
+      plantingYearSort: "asc",
       selectedActivities: [],
       selectedMaterials: [],
       selectedVehicles: [],
@@ -20966,6 +20998,7 @@ function farmBudgetContractState() {
     };
   }
   const picks = state.farmBudgetContract;
+  if (!picks.blockQuery) picks.blockQuery = "";
   if (!Array.isArray(picks.extraRates)) {
     picks.extraRates = [];
   }
@@ -20979,6 +21012,9 @@ function farmBudgetContractState() {
   if (!picks.areaEstateId) picks.areaEstateId = "";
   if (!picks.areaZoneId) picks.areaZoneId = "";
   if (!picks.areaPlotId) picks.areaPlotId = "";
+  if (!Array.isArray(picks.plantingYearSelectedBlockIds)) picks.plantingYearSelectedBlockIds = [];
+  if (typeof picks.plantingYearOnly !== "boolean") picks.plantingYearOnly = false;
+  if (!['asc', 'desc'].includes(picks.plantingYearSort)) picks.plantingYearSort = "asc";
   if (!Array.isArray(picks.selectedVehicles)) picks.selectedVehicles = [];
   if (picks.baseMaterialQuantity === undefined) picks.baseMaterialQuantity = "";
   if (!picks.baseUsageUnit) picks.baseUsageUnit = "";
@@ -21130,6 +21166,7 @@ function farmBudgetUpdateExtraRate(id, field, value) {
 function clearFarmBudgetRateSelections() {
   const picks = farmBudgetContractState();
   picks.selectedBlocks = [];
+  picks.plantingYearSelectedBlockIds = [];
   picks.selectedActivities = [];
   picks.selectedMaterials = [];
   picks.selectedVehicles = [];
@@ -21271,6 +21308,8 @@ function farmBudgetBuildRateNote(picks = {}, { originalNote = "", materials = []
     approvalScope: picks.approvalScope || existing.approvalScope || "",
     approvalMode: picks.approvalMode || existing.approvalMode || "",
     selectedBlocks: farmBudgetUnique(picks.selectedBlocks || []),
+    selectedBlockIds: farmBudgetUnique((picks.selectedBlocks || []).filter((id) => !farmBudgetIsVirtualValue(id))),
+    selectedPlantingYears: farmBudgetSelectedPlantingYears(picks),
     selectedActivities: farmBudgetUnique(picks.selectedActivities || []),
     selectedMaterials: farmBudgetUnique(picks.selectedMaterials || []),
     selectedVehicles: farmBudgetUnique(picks.selectedVehicles || []),
@@ -21876,6 +21915,7 @@ function applyFarmBudgetRateToBuilder(rateId, displayCode = "") {
     startDate: rate.effective_from || picks.startDate || "",
     endDate: rate.effective_to || picks.endDate || "",
     selectedBlocks,
+    plantingYearSelectedBlockIds: [],
     selectedActivities,
     selectedMaterials,
     selectedWorkers,
@@ -21945,6 +21985,37 @@ function farmBudgetWorkerLabel(worker) {
   return [worker.employee_code, worker.full_name].filter(Boolean).join(" · ");
 }
 
+function farmBudgetScopedBlocks() {
+  const blocks = farmBudgetUniqueBlockRows(farmRowsByKey("blocks"));
+  const areas = farmBudgetUniqueBlockRows(farmRowsByKey("areas")
+    .filter((area) => !area.area_level || area.area_level === "block"));
+  if (!blocks.length) return areas;
+  const areaByKey = new Map();
+  for (const area of areas) {
+    for (const key of farmBudgetBlockComparableKeys(area.id)) areaByKey.set(key, area);
+  }
+  return blocks.map((block) => {
+    const area = farmBudgetBlockComparableKeys(block.id).map((key) => areaByKey.get(key)).find(Boolean) || {};
+    return { ...area, ...block };
+  });
+}
+
+function farmBudgetBlockHierarchy(block = {}) {
+  const plot = block.plot_id ? farmLookup("plots", block.plot_id) : null;
+  const zone = farmLookup("zones", block.zone_id || plot?.zone_id);
+  const estate = farmLookup("estates", block.estate_id || zone?.estate_id || plot?.estate_id);
+  const plotGroup = plot?.plot_group_id ? farmLookup("plot_groups", plot.plot_group_id) : null;
+  return {
+    estate: block.estate_name || estate?.estate_name || estate?.estate_code || "ไม่ระบุพื้นที่",
+    zone: block.zone_name || zone?.zone_name || zone?.zone_code || "ไม่ระบุโซน",
+    group: block.plot_group_code || block.plot_group_name || plotGroup?.group_code || plotGroup?.group_name || block.plot_name || plot?.plot_name || plot?.plot_code || "ไม่ระบุกลุ่ม",
+  };
+}
+
+function farmBudgetSelectedPlantingYears(picks = farmBudgetContractState(), blocks = farmBudgetScopedBlocks()) {
+  return farmBudgetPlantingSelectionSummary(blocks, picks.selectedBlocks).selectedYears;
+}
+
 function farmBudgetMatchesQuery(text) {
   const query = farmBudgetContractState().query.trim().toLowerCase();
   return !query || String(text || "").toLowerCase().includes(query);
@@ -21985,6 +22056,110 @@ function farmBudgetBlockValueChecked(value = "", checkedList = []) {
   return checkedList.some((selected) => farmBudgetBlockComparableKeys(selected).some((key) => wanted.has(key)));
 }
 
+function farmBudgetNormalizePlantingYear(value) {
+  const text = String(value ?? "").trim();
+  const match = text.match(/(?:^|\D)(\d{4})(?:\D|$)/);
+  const year = Number(match?.[1] || (/^\d{4}$/.test(text) ? text : 0));
+  if (year >= 2400 && year <= 2700) return year;
+  if (year >= 1900 && year <= 2200) return year + 543;
+  return 0;
+}
+
+function farmBudgetPlantingYearFromBlock(block = {}) {
+  for (const field of ["planted_year", "planting_year"]) {
+    const year = farmBudgetNormalizePlantingYear(block[field]);
+    if (year) return { year, source: field, fallback: false };
+  }
+  const dateYear = farmBudgetNormalizePlantingYear(String(block.planting_date || "").slice(0, 4));
+  if (dateYear) return { year: dateYear, source: "planting_date", fallback: false };
+  const code = String(block.block_code || block.terrain_code || block.area_code || "").toUpperCase();
+  const explicitYear = farmBudgetNormalizePlantingYear(code);
+  if (explicitYear) return { year: explicitYear, source: "block_code", fallback: true };
+  const shortYear = code.match(/(?:^|[-_/])(\d{2})(?=[-_/]|$)/)?.[1];
+  if (shortYear) {
+    const year = 2500 + Number(shortYear);
+    const currentThaiYear = new Date().getFullYear() + 543;
+    if (year >= 2450 && year <= currentThaiYear + 1) return { year, source: "block_code", fallback: true };
+  }
+  return { year: 0, source: "missing", fallback: false };
+}
+
+function farmBudgetUniqueBlockRows(rows = []) {
+  const unique = new Map();
+  for (const block of rows || []) {
+    const id = String(block?.id || "").trim();
+    if (!id || String(block.status || "active").toLowerCase() === "inactive") continue;
+    if (!unique.has(id)) unique.set(id, block);
+  }
+  return [...unique.values()];
+}
+
+function farmBudgetSelectionState(blockIds = [], selectedBlockIds = []) {
+  const ids = [...new Set(blockIds.filter(Boolean))];
+  const selected = new Set(selectedBlockIds || []);
+  const selectedCount = ids.filter((id) => selected.has(id)).length;
+  return {
+    checked: ids.length > 0 && selectedCount === ids.length,
+    indeterminate: selectedCount > 0 && selectedCount < ids.length,
+    ariaChecked: selectedCount > 0 && selectedCount < ids.length ? "mixed" : (ids.length > 0 && selectedCount === ids.length ? "true" : "false"),
+    selectedCount,
+    totalCount: ids.length,
+  };
+}
+
+function farmBudgetToggleBlockIds(selectedBlockIds = [], blockIds = [], checked = true) {
+  const selected = new Set(selectedBlockIds || []);
+  for (const id of new Set(blockIds.filter(Boolean))) {
+    if (checked) selected.add(id);
+    else selected.delete(id);
+  }
+  return [...selected];
+}
+
+function farmBudgetPlantingYearGroups(blocks = [], selectedBlockIds = [], sort = "asc") {
+  const groups = new Map();
+  let fallbackCount = 0;
+  for (const block of farmBudgetUniqueBlockRows(blocks)) {
+    const planting = farmBudgetPlantingYearFromBlock(block);
+    if (!planting.year) continue;
+    if (planting.fallback) fallbackCount += 1;
+    if (!groups.has(planting.year)) groups.set(planting.year, []);
+    groups.get(planting.year).push({ ...block, _plantingYear: planting.year, _plantingYearSource: planting.source });
+  }
+  const direction = sort === "desc" ? -1 : 1;
+  const years = [...groups.entries()]
+    .sort(([a], [b]) => (a - b) * direction)
+    .map(([year, rows]) => {
+      const blockIds = rows.map((row) => row.id);
+      return { year, blocks: rows, blockIds, ...farmBudgetSelectionState(blockIds, selectedBlockIds) };
+    });
+  return { years, fallbackCount };
+}
+
+function farmBudgetFilterPlantingBlocks(blocks = [], query = "", selectedYears = [], onlySelectedYears = false) {
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  const yearSet = new Set((selectedYears || []).map(Number));
+  return farmBudgetUniqueBlockRows(blocks).filter((block) => {
+    const year = farmBudgetPlantingYearFromBlock(block).year;
+    if (onlySelectedYears && (!year || !yearSet.has(year))) return false;
+    if (!normalizedQuery) return true;
+    return [
+      block.block_code, block.terrain_code, block.area_code, block.block_name, block.area_name,
+      block.estate_name, block.zone_name, block.plot_group_code, block.plot_group_name,
+      block.plot_name, block.plot_code, year,
+    ].some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
+  });
+}
+
+function farmBudgetPlantingSelectionSummary(blocks = [], selectedBlockIds = []) {
+  const selected = new Set(selectedBlockIds || []);
+  const rows = farmBudgetUniqueBlockRows(blocks).filter((block) => selected.has(block.id));
+  const years = new Set(rows.map((block) => farmBudgetPlantingYearFromBlock(block).year).filter(Boolean));
+  const useHectare = rows.length > 0 && rows.every((block) => !Number(block.area_rai || 0)) && rows.some((block) => Number(block.area_hectare || block.hectare || 0));
+  const area = rows.reduce((sum, block) => sum + Number(useHectare ? (block.area_hectare || block.hectare || 0) : (block.area_rai || 0)), 0);
+  return { yearCount: years.size, blockCount: rows.length, area, areaUnit: useHectare ? "hectare" : "ไร่", selectedYears: [...years].sort((a, b) => a - b) };
+}
+
 function farmBudgetTeamMemberEmployeeValues(teamId) {
   const employees = farmRowsByKey("employees");
   return farmRowsByKey("team_members")
@@ -22000,13 +22175,12 @@ function farmBudgetAreaGroupValue(blocks = []) {
 
 function renderBudgetAreaGroupSummary(label, blocks = [], checkedList = [], meta = "") {
   const ids = blocks.map((block) => block.id).filter(Boolean);
-  const checked = ids.length > 0 && ids.every((id) => checkedList.includes(id));
+  const selection = farmBudgetSelectionState(ids, checkedList);
   const inputId = farmBudgetCheckId("block", farmBudgetAreaGroupValue(blocks));
   return `
     <summary class="budget-team-summary">
-      <input id="${esc(inputId)}" type="checkbox" data-budget-pick="block" data-budget-block-group="1" value="${esc(farmBudgetAreaGroupValue(blocks))}"${checked ? " checked" : ""} onclick="event.stopPropagation()">
-      <span>${esc(label)}</span>
-      <small>${esc(meta || `${fmt(ids.length)} Block`)}</small>
+      <input id="${esc(inputId)}" type="checkbox" data-budget-pick="block" data-budget-block-group="1" value="${esc(farmBudgetAreaGroupValue(blocks))}" aria-checked="${selection.ariaChecked}"${selection.checked ? " checked" : ""}${selection.indeterminate ? ' data-budget-indeterminate="true"' : ""} onclick="event.stopPropagation()">
+      <label for="${esc(inputId)}" onclick="event.stopPropagation()"><span>${esc(label)}</span><small>${esc(meta || `${fmt(ids.length)} Block`)}</small></label>
     </summary>`;
 }
 
@@ -22024,7 +22198,7 @@ function renderBudgetTeamMemberCheckbox(teamId, employee, checkedList, meta = ""
     </label>`;
 }
 
-function renderFarmBudgetAreaTree(picks = farmBudgetContractState()) {
+function renderFarmBudgetAreaTreeLegacy(picks = farmBudgetContractState()) {
   const areaBlocks = farmRowsByKey("areas")
     .filter((area) => !area.area_level || area.area_level === "block")
     .filter((area) => farmBudgetMatchesQuery(farmBudgetBlockLabel(area)));
@@ -22100,6 +22274,54 @@ function renderFarmBudgetAreaTree(picks = farmBudgetContractState()) {
         ${estateBlocks.filter((block) => !block.zone_id).map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่`)).join("")}
       </details>`;
   }).join("") || blocks.map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่`)).join("");
+}
+
+function renderFarmBudgetAreaTree(picks = farmBudgetContractState()) {
+  const scopedBlocks = farmBudgetScopedBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
+  const selectedYears = farmBudgetSelectedPlantingYears(picks, scopedBlocks);
+  const blocks = farmBudgetFilterPlantingBlocks(scopedBlocks, picks.blockQuery, selectedYears, picks.plantingYearOnly);
+  if (!blocks.length) {
+    const message = picks.plantingYearOnly && !selectedYears.length
+      ? "เลือกปีปลูกอย่างน้อย 1 ปีก่อนเปิดตัวกรอง"
+      : "ไม่พบ Block ตามเงื่อนไขที่เลือก";
+    return `<div class="budget-tree-empty">${esc(message)}</div>`;
+  }
+  const estateMap = new Map();
+  for (const block of blocks) {
+    if (!estateMap.has(block.estate)) estateMap.set(block.estate, new Map());
+    const zoneMap = estateMap.get(block.estate);
+    if (!zoneMap.has(block.zone)) zoneMap.set(block.zone, new Map());
+    const groupMap = zoneMap.get(block.zone);
+    if (!groupMap.has(block.group)) groupMap.set(block.group, []);
+    groupMap.get(block.group).push(block);
+  }
+  return [...estateMap.entries()].map(([estateName, zoneMap]) => {
+    const estateBlocks = [...zoneMap.values()].flatMap((groupMap) => [...groupMap.values()].flat());
+    return `
+      <details open>
+        ${renderBudgetAreaGroupSummary(estateName, estateBlocks, picks.selectedBlocks)}
+        <div class="budget-area-zone-grid">
+        ${[...zoneMap.entries()].map(([zoneName, groupMap]) => {
+          const zoneBlocks = [...groupMap.values()].flat();
+          return `
+            <details open class="budget-zone-branch">
+              ${renderBudgetAreaGroupSummary(zoneName, zoneBlocks, picks.selectedBlocks)}
+              ${[...groupMap.entries()].map(([groupName, groupBlocks]) => `
+                <details open>
+                  ${renderBudgetAreaGroupSummary(groupName, groupBlocks, picks.selectedBlocks)}
+                  ${groupBlocks.map((block) => {
+                    const plantingYear = farmBudgetPlantingYearFromBlock(block).year;
+                    const area = n(block.area_rai) ? `${fmt(n(block.area_rai))} ไร่` : n(block.area_hectare || block.hectare) ? `${fmt(n(block.area_hectare || block.hectare))} hectare` : "";
+                    const meta = [plantingYear ? `ปีปลูก ${plantingYear}` : "", area, n(block.tree_count) ? `${fmt(n(block.tree_count))} ต้น` : ""].filter(Boolean).join(" · ");
+                    return renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, meta);
+                  }).join("")}
+                </details>
+              `).join("")}
+            </details>`;
+        }).join("")}
+        </div>
+      </details>`;
+  }).join("");
 }
 
 function farmBudgetAreaOptions(picks = farmBudgetContractState()) {
@@ -22702,6 +22924,58 @@ function renderFarmBudgetYearSettings() {
     </article>`;
 }
 
+function renderFarmBudgetPlantingYearSelector(picks = farmBudgetContractState()) {
+  const blocks = farmBudgetScopedBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
+  const model = farmBudgetPlantingYearGroups(blocks, picks.selectedBlocks, picks.plantingYearSort);
+  const queryMatches = new Set(farmBudgetFilterPlantingBlocks(blocks, picks.blockQuery).map((block) => farmBudgetPlantingYearFromBlock(block).year));
+  const visibleYears = model.years.filter((group) => !picks.blockQuery || queryMatches.has(group.year));
+  const visibleBlockIds = visibleYears.flatMap((group) => group.blockIds);
+  const selectAll = farmBudgetSelectionState(visibleBlockIds, picks.selectedBlocks);
+  const summary = farmBudgetPlantingSelectionSummary(blocks, picks.selectedBlocks);
+  return `
+    <section class="budget-planting-year-panel" aria-labelledby="budgetPlantingYearTitle">
+      <div class="budget-planting-year-head">
+        <div><h4 id="budgetPlantingYearTitle">ปีปลูก</h4><p>เลือกปีเพื่อช่วยเลือก Block ทั้งปี และยังปรับราย Block ได้ตามเดิม</p></div>
+        <label class="budget-block-search">ค้นหา Block / ปีปลูก / กลุ่มพื้นที่
+          <input id="budgetBlockSearch" type="search" value="${esc(picks.blockQuery)}" placeholder="เช่น 2559, Lower, B14">
+        </label>
+        <label class="budget-year-sort">เรียงปีปลูก
+          <select id="budgetPlantingYearSort">
+            <option value="asc"${picks.plantingYearSort === "asc" ? " selected" : ""}>ปีเก่า → ปีใหม่</option>
+            <option value="desc"${picks.plantingYearSort === "desc" ? " selected" : ""}>ปีใหม่ → ปีเก่า</option>
+          </select>
+        </label>
+      </div>
+      <div class="budget-planting-year-grid">
+        <label class="budget-planting-year-item is-all" for="budget_planting_year_all">
+          <input id="budget_planting_year_all" type="checkbox" data-budget-planting-year-all aria-checked="${selectAll.ariaChecked}"${selectAll.checked ? " checked" : ""}${selectAll.indeterminate ? ' data-budget-indeterminate="true"' : ""}>
+          <span><b>เลือกทุกปี</b><small>${fmt(visibleBlockIds.length)} Block ที่แสดง</small></span>
+        </label>
+        ${visibleYears.map((group) => {
+          const id = `budget_planting_year_${group.year}`;
+          return `<label class="budget-planting-year-item" for="${id}">
+            <input id="${id}" type="checkbox" data-budget-planting-year="${group.year}" aria-checked="${group.ariaChecked}"${group.checked ? " checked" : ""}${group.indeterminate ? ' data-budget-indeterminate="true"' : ""}>
+            <span><b>${group.year}</b><small>${fmt(group.totalCount)} Block</small></span>
+          </label>`;
+        }).join("") || `<p class="budget-planting-year-empty">ไม่พบปีปลูกตามคำค้นหา</p>`}
+      </div>
+      <div class="budget-planting-year-footer">
+        <label class="budget-year-filter" for="budgetPlantingYearOnly">
+          <input id="budgetPlantingYearOnly" type="checkbox"${picks.plantingYearOnly ? " checked" : ""}>
+          <span>แสดงเฉพาะ Block ของปีที่เลือก</span>
+        </label>
+        <button type="button" class="secondary" data-budget-planting-year-clear>ล้างการเลือกปี</button>
+        ${model.fallbackCount ? `<span class="budget-year-fallback" role="status">ใช้ปีจาก Block Code เป็น fallback ${fmt(model.fallbackCount)} รายการ</span>` : ""}
+      </div>
+      <div class="budget-planting-year-summary" aria-live="polite">
+        <span>เลือกแล้ว</span>
+        <b>${fmt(summary.yearCount)} ปีปลูก</b>
+        <b>${fmt(summary.blockCount)} Block</b>
+        <b>พื้นที่รวม ${summary.area.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${esc(summary.areaUnit)}</b>
+      </div>
+    </section>`;
+}
+
 function renderFarmBudgetBoard() {
   const rates = farmRowsByKey("budget_activity_rates");
   const picks = farmBudgetContractState();
@@ -22709,6 +22983,7 @@ function renderFarmBudgetBoard() {
     <section class="farm-budget-contract">
       ${renderFarmBudgetYearSettings()}
       <article class="budget-contract-options">
+        ${renderFarmBudgetPlantingYearSelector(picks)}
         <div class="budget-tree-grid budget-tree-grid-wide-area">
           <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetAreaTree()}</div></section>
           <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree()}</div></section>
@@ -24915,6 +25190,42 @@ async function init() {
   document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.id === "budgetPlantingYearSort") {
+      farmBudgetContractState().plantingYearSort = e.target.value === "desc" ? "desc" : "asc";
+      renderPreservingBudgetTreeScroll(e.target);
+      return;
+    }
+    if (e.target.id === "budgetPlantingYearOnly") {
+      farmBudgetContractState().plantingYearOnly = e.target.checked;
+      renderPreservingBudgetTreeScroll(e.target);
+      return;
+    }
+    if (e.target.matches("[data-budget-planting-year], [data-budget-planting-year-all]")) {
+      const picks = farmBudgetContractState();
+      const blocks = farmBudgetScopedBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
+      const model = farmBudgetPlantingYearGroups(blocks, picks.selectedBlocks, picks.plantingYearSort);
+      const targetGroups = e.target.matches("[data-budget-planting-year-all]")
+        ? model.years.filter((group) => !picks.blockQuery || farmBudgetFilterPlantingBlocks(group.blocks, picks.blockQuery).length)
+        : model.years.filter((group) => group.year === Number(e.target.dataset.budgetPlantingYear));
+      const blockIds = [...new Set(targetGroups.flatMap((group) => group.blockIds))];
+      const selectedBefore = new Set(picks.selectedBlocks || []);
+      const yearSources = new Set(picks.plantingYearSelectedBlockIds || []);
+      if (e.target.checked) {
+        for (const id of blockIds) {
+          if (!selectedBefore.has(id)) yearSources.add(id);
+          selectedBefore.add(id);
+        }
+      } else {
+        for (const id of blockIds) {
+          selectedBefore.delete(id);
+          yearSources.delete(id);
+        }
+      }
+      picks.selectedBlocks = [...selectedBefore];
+      picks.plantingYearSelectedBlockIds = [...yearSources].filter((id) => selectedBefore.has(id));
+      renderPreservingBudgetTreeScroll(e.target);
+      return;
+    }
     if (e.target.id === "inventoryUsageLine") {
       state.farmInventoryIssueLineId = e.target.value;
       render();
@@ -25164,6 +25475,7 @@ async function init() {
       picks.areaZoneId = "";
       picks.areaPlotId = "";
       picks.selectedBlocks = [];
+      picks.plantingYearSelectedBlockIds = [];
       render();
       return;
     }
@@ -25172,6 +25484,7 @@ async function init() {
       picks.areaZoneId = e.target.value;
       picks.areaPlotId = "";
       picks.selectedBlocks = [];
+      picks.plantingYearSelectedBlockIds = [];
       render();
       return;
     }
@@ -25179,6 +25492,7 @@ async function init() {
       const picks = farmBudgetContractState();
       picks.areaPlotId = e.target.value;
       picks.selectedBlocks = [];
+      picks.plantingYearSelectedBlockIds = [];
       render();
       return;
     }
@@ -25262,10 +25576,14 @@ async function init() {
             : type === "vehicle" ? "selectedVehicles"
               : "selectedWorkers";
       const current = new Set(picks[key] || []);
+      const yearSources = new Set(picks.plantingYearSelectedBlockIds || []);
       if (type === "block" && e.target.dataset.budgetBlockGroup) {
         const blockIds = String(e.target.value || "").replace(/^area-group:/, "").split("|").filter(Boolean);
         if (e.target.checked) blockIds.forEach((id) => current.add(id));
-        else blockIds.forEach((id) => current.delete(id));
+        else blockIds.forEach((id) => {
+          current.delete(id);
+          yearSources.delete(id);
+        });
       } else if (type === "worker" && String(e.target.value).startsWith("team:")) {
         const teamId = String(e.target.value).slice(5);
         const memberValues = farmBudgetTeamMemberEmployeeValues(teamId);
@@ -25291,10 +25609,13 @@ async function init() {
         }
       } else if (e.target.checked) {
         current.add(e.target.value);
+        if (type === "block") yearSources.delete(e.target.value);
       } else {
         current.delete(e.target.value);
+        if (type === "block") yearSources.delete(e.target.value);
       }
       picks[key] = [...current];
+      if (type === "block") picks.plantingYearSelectedBlockIds = [...yearSources].filter((id) => current.has(id));
       renderPreservingBudgetTreeScroll(e.target);
       return;
     }
@@ -25758,6 +26079,21 @@ async function init() {
       state.estSearchTimer = setTimeout(render, 200);
       return;
     }
+    if (e.target.id === "budgetBlockSearch") {
+      const picks = farmBudgetContractState();
+      picks.blockQuery = e.target.value;
+      clearTimeout(state.estSearchTimer);
+      const cursor = e.target.selectionStart ?? e.target.value.length;
+      state.estSearchTimer = setTimeout(() => {
+        render();
+        const nextInput = document.querySelector("#budgetBlockSearch");
+        if (nextInput) {
+          nextInput.focus({ preventScroll: true });
+          nextInput.setSelectionRange?.(cursor, cursor);
+        }
+      }, 180);
+      return;
+    }
     if (e.target.id === "budgetFiscalYear") {
       const picks = farmBudgetContractState();
       picks.budgetFiscalYear = e.target.value.trim();
@@ -25835,6 +26171,14 @@ async function init() {
     state.estSearchTimer = setTimeout(render, 250);
   });
   els.reportPage.addEventListener("click", (e) => {
+    if (e.target.closest("[data-budget-planting-year-clear]")) {
+      const picks = farmBudgetContractState();
+      const yearSources = new Set(picks.plantingYearSelectedBlockIds || []);
+      picks.selectedBlocks = (picks.selectedBlocks || []).filter((id) => !yearSources.has(id));
+      picks.plantingYearSelectedBlockIds = [];
+      renderPreservingBudgetTreeScroll(e.target);
+      return;
+    }
     const jumpBtn = e.target.closest("button[data-view-jump]");
     if (jumpBtn) {
       setView(jumpBtn.dataset.viewJump);
@@ -25989,6 +26333,7 @@ async function init() {
         startDate: "",
         endDate: "",
         selectedBlocks: [],
+        plantingYearSelectedBlockIds: [],
         selectedActivities: [],
         selectedMaterials: [],
         selectedVehicles: [],
