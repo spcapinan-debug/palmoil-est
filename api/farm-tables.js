@@ -12,6 +12,10 @@ const {
   requireUuid,
   rest,
 } = require("../lib/server/farm-api");
+const {
+  HR_ACTION_ONLY_TABLES,
+  loadScopedEmployeeIds,
+} = require("../lib/server/hr-api");
 
 const TABLES = new Set([
   "profiles", "areas", "people", "worker_documents", "person_housing_assignments",
@@ -61,6 +65,9 @@ const TABLES = new Set([
 ]);
 
 const READ_RESTRICTED = {
+  employees: "hr.employee.view",
+  employee_employment_terms: "hr.employee.view",
+  v_hr_people_workspace: "hr.employee.view",
   audit_logs: "system.audit.view",
   profiles: "system.user.manage",
   profile_roles: "system.role.manage",
@@ -151,6 +158,7 @@ const OPTIONAL_TABLES = new Set([...TABLES].filter((name) => name.startsWith("v_
 const CACHE_MS = 30_000;
 const cache = new Map();
 const ACTION_ONLY_TABLES = new Set([
+  "employees", "employee_employment_terms", ...HR_ACTION_ONLY_TABLES,
   "goods_issue_daily_usage", "goods_issues", "goods_issue_lines",
   "goods_returns", "goods_return_lines", "sku_conversions", "unit_conversions",
   "stock_balances", "stock_transactions",
@@ -160,6 +168,19 @@ const ACTION_ONLY_TABLES = new Set([
   "budget_rate_block_snapshots", "survey_responses", "survey_answers", "survey_findings",
   "work_result_weight_tickets",
 ]);
+
+const HR_SCOPED_READ_TABLES = new Set([
+  "employees", "employee_employment_terms", "v_hr_people_workspace",
+]);
+
+async function hrReadContext(actor) {
+  return loadScopedEmployeeIds(actor, "view");
+}
+
+function hrScopedRows(table, rows, employeeIds) {
+  if (employeeIds == null || !HR_SCOPED_READ_TABLES.has(table)) return rows;
+  return rows.filter((row) => employeeIds.has(table === "employees" ? row.id : (row.employee_id || row.id)));
+}
 
 function tableName(value) {
   const name = String(value || "").trim();
@@ -570,6 +591,9 @@ async function handleGet(req, res, url, actor) {
   }
 
   const context = actorIsUat(actor) ? await uatReadContext(actor) : null;
+  const hrContext = tables.some((table) => HR_SCOPED_READ_TABLES.has(table))
+    ? await hrReadContext(actor)
+    : null;
   const reads = await parallelMap(tables, 8, async (table) => {
     if (deniedTables.has(table)) {
       return { table, rows: [], total: 0, warning: "Table is not available to this UAT role" };
@@ -580,11 +604,15 @@ async function handleGet(req, res, url, actor) {
         const rows = read.rows.filter((row) => actorCanAccessBlock(actor, row));
         return { ...read, rows, rawTotal: read.total, total: rows.length };
       }
-      if (!context) return { ...read, rawTotal: read.total };
+      const hrWasScoped = HR_SCOPED_READ_TABLES.has(table) && hrContext != null;
+      const scopedRead = { ...read, rows: hrScopedRows(table, read.rows, hrContext) };
+      if (!context) return hrWasScoped
+        ? { ...scopedRead, rawTotal: read.total, total: scopedRead.rows.length }
+        : { ...scopedRead, rawTotal: read.total };
       const rows = table === "v_management_action_center"
-        ? uatActionCenterRows(read.rows, context)
-        : read.rows.filter((row) => uatRowAllowed(table, row, context));
-      return { ...read, rows, rawTotal: read.total, total: rows.length };
+        ? uatActionCenterRows(scopedRead.rows, context)
+        : scopedRead.rows.filter((row) => uatRowAllowed(table, row, context));
+      return { ...scopedRead, rows, rawTotal: read.total, total: rows.length };
     } catch (error) {
       return { table, rows: [], total: null, rawTotal: null, error: safeTableError(error) };
     }
@@ -708,5 +736,6 @@ module.exports = handler;
 module.exports._test = {
   ACTION_ONLY_TABLES, OPTIONAL_TABLES, TABLES, UAT_OPERATIONAL_TABLES, cache, clearCache, parallelMap,
   actorCanAccessBlock, databaseBlockPlantingYear, enforceUatTableWrite, normalizePlantingYear,
-  requestedTables, safeTableError, tableName, uatActionCenterRows, uatRowAllowed, validateBudgetRateBlockRows,
+  hrReadContext, hrScopedRows, requestedTables, safeTableError, tableName, uatActionCenterRows,
+  uatRowAllowed, validateBudgetRateBlockRows,
 };
