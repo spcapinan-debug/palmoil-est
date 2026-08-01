@@ -80,6 +80,7 @@ const state = {
   },
   farmWorkPlan: {
     selectedBlocks: [],
+    plantingYearSelectedBlockIds: [],
     selectedActivities: [],
     selectedMaterials: [],
     selectedVehicles: [],
@@ -14294,6 +14295,7 @@ function syncFarmWorkOrderToPlanner(order = {}) {
       ...rateRoles.map(farmBudgetMapWorkerSelection).filter(Boolean),
     ].filter(Boolean);
   picks.selectedBlocks = farmBudgetUnique((blockId ? [blockId] : rateBlockIds).filter(Boolean));
+  picks.plantingYearSelectedBlockIds = [];
   picks.selectedActivities = activityId ? [activityId] : [];
   picks.selectedMaterials = farmBudgetUnique([
     ...orderMaterials.map((row) => row.material_id).filter(Boolean),
@@ -15148,7 +15150,7 @@ function renderFarmWorkPlanner() {
             <b>Block ${fmt(selectedBlocks.length)} · กิจกรรม ${fmt(budgetPicks.selectedActivities.length || (previewActivity ? 1 : 0))} · วัสดุ ${fmt(selectedMaterials.length || rateMaterialUsageRows.length)} · รถ/เครื่องจักร ${fmt(selectedVehicles.length)} · พนักงาน/ทีม ${fmt(selectedWorkerCount)}</b>
           </div>
           <div class="budget-tree-grid budget-tree-grid-work-order farm-work-budget-selector" data-budget-context="work-plan">
-            <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetAreaTree(budgetPicks)}</div></section>
+            <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetPlantingYearSelector(budgetPicks, { idPrefix: "planning", allLabel: "ทุกปี" })}${renderFarmBudgetAreaTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>วัสดุ</h4><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>รถ / เครื่องจักร</h4><div class="budget-tree-scroll">${renderFarmBudgetVehicleTree(budgetPicks)}</div></section>
@@ -21025,6 +21027,7 @@ function farmWorkPlanState() {
   }
   const picks = state.farmWorkPlan;
   if (!Array.isArray(picks.selectedBlocks)) picks.selectedBlocks = [];
+  if (!Array.isArray(picks.plantingYearSelectedBlockIds)) picks.plantingYearSelectedBlockIds = [];
   if (!Array.isArray(picks.selectedActivities)) picks.selectedActivities = [];
   if (!Array.isArray(picks.selectedMaterials)) picks.selectedMaterials = [];
   if (!Array.isArray(picks.selectedVehicles)) picks.selectedVehicles = [];
@@ -22907,21 +22910,24 @@ function renderFarmBudgetYearSettings() {
     </article>`;
 }
 
-function renderFarmBudgetPlantingYearSelector(picks = farmBudgetContractState()) {
+function renderFarmBudgetPlantingYearSelector(picks = farmBudgetContractState(), { idPrefix = "budget", allLabel = "เลือกทุกปี" } = {}) {
   const blocks = farmBudgetScopedBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
   const model = farmBudgetPlantingYearGroups(blocks, picks.selectedBlocks, "asc");
   const blockIds = model.years.flatMap((group) => group.blockIds);
   const selectAll = farmBudgetSelectionState(blockIds, picks.selectedBlocks);
+  const safePrefix = farmBudgetSafeCode(idPrefix, "budget").toLowerCase();
+  const titleId = `${safePrefix}_planting_year_title`;
+  const allId = `${safePrefix}_planting_year_all`;
   return `
-    <div class="budget-planting-year-section" aria-labelledby="budgetPlantingYearTitle">
-      <strong id="budgetPlantingYearTitle">ปีปลูก</strong>
+    <div class="budget-planting-year-section" aria-labelledby="${esc(titleId)}">
+      <strong id="${esc(titleId)}">ปีปลูก</strong>
       <div class="budget-planting-year-grid">
-        <label class="budget-planting-year-item is-all" for="budget_planting_year_all">
-          <input id="budget_planting_year_all" type="checkbox" data-budget-planting-year-all aria-checked="${selectAll.ariaChecked}"${selectAll.checked ? " checked" : ""}${selectAll.indeterminate ? ' data-budget-indeterminate="true"' : ""}>
-          <span>เลือกทุกปี</span>
+        <label class="budget-planting-year-item is-all" for="${esc(allId)}">
+          <input id="${esc(allId)}" type="checkbox" data-budget-planting-year-all aria-checked="${selectAll.ariaChecked}"${selectAll.checked ? " checked" : ""}${selectAll.indeterminate ? ' data-budget-indeterminate="true"' : ""}>
+          <span>${esc(allLabel)}</span>
         </label>
         ${model.years.map((group) => {
-          const id = `budget_planting_year_${group.year}`;
+          const id = `${safePrefix}_planting_year_${group.year}`;
           return `<label class="budget-planting-year-item" for="${id}">
             <input id="${id}" type="checkbox" data-budget-planting-year="${group.year}" aria-checked="${group.ariaChecked}"${group.checked ? " checked" : ""}${group.indeterminate ? ' data-budget-indeterminate="true"' : ""}>
             <span>${group.year}</span>
@@ -25146,7 +25152,9 @@ async function init() {
   document.addEventListener("click", handleEnhancedTableClick);
   els.reportPage.addEventListener("change", (e) => {
     if (e.target.matches("[data-budget-planting-year], [data-budget-planting-year-all]")) {
-      const picks = farmBudgetContractState();
+      const picks = e.target.closest('[data-budget-context="work-plan"]')
+        ? farmWorkPlanState()
+        : farmBudgetContractState();
       const blocks = farmBudgetScopedBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
       const model = farmBudgetPlantingYearGroups(blocks, picks.selectedBlocks, "asc");
       const targetGroups = e.target.matches("[data-budget-planting-year-all]")
