@@ -9703,6 +9703,179 @@ tfoot td {
   font-weight: 950;
 }
 
+.farm-daily-vehicle-list {
+  display: grid;
+  gap: 12px;
+}
+
+.farm-daily-vehicle-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #d9e4ef;
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(180deg, #fff 0%, #f8fbfd 100%);
+}
+
+.farm-daily-vehicle-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.farm-daily-vehicle-card > header div,
+.farm-daily-vehicle-card > header strong,
+.farm-daily-vehicle-card > header span {
+  display: block;
+}
+
+.farm-daily-vehicle-card > header strong {
+  color: var(--navy);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.farm-daily-vehicle-card > header div > span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.farm-daily-vehicle-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.farm-daily-vehicle-metrics span,
+.farm-daily-computed {
+  min-width: 0;
+  border: 1px solid #e1e8f0;
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.farm-daily-vehicle-metrics b,
+.farm-daily-computed b {
+  display: block;
+  color: var(--navy);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.farm-daily-vehicle-metrics .is-usage {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.farm-daily-vehicle-fields {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.farm-daily-vehicle-time-fields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.farm-daily-vehicle-fields label,
+.farm-daily-fuel-allocation label,
+.farm-daily-fuel-issue label,
+.farm-daily-vehicle-note {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.farm-daily-vehicle-fields input,
+.farm-daily-fuel-allocation input,
+.farm-daily-fuel-issue input,
+.farm-daily-fuel-issue select,
+.farm-daily-vehicle-note input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cbd8e6;
+  border-radius: 8px;
+  padding: 0 9px;
+  background: #fff;
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.farm-daily-computed {
+  display: flex;
+  min-height: 58px;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.farm-daily-fuel-allocation,
+.farm-daily-fuel-issue {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  border-radius: 12px;
+  padding: 12px;
+  background: #effaf3;
+}
+
+.farm-daily-fuel-allocation small,
+.farm-daily-fuel-issue small {
+  display: block;
+  margin-top: 5px;
+  color: #547067;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.farm-daily-fuel-allocation button,
+.farm-daily-fuel-issue button {
+  min-height: 38px;
+  border-radius: 8px;
+  white-space: nowrap;
+  font-weight: 900;
+}
+
+.farm-daily-fuel-issue {
+  grid-template-columns: minmax(150px, .8fr) minmax(150px, .7fr) auto;
+  background: #fff8e8;
+}
+
+.farm-daily-fuel-issue small {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.farm-daily-vehicle-total {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.farm-daily-vehicle-total span {
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #eef3f7;
+}
+
+.farm-daily-vehicle-total b {
+  color: var(--navy);
+}
+
 .farm-result-resource-grid {
   display: grid;
   grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
@@ -15836,6 +16009,56 @@ tfoot td,
     font-size: 12px;
   }
 
+  .farm-daily-vehicle-card {
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  .farm-daily-vehicle-card > header,
+  .farm-daily-fuel-allocation,
+  .farm-daily-fuel-issue {
+    grid-template-columns: 1fr;
+  }
+
+  .farm-daily-vehicle-card > header {
+    display: grid;
+  }
+
+  .farm-daily-vehicle-card > header .farm-status-badge {
+    justify-self: start;
+  }
+
+  .farm-daily-vehicle-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .farm-daily-vehicle-fields,
+  .farm-daily-vehicle-time-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .farm-daily-vehicle-time-fields label:first-child,
+  .farm-daily-vehicle-time-fields label:nth-child(2),
+  .farm-daily-vehicle-time-fields label:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .farm-daily-fuel-allocation button,
+  .farm-daily-fuel-issue button {
+    width: 100%;
+  }
+
+  .farm-daily-vehicle-total {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .farm-daily-vehicle-total span {
+    display: flex;
+    justify-content: space-between;
+    border-radius: 8px;
+  }
+
   .farm-dispatch-materials .table-wrap,
   .farm-result-worker-wrap,
   .farm-result-resource-wrap {
@@ -16768,4 +16991,77 @@ details.farm-survey-score-section[open] > summary::after {
   .farm-card-table {
     grid-template-columns: 1fr;
   }
+}
+
+.app-notification-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1190;
+  zoom: 1.25;
+  border: 0;
+  background: rgb(15 23 42 / .42);
+}
+
+.app-notification-center {
+  position: fixed;
+  z-index: 1200;
+  inset: 0 0 0 auto;
+  width: min(460px, 100vw);
+  zoom: 1.25;
+  padding: 20px;
+  overflow: auto;
+  background: #f8fafc;
+  box-shadow: -18px 0 48px rgb(15 23 42 / .18);
+}
+
+.app-notification-center[hidden],
+.app-notification-backdrop[hidden] { display: none; }
+
+.app-notification-center > header,
+.app-notification-item > header,
+.app-notification-toolbar,
+.app-notification-item > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-notification-center > header h2,
+.app-notification-center > header p { margin: 0; }
+.app-notification-center > header p { color: #64748b; font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; }
+.app-notification-center > header button { min-width: 44px; min-height: 44px; border-radius: 999px; }
+
+.app-notification-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 18px 0 12px;
+}
+.app-notification-filters button { min-height: 44px; padding: 6px; font-size: .78rem; }
+.app-notification-filters button.active { background: #0f766e; color: white; }
+.app-notification-toolbar { margin-bottom: 12px; color: #475569; font-size: .86rem; }
+.app-notification-toolbar button { min-height: 44px; }
+.app-notification-list { display: grid; gap: 10px; }
+.app-notification-item { padding: 14px; border: 1px solid #dbe4ea; border-left: 5px solid #64748b; border-radius: 14px; background: white; }
+.app-notification-item.is-read { opacity: .72; }
+.app-notification-item.is-unread { box-shadow: 0 8px 24px rgb(15 118 110 / .09); }
+.app-notification-item.severity-high { border-left-color: #d97706; }
+.app-notification-item.severity-critical { border-left-color: #dc2626; }
+.app-notification-item header div { display: grid; gap: 2px; }
+.app-notification-item header span,
+.app-notification-item time { color: #64748b; font-size: .72rem; }
+.app-notification-item p { margin: 10px 0; color: #334155; }
+.app-notification-item footer { justify-content: flex-end; flex-wrap: wrap; }
+.app-notification-item footer button { min-height: 44px; }
+.app-notification-item footer button.primary { background: #0f766e; color: white; }
+.app-notification-empty { display: grid; place-items: center; min-height: 240px; color: #64748b; text-align: center; }
+.app-notification-empty strong { color: #1e293b; }
+
+@media (max-width: 640px) {
+  .app-notification-center { inset: 0; width: 100vw; padding: max(14px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom)); }
+  .app-notification-filters { overflow-x: auto; grid-template-columns: repeat(4, minmax(100px, 1fr)); }
+  .app-notification-item > header { align-items: flex-start; }
+  .app-notification-item > footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-notification-item > footer button { width: 100%; }
 }

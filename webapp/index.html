@@ -98,8 +98,8 @@
           <div class="actions">
             <button id="refreshTransportBtn" type="button">Refresh Data</button>
             <button id="printBtn" type="button">พิมพ์ / PDF</button>
-            <button class="topbar-notification" type="button" aria-label="แจ้งเตือน">
-              <span>!</span>
+            <button id="appNotificationButton" class="topbar-notification" type="button" aria-label="แจ้งเตือน" aria-haspopup="dialog" aria-controls="appNotificationCenter">
+              <span id="appNotificationBadge" hidden>0</span>
             </button>
             <button id="farmAuthButton" class="topbar-user" type="button" aria-label="เข้าสู่ระบบ" aria-haspopup="dialog">
               <span class="user-avatar">D</span>
@@ -189,6 +189,25 @@
         </section>
       </main>
     </div>
+
+    <aside id="appNotificationCenter" class="app-notification-center" role="dialog" aria-modal="true" aria-labelledby="appNotificationTitle" hidden>
+      <header>
+        <div><p>Work notifications</p><h2 id="appNotificationTitle">ศูนย์การแจ้งเตือน</h2></div>
+        <button id="appNotificationClose" type="button" aria-label="ปิดศูนย์การแจ้งเตือน">×</button>
+      </header>
+      <nav class="app-notification-filters" aria-label="ตัวกรองการแจ้งเตือน">
+        <button type="button" data-notification-filter="all" class="active">ทั้งหมด</button>
+        <button type="button" data-notification-filter="today">วันนี้</button>
+        <button type="button" data-notification-filter="action">ต้องดำเนินการ</button>
+        <button type="button" data-notification-filter="read">อ่านแล้ว</button>
+      </nav>
+      <div class="app-notification-toolbar">
+        <span id="appNotificationSummary">กำลังโหลด…</span>
+        <button type="button" data-notification-mark-all>อ่านทั้งหมด</button>
+      </div>
+      <div id="appNotificationList" class="app-notification-list" aria-live="polite"></div>
+    </aside>
+    <button id="appNotificationBackdrop" class="app-notification-backdrop" type="button" aria-label="ปิดศูนย์การแจ้งเตือน" hidden></button>
 
     <dialog id="farmAuthDialog" class="farm-auth-dialog" aria-labelledby="farmAuthTitle">
       <form id="farmAuthForm" class="farm-auth-form">

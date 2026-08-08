@@ -48,6 +48,8 @@ const TABLES = new Set([
   "roles", "permissions", "role_permissions", "menu_items", "profile_roles",
   "user_access_scopes", "master_record_versions", "audit_logs", "system_settings",
   "attachments", "report_exports",
+  "app_notification_rules", "app_notifications", "app_notification_deliveries",
+  "app_notification_preferences", "app_notification_jobs",
   "v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs",
   "v_management_action_center", "v_system_module_readiness", "v_farm_workflow_workspace",
   "v_daily_work_entry_context", "v_inventory_work_order_workspace", "v_inventory_setup_queue",
@@ -80,6 +82,21 @@ const READ_RESTRICTED = {
   v_goods_issue_multi_day_status: ["inventory.view", "inventory.manage"],
   v_goods_return_readiness: ["inventory.view", "inventory.manage"],
   v_material_unit_conversion_options: ["inventory.conversion.view", "inventory.manage"],
+  fuel_tanks: ["fuel.view", "fuel.issue"],
+  fuel_requisitions: ["fuel.view", "fuel.requisition.create", "fuel.issue"],
+  fuel_issues: ["fuel.view", "fuel.issue"],
+  vehicle_fuel_balances: ["fuel.view", "fuel.issue", "fuel.allocation.manage"],
+  vehicle_fuel_measurements: ["fuel.view", "fuel.issue", "fuel.allocation.manage"],
+  vehicle_fuel_consumption_periods: ["fuel.view", "fuel.allocation.manage"],
+  vehicle_fuel_efficiency_standards: ["fuel.view", "fuel.allocation.manage"],
+  v_vehicle_fuel_status: ["fuel.view", "fuel.issue", "fuel.allocation.manage"],
+  v_work_result_vehicle_fuel_detail: ["fuel.view", "farm.result.record", "fuel.allocation.manage"],
+  v_fuel_control_exceptions: ["fuel.view", "fuel.allocation.manage"],
+  app_notification_rules: ["notification.rule.manage", "notification.manage"],
+  app_notifications: "notification.view",
+  app_notification_deliveries: "notification.delivery.view",
+  app_notification_preferences: "notification.view",
+  app_notification_jobs: ["notification.rule.manage", "notification.manage"],
 };
 
 const WRITE_PERMISSIONS = {
@@ -154,12 +171,14 @@ const ACTION_ONLY_TABLES = new Set([
   "goods_issue_daily_usage", "goods_issues", "goods_issue_lines",
   "goods_returns", "goods_return_lines", "sku_conversions", "unit_conversions",
   "stock_balances", "stock_transactions",
-  "fuel_issues", "vehicle_fuel_balances", "vehicle_fuel_consumption_periods",
+  "fuel_requisitions", "fuel_issues", "vehicle_fuel_balances", "vehicle_fuel_consumption_periods",
   "payroll_periods", "payroll_period_lines", "payroll_employee_summaries",
   "payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines",
   "budget_rate_block_snapshots", "survey_responses", "survey_answers", "survey_findings",
   "survey_response_attachments", "survey_answer_attachments",
-  "work_result_weight_tickets",
+  "work_result_weight_tickets", "work_result_vehicle_usage",
+  "app_notification_rules", "app_notifications", "app_notification_deliveries",
+  "app_notification_preferences", "app_notification_jobs",
 ]);
 
 function tableName(value) {
@@ -233,6 +252,7 @@ const UAT_OPERATIONAL_TABLES = new Set([
   "goods_issues", "goods_issue_lines", "goods_issue_daily_usage",
   "goods_returns", "goods_return_lines", "stock_balances", "stock_transactions",
   "sku_conversions",
+  "app_notifications", "app_notification_preferences",
   "payroll_periods", "payroll_period_lines", "payroll_employee_summaries",
   "payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines",
 ]);
@@ -361,6 +381,7 @@ function uatRowAllowed(table, row, context) {
   if (table === "planned_work_items") return context.plannedItemIds.has(row.id);
   if (table === "planned_work_materials") return context.plannedItemIds.has(row.planned_work_item_id);
   if (table === "work_orders") return context.workOrderIds.has(row.id);
+  if (table === "app_notifications" || table === "app_notification_preferences") return true;
   if (table === "goods_issues") return context.goodsIssueIds.has(row.id);
   if (table === "goods_issue_lines") {
     return context.goodsIssueIds.has(row.issue_id) || context.goodsIssueLineIds.has(row.id);
@@ -577,6 +598,15 @@ async function handleGet(req, res, url, actor) {
     }
     try {
       const read = await readTable(table, limit, offset);
+      if (table === "app_notifications") {
+        const rows = read.rows.filter((row) => row.recipient_profile_id === actor.profile.id
+          || (row.recipient_employee_id && row.recipient_employee_id === actor.profile.employee_id));
+        return { ...read, rows, rawTotal: read.total, total: rows.length };
+      }
+      if (table === "app_notification_preferences") {
+        const rows = read.rows.filter((row) => row.profile_id === actor.profile.id);
+        return { ...read, rows, rawTotal: read.total, total: rows.length };
+      }
       if (table === "blocks" && ![...actor.roles].some((role) => ADMIN_ROLES.has(role))) {
         const rows = read.rows.filter((row) => actorCanAccessBlock(actor, row));
         return { ...read, rows, rawTotal: read.total, total: rows.length };

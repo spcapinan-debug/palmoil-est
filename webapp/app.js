@@ -136,6 +136,13 @@ const state = {
   farmSession: null,
   farmAuthRequired: false,
   farmAuthBusy: false,
+  workNotifications: [],
+  notificationDeliveries: [],
+  notificationCenterOpen: false,
+  notificationReturnFocus: null,
+  notificationFilter: "all",
+  notificationLoading: false,
+  notificationError: "",
   actionCenterFilters: {
     year: "", from: "", to: "", ap: "", block: "", team: "", activity: "", rspo: "",
   },
@@ -239,6 +246,13 @@ const els = {
   farmAuthStatus: document.querySelector("#farmAuthStatus"),
   farmAuthSubmit: document.querySelector("#farmAuthSubmit"),
   farmAuthSignOut: document.querySelector("#farmAuthSignOut"),
+  appNotificationButton: document.querySelector("#appNotificationButton"),
+  appNotificationBadge: document.querySelector("#appNotificationBadge"),
+  appNotificationCenter: document.querySelector("#appNotificationCenter"),
+  appNotificationClose: document.querySelector("#appNotificationClose"),
+  appNotificationBackdrop: document.querySelector("#appNotificationBackdrop"),
+  appNotificationList: document.querySelector("#appNotificationList"),
+  appNotificationSummary: document.querySelector("#appNotificationSummary"),
   applyBtn: document.querySelector("#applyBtn"),
   csvBtn: document.querySelector("#csvBtn"),
   clearDate: document.querySelector("#clearDate"),
@@ -287,6 +301,149 @@ function farmPreviewDiagnostic(event, details = {}) {
   const hostname = String(window.location?.hostname || "").toLowerCase();
   if (!hostname.endsWith(".vercel.app") || hostname === "palmoil-est.vercel.app") return;
   console.info(`[farm-preview] ${event}`, details);
+}
+
+function notificationMetadata(row = {}) {
+  if (row.metadata_json && typeof row.metadata_json === "object") return row.metadata_json;
+  try { return JSON.parse(row.metadata_json || "{}"); } catch (_) { return {}; }
+}
+
+function notificationBangkokDay(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date(value));
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function notificationVisibleNow(row, now = new Date()) {
+  if (["closed", "cancelled"].includes(row.status) || row.closed_at) return false;
+  if (row.available_at && new Date(row.available_at) > now) return false;
+  if (row.status === "snoozed" && row.snoozed_until && new Date(row.snoozed_until) > now) return false;
+  return true;
+}
+
+function notificationRowsForFilter() {
+  const today = notificationBangkokDay();
+  return state.workNotifications
+    .filter((row) => notificationVisibleNow(row))
+    .filter((row) => {
+      if (state.notificationFilter === "today") return notificationBangkokDay(row.available_at || row.created_at) === today;
+      if (state.notificationFilter === "action") return notificationMetadata(row).action_required === true;
+      if (state.notificationFilter === "read") return Boolean(row.read_at);
+      return true;
+    })
+    .sort((left, right) => String(right.available_at || right.created_at || "").localeCompare(String(left.available_at || left.created_at || "")));
+}
+
+function safeNotificationActionUrl(value) {
+  const url = String(value || "");
+  return /^\/farm\/(dispatch|daily)(?:[/?]|$)/.test(url) ? url : "";
+}
+
+function renderWorkNotificationCenter() {
+  if (!els.appNotificationCenter) return;
+  const visible = state.workNotifications.filter((row) => notificationVisibleNow(row));
+  const unread = visible.filter((row) => !row.read_at).length;
+  els.appNotificationBadge.hidden = unread === 0;
+  els.appNotificationBadge.textContent = unread > 99 ? "99+" : String(unread);
+  els.appNotificationCenter.hidden = !state.notificationCenterOpen;
+  els.appNotificationBackdrop.hidden = !state.notificationCenterOpen;
+  els.appNotificationCenter.classList.toggle("is-page", window.location.pathname === "/notifications");
+  els.appNotificationCenter.querySelectorAll("[data-notification-filter]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.notificationFilter === state.notificationFilter);
+  });
+  if (els.appNotificationSummary) {
+    els.appNotificationSummary.textContent = state.notificationLoading ? "กำลังโหลด…"
+      : state.notificationError ? state.notificationError : `${visible.length} รายการ · ยังไม่อ่าน ${unread}`;
+  }
+  const rows = notificationRowsForFilter();
+  els.appNotificationList.innerHTML = rows.map((row) => {
+    const actionUrl = safeNotificationActionUrl(row.action_url);
+    const requiresAction = notificationMetadata(row).action_required === true;
+    return `<article class="app-notification-item severity-${esc(row.severity || "info")}${row.read_at ? " is-read" : " is-unread"}" data-notification-id="${esc(row.id)}">
+      <header><div><strong>${esc(row.title || row.notification_type)}</strong><span>${esc(row.notification_type || "")}</span></div><time>${esc(new Date(row.available_at || row.created_at).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }))}</time></header>
+      <p>${esc(row.message || "")}</p>
+      <footer>
+        ${!row.read_at ? `<button type="button" data-notification-read="${esc(row.id)}">อ่านแล้ว</button>` : ""}
+        ${requiresAction && !row.acknowledged_at ? `<button type="button" data-notification-ack="${esc(row.id)}">รับทราบ</button>` : ""}
+        ${requiresAction ? `<button type="button" data-notification-snooze="${esc(row.id)}">เตือนอีก 1 ชม.</button>` : ""}
+        ${actionUrl ? `<button type="button" class="primary" data-notification-open="${esc(row.id)}" data-action-url="${esc(actionUrl)}">เปิดงาน</button>` : ""}
+      </footer>
+    </article>`;
+  }).join("") || `<div class="app-notification-empty"><strong>ไม่มีการแจ้งเตือน</strong><span>ไม่มีรายการตามตัวกรองนี้</span></div>`;
+}
+
+async function loadWorkNotifications({ silent = false } = {}) {
+  if (!state.workspacePermissions.has("notification.view")) {
+    state.workNotifications = [];
+    state.notificationError = state.farmSession?.ok ? "ไม่มีสิทธิ์ดูการแจ้งเตือน" : "กรุณาเข้าสู่ระบบ";
+    renderWorkNotificationCenter();
+    return false;
+  }
+  state.notificationLoading = true;
+  if (!silent) renderWorkNotificationCenter();
+  try {
+    const includeDeliveries = state.workspacePermissions.has("notification.delivery.view");
+    const tables = includeDeliveries ? "app_notifications,app_notification_deliveries" : "app_notifications";
+    const request = await farmJsonRequest(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000&refresh=1`, { cache: "no-store" });
+    if (!request.response.ok || !request.payload?.ok) throw new Error(farmApiErrorMessage(request.payload, "Notification API unavailable"));
+    state.workNotifications = request.payload.tables?.app_notifications || [];
+    state.notificationDeliveries = request.payload.tables?.app_notification_deliveries || [];
+    state.notificationError = "";
+    return true;
+  } catch (error) {
+    state.notificationError = error.message || "โหลดการแจ้งเตือนไม่สำเร็จ";
+    return false;
+  } finally {
+    state.notificationLoading = false;
+    renderWorkNotificationCenter();
+  }
+}
+
+async function openWorkNotificationCenter({ page = false } = {}) {
+  state.notificationReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  state.notificationCenterOpen = true;
+  if (page && window.location.pathname !== "/notifications") window.history.pushState({}, "", "/notifications");
+  renderWorkNotificationCenter();
+  els.appNotificationClose?.focus();
+  await loadWorkNotifications();
+}
+
+function closeWorkNotificationCenter() {
+  const returnFocus = state.notificationReturnFocus;
+  state.notificationCenterOpen = false;
+  state.notificationReturnFocus = null;
+  if (window.location.pathname === "/notifications") window.history.back();
+  renderWorkNotificationCenter();
+  if (returnFocus?.isConnected) returnFocus.focus();
+}
+
+function handleWorkNotificationCenterKeydown(event) {
+  if (!state.notificationCenterOpen || !els.appNotificationCenter) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeWorkNotificationCenter();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusable = Array.from(els.appNotificationCenter.querySelectorAll("button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"))
+    .filter((element) => element.getClientRects().length > 0);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+async function mutateWorkNotification(action, args, options = {}) {
+  await runFarmAction(action, args, options);
+  await loadWorkNotifications({ silent: true });
 }
 
 function farmPreviewRenderDiagnostic(tableKeys = [], tableMeta = {}) {
@@ -882,7 +1039,9 @@ const FARM_MODULES = [
       "work_order_machines", "survey_template_assignments", "survey_responses", "survey_answers",
       "survey_response_attachments", "survey_answer_attachments", "survey_findings", "attachments",
       "v_daily_work_entry_context", "v_available_inbound_weight_tickets",
-      "v_inventory_work_order_workspace", "v_work_result_vehicle_fuel_detail"],
+      "v_inventory_work_order_workspace", "v_work_result_vehicle_fuel_detail",
+      "fuel_requisitions", "fuel_issues", "fuel_tanks", "v_vehicle_fuel_status",
+      "vehicle_fuel_efficiency_standards"],
     fields: [],
     seed: [],
   },
@@ -2315,6 +2474,10 @@ const FARM_TABLE_SCHEMAS = {
   },
   v_work_result_vehicle_fuel_detail: {
     moduleId: "farm-result", title: "Vehicle Fuel Detail", primaryKey: "id",
+    codeField: "vehicle_code", labelField: "vehicle_name", readonly: true, fields: [], seed: [],
+  },
+  v_vehicle_fuel_status: {
+    moduleId: "farm-result", title: "Vehicle Fuel Status", primaryKey: "vehicle_id",
     codeField: "vehicle_code", labelField: "vehicle_name", readonly: true, fields: [], seed: [],
   },
   annual_work_plans: {
@@ -3847,6 +4010,7 @@ async function loadWorkspaceShell() {
     if (requestedRoute) applyWorkspaceRoute(requestedRoute);
     renderDynamicWorkspaceMenu();
     renderFarmAuthState();
+    loadWorkNotifications({ silent: true });
     return true;
   } catch (error) {
     state.farmSession = null;
@@ -18790,10 +18954,37 @@ function farmResultCleanResourceNote(value = "") {
 
 function farmResultMachineLines(order) {
   const draftEntries = state.farmResultDraft?.machineEntries || {};
+  const workOrderId = farmWorkOrderDbId(order) || order?.id || "";
+  const result = farmDailyCurrentResult(order);
+  const requisitions = farmRowsByKey("fuel_requisitions")
+    .filter((item) => item.work_order_id === workOrderId);
+  const issues = farmRowsByKey("fuel_issues");
+  const usages = farmRowsByKey("v_work_result_vehicle_fuel_detail")
+    .filter((item) => !result?.id || item.work_result_id === result.id);
+  const fuelStatuses = farmRowsByKey("v_vehicle_fuel_status");
+  const firstValue = (...values) => values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
   return farmDispatchMachineCandidates(order).map((row) => {
     const key = row.vehicle_id;
     const entry = draftEntries[key] || {};
     const vehicle = farmLookup("vehicles", row.vehicle_id) || {};
+    const usage = usages.find((item) => item.vehicle_id === row.vehicle_id) || {};
+    const vehicleRequisitions = requisitions
+      .filter((item) => item.vehicle_id === row.vehicle_id)
+      .sort((left, right) => String(right.created_at || "").localeCompare(String(left.created_at || "")));
+    const requisition = vehicleRequisitions[0] || null;
+    const requisitionIds = new Set(vehicleRequisitions.map((item) => item.id));
+    const vehicleIssues = issues.filter((item) => requisitionIds.has(item.fuel_requisition_id)
+      && !["cancelled", "void"].includes(item.status));
+    const fuelStatus = fuelStatuses.find((item) => item.vehicle_id === row.vehicle_id) || {};
+    const efficiencyStandard = farmRowsByKey("vehicle_fuel_efficiency_standards").find((item) =>
+      item.status !== "inactive" && (item.vehicle_id === row.vehicle_id
+        || (!item.vehicle_id && item.vehicle_type === vehicle.vehicle_type))) || null;
+    const issuedLiter = vehicleIssues.reduce((sum, item) => sum + n(item.issued_liter), 0);
+    const openingFuelLiter = firstValue(entry.startFuelLiter, fuelStatus.opening_balance_liter, fuelStatus.current_balance_liter);
+    const closingFuelLiter = firstValue(entry.endFuelLiter, usage.closing_fuel_liter, fuelStatus.current_balance_liter, fuelStatus.remaining_liter, row.end_fuel_liter);
+    const measuredFuelUsed = openingFuelLiter !== "" && closingFuelLiter !== ""
+      ? Math.max(0, Math.round((n(openingFuelLiter) + issuedLiter - n(closingFuelLiter)) * 1000) / 1000)
+      : firstValue(entry.fuelUsedLiter, usage.allocated_fuel_liter);
     const fuelMaterial = farmRowsByKey("materials").find((item) =>
       String(item.material_code || item.id).toLowerCase().includes("fuel")
       || String(item.material_name || "").includes("น้ำมัน")
@@ -18803,14 +18994,25 @@ function farmResultMachineLines(order) {
       key,
       vehicle,
       driver_name: row.driver_employee_id ? farmLookupLabel("employees", row.driver_employee_id) : farmLookupLabel("employees", vehicle.default_driver_id),
-      actual_hours: entry.actualHours !== undefined ? entry.actualHours : row.actual_hours || "",
-      start_hour_meter: entry.startHourMeter || row.start_hour_meter || "",
-      end_hour_meter: entry.endHourMeter || row.end_hour_meter || "",
-      start_km: entry.startKm || row.start_km || "",
-      end_km: entry.endKm || row.end_km || "",
-      start_fuel_liter: entry.startFuelLiter || "",
-      end_fuel_liter: entry.endFuelLiter || row.end_fuel_liter || "",
-      fuel_issue_liter: entry.fuelIssueLiter !== undefined ? entry.fuelIssueLiter : row.fuel_issue_liter || row.fuel_plan_liter || "",
+      start_at: firstValue(entry.startAt, usage.start_at),
+      end_at: firstValue(entry.endAt, usage.end_at),
+      actual_hours: firstValue(entry.actualHours, usage.working_hours, row.actual_hours),
+      start_hour_meter: firstValue(entry.startHourMeter, usage.start_hour_meter, row.start_hour_meter),
+      end_hour_meter: firstValue(entry.endHourMeter, usage.end_hour_meter, row.end_hour_meter),
+      start_km: firstValue(entry.startKm, usage.start_odometer, row.start_km),
+      end_km: firstValue(entry.endKm, usage.end_odometer, row.end_km),
+      distance_km: firstValue(usage.distance_km),
+      engine_hours: firstValue(usage.engine_hours),
+      start_fuel_liter: openingFuelLiter,
+      end_fuel_liter: closingFuelLiter,
+      fuel_used_liter: measuredFuelUsed,
+      fuel_issued_liter: issuedLiter,
+      fuel_issue_liter: issuedLiter,
+      fuel_cost_amount: n(usage.fuel_cost_amount),
+      fuel_requisition: requisition,
+      fuel_requested_liter: n(requisition?.requested_liter),
+      fuel_issue_remaining_liter: Math.max(0, n(requisition?.requested_liter) - issuedLiter),
+      efficiency_standard: efficiencyStandard,
       fuel_material_id: entry.fuelMaterialId || row.fuel_material_id || fuelMaterial.id || "material-diesel",
       note: entry.note || row.note || "",
     };
@@ -19257,9 +19459,10 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
   const payrollTotal = workerLines.reduce((sum, row) => sum + row.grossAmount, 0);
   const materialActualTotal = materialLines.reduce((sum, row) => sum + n(row.actualQuantity), 0);
   const materialPendingTotal = materialLines.reduce((sum, row) => sum + n(row.pendingIssueQuantity), 0);
-  const fuelIssueTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_issue_liter), 0);
+  const fuelIssuedTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_issued_liter), 0);
+  const fuelUsedTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_used_liter), 0);
   const machineHoursTotal = machineLines.reduce((sum, row) => sum + n(row.actual_hours || row.planned_hours), 0);
-  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, wageTotal, payrollTotal, workerCount, shareQuantity, shareWage, fullBagQuantity, roleSummary, materialActualTotal, materialPendingTotal, fuelIssueTotal, machineHoursTotal };
+  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, wageTotal, payrollTotal, workerCount, shareQuantity, shareWage, fullBagQuantity, roleSummary, materialActualTotal, materialPendingTotal, fuelIssuedTotal, fuelUsedTotal, machineHoursTotal };
 }
 
 function farmResultPayrollPeriodForDate(date) {
@@ -19619,7 +19822,7 @@ function renderFarmResultPanel() {
         <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(effectiveOrderStatus?.label || "-")}</small></article>
         <article><span>เรทตามบทบาท</span><strong>${fmt(calc.roleSummary.filter((row) => row.count).length || 1)} ชุด</strong><small>${esc(roleRateSummary || rateLabel)}</small></article>
         <article><span>ค่าแรงรวม</span><strong>${moneyNf.format(calc.payrollTotal || calc.totalWage)}</strong><small>ล็อก snapshot หลังบันทึก</small></article>
-        <article><span>วัสดุ / น้ำมัน</span><strong>${fmt(calc.materialLines.length)} / ${fmt(calc.machineLines.length)}</strong><small>น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร</small></article>
+        <article><span>วัสดุ / รถ</span><strong>${fmt(calc.materialLines.length)} / ${fmt(calc.machineLines.length)}</strong><small>น้ำมันใช้จริง ${moneyNf.format(calc.fuelUsedTotal)} ลิตร</small></article>
         <article><span>แบบตรวจงาน</span><strong>${esc(survey?.template_code || "-")}</strong><small>${esc(surveyAttachment?.file_name || survey?.template_name || "ไม่พบแบบตรวจ")}</small></article>
       </div>
       <div class="farm-result-entry-grid" data-daily-section="result" id="farm-daily-step-result">
@@ -19662,7 +19865,7 @@ function renderFarmResultPanel() {
         ${roleTabs || `<span><b>ทีมงาน</b>${fmt(calc.workerLines.length)} คน</span>`}
         <span><b>วัสดุ</b>${fmt(calc.materialLines.length)} รายการ</span>
         <span><b>รถ/เครื่องจักร</b>${fmt(calc.machineLines.length)} รายการ</span>
-        <span><b>น้ำมันใช้จริง</b>${moneyNf.format(calc.fuelIssueTotal)} ลิตร</span>
+        <span><b>น้ำมันใช้จริง</b>${moneyNf.format(calc.fuelUsedTotal)} ลิตร</span>
       </section>
       <article class="farm-result-card farm-result-worker-card" data-daily-section="workers" id="farm-daily-step-workers">
         <div class="section-head">
@@ -19769,29 +19972,59 @@ function renderFarmResultPanel() {
         <article class="farm-result-card farm-result-worker-card" data-daily-section="vehicles" id="farm-daily-step-vehicles">
           <div class="section-head">
             <h3>รถ/เครื่องจักร และน้ำมัน</h3>
-            <span>บันทึกชั่วโมง กม. และน้ำมันที่ใช้จริงจากงานนี้</span>
+            <span>ขั้นตอน 5 · ใบจ่ายน้ำมันไม่ใช่ยอดใช้จริง ยอดใช้จะเกิดเมื่อบันทึก allocation ของงานนี้</span>
           </div>
-          <div class="table-wrap farm-result-resource-wrap">
-            <table class="mini-table farm-table farm-result-resource-table farm-result-machine-table" data-no-export="true">
-              <thead><tr><th>รถ/เครื่องจักร</th><th>คนขับ</th><th>ชม.จริง</th><th>ชม.เริ่ม</th><th>ชม.จบ</th><th>กม.เริ่ม</th><th>กม.จบ</th><th>น้ำมันเบิก</th><th>น้ำมันคงเหลือ</th><th>หมายเหตุ</th></tr></thead>
-              <tbody>
-                ${calc.machineLines.map((row) => `
-                  <tr data-farm-result-machine="${esc(row.key)}">
-                    <td><strong>${esc(row.vehicle_name || row.vehicle_id)}</strong><small>${esc(row.vehicle?.plate_no || row.vehicle_id || "")}</small></td>
-                    <td>${esc(row.driver_name || "-")}</td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.actual_hours || "")}" placeholder="${esc(row.planned_hours || "")}" data-farm-result-machine-field="actualHours"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.start_hour_meter || "")}" data-farm-result-machine-field="startHourMeter"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.end_hour_meter || "")}" data-farm-result-machine-field="endHourMeter"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.start_km || "")}" data-farm-result-machine-field="startKm"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.end_km || "")}" data-farm-result-machine-field="endKm"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.fuel_issue_liter || "")}" data-farm-result-machine-field="fuelIssueLiter"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.end_fuel_liter || "")}" data-farm-result-machine-field="endFuelLiter"></td>
-                    <td><input type="text" value="${esc(row.note || "")}" data-farm-result-machine-field="note" placeholder="หมายเหตุ"></td>
-                  </tr>`).join("") || `<tr><td colspan="10">ยังไม่มีรถ/เครื่องจักรในใบงาน</td></tr>`}
-              </tbody>
-              <tfoot><tr><td colspan="2">รวม</td><td class="num">${moneyNf.format(calc.machineHoursTotal)}</td><td colspan="4"></td><td class="num">${moneyNf.format(calc.fuelIssueTotal)}</td><td colspan="2"></td></tr></tfoot>
-            </table>
+          <div class="farm-daily-vehicle-list">
+            ${calc.machineLines.map((row) => {
+              const request = row.fuel_requisition;
+              const tanks = farmRowsByKey("fuel_tanks").filter((tank) => tank.status !== "inactive");
+              const canIssue = request?.id && row.fuel_issue_remaining_liter > 0;
+              const distance = row.start_km !== "" && row.end_km !== "" ? Math.max(0, n(row.end_km) - n(row.start_km)) : n(row.distance_km);
+              const engineHours = row.start_hour_meter !== "" && row.end_hour_meter !== ""
+                ? Math.max(0, n(row.end_hour_meter) - n(row.start_hour_meter)) : n(row.engine_hours);
+              return `<article class="farm-daily-vehicle-card" data-farm-result-machine="${esc(row.key)}">
+                <header>
+                  <div><strong>${esc(row.vehicle_name || row.vehicle_id)}</strong><span>${esc(row.vehicle?.plate_no || row.vehicle_id || "")} · คนขับ ${esc(row.driver_name || "-")}</span></div>
+                  <span class="farm-status-badge status-${esc(request?.status || "pending")}">${request ? esc(request.requisition_no || request.status || "มีใบขอเบิก") : "ยังไม่มีใบขอเบิก"}</span>
+                </header>
+                <div class="farm-daily-vehicle-metrics">
+                  <span><b>${moneyNf.format(n(row.fuel_requested_liter))}</b>ขอเบิก (ลิตร)</span>
+                  <span><b>${moneyNf.format(n(row.fuel_issued_liter))}</b>จ่ายแล้ว (ลิตร)</span>
+                  <span class="is-usage"><b>${moneyNf.format(n(row.fuel_used_liter))}</b>ใช้จริง (ลิตร)</span>
+                  <label><b>คงเหลือรถ</b><input type="number" min="0" step="0.1" value="${esc(row.end_fuel_liter || "")}" data-farm-result-machine-field="endFuelLiter"><small>ลิตร</small></label>
+                </div>
+                <div class="farm-daily-vehicle-fields farm-daily-vehicle-time-fields">
+                  <label>เริ่มใช้รถ<input type="datetime-local" value="${esc(String(row.start_at || "").slice(0, 16))}" data-farm-result-machine-field="startAt"></label>
+                  <label>สิ้นสุดใช้รถ<input type="datetime-local" value="${esc(String(row.end_at || "").slice(0, 16))}" data-farm-result-machine-field="endAt"></label>
+                  <label>ชั่วโมงทำงาน<input type="number" min="0" step="0.1" value="${esc(row.actual_hours || "")}" placeholder="${esc(row.planned_hours || "")}" data-farm-result-machine-field="actualHours"></label>
+                </div>
+                <div class="farm-daily-vehicle-fields">
+                  <label>เลขไมล์เริ่ม<input type="number" min="0" step="0.1" value="${esc(row.start_km || "")}" data-farm-result-machine-field="startKm"></label>
+                  <label>เลขไมล์จบ<input type="number" min="0" step="0.1" value="${esc(row.end_km || "")}" data-farm-result-machine-field="endKm"></label>
+                  <span class="farm-daily-computed"><b>${moneyNf.format(distance)}</b>ระยะทาง กม.</span>
+                  <label>มิเตอร์ ชม. เริ่ม<input type="number" min="0" step="0.1" value="${esc(row.start_hour_meter || "")}" data-farm-result-machine-field="startHourMeter"></label>
+                  <label>มิเตอร์ ชม. จบ<input type="number" min="0" step="0.1" value="${esc(row.end_hour_meter || "")}" data-farm-result-machine-field="endHourMeter"></label>
+                  <span class="farm-daily-computed"><b>${moneyNf.format(engineHours)}</b>ชั่วโมงเครื่อง</span>
+                </div>
+                <section class="farm-daily-fuel-allocation">
+                  <div>
+                    <label>น้ำมันใช้จริงในงานนี้ (ลิตร)<input type="number" min="0" step="0.1" value="${esc(row.fuel_used_liter || "")}" data-farm-result-machine-field="fuelUsedLiter" readonly></label>
+                    <small>Server คำนวณ: ยอดเปิด + ยอดจ่าย - ยอดปิด ${n(row.fuel_cost_amount) ? `· ต้นทุน ${moneyNf.format(row.fuel_cost_amount)} บาท` : ""}</small>
+                    ${row.efficiency_standard ? "" : "<small class=\"farm-fuel-no-standard\">ไม่มีค่ามาตรฐานเปรียบเทียบ — แสดงผลใช้จริงโดยไม่สร้าง Pass/Fail สมมติ</small>"}
+                  </div>
+                  <button type="button" data-farm-fuel-request="${esc(row.vehicle_id)}" ${state.farmSyncBusy ? "disabled" : ""}>${request ? "คำนวณใบขอเบิกใหม่" : "สร้างใบขอเบิกน้ำมัน"}</button>
+                </section>
+                ${request ? `<div class="farm-daily-fuel-issue">
+                  <label>ถังจ่าย<select data-farm-fuel-tank><option value="">เลือกถังน้ำมัน</option>${tanks.map((tank) => `<option value="${esc(tank.id)}">${esc(tank.tank_name || tank.tank_code)}</option>`).join("")}</select></label>
+                  <label>จำนวนที่จะจ่าย<input type="number" min="0.1" max="${esc(row.fuel_issue_remaining_liter)}" step="0.1" value="${esc(row.fuel_issue_remaining_liter || "")}" data-farm-fuel-issue-amount></label>
+                  <button type="button" data-farm-fuel-issue="${esc(request.id)}" data-farm-fuel-vehicle="${esc(row.vehicle_id)}" ${!canIssue || state.farmSyncBusy ? "disabled" : ""}>บันทึกการจ่ายน้ำมัน</button>
+                  <small>เหลือจ่ายตามใบขอเบิก ${moneyNf.format(row.fuel_issue_remaining_liter)} ลิตร</small>
+                </div>` : ""}
+                <label class="farm-daily-vehicle-note">หมายเหตุ<input type="text" maxlength="1000" value="${esc(row.note || "")}" data-farm-result-machine-field="note" placeholder="สภาพรถ เหตุหยุด หรือรายละเอียดเพิ่มเติม"></label>
+              </article>`;
+            }).join("") || `<div class="farm-empty-state"><strong>ยังไม่มีรถ/เครื่องจักรในใบงาน</strong><span>ให้ผู้จัดการเพิ่มรถในหน้าสั่งงานก่อนบันทึกการใช้รถ</span></div>`}
           </div>
+          <footer class="farm-daily-vehicle-total"><span>ชั่วโมงทำงานรวม <b>${moneyNf.format(calc.machineHoursTotal)}</b></span><span>จ่ายน้ำมันรวม <b>${moneyNf.format(calc.fuelIssuedTotal)}</b> ลิตร</span><span>ใช้จริงรวม <b>${moneyNf.format(calc.fuelUsedTotal)}</b> ลิตร</span></footer>
         </article>
       </div>
       <article class="farm-result-card farm-result-quality-card" data-daily-section="quality" id="farm-daily-step-quality">
@@ -20424,7 +20657,7 @@ async function saveFarmResultEntry() {
     state.farmWorkDetailId = nextOrder.id;
     state.farmResultWorkOrderId = nextOrder.id;
     state.farmSyncStatus = "success";
-    state.farmSyncMessage = `บันทึกงานแล้ว (${nextWorkStatusMeta.label}): ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงสุทธิ ${moneyNf.format(calc.payrollTotal)} บาท · วัสดุ ${fmt(calc.materialLines.length)} รายการ · น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร`;
+    state.farmSyncMessage = `บันทึกงานแล้ว (${nextWorkStatusMeta.label}): ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงสุทธิ ${moneyNf.format(calc.payrollTotal)} บาท · วัสดุ ${fmt(calc.materialLines.length)} รายการ · น้ำมันใช้จริง ${moneyNf.format(calc.fuelUsedTotal)} ลิตร`;
   } catch (error) {
     resetFarmDerivedCaches();
     saveFarmRecords();
@@ -24059,13 +24292,23 @@ async function saveFarmDailyEntry() {
       vehicles: calc.machineLines.filter((row) => row.vehicle_id).map((row) => ({
         vehicle_id: row.vehicle_id,
         driver_employee_id: row.driver_employee_id || null,
+        start_at: row.start_at || null,
+        end_at: row.end_at || null,
         start_odometer: row.start_km,
         end_odometer: row.end_km,
         start_hour_meter: row.start_hour_meter,
         end_hour_meter: row.end_hour_meter,
+        working_hours: row.actual_hours,
+        actual_area_rai: draft.actualAreaRai,
+        actual_tree_count: draft.actualTreeCount,
         actual_quantity: draft.actualQuantity,
         actual_unit: draft.actualUnit,
-        allocation_method: "pending",
+        allocation_basis_value: row.actual_hours || draft.actualQuantity,
+        allocated_fuel_liter: row.fuel_used_liter,
+        opening_fuel_liter: row.start_fuel_liter,
+        issued_fuel_liter: row.fuel_issued_liter,
+        closing_fuel_liter: row.end_fuel_liter,
+        allocation_method: "manual_work_result",
         note: row.note,
       })),
     });
@@ -24082,6 +24325,44 @@ async function saveFarmDailyEntry() {
     console.error("Daily result save failed", error.message);
     return null;
   }
+}
+
+async function refreshFarmDailyFuelRequisition(vehicleId) {
+  const order = farmResultSelectedOrder();
+  if (!order || !vehicleId) return;
+  syncFarmResultWorkerDraftFromTable();
+  const workOrderId = farmWorkOrderDbId(order) || order.id;
+  await runFarmAction("refresh_vehicle_fuel_requisition", {
+    vehicle_id: vehicleId,
+    work_order_id: workOrderId,
+  }, { reason: "สร้างหรือปรับใบขอเบิกน้ำมันจาก Mobile Daily Entry" }).catch(() => null);
+}
+
+async function issueFarmDailyFuel(requisitionId, vehicleId, card) {
+  const order = farmResultSelectedOrder();
+  if (!order || !requisitionId || !vehicleId || !card) return;
+  syncFarmResultWorkerDraftFromTable();
+  const tankId = card.querySelector("[data-farm-fuel-tank]")?.value || "";
+  const issuedLiter = card.querySelector("[data-farm-fuel-issue-amount]")?.value || "";
+  if (!tankId || n(issuedLiter) <= 0) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาเลือกถังน้ำมันและระบุจำนวนที่จะจ่ายมากกว่า 0 ลิตร";
+    render();
+    return;
+  }
+  const machine = farmResultMachineLines(order).find((row) => row.vehicle_id === vehicleId) || {};
+  await runFarmAction("issue_fuel", {
+    fuel_requisition_id: requisitionId,
+    tank_id: tankId,
+    issued_liter: issuedLiter,
+    driver_employee_id: machine.driver_employee_id || machine.vehicle?.default_driver_id || null,
+    odometer_reading: machine.end_km || machine.start_km || null,
+    hour_meter_reading: machine.end_hour_meter || machine.start_hour_meter || null,
+    note: `จ่ายจาก Mobile Daily Entry · ${farmShortWorkOrderNo(order)}`,
+  }, {
+    confirmed: true,
+    reason: "บันทึกการจ่ายน้ำมันตามใบขอเบิกจาก Mobile Daily Entry",
+  }).catch(() => null);
 }
 
 async function submitFarmDailySurvey() {
@@ -25442,6 +25723,7 @@ function handlePrimaryMenuClick(event) {
 }
 
 function handlePrimaryPopstate() {
+  state.notificationCenterOpen = window.location.pathname === "/notifications";
   if (state.view === "farm-result" && document.querySelector("#farmResultDate")) syncFarmResultDraftFromForm();
   const requestedRoute = requestedWorkspaceRouteFromUrl();
   if (requestedRoute) {
@@ -25454,6 +25736,7 @@ function handlePrimaryPopstate() {
   if (state.view === "farm-result" && tab) state.farmDailyWorkspaceTab = tab;
   hydrateFarmWorkflowStateFromUrl();
   render();
+  renderWorkNotificationCenter();
   loadFarmCurrentViewTables({ silent: true });
 }
 
@@ -25489,6 +25772,47 @@ function bindCriticalUiEvents() {
     activatePrimaryMenu({ dataset: { view: "dashboard" } });
   });
   els.farmAuthButton?.addEventListener("click", openFarmAuthDialog);
+  els.appNotificationButton?.addEventListener("click", () => openWorkNotificationCenter({ page: false }));
+  els.appNotificationClose?.addEventListener("click", closeWorkNotificationCenter);
+  els.appNotificationBackdrop?.addEventListener("click", closeWorkNotificationCenter);
+  document.addEventListener("keydown", (event) => handleWorkNotificationCenterKeydown(event));
+  els.appNotificationCenter?.addEventListener("click", async (event) => {
+    const filter = event.target.closest("[data-notification-filter]");
+    if (filter) {
+      state.notificationFilter = filter.dataset.notificationFilter || "all";
+      renderWorkNotificationCenter();
+      return;
+    }
+    if (event.target.closest("[data-notification-mark-all]")) {
+      await mutateWorkNotification("mark_all_notifications_read", {});
+      return;
+    }
+    const read = event.target.closest("[data-notification-read]");
+    if (read) {
+      await mutateWorkNotification("mark_notification_read", { notification_id: read.dataset.notificationRead });
+      return;
+    }
+    const ack = event.target.closest("[data-notification-ack]");
+    if (ack) {
+      await mutateWorkNotification("acknowledge_notification", { notification_id: ack.dataset.notificationAck });
+      return;
+    }
+    const snooze = event.target.closest("[data-notification-snooze]");
+    if (snooze) {
+      await mutateWorkNotification("snooze_notification", {
+        notification_id: snooze.dataset.notificationSnooze,
+        snoozed_until: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      });
+      return;
+    }
+    const open = event.target.closest("[data-notification-open]");
+    if (open) {
+      const actionUrl = safeNotificationActionUrl(open.dataset.actionUrl);
+      if (!actionUrl) return;
+      await mutateWorkNotification("mark_notification_read", { notification_id: open.dataset.notificationOpen });
+      window.location.assign(actionUrl);
+    }
+  });
   els.farmAuthClose?.addEventListener("click", closeFarmAuthDialog);
   els.farmAuthCancel?.addEventListener("click", closeFarmAuthDialog);
   els.farmAuthForm?.addEventListener("submit", (event) => {
@@ -25568,10 +25892,13 @@ async function init() {
   loadFarmResultDraftCache();
   state.view = initialViewFromUrl();
   const initialWorkspaceRoute = requestedWorkspaceRouteFromUrl();
+  const initialNotificationRoute = window.location.pathname === "/notifications";
   if (initialWorkspaceRoute) applyWorkspaceFallbackRoute(initialWorkspaceRoute);
   bindCriticalUiEvents();
   if (isFarmView(state.view) || initialWorkspaceRoute) await loadWorkspaceShell();
+  else if (initialNotificationRoute) await loadWorkspaceShell();
   hydrateFarmWorkflowStateFromUrl();
+  if (window.location.pathname === "/notifications") state.notificationCenterOpen = true;
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
@@ -26938,6 +27265,20 @@ async function init() {
       printFarmDispatchBulkOrders();
       return;
     }
+    const fuelRequest = e.target.closest("[data-farm-fuel-request]");
+    if (fuelRequest) {
+      refreshFarmDailyFuelRequisition(fuelRequest.dataset.farmFuelRequest);
+      return;
+    }
+    const fuelIssue = e.target.closest("[data-farm-fuel-issue]");
+    if (fuelIssue) {
+      issueFarmDailyFuel(
+        fuelIssue.dataset.farmFuelIssue,
+        fuelIssue.dataset.farmFuelVehicle,
+        fuelIssue.closest("[data-farm-result-machine]"),
+      );
+      return;
+    }
     if (e.target.closest("[data-farm-survey-save]")) {
       saveFarmDailyEntry();
       return;
@@ -27507,6 +27848,7 @@ async function init() {
 
   renderFarmAuthState();
   render();
+  renderWorkNotificationCenter();
   startLiveRefresh();
   if (new URLSearchParams(window.location.search).has("autoRefresh")) autoRefreshTransportFromQuery();
 }

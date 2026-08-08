@@ -27,5 +27,11 @@
       "src": "/(.*)",
       "dest": "/webapp/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/work-notifications-cron",
+      "schedule": "*/15 * * * *"
+    }
   ]
 }
