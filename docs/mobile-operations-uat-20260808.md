@@ -32,3 +32,4 @@ The four filters changed active state correctly. Escape and desktop backdrop clo
 - Authenticated Dispatch/Daily browser flows, signed private evidence upload/download and recipient-scoped notification reads still require a configured preview with test credentials.
 - No local `supabase` or `psql` executable was available, so the migration was verified statically and by focused tests rather than a local database reset.
 - The scheduler and all seeded notification rules remain disabled by default.
+- The Vercel project is on the Hobby plan, so the single scheduler runs daily at `00:00 UTC` (`07:00 Asia/Bangkok`). Before activating minute-sensitive rules such as `WORK_STARTING_SOON`, upgrade the plan and explicitly increase the cadence.

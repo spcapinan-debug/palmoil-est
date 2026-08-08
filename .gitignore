@@ -11,4 +11,5 @@ webapp/data/local_api_server.*.log
 *.p12
 *.pfx
 
+.env*
 !.env.example
