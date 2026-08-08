@@ -34,4 +34,4 @@ Audit point: branch `codex/mobile-dispatch-daily-entry-ux` at `a339a87df657b87db
 | Vehicle and fuel | Complete in code and automated coverage | Assignment, overlap, meter/time, requisition, issue, server-owned consumed fuel and no-standard behavior pass |
 | Work notifications | Complete but disabled by default | Additive RLS migration, inactive seeded rules, scoped action API, shared UI state and protected single scheduler path are present |
 | Browser UAT | Partial by environment | Anonymous notification-center UAT passed; authenticated Dispatch/Daily and private evidence upload require a preview session and were not fabricated |
-| Preview deployment | Pending external environment | No preview was deployed from this local environment; production was not changed |
+| Preview deployment | Complete for unauthenticated smoke checks | Preview `palmoil-ihv917qfh-spc-est.vercel.app` is READY; direct workflow routes return 200 and protected APIs return 401 without credentials; production was not changed |

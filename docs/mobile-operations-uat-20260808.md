@@ -33,3 +33,12 @@ The four filters changed active state correctly. Escape and desktop backdrop clo
 - No local `supabase` or `psql` executable was available, so the migration was verified statically and by focused tests rather than a local database reset.
 - The scheduler and all seeded notification rules remain disabled by default.
 - The Vercel project is on the Hobby plan, so the single scheduler runs daily at `00:00 UTC` (`07:00 Asia/Bangkok`). Before activating minute-sensitive rules such as `WORK_STARTING_SOON`, upgrade the plan and explicitly increase the cadence.
+
+## Preview verification
+
+- Deployment: `https://palmoil-ihv917qfh-spc-est.vercel.app`
+- Vercel deployment ID: `dpl_3pk98u8FJGEveXGtWTkHGi4tbjLn`
+- State: `READY`, Preview target only; no production promotion was performed.
+- `/`, `/farm/dispatch`, `/farm/daily` and `/notifications`: HTTP 200 with the SPA entry point.
+- `/api/farm-session` and `/api/farm-tables?tables=app_notifications`: expected HTTP 401 without a user session.
+- `/api/work-notifications-cron?dryRun=1`: expected HTTP 401 without `CRON_SECRET`; notification generation was not executed.
