@@ -12,6 +12,7 @@ test("notification and daily mobile controls preserve 44px touch targets and ful
   assert.match(css, /overflow-x:\s*(auto|hidden)/);
   assert.match(css, /@media screen and \(max-width: 760px\)[\s\S]*?body\s*\{\s*zoom:\s*1/);
   assert.match(css, /@media screen and \(max-width: 760px\)[\s\S]*?\.actions button,[\s\S]*?min-height:\s*44px !important/);
+  assert.match(css, /\.app-shell \.content button,[\s\S]*?\.app-shell \.content input:not[\s\S]*?min-height:\s*44px !important/);
   assert.match(css, /input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\):not\(\[type="hidden"\]\)[\s\S]*?min-height:\s*44px !important/);
   assert.match(css, /@media screen and \(max-width: 760px\)[\s\S]*?\.app-notification-backdrop,[\s\S]*?\.app-notification-center\s*\{\s*zoom:\s*1/);
 });

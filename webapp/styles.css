@@ -17073,6 +17073,11 @@ details.farm-survey-score-section[open] > summary::after {
     zoom: 1;
   }
 
+  .app-shell .content button,
+  .app-shell .content input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  .app-shell .content select,
+  .app-shell .content textarea,
+  .app-shell .content [role="button"],
   .actions button,
   button,
   input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
