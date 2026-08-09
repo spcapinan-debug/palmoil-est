@@ -10,6 +10,9 @@ test("notification and daily mobile controls preserve 44px touch targets and ful
   assert.match(css, /app-notification-item footer button \{ min-height: 44px/);
   assert.match(css, /farm-daily-vehicle-card/);
   assert.match(css, /overflow-x:\s*(auto|hidden)/);
+  assert.match(css, /@media screen and \(max-width: 760px\)[\s\S]*?body\s*\{\s*zoom:\s*1/);
+  assert.match(css, /input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\):not\(\[type="hidden"\]\)[\s\S]*?min-height:\s*44px !important/);
+  assert.match(css, /@media screen and \(max-width: 760px\)[\s\S]*?\.app-notification-backdrop,[\s\S]*?\.app-notification-center\s*\{\s*zoom:\s*1/);
 });
 
 test("notification center has dialog semantics, filters, badge and accessible close", () => {

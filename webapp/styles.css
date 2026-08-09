@@ -17065,3 +17065,24 @@ details.farm-survey-score-section[open] > summary::after {
   .app-notification-item > footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .app-notification-item > footer button { width: 100%; }
 }
+
+/* The desktop shell uses 80% CSS zoom for density. Restore physical CSS pixels on
+   touch viewports so 44px controls render as 44px instead of 35px. */
+@media screen and (max-width: 760px) {
+  body {
+    zoom: 1;
+  }
+
+  button,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  select,
+  textarea,
+  [role="button"] {
+    min-height: 44px !important;
+  }
+
+  .app-notification-backdrop,
+  .app-notification-center {
+    zoom: 1;
+  }
+}
