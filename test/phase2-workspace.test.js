@@ -130,7 +130,7 @@ test("farm navigation has its own target and does not replace the transport menu
 
 test("transport startup does not call protected workspace APIs", () => {
   assert.match(appSource, /const initialWorkspaceRoute\s*=\s*requestedWorkspaceRouteFromUrl\(\)/);
-  assert.match(appSource, /if\s*\(isFarmView\(state\.view\)\s*\|\|\s*initialWorkspaceRoute\)\s*await loadWorkspaceShell\(\)/);
+  assert.match(appSource, /if\s*\(isFarmView\(state\.view\)\s*\|\|\s*initialWorkspaceRoute\)\s*\{\s*ensureFarmViewState\(state\.view\);\s*render\(\);\s*await loadWorkspaceShell\(\)/);
   assert.doesNotMatch(appSource, /const workspaceShell\s*=\s*loadWorkspaceShell\(\)/);
 });
 

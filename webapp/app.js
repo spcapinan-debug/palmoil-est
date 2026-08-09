@@ -135,6 +135,8 @@ const state = {
   dynamicMenuEnabled: false,
   farmSession: null,
   farmAuthRequired: false,
+  farmConnectionState: "LOADING",
+  farmConnectionError: "",
   farmAuthBusy: false,
   workNotifications: [],
   notificationDeliveries: [],
@@ -295,6 +297,39 @@ function farmApiHeaders(extra = {}) {
 
 function farmApiErrorMessage(payload, fallback) {
   return payload?.error?.message || payload?.message || payload?.error || fallback;
+}
+
+function farmConnectionStateFromResponse(response, payload = {}) {
+  const status = Number(response?.status || 0);
+  const code = String(payload?.error?.code || payload?.code || "").toUpperCase();
+  if (status === 401) return code === "SESSION_EXPIRED" ? "SESSION_EXPIRED" : "AUTH_REQUIRED";
+  if (status === 403) return "PERMISSION_DENIED";
+  if (status >= 500 || (status >= 400 && status !== 401 && status !== 403)) return "DATABASE_ERROR";
+  return status > 0 ? "CONNECTED" : "NETWORK_ERROR";
+}
+
+function farmDataConnectionState(payload = {}, requestedTables = []) {
+  const coreTables = new Set([
+    "blocks", "activity_groups", "activities", "employees", "teams", "materials",
+    "annual_work_plans", "planned_work_items", "work_orders", "work_results",
+  ]);
+  const requested = new Set(requestedTables || []);
+  const failedTables = Object.keys(payload?.errors || {});
+  if (failedTables.some((table) => requested.has(table) && coreTables.has(table))) {
+    return "DATABASE_ERROR";
+  }
+  return failedTables.length ? "PARTIAL_DATA" : "CONNECTED";
+}
+
+function farmClearResolvedErrors(currentErrors = {}, requestedTables = [], nextErrors = {}) {
+  const merged = { ...(currentErrors || {}) };
+  delete merged.api;
+  for (const table of requestedTables || []) delete merged[table];
+  return { ...merged, ...(nextErrors || {}) };
+}
+
+function farmConnectionNeedsLogin(connectionState = state.farmConnectionState) {
+  return ["AUTH_REQUIRED", "SESSION_EXPIRED"].includes(connectionState);
 }
 
 function farmPreviewDiagnostic(event, details = {}) {
@@ -542,6 +577,7 @@ function farmRoleLabel(role = "") {
 
 function renderFarmAuthState() {
   if (!els.farmAuthButton) return;
+  document.body?.setAttribute("data-farm-connection-state", state.farmConnectionState || "LOADING");
   const displayName = state.farmSession?.profile?.displayName || "เข้าสู่ระบบ";
   const primaryRole = [...state.workspaceRoles][0] || "";
   const authenticated = Boolean(state.farmSession?.ok);
@@ -552,6 +588,22 @@ function renderFarmAuthState() {
     ? farmRoleLabel(primaryRole)
     : "UAT";
   els.farmAuthButton.setAttribute("aria-label", authenticated ? `ผู้ใช้งาน ${displayName}` : "เข้าสู่ระบบ");
+}
+
+function renderFarmConnectionNotice() {
+  const connectionState = state.farmConnectionState || "LOADING";
+  if (connectionState === "CONNECTED") return "";
+  const notices = {
+    LOADING: ["loading", "กำลังตรวจสอบการเชื่อมต่อข้อมูลสวนปาล์ม…"],
+    AUTH_REQUIRED: ["warning", "กรุณาเข้าสู่ระบบบริหารงานสวนปาล์มเพื่อโหลดข้อมูลจริง"],
+    SESSION_EXPIRED: ["warning", "Session หมดอายุ กรุณาเข้าสู่ระบบใหม่"],
+    PERMISSION_DENIED: ["error", "บัญชีนี้ไม่มีสิทธิ์เข้าถึงข้อมูลสวนปาล์มส่วนนี้"],
+    PARTIAL_DATA: ["warning", "ข้อมูลหลักพร้อมใช้งาน แต่ข้อมูลเสริมบางส่วนยังไม่พร้อม"],
+    DATABASE_ERROR: ["error", "Farm API ไม่สามารถโหลดข้อมูลหลักจากฐานข้อมูลได้"],
+    NETWORK_ERROR: ["error", "ไม่สามารถเชื่อมต่อ Farm API ได้ กรุณาลองใหม่"],
+  };
+  const [tone, message] = notices[connectionState] || notices.NETWORK_ERROR;
+  return `<div class="farm-sync-status ${tone}" data-farm-connection-notice="${esc(connectionState)}">${esc(message)}</div>`;
 }
 
 function setFarmAuthDialogMode() {
@@ -648,6 +700,7 @@ async function submitFarmSignOut() {
     if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "ออกจากระบบไม่สำเร็จ"));
     state.farmSession = null;
     state.farmAuthRequired = true;
+    state.farmConnectionState = "AUTH_REQUIRED";
     resetFarmAuthenticatedData();
     renderFarmAuthState();
     closeFarmAuthDialog();
@@ -3966,6 +4019,8 @@ function openWorkspaceRoute(route) {
 
 async function loadWorkspaceShell() {
   try {
+    state.farmConnectionState = "LOADING";
+    state.farmConnectionError = "";
     const tables = [
       "system_settings", "v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs",
       "v_management_action_center", "v_system_module_readiness",
@@ -3973,19 +4028,35 @@ async function loadWorkspaceShell() {
     const sessionRequest = await farmJsonRequest(FARM_SESSION_API, { cache: "no-store" }, { retrySession: false });
     const session = sessionRequest.payload;
     if (!sessionRequest.response.ok || !session?.ok) {
-      throw new Error(farmApiErrorMessage(session, "Workspace session unavailable"));
-    }
-    const tableRequest = await farmJsonRequest(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000`, {
-      cache: "no-store",
-    });
-    const payload = tableRequest.payload;
-    if (!tableRequest.response.ok || !payload?.ok) {
-      throw new Error(farmApiErrorMessage(session?.ok ? payload : session, "Workspace navigation unavailable"));
+      const connectionState = farmConnectionStateFromResponse(sessionRequest.response, session);
+      state.farmSession = null;
+      state.farmConnectionState = connectionState;
+      state.farmConnectionError = farmApiErrorMessage(session, "Workspace session unavailable");
+      state.farmAuthRequired = farmConnectionNeedsLogin(connectionState);
+      state.dynamicMenuEnabled = false;
+      state.farmDbErrors = farmClearResolvedErrors(state.farmDbErrors, ["workspace_navigation"], {});
+      renderFarmAuthState();
+      if (isFarmView(state.view)) {
+        render();
+        if (state.farmAuthRequired) window.setTimeout(() => openFarmAuthDialog(), 0);
+      }
+      return false;
     }
     state.farmSession = session;
     state.farmAuthRequired = false;
     state.workspacePermissions = new Set(session.permissions || []);
     state.workspaceRoles = new Set(session.roles || []);
+    const tableRequest = await farmJsonRequest(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000`, {
+      cache: "no-store",
+    });
+    const payload = tableRequest.payload;
+    if (!tableRequest.response.ok || !payload?.ok) {
+      const error = new Error(farmApiErrorMessage(payload, "Workspace navigation unavailable"));
+      error.connectionState = farmConnectionStateFromResponse(tableRequest.response, payload);
+      throw error;
+    }
+    state.farmConnectionState = farmDataConnectionState(payload, tables.split(","));
+    state.farmConnectionError = "";
     const tabs = payload.tables?.v_app_workspace_tabs || [];
     const tabMetadata = new Map(tabs.map((item) => [item.id, item]));
     state.workspaceNavigation = (payload.tables?.v_app_navigation || []).map((item) => ({
@@ -4013,11 +4084,19 @@ async function loadWorkspaceShell() {
     loadWorkNotifications({ silent: true });
     return true;
   } catch (error) {
-    state.farmSession = null;
-    state.farmAuthRequired = /access token|invalid token|expired|auth_required/i.test(String(error.message || ""));
+    const connectionState = error.connectionState || "NETWORK_ERROR";
+    state.farmConnectionState = connectionState;
+    state.farmConnectionError = String(error.message || "Workspace unavailable");
+    state.farmAuthRequired = farmConnectionNeedsLogin(connectionState);
     state.dynamicMenuEnabled = false;
-    state.farmDbErrors = { ...(state.farmDbErrors || {}), workspace_navigation: error.message };
+    state.farmDbErrors = ["DATABASE_ERROR", "NETWORK_ERROR"].includes(connectionState)
+      ? { ...(state.farmDbErrors || {}), workspace_navigation: error.message }
+      : farmClearResolvedErrors(state.farmDbErrors, ["workspace_navigation"], {});
     renderFarmAuthState();
+    if (isFarmView(state.view)) {
+      render();
+      if (state.farmAuthRequired) window.setTimeout(() => openFarmAuthDialog(), 0);
+    }
     return false;
   }
 }
@@ -4393,7 +4472,9 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
     const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(tableKeys.join(","))}&limit=${limit}&t=${Date.now()}`;
     const { response, payload } = await farmJsonRequest(url, { cache: "no-store" });
     if (!response.ok || !payload?.ok || !payload.tables) {
-      throw new Error(farmApiErrorMessage(payload, "No farm table payload"));
+      const error = new Error(farmApiErrorMessage(payload, "No farm table payload"));
+      error.connectionState = farmConnectionStateFromResponse(response, payload);
+      throw error;
     }
     const nextRows = Object.fromEntries(
       Object.entries(payload.tables).map(([tableKey, rows]) => [tableKey, normalizeFarmDbRows(tableKey, Array.isArray(rows) ? rows : [])])
@@ -4403,7 +4484,10 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
     resetFarmDerivedCaches();
     state.farmDbSource = payload.source || null;
     state.farmDbTableMeta = replaceSnapshot ? (payload.tableMeta || {}) : { ...(state.farmDbTableMeta || {}), ...(payload.tableMeta || {}) };
-    state.farmDbErrors = replaceSnapshot ? (payload.errors || {}) : { ...(state.farmDbErrors || {}), ...(payload.errors || {}) };
+    state.farmDbErrors = replaceSnapshot ? (payload.errors || {})
+      : farmClearResolvedErrors(state.farmDbErrors, tableKeys, payload.errors || {});
+    state.farmConnectionState = farmDataConnectionState({ errors: state.farmDbErrors }, allTableKeys);
+    state.farmConnectionError = "";
     state.farmDbWarnings = replaceSnapshot ? (payload.warnings || {}) : { ...(state.farmDbWarnings || {}), ...(payload.warnings || {}) };
     farmMarkTablesLoaded(Object.keys(nextRows));
     if (silent) render();
@@ -4425,10 +4509,21 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
       state.farmDbRows = {};
       resetFarmDerivedCaches();
     }
+    const connectionState = error.connectionState || "NETWORK_ERROR";
+    state.farmConnectionState = connectionState;
+    state.farmConnectionError = String(error.message || "Farm tables unavailable");
+    state.farmAuthRequired = farmConnectionNeedsLogin(connectionState);
     state.farmDbSource = { mode: "supabase-real-only", error: error.message };
-    state.farmDbErrors = { ...(state.farmDbErrors || {}), api: error.message };
+    state.farmDbErrors = ["DATABASE_ERROR", "NETWORK_ERROR"].includes(connectionState)
+      ? { ...(state.farmDbErrors || {}), api: error.message }
+      : farmClearResolvedErrors(state.farmDbErrors, ["api"], {});
     state.farmDbWarnings = state.farmDbWarnings || {};
     farmPreviewDiagnostic("table-load", { ok: false, requestedTables: tableKeys, error: error.message });
+    renderFarmAuthState();
+    if (isFarmView(state.view) && state.farmAuthRequired) {
+      render();
+      window.setTimeout(() => openFarmAuthDialog(), 0);
+    }
     return false;
   } finally {
     if (farmDbTableInflight.get(requestKey) === request) farmDbTableInflight.delete(requestKey);
@@ -24886,6 +24981,7 @@ function renderFarmPage() {
         </div>
         <button type="button" data-farm-db-refresh>Refresh DB</button>
       </div>
+      ${renderFarmConnectionNotice()}
       ${isBudgetPage ? "" : renderFarmWorkflowNav(module)}
       ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isBudgetPage ? renderFarmBudgetBoard() : ""}
@@ -25895,7 +25991,11 @@ async function init() {
   const initialNotificationRoute = window.location.pathname === "/notifications";
   if (initialWorkspaceRoute) applyWorkspaceFallbackRoute(initialWorkspaceRoute);
   bindCriticalUiEvents();
-  if (isFarmView(state.view) || initialWorkspaceRoute) await loadWorkspaceShell();
+  if (isFarmView(state.view) || initialWorkspaceRoute) {
+    ensureFarmViewState(state.view);
+    render();
+    await loadWorkspaceShell();
+  }
   else if (initialNotificationRoute) await loadWorkspaceShell();
   hydrateFarmWorkflowStateFromUrl();
   if (window.location.pathname === "/notifications") state.notificationCenterOpen = true;
