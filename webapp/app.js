@@ -4385,7 +4385,9 @@ function farmDatabaseTablesForView(view = state.view) {
       "plot_groups",
       "activity_groups",
       "activities",
+      "material_categories",
       "materials",
+      "units",
       "vehicles",
       "teams",
       "team_members",
@@ -15289,6 +15291,7 @@ function farmPlanBudgetMatchMessage({ activeRates = [], activity, selectedBlocks
 function renderFarmWorkPlanner() {
   const budgetPicks = farmWorkPlanState();
   const blocks = farmPlanningBlockRows();
+  const scopedBlockCount = farmBudgetScopedBlocks().length;
   const activityGroups = farmRows(farmTableByKey("activity_groups"));
   const activities = farmRows(farmTableByKey("activities"));
   const teams = farmRows(farmTableByKey("teams"));
@@ -15479,7 +15482,7 @@ function renderFarmWorkPlanner() {
             <b>Block ${fmt(selectedBlocks.length)} · กิจกรรม ${fmt(budgetPicks.selectedActivities.length || (previewActivity ? 1 : 0))} · วัสดุ ${fmt(selectedMaterials.length || rateMaterialUsageRows.length)} · รถ/เครื่องจักร ${fmt(selectedVehicles.length)} · พนักงาน/ทีม ${fmt(selectedWorkerCount)}</b>
           </div>
           <div class="budget-tree-grid budget-tree-grid-work-order farm-work-budget-selector" data-budget-context="work-plan">
-            <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetPlantingYearSelector(budgetPicks, { idPrefix: "planning", allLabel: "ทุกปี" })}${renderFarmBudgetAreaTree(budgetPicks)}</div></section>
+            <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><p class="budget-tree-scope-note">แสดงพื้นที่ตามสิทธิ์ผู้ใช้งาน: ${fmt(scopedBlockCount)} Block</p><div class="budget-tree-scroll">${renderFarmBudgetPlantingYearSelector(budgetPicks, { idPrefix: "planning", allLabel: "ทุกปี" })}${renderFarmBudgetAreaTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>วัสดุ</h4><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>รถ / เครื่องจักร</h4><div class="budget-tree-scroll">${renderFarmBudgetVehicleTree(budgetPicks)}</div></section>
@@ -23110,35 +23113,73 @@ function farmSortBudgetMaterials(rows = []) {
   });
 }
 
-function renderFarmBudgetMaterialTree(picks = farmBudgetContractState()) {
-  const categories = farmAuthoritativeRowsByKey("material_categories").slice().sort((a, b) => {
+function groupMaterialsByCategory(materials = [], categories = [], query = "") {
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  const sortedCategories = categories.slice().sort((a, b) => {
     const priority = farmBudgetMaterialPriority(a) - farmBudgetMaterialPriority(b);
     if (priority) return priority;
-    return String(a.category_code || a.category_name || "").localeCompare(String(b.category_code || b.category_name || ""), "th");
+    return String(a.category_code || a.category_name || "")
+      .localeCompare(String(b.category_code || b.category_name || ""), "th");
   });
+  const categoryById = new Map(sortedCategories.map((category) => [String(category.id || ""), category]));
+  const materialsByCategoryId = new Map(sortedCategories.map((category) => [String(category.id || ""), []]));
+  const ungrouped = [];
+  let categorizedMaterials = 0;
+
+  for (const material of farmSortBudgetMaterials(materials)) {
+    const category = categoryById.get(String(material.category_id || "")) || null;
+    const searchableText = [
+      farmBudgetMaterialLabel(material),
+      category?.category_code,
+      category?.category_name,
+    ].filter(Boolean).join(" ").toLowerCase();
+    if (normalizedQuery && !searchableText.includes(normalizedQuery)) continue;
+    if (!category) {
+      ungrouped.push(material);
+      continue;
+    }
+    materialsByCategoryId.get(String(category.id || "")).push(material);
+    categorizedMaterials += 1;
+  }
+
+  return {
+    groups: sortedCategories
+      .map((category) => ({ category, materials: materialsByCategoryId.get(String(category.id || "")) || [] }))
+      .filter((group) => group.materials.length),
+    ungrouped,
+    totalMaterials: materials.length,
+    categorizedMaterials,
+    ungroupedMaterials: ungrouped.length,
+  };
+}
+
+function farmSelectedAvailableMaterialIds(selectedIds = [], materials = []) {
+  const availableIds = new Set(materials.map((material) => material.id).filter(Boolean));
+  return [...new Set(selectedIds || [])].filter((id) => availableIds.has(id));
+}
+
+function renderFarmBudgetMaterialTree(picks = farmBudgetContractState()) {
+  const categories = farmAuthoritativeRowsByKey("material_categories");
   const materials = farmSortBudgetMaterials(farmAuthoritativeRowsByKey("materials")
-    .filter((material) => String(material.status || "active").toLowerCase() !== "inactive")
-    .filter((material) => farmBudgetMatchesQuery(farmBudgetMaterialLabel(material))));
-  const materialIds = new Set(materials.map((material) => material.id).filter(Boolean));
-  picks.selectedMaterials = (picks.selectedMaterials || []).filter((id) => materialIds.has(id));
+    .filter((material) => String(material.status || "active").toLowerCase() !== "inactive"));
+  picks.selectedMaterials = farmSelectedAvailableMaterialIds(picks.selectedMaterials, materials);
   if (!materials.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลวัสดุ</div>`;
-  const grouped = categories.map((category) => {
-    const categoryMaterials = farmSortBudgetMaterials(materials.filter((material) => material.category_id === category.id));
-    if (!categoryMaterials.length) return "";
+  const model = groupMaterialsByCategory(materials, categories, picks.query || "");
+  const grouped = model.groups.map(({ category, materials: categoryMaterials }) => {
     return `
       <details open>
         <summary>${esc(category.category_code || "")} ${esc(category.category_name || "")} <small>${fmt(categoryMaterials.length)}</small></summary>
         ${categoryMaterials.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials, farmLookupLabel("units", material.base_unit_id))).join("")}
       </details>`;
   }).join("");
-  const groupedIds = new Set(categories.flatMap((category) => materials.filter((material) => material.category_id === category.id).map((material) => material.id)));
-  const uncategorized = farmSortBudgetMaterials(materials.filter((material) => !groupedIds.has(material.id)));
-  const uncategorizedHtml = uncategorized.length ? `
+  const uncategorizedHtml = model.ungrouped.length ? `
       <details open>
-        <summary>ไม่ระบุหมวด <small>${fmt(uncategorized.length)}</small></summary>
-        ${uncategorized.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials, farmLookupLabel("units", material.base_unit_id))).join("")}
+        <summary>ไม่ระบุหมวด <small>${fmt(model.ungrouped.length)}</small></summary>
+        ${model.ungrouped.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials, farmLookupLabel("units", material.base_unit_id))).join("")}
       </details>` : "";
-  return grouped || uncategorizedHtml ? `${grouped}${uncategorizedHtml}` : materials.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials)).join("");
+  return grouped || uncategorizedHtml
+    ? `${grouped}${uncategorizedHtml}`
+    : `<div class="budget-tree-empty">ไม่พบวัสดุที่ตรงกับคำค้นหา</div>`;
 }
 
 function renderFarmBudgetVehicleTree(picks = farmBudgetContractState()) {

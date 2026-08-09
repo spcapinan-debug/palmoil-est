@@ -5476,6 +5476,16 @@ tfoot td {
   font-weight: 900;
 }
 
+.budget-tree-scope-note {
+  margin: 0;
+  padding: 5px 8px;
+  border-bottom: 1px solid #edf1f5;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .budget-tree-scroll {
   height: 420px;
   overflow: auto;
@@ -15924,6 +15934,10 @@ tfoot td,
     height: 310px;
     max-height: 310px;
     padding-right: 2px;
+  }
+
+  .farm-work-budget-selector .budget-tree-item {
+    min-height: 44px;
   }
 
   .farm-plan-selector-note {
