@@ -51,6 +51,20 @@ test("selecting one planting year selects every Block in that year", () => {
   assert.equal(api.farmBudgetSelectionState(year.blockIds, selected).checked, true);
 });
 
+test("UAT planting years select the canonical 2556 and 2563 Block IDs", () => {
+  const api = plantingHarness();
+  const uatBlocks = [
+    { id: "b-a02", block_code: "A02", block_name: "56-A02", planting_year: 2556, status: "active" },
+    { id: "b-a03", block_code: "A03", block_name: "56-A03-R", planting_year: 2556, status: "active" },
+    { id: "b-a01", block_code: "A01", block_name: "63-A01-R", planting_year: 2563, status: "active" },
+  ];
+  const groups = api.farmBudgetPlantingYearGroups(uatBlocks, [], "asc").years;
+  assert.deepEqual(Array.from(groups, (group) => [group.year, Array.from(group.blockIds)]), [
+    [2556, ["b-a02", "b-a03"]],
+    [2563, ["b-a01"]],
+  ]);
+});
+
 test("selecting two years keeps selected Block IDs unique", () => {
   const api = plantingHarness();
   const groups = api.farmBudgetPlantingYearGroups(blocks, [], "asc").years;

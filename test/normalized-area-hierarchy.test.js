@@ -15,7 +15,10 @@ function areaHierarchyHarness() {
   assert.ok(keyStart >= 0 && keyEnd > keyStart, "Block key normalizer must remain inspectable");
   assert.ok(hierarchyStart >= 0 && hierarchyEnd > hierarchyStart, "shared Area hierarchy must remain inspectable");
   const sandbox = {};
-  vm.runInNewContext(`${appSource.slice(keyStart, keyEnd)}\n${appSource.slice(hierarchyStart, hierarchyEnd)}\nresult = { buildFarmAreaHierarchy };`, sandbox);
+  vm.runInNewContext(`${appSource.slice(keyStart, keyEnd)}\n${appSource.slice(hierarchyStart, hierarchyEnd)}\nresult = {
+    buildFarmAreaHierarchy, buildFarmLocationTree, farmLocationBlockLabel,
+    assertFarmBlockIdConsistency,
+  };`, sandbox);
   return sandbox.result;
 }
 
@@ -29,41 +32,78 @@ const normalized = {
   ],
   plotGroups: [],
   blocks: [
-    { id: "b-a03", estate_id: "estate-1", zone_id: "zone-1", plot_id: "plot-12", block_code: "A03", block_name: "56-A03-R", planting_year: 2556, area_rai: 10, tree_count: 220, rspo_status: "RSPO", status: "active" },
-    { id: "b-a02", estate_id: "estate-1", zone_id: "zone-1", plot_id: "plot-13", block_code: "A02", block_name: "56-A02", planting_year: 2556, area_rai: 11, tree_count: 230, rspo_status: "RSPO", status: "active" },
-    { id: "b-a01", estate_id: "estate-1", zone_id: "zone-1", plot_id: "plot-25", block_code: "A01", block_name: "63-A01-R", planting_year: 2563, area_rai: 12, tree_count: 240, rspo_status: "RSPO", status: "active" },
+    { id: "b-a03", estate_id: "estate-1", zone_id: "zone-1", plot_id: "plot-12", block_code: "A03", block_name: "56-A03-R", ap_code: "EST012", planting_year: 2556, area_rai: 10, tree_count: 220, rspo_status: "RSPO", status: "active" },
+    { id: "b-a02", estate_id: "estate-1", zone_id: "zone-1", plot_id: "plot-13", block_code: "A02", block_name: "56-A02", ap_code: "EST013", planting_year: 2556, area_rai: 11, tree_count: 230, rspo_status: "RSPO", status: "active" },
+    { id: "b-a01", estate_id: "estate-1", zone_id: "zone-1", plot_id: "plot-25", block_code: "A01", block_name: "63-A01-R", ap_code: "EST025", planting_year: 2563, area_rai: 12, tree_count: 240, rspo_status: "RSPO", status: "active" },
   ],
   legacyAreas: [],
 };
 
-test("normalized Area hierarchy resolves Estate, Zone, Plot, and Block from foreign keys", () => {
+test("normalized Area hierarchy resolves canonical Blocks and presentation-only location labels", () => {
   const model = areaHierarchyHarness().buildFarmAreaHierarchy(normalized);
   assert.equal(model.usesNormalizedBlocks, true);
   assert.deepEqual(Array.from(model.blocks, (block) => ({
     id: block.id,
-    estate: block.estateName,
-    zone: block.zoneName,
-    plot: block.plotCode,
+    estate: block.estateDisplay,
+    zone: block.zoneDisplay,
+    group: block.blockGroupCode,
     block: block.blockName,
+    apCode: block.apCode,
     year: block.plantingYear,
   })), [
-    { id: "b-a03", estate: "สวนคีรีรัฐนิคม", zone: "ตอนล่าง", plot: "EST012", block: "56-A03-R", year: 2556 },
-    { id: "b-a02", estate: "สวนคีรีรัฐนิคม", zone: "ตอนล่าง", plot: "EST013", block: "56-A02", year: 2556 },
-    { id: "b-a01", estate: "สวนคีรีรัฐนิคม", zone: "ตอนล่าง", plot: "EST025", block: "63-A01-R", year: 2563 },
+    { id: "b-a03", estate: "Kirirat", zone: "Lower", group: "A", block: "56-A03-R", apCode: "EST012", year: 2556 },
+    { id: "b-a02", estate: "Kirirat", zone: "Lower", group: "A", block: "56-A02", apCode: "EST013", year: 2556 },
+    { id: "b-a01", estate: "Kirirat", zone: "Lower", group: "A", block: "63-A01-R", apCode: "EST025", year: 2563 },
   ]);
 });
 
-test("complete Block foreign keys never fall into unknown hierarchy labels", () => {
+test("complete Block foreign keys never fall into unknown display labels", () => {
   const block = areaHierarchyHarness().buildFarmAreaHierarchy(normalized).blocks[0];
-  assert.notEqual(block.estateName, "ไม่ระบุพื้นที่");
-  assert.notEqual(block.zoneName, "ไม่ระบุโซน");
-  assert.notEqual(block.plotLabel, "ไม่ระบุ Plot / AP Code");
+  assert.equal(block.estateDisplay, "Kirirat");
+  assert.equal(block.zoneDisplay, "Lower");
+  assert.equal(block.blockGroupCode, "A");
 });
 
-test("an empty plot_groups table does not manufacture an unknown group layer", () => {
+test("Block Group derives generically from Block names when plot_groups is empty", () => {
   const model = areaHierarchyHarness().buildFarmAreaHierarchy(normalized);
   assert.equal(model.hasPlotGroups, false);
-  assert.ok(model.blocks.every((block) => block.plotGroupId === "" && block.plotGroupName === ""));
+  assert.ok(model.blocks.every((block) => block.blockGroupCode === "A"));
+});
+
+test("location tree has exactly Estate, Zone, Block Group, and block_name leaves", () => {
+  const api = areaHierarchyHarness();
+  const model = api.buildFarmAreaHierarchy(normalized);
+  const tree = api.buildFarmLocationTree(model.blocks);
+  assert.deepEqual(JSON.parse(JSON.stringify(tree.map((estate) => ({
+    label: estate.label,
+    zones: estate.zones.map((zone) => ({
+      label: zone.label,
+      groups: zone.groups.map((group) => ({
+        label: group.label,
+        leaves: group.blocks.map(api.farmLocationBlockLabel),
+      })),
+    })),
+  })))), [{
+    label: "Kirirat",
+    zones: [{ label: "Lower", groups: [{ label: "A", leaves: ["56-A02", "56-A03-R", "63-A01-R"] }] }],
+  }]);
+  const hierarchyLabels = tree.flatMap((estate) => [
+    estate.label,
+    ...estate.zones.flatMap((zone) => [
+      zone.label,
+      ...zone.groups.flatMap((group) => [group.label, ...group.blocks.map(api.farmLocationBlockLabel)]),
+    ]),
+  ]);
+  assert.doesNotMatch(hierarchyLabels.join(" → "), /EST012|EST013|EST025/);
+});
+
+test("legacy Area rows cannot replace canonical blocks.id rows", () => {
+  const model = areaHierarchyHarness().buildFarmAreaHierarchy({
+    ...normalized,
+    blocks: [],
+    legacyAreas: [{ id: "area-index-1", area_code: "56-A02", area_level: "block" }],
+  });
+  assert.deepEqual(Array.from(model.blocks), []);
 });
 
 test("missing map geometry does not remove normalized Blocks from Area Master", () => {
@@ -83,11 +123,31 @@ test("Area Master, Budget, and Planning use the same scoped Block resolver", () 
   const masterEnd = appSource.indexOf("function farmMapProject", masterStart);
   const budgetOptionsStart = appSource.indexOf("function farmBudgetAreaOptions");
   const budgetOptionsEnd = appSource.indexOf("function renderFarmBudgetAreaDropdowns", budgetOptionsStart);
-  assert.match(appSource.slice(budgetStart, budgetEnd), /farmAreaHierarchy\(\)\.blocks/);
-  assert.match(appSource.slice(planningStart, planningEnd), /farmBudgetScopedBlocks\(\)/);
-  assert.match(appSource.slice(masterStart, masterEnd), /farmBudgetScopedBlocks\(\)/);
+  assert.match(appSource.slice(budgetStart, budgetEnd), /farmVisibleAreaBlocks\(\)/);
+  assert.match(appSource.slice(planningStart, planningEnd), /farmVisibleAreaBlocks\(\)/);
+  assert.match(appSource.slice(masterStart, masterEnd), /farmVisibleAreaBlocks\(\)/);
   assert.match(appSource.slice(budgetOptionsStart, budgetOptionsEnd), /const hierarchy = farmAreaHierarchy\(\)/);
   assert.doesNotMatch(appSource.slice(budgetOptionsStart, budgetOptionsEnd), /farmLookup\("plots"|farmLookup\("zones"/);
+});
+
+test("Block consistency assertion compares IDs, not display labels", () => {
+  const api = areaHierarchyHarness();
+  assert.equal(api.assertFarmBlockIdConsistency({
+    areaMaster: ["b-a03", "b-a02", "b-a01"],
+    budget: ["b-a01", "b-a02", "b-a03"],
+    planning: ["b-a03", "b-a02", "b-a01"],
+  }), true);
+  assert.throws(() => api.assertFarmBlockIdConsistency({
+    areaMaster: ["b-a02"], budget: ["same-label-different-id"], planning: ["b-a02"],
+  }), /canonical blocks\.id/);
+});
+
+test("AP Code remains internal metadata and is not a location hierarchy level", () => {
+  const treeStart = appSource.indexOf("function renderFarmBudgetAreaTree");
+  const treeEnd = appSource.indexOf("function farmBudgetAreaOptions", treeStart);
+  const treeSource = appSource.slice(treeStart, treeEnd);
+  assert.doesNotMatch(treeSource, /ap_code|apCode|plotLabel|plotName/);
+  assert.match(appSource, /ap_code:\s*apCode/);
 });
 
 test("Area Master batches normalized tables and keeps legacy areas optional", () => {
