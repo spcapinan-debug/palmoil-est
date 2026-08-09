@@ -34,6 +34,45 @@ function redactOutsideScopeFeature(feature) {
   };
 }
 
+function buildScopedAreaAudit({ result, canonicalBlocks, visibleBlocks, estates, zones }) {
+  const visibleIds = new Set((visibleBlocks || []).map((block) => block.id).filter(Boolean));
+  const blockById = new Map((canonicalBlocks || []).map((block) => [block.id, block]));
+  const estateById = new Map((estates || []).map((estate) => [estate.id, estate]));
+  const zoneById = new Map((zones || []).map((zone) => [zone.id, zone]));
+  const enrichMasterEntry = (entry) => {
+    const block = blockById.get(entry.blockId) || {};
+    const estate = estateById.get(block.estate_id) || {};
+    const zone = zoneById.get(block.zone_id) || {};
+    return {
+      ...entry,
+      estate: estate.estate_name || estate.estate_code || block.estate_id || "",
+      zone: zone.zone_name || zone.zone_code || "ยังไม่ระบุ Zone",
+    };
+  };
+  return {
+    mapWithoutMaster: result.reconciliation.mapWithoutMasterEntries || [],
+    masterWithoutMap: (result.reconciliation.masterWithoutMapEntries || [])
+      .filter((entry) => visibleIds.has(entry.blockId))
+      .map(enrichMasterEntry),
+    reconciliationCandidates: (result.reconciliation.reconciliationCandidates || []).map((entry) => ({
+      ...entry,
+      candidates: (entry.candidates || [])
+        .filter((candidate) => visibleIds.has(candidate.blockId))
+        .map(enrichMasterEntry),
+    })),
+    duplicateMapKeys: result.reconciliation.duplicateMapKeys || [],
+    duplicateMasterKeys: (result.reconciliation.duplicateMasterKeys || []).map((entry) => ({
+      ...entry,
+      blockIds: (entry.blockIds || []).filter((id) => visibleIds.has(id)),
+      blockNames: (entry.blockIds || [])
+        .filter((id) => visibleIds.has(id))
+        .map((id) => blockById.get(id)?.block_name)
+        .filter(Boolean),
+    })).filter((entry) => entry.blockIds.length > 1),
+    geometryConflicts: result.reconciliation.geometryConflicts || [],
+  };
+}
+
 async function handler(req, res) {
   if (req.method === "OPTIONS") return json(res, 200, { ok: true });
   if (req.method !== "GET") return errorResponse(res, new ApiError(405, "METHOD_NOT_ALLOWED", "Method not allowed"));
@@ -50,11 +89,15 @@ async function handler(req, res) {
       roles: ["uat_manager", "uat_supervisor"],
     });
 
-    const [blockResult, mapArtifact] = await Promise.all([
-      rest("blocks?select=*&order=block_name.asc&limit=5000"),
+    const [blockResult, estateResult, zoneResult, mapArtifact] = await Promise.all([
+      rest("blocks?status=eq.active&select=*&order=block_name.asc&limit=5000"),
+      rest("estates?select=id,estate_code,estate_name,status&limit=5000"),
+      rest("zones?select=id,zone_code,zone_name,estate_id,status&limit=5000"),
       Promise.resolve().then(readBlockMapArtifact),
     ]);
     const canonicalBlocks = Array.isArray(blockResult.data) ? blockResult.data : [];
+    const estates = Array.isArray(estateResult.data) ? estateResult.data : [];
+    const zones = Array.isArray(zoneResult.data) ? zoneResult.data : [];
     const result = reconcileFarmAreaMap({
       blocks: canonicalBlocks,
       features: mapArtifact.features,
@@ -64,6 +107,16 @@ async function handler(req, res) {
       .slice()
       .sort((a, b) => String(a.block_name || "").localeCompare(String(b.block_name || ""), "th", { numeric: true }));
     const visibleBlockIds = visibleBlocks.map((block) => block.id).filter(Boolean);
+    const audit = buildScopedAreaAudit({ result, canonicalBlocks, visibleBlocks, estates, zones });
+    const {
+      duplicateMapKeys,
+      duplicateMasterKeys,
+      geometryConflicts,
+      mapWithoutMasterEntries,
+      masterWithoutMapEntries,
+      reconciliationCandidates,
+      ...reconciliation
+    } = result.reconciliation;
 
     return json(res, 200, {
       ok: true,
@@ -79,7 +132,8 @@ async function handler(req, res) {
         firstBlockIds: visibleBlockIds.slice(0, 10),
         lastBlockIds: visibleBlockIds.slice(-10),
       },
-      reconciliation: result.reconciliation,
+      reconciliation,
+      audit,
       map: {
         type: mapArtifact.type,
         source: mapArtifact.source,
@@ -93,4 +147,4 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
-module.exports._test = { readBlockMapArtifact, redactOutsideScopeFeature };
+module.exports._test = { buildScopedAreaAudit, readBlockMapArtifact, redactOutsideScopeFeature };

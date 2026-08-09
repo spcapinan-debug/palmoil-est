@@ -40,6 +40,7 @@ const state = {
   blockMapData: null,
   farmCanonicalAreaRows: [],
   farmAreaMapReconciliation: null,
+  farmAreaMapAudit: null,
   farmAreaMasterLoading: false,
   farmAreaMasterError: "",
   farmBudgetRateData: null,
@@ -644,6 +645,7 @@ function resetFarmAuthenticatedData() {
   state.farmDbRows = {};
   state.farmCanonicalAreaRows = [];
   state.farmAreaMapReconciliation = null;
+  state.farmAreaMapAudit = null;
   state.farmAreaMasterLoading = false;
   state.farmAreaMasterError = "";
   state.farmDbErrors = {};
@@ -4250,6 +4252,7 @@ async function loadFarmAreaMasterData({ force = false } = {}) {
     }
     state.farmCanonicalAreaRows = normalizeFarmDbRows("blocks", payload.visibleBlocks);
     state.farmAreaMapReconciliation = payload.reconciliation || null;
+    state.farmAreaMapAudit = payload.audit || null;
     state.blockMapData = {
       type: payload.map.type || "FeatureCollection",
       source: payload.map.source || {},
@@ -23988,6 +23991,75 @@ function farmAreaMapStatusLabel(status) {
   })[status] || "รอตรวจสอบ";
 }
 
+function renderFarmAreaMapAudit() {
+  const audit = state.farmAreaMapAudit || {};
+  const mapWithoutMaster = Array.isArray(audit.mapWithoutMaster) ? audit.mapWithoutMaster : [];
+  const masterWithoutMap = Array.isArray(audit.masterWithoutMap) ? audit.masterWithoutMap : [];
+  const candidates = (Array.isArray(audit.reconciliationCandidates) ? audit.reconciliationCandidates : [])
+    .filter((entry) => Array.isArray(entry.candidates) && entry.candidates.length);
+  const duplicateMapKeys = Array.isArray(audit.duplicateMapKeys) ? audit.duplicateMapKeys : [];
+  const duplicateMasterKeys = Array.isArray(audit.duplicateMasterKeys) ? audit.duplicateMasterKeys : [];
+  const geometryConflicts = Array.isArray(audit.geometryConflicts) ? audit.geometryConflicts : [];
+  if (!state.farmAreaMapReconciliation && !state.farmAreaMasterError) return "";
+  return `
+    <section class="farm-panel farm-area-reconciliation-audit" data-farm-area-reconciliation-audit>
+      <div class="section-head">
+        <h3>KMZ / Master Reconciliation Audit</h3>
+        <span>Exact normalized block_name only · ไม่มี fuzzy/nearest/AP Code matching</span>
+      </div>
+      <div class="farm-area-audit-summary">
+        <span>Map without Master <strong>${fmt(mapWithoutMaster.length)}</strong></span>
+        <span>Master without Map ใน scope <strong>${fmt(masterWithoutMap.length)}</strong></span>
+        <span>Duplicate Map Keys <strong>${fmt(duplicateMapKeys.length)}</strong></span>
+        <span>Duplicate Master Keys <strong>${fmt(duplicateMasterKeys.length)}</strong></span>
+        <span>Geometry Conflicts <strong>${fmt(geometryConflicts.length)}</strong></span>
+      </div>
+      <details open>
+        <summary>MAP WITHOUT MASTER (${fmt(mapWithoutMaster.length)})</summary>
+        <div class="table-wrap">
+          <table class="mini-table farm-table">
+            <thead><tr><th>Map Key</th><th>Placemark.name</th><th>Source</th><th>Geometry</th></tr></thead>
+            <tbody>${mapWithoutMaster.map((entry) => `
+              <tr data-farm-map-without-master="${esc(entry.mapKey)}">
+                <td><strong>${esc(entry.mapKey || "-")}</strong></td>
+                <td>${esc(entry.placemarkName || "-")}</td>
+                <td>${esc((entry.sourceFiles || []).join(", ") || "-")}</td>
+                <td>${esc(entry.geometryStatus || "-")}</td>
+              </tr>`).join("") || `<tr><td colspan="4">ไม่พบ KMZ ที่ไม่มี Master</td></tr>`}</tbody>
+          </table>
+        </div>
+      </details>
+      <details open>
+        <summary>MASTER WITHOUT MAP — เฉพาะ Block ใน scope (${fmt(masterWithoutMap.length)})</summary>
+        <div class="table-wrap">
+          <table class="mini-table farm-table">
+            <thead><tr><th>Block Name</th><th>Block Code</th><th>AP Code</th><th>Estate</th><th>Zone</th><th>Planting Year</th><th>Block UUID</th></tr></thead>
+            <tbody>${masterWithoutMap.map((entry) => `
+              <tr data-farm-master-without-map="${esc(entry.blockId)}">
+                <td><strong>${esc(entry.blockName || "-")}</strong></td>
+                <td>${esc(entry.blockCode || "-")}</td>
+                <td>${esc(entry.apCode || "-")}</td>
+                <td>${esc(entry.estate || "-")}</td>
+                <td>${esc(entry.zone || "ยังไม่ระบุ Zone")}</td>
+                <td>${esc(entry.plantingYear ?? "-")}</td>
+                <td><code>${esc(entry.blockId || "-")}</code></td>
+              </tr>`).join("") || `<tr><td colspan="7">ไม่พบ Master ที่ไม่มี Map ใน scope นี้</td></tr>`}</tbody>
+          </table>
+        </div>
+      </details>
+      <details>
+        <summary>Reconciliation candidates — audit only (${fmt(candidates.length)})</summary>
+        <div class="farm-area-audit-candidates">
+          ${candidates.map((entry) => `
+            <article>
+              <strong>KMZ: ${esc(entry.placemarkName || entry.mapKey)}</strong>
+              ${(entry.candidates || []).map((candidate) => `<p>DB: ${esc(candidate.blockName)} · Confidence ${esc(candidate.confidence)} · ${esc(candidate.reason)}</p>`).join("")}
+            </article>`).join("") || `<p>ยังไม่มี candidate ที่ผ่านกฎโครงสร้างแบบตรวจสอบได้</p>`}
+        </div>
+      </details>
+    </section>`;
+}
+
 function renderFarmAreaBlockMap() {
   const map = state.blockMapData || {};
   const features = state.farmAreaMapReconciliation && Array.isArray(map.features) ? map.features : [];
@@ -24086,7 +24158,8 @@ function renderFarmAreaBlockMap() {
           ` : ""}
         </aside>
       </div>
-    </section>`;
+    </section>
+    ${renderFarmAreaMapAudit()}`;
 }
 
 function farmAreaGroupDisplay(group) {
