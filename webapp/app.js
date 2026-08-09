@@ -38,6 +38,10 @@ const state = {
   summaryPalmoilAreas: [],
   summaryPalmoilSource: null,
   blockMapData: null,
+  farmCanonicalAreaRows: [],
+  farmAreaMapReconciliation: null,
+  farmAreaMasterLoading: false,
+  farmAreaMasterError: "",
   farmBudgetRateData: null,
   farmSyncMessage: "",
   farmSyncStatus: "",
@@ -279,6 +283,7 @@ const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
 const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_weight.json";
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
+const FARM_AREA_MASTER_API = window.__FARM_AREA_MASTER_API__ || "/api/farm-area-master";
 const FARM_SESSION_API = window.__FARM_SESSION_API__ || "/api/farm-session";
 const FARM_AUTH_API = window.__FARM_AUTH_API__ || "/api/farm-auth";
 const FARM_ACTIONS_API = window.__FARM_ACTIONS_API__ || "/api/farm-actions";
@@ -637,6 +642,10 @@ function resetFarmAuthenticatedData() {
   farmDbTableLoadedAt.clear();
   farmDbTableInflight.clear();
   state.farmDbRows = {};
+  state.farmCanonicalAreaRows = [];
+  state.farmAreaMapReconciliation = null;
+  state.farmAreaMasterLoading = false;
+  state.farmAreaMasterError = "";
   state.farmDbErrors = {};
   state.farmDbTableMeta = {};
   state.workspacePermissions = new Set();
@@ -4229,6 +4238,42 @@ async function loadBlockMapData() {
   };
 }
 
+async function loadFarmAreaMasterData({ force = false } = {}) {
+  state.farmAreaMasterLoading = true;
+  state.farmAreaMasterError = "";
+  if (state.view === "farm-area") render();
+  try {
+    const url = `${FARM_AREA_MASTER_API}?refresh=${force ? "1" : "0"}&t=${Date.now()}`;
+    const { response, payload } = await farmJsonRequest(url, { cache: "no-store" });
+    if (!response.ok || !payload?.ok || !payload.map || !Array.isArray(payload.visibleBlocks)) {
+      throw new Error(farmApiErrorMessage(payload, "Canonical Area Master unavailable"));
+    }
+    state.farmCanonicalAreaRows = normalizeFarmDbRows("blocks", payload.visibleBlocks);
+    state.farmAreaMapReconciliation = payload.reconciliation || null;
+    state.blockMapData = {
+      type: payload.map.type || "FeatureCollection",
+      source: payload.map.source || {},
+      bounds: Array.isArray(payload.map.bounds) ? payload.map.bounds : [],
+      features: Array.isArray(payload.map.features) ? payload.map.features : [],
+    };
+    farmPreviewDiagnostic("area-master-load", {
+      ok: true,
+      canonicalBlocks: payload.reconciliation?.canonicalDbBlocks || 0,
+      visibleBlocks: state.farmCanonicalAreaRows.length,
+      uniqueMapKeys: payload.reconciliation?.uniqueBlockKeys || 0,
+      matchedMaster: payload.reconciliation?.matchedMaster || 0,
+    });
+    return true;
+  } catch (error) {
+    state.farmAreaMasterError = String(error.message || "Canonical Area Master unavailable");
+    farmPreviewDiagnostic("area-master-load", { ok: false, error: state.farmAreaMasterError });
+    return false;
+  } finally {
+    state.farmAreaMasterLoading = false;
+    if (state.view === "farm-area") render();
+  }
+}
+
 function masterDataSignature(payload) {
   const source = payload?.source || {};
   return [source.generatedAt, source.editsUpdatedAt, source.datasetCount, source.rowCount].join("|");
@@ -4443,8 +4488,12 @@ function farmViewTableKeys(view = state.view, extraTables = []) {
 
 async function loadFarmCurrentViewTables({ silent = false, force = false, extraTables = [] } = {}) {
   const tableKeys = farmViewTableKeys(state.view, extraTables);
-  if (!tableKeys.length) return false;
-  return loadFarmTablesFromDatabase({ silent, force, tables: tableKeys });
+  const requests = [];
+  if (tableKeys.length) requests.push(loadFarmTablesFromDatabase({ silent, force, tables: tableKeys }));
+  if (state.view === "farm-area") requests.push(loadFarmAreaMasterData({ force }));
+  if (!requests.length) return false;
+  const results = await Promise.all(requests);
+  return results.some(Boolean);
 }
 
 function farmFilterFreshTableKeys(tableKeys = [], force = false) {
@@ -22677,7 +22726,7 @@ function farmZoneDisplayName(value = "") {
   const key = farmAreaPresentationKey(raw);
   if (["ตอนบน", "upper"].includes(key)) return "Upper";
   if (["ตอนล่าง", "lower"].includes(key)) return "Lower";
-  return raw || "ไม่ระบุโซน";
+  return raw || "ยังไม่ระบุ Zone";
 }
 
 function farmBlockGroupCode(block = {}, plotGroup = {}) {
@@ -22749,11 +22798,11 @@ function buildFarmLocationTree(blocks = []) {
   });
 }
 
-function assertFarmBlockIdConsistency({ areaMaster = [], budget = [], planning = [] } = {}) {
+function assertFarmBlockIdConsistency({ visible = null, areaMaster = [], budget = [], planning = [] } = {}) {
   const signature = (ids) => [...new Set((ids || []).filter(Boolean))].sort().join("|");
-  const areaSignature = signature(areaMaster);
-  if (areaSignature !== signature(budget) || areaSignature !== signature(planning)) {
-    throw new Error("Area Master, Budget, and Planning must expose identical canonical blocks.id values");
+  const visibleSignature = signature(visible == null ? areaMaster : visible);
+  if (visibleSignature !== signature(budget) || visibleSignature !== signature(planning)) {
+    throw new Error("Visible Area, Budget, and Planning must expose identical canonical blocks.id values");
   }
   return true;
 }
@@ -22797,7 +22846,7 @@ function buildFarmAreaHierarchy({
     const blockCode = block.block_code || legacy.block_code || legacy.area_code || legacy.terrain_code || block.id;
     const blockName = block.block_name || legacy.block_name || legacy.area_name || blockCode;
     const estateName = estate?.estate_name || estate?.estate_code || legacy.estate_name || "ไม่ระบุพื้นที่";
-    const zoneName = zone?.zone_name || zone?.zone_code || legacy.zone_name || "ไม่ระบุโซน";
+    const zoneName = zone?.zone_name || zone?.zone_code || legacy.zone_name || "ยังไม่ระบุ Zone";
     const plotCode = plot?.plot_code || legacy.plot_code || "";
     const plotName = plot?.plot_name || legacy.plot_name || "";
     const plotLabel = plotCode || plotName || "ไม่ระบุ Plot / AP Code";
@@ -22870,6 +22919,21 @@ function farmAreaHierarchy() {
   });
 }
 
+function farmCanonicalAreaHierarchy() {
+  return buildFarmAreaHierarchy({
+    estates: farmRowsByKey("estates"),
+    zones: farmRowsByKey("zones"),
+    plotGroups: farmRowsByKey("plot_groups"),
+    plots: farmRowsByKey("plots"),
+    blocks: state.farmCanonicalAreaRows,
+    legacyAreas: [],
+  });
+}
+
+function farmCanonicalAreaBlocks() {
+  return farmBudgetUniqueBlockRows(farmCanonicalAreaHierarchy().blocks);
+}
+
 function farmBudgetScopedBlocks() {
   return farmVisibleAreaBlocks();
 }
@@ -22880,7 +22944,7 @@ function farmVisibleAreaBlocks() {
 
 function farmAssertVisibleBlockConsistency() {
   return assertFarmBlockIdConsistency({
-    areaMaster: farmAreaBlockRows().map((block) => block.id),
+    visible: farmVisibleAreaBlocks().map((block) => block.id),
     budget: farmBudgetScopedBlocks().map((block) => block.id),
     planning: farmPlanningBlockRows().map((block) => block.id),
   });
@@ -23894,7 +23958,7 @@ function farmBlockMapKeyVariants(value) {
 }
 
 function farmAreaBlockRows() {
-  return farmVisibleAreaBlocks();
+  return farmCanonicalAreaBlocks();
 }
 
 function farmMapProject(point, bounds, width, height) {
@@ -23914,73 +23978,88 @@ function farmMapBlockColor(row, index) {
   return palette[index % palette.length];
 }
 
+function farmAreaMapStatusLabel(status) {
+  return ({
+    matched: "Matched",
+    map_without_master: "KMZ ไม่มี Master",
+    master_without_map: "Master ไม่มี KMZ",
+    map_conflict: "Map conflict",
+    master_conflict: "Master key conflict",
+  })[status] || "รอตรวจสอบ";
+}
+
 function renderFarmAreaBlockMap() {
   const map = state.blockMapData || {};
-  const features = Array.isArray(map.features) ? map.features : [];
+  const features = state.farmAreaMapReconciliation && Array.isArray(map.features) ? map.features : [];
   const bounds = Array.isArray(map.bounds) && map.bounds.length === 4 ? map.bounds : null;
   const areaRows = farmAreaBlockRows();
-  const areaByCode = new Map();
-  for (const row of areaRows) {
-    const rowKeys = [row.block_code, row.block_name, row.area_code, row.area_name, row.terrain_code]
-      .flatMap(farmBlockMapKeyVariants);
-    for (const key of rowKeys) {
-      if (!areaByCode.has(key)) areaByCode.set(key, row);
-    }
-  }
+  const areaById = new Map(areaRows.map((row) => [row.id, row]));
+  const stats = state.farmAreaMapReconciliation || {};
   const width = 1000;
   const height = 680;
-  const matched = [];
-  const unmatched = [];
+  const matchedInScope = features.filter((feature) => feature?.properties?.match_status === "matched" && feature?.properties?.in_scope).length;
+  const matchedOutsideScope = features.filter((feature) => feature?.properties?.match_status === "matched" && !feature?.properties?.in_scope).length;
   const polygons = features.map((feature, index) => {
-    const code = feature?.properties?.block_code || feature?.properties?.name || "";
-    const area = farmBlockMapKeyVariants(code).map((key) => areaByCode.get(key)).find(Boolean);
-    if (area) matched.push(code);
-    else unmatched.push(code);
+    const name = feature?.properties?.name || feature?.properties?.map_key || "";
+    const status = feature?.properties?.match_status || "unknown";
+    const inScope = Boolean(feature?.properties?.in_scope);
+    const area = inScope ? areaById.get(feature?.properties?.block_id) : null;
     const ring = feature?.geometry?.coordinates?.[0] || [];
     if (!bounds || ring.length < 3) return "";
     const points = ring.map((point) => farmMapProject(point, bounds, width, height)).join(" ");
-    const color = farmMapBlockColor(area, index);
+    const color = status === "matched" && inScope ? farmMapBlockColor(area, index)
+      : status === "matched" ? "#94a3b8"
+        : status.includes("conflict") ? "#f59e0b" : "#ef4444";
     const selected = area?.id && state.farmDetailId === area.id;
-    const meta = area
-      ? `${area.zoneDisplay || area.zoneName || "-"} · ${area.blockGroupCode || "-"} · ${fmt(n(area.area_rai))} ไร่ · ${fmt(n(area.tree_count))} ต้น`
-      : "ยังไม่พบในตารางพื้นที่";
+    const statusClass = status === "matched" ? (inScope ? " in-scope" : " outside-scope")
+      : status.includes("conflict") ? " map-conflict" : " map-without-master";
+    const meta = status === "matched"
+      ? (inScope
+        ? `${area?.zoneDisplay || "ยังไม่ระบุ Zone"} · ${area?.blockGroupCode || "-"} · ${fmt(n(area?.area_rai))} ไร่`
+        : "Matched Master · นอกขอบเขตงานของฉัน")
+      : farmAreaMapStatusLabel(status);
     return `
       <polygon
-        class="farm-block-polygon${selected ? " selected" : ""}${area ? "" : " unmatched"}"
+        class="farm-block-polygon${selected ? " selected" : ""}${statusClass}"
         points="${points}"
         fill="${color}"
         ${area ? `data-farm-view="${esc(area.id)}"` : ""}
         tabindex="${area ? "0" : "-1"}"
         role="${area ? "button" : "img"}"
-        aria-label="${esc(`${code} ${meta}`)}">
-        <title>${esc(`${code} | ${meta}`)}</title>
+        aria-label="${esc(`${name} ${meta}`)}">
+        <title>${esc(`${name} | ${meta}`)}</title>
       </polygon>`;
   }).join("");
   const selectedArea = areaRows.find((row) => row.id === state.farmDetailId);
   const selectedFeature = selectedArea
-    ? features.find((feature) => {
-      const featureKeys = new Set(farmBlockMapKeyVariants(feature?.properties?.block_code || feature?.properties?.name));
-      return [selectedArea.block_code, selectedArea.block_name, selectedArea.area_code, selectedArea.area_name, selectedArea.terrain_code]
-        .flatMap(farmBlockMapKeyVariants)
-        .some((key) => featureKeys.has(key));
-    })
+    ? features.find((feature) => feature?.properties?.block_id === selectedArea.id)
     : null;
-  const selectedCode = selectedArea ? (selectedArea.block_code || selectedArea.area_code || selectedArea.block_name || selectedArea.area_name || "-") : "-";
-  const selectedBlockName = selectedArea?.block_name || selectedArea?.area_name || selectedFeature?.properties?.name || selectedCode;
+  const selectedCode = selectedArea?.block_name || selectedFeature?.properties?.name || "-";
   const selectedDetails = selectedArea ? [
     ["Estate", selectedArea.estateDisplay || selectedArea.estateName || selectedArea.estate_name || "-"],
-    ["โซน", selectedArea.zoneDisplay || selectedArea.zoneName || selectedArea.zone_name || "-"],
-    ["กลุ่ม Block", selectedArea.blockGroupCode || "-"],
-    ["ขนาดพื้นที่", selectedArea.area_rai ? `${fmt(n(selectedArea.area_rai))} ไร่` : "-"],
+    ["Zone", selectedArea.zoneDisplay || selectedArea.zoneName || selectedArea.zone_name || "ยังไม่ระบุ Zone"],
+    ["Block Group", selectedArea.blockGroupCode || "-"],
+    ["พื้นที่", selectedArea.area_rai ? `${fmt(n(selectedArea.area_rai))} ไร่` : "-"],
     ["จำนวนต้น", selectedArea.tree_count ? `${fmt(n(selectedArea.tree_count))} ต้น` : "-"],
     ["AP Code", selectedArea.ap_code || "-"],
     ["RSPO", selectedArea.rspo_status || "-"],
+    ["Map Status", farmAreaMapStatusLabel(selectedArea.map_status)],
   ] : [];
+  const emptyMessage = state.farmAreaMasterLoading
+    ? "กำลังตรวจสอบ Canonical Area Master และ KMZ..."
+    : state.farmAreaMasterError || "ยังไม่มีข้อมูลขอบเขตแผนที่ Block";
   return `
     <section class="farm-panel farm-area-map-panel">
       <div class="section-head">
-        <h3>แผนที่ Block จาก SPC-BLOCK</h3>
-        <span>${fmt(features.length)} block จาก KMZ · จับคู่ข้อมูลพื้นที่ ${fmt(matched.length)} block</span>
+        <h3>สถานะข้อมูลแผนที่ / KMZ</h3>
+        <span>Raw ${fmt(stats.rawPlacemarks || 0)} · Unique ${fmt(stats.uniqueBlockKeys || features.length)} · Duplicate ${fmt(stats.duplicatePlacemarks || 0)}</span>
+      </div>
+      <div class="farm-area-map-status-cards">
+        <article><span>Polygon ใน KMZ</span><strong>${fmt(stats.uniqueBlockKeys || features.length)}</strong><small>หลัง normalize และ dedupe</small></article>
+        <article><span>KMZ matched to Master</span><strong>${fmt(stats.matchedMaster || 0)}</strong><small>ใน scope ${fmt(matchedInScope)} · นอก scope ${fmt(matchedOutsideScope)}</small></article>
+        <article><span>KMZ ไม่มี Master</span><strong>${fmt(stats.mapWithoutMaster || 0)}</strong><small>ตรวจด้วย normalized blocks.block_name</small></article>
+        <article><span>Master ไม่มี KMZ</span><strong>${fmt(stats.masterWithoutMap || 0)}</strong><small>Block ยังอยู่ใน Master ตามปกติ</small></article>
+        <article><span>Map conflicts</span><strong>${fmt(stats.mapConflicts || 0)}</strong><small>geometry + duplicate master key</small></article>
       </div>
       <div class="farm-area-map-layout">
         <div class="farm-area-map-canvas">
@@ -23989,16 +24068,16 @@ function renderFarmAreaBlockMap() {
               <rect class="farm-map-bg" x="0" y="0" width="${width}" height="${height}" rx="18"></rect>
               ${polygons}
             </svg>
-          ` : `<div class="farm-map-empty">ยังไม่มีข้อมูลแผนที่ Block</div>`}
+          ` : `<div class="farm-map-empty">${esc(emptyMessage)}</div>`}
         </div>
         <aside class="farm-area-map-side">
-          <article><span>Block ในแผนที่</span><strong>${fmt(features.length)}</strong><small>${esc(map.source?.file || "SPC-BLOCK.kmz")}</small></article>
-          <article><span>จับคู่กับข้อมูลพื้นที่</span><strong>${fmt(matched.length)}</strong><small>จาก Area Master ตาราง blocks</small></article>
-          <article><span>ยังไม่จับคู่</span><strong>${fmt(unmatched.length)}</strong><small>${esc(unmatched.slice(0, 6).join(", ") || "-")}</small></article>
+          <article><span>Canonical DB Blocks</span><strong>${fmt(stats.canonicalDbBlocks || 0)}</strong><small>server-side master reconciliation</small></article>
+          <article><span>Matched + in my scope</span><strong>${fmt(matchedInScope)}</strong><small>เปิดรายละเอียด Block ได้</small></article>
+          <article><span>Matched + outside my scope</span><strong>${fmt(matchedOutsideScope)}</strong><small>ไม่ใช่ unmatched และไม่เปิดเผย UUID</small></article>
           <article class="farm-area-map-selected">
             <span>Block ที่เลือก</span>
             <strong>${esc(selectedCode)}</strong>
-            <small>${esc(selectedArea ? selectedBlockName : "กด Block บนแผนที่เพื่อดูรายละเอียด")}</small>
+            <small>${esc(selectedArea ? farmAreaMapStatusLabel(selectedArea.map_status) : "เลือกได้เฉพาะ Block ใน scope")}</small>
           </article>
           ${selectedDetails.length ? `
             <div class="farm-area-map-detail">
@@ -24019,8 +24098,8 @@ function farmAreaBlockDisplay(row) {
 }
 
 function renderFarmAreaBoard() {
-  const hierarchy = farmAreaHierarchy();
-  const groupTable = farmTableByKey("plot_groups");
+  farmAssertVisibleBlockConsistency();
+  const hierarchy = farmCanonicalAreaHierarchy();
   const query = state.farmFilters.query.trim().toLowerCase();
   const statusOk = (row) => state.farmFilters.status === "all" || String(row.status || "").toLowerCase() === state.farmFilters.status;
   const textOk = (row) => !query || Object.values(row).join(" ").toLowerCase().includes(query);
@@ -24031,70 +24110,35 @@ function renderFarmAreaBoard() {
       || String(a.blockGroupCode || "").localeCompare(String(b.blockGroupCode || ""), "th", { numeric: true })
       || String(a.blockName || a.blockCode || "").localeCompare(String(b.blockName || b.blockCode || ""), "th", { numeric: true }));
   const allAreas = hierarchy.blocks;
-  const allGroups = farmRows(groupTable);
-  const groups = allGroups
-    .filter((row) => statusOk(row) && textOk(row))
-    .sort((a, b) => String(a.group_code || "").localeCompare(String(b.group_code || ""), "th", { numeric: true }));
-  const derivedGroups = new Map();
-  for (const area of hierarchy.hasPlotGroups ? areas : []) {
-    const key = String(area.plotGroupId || "").trim();
-    if (!key) continue;
-    if (!derivedGroups.has(key)) {
-      const match = allGroups.find((group) => [group.id, group.group_code, group.group_name].map(String).includes(key));
-      derivedGroups.set(key, {
-        id: match?.id || "",
-        group_code: match?.group_code || key,
-        group_name: match?.group_name || key,
-        group_type: match?.group_type || area.zone_name || "-",
-        status: match?.status || "active",
-        _derived: !match,
-        count: 0,
-        area: 0,
-        trees: 0,
-      });
-    }
-    const item = derivedGroups.get(key);
-    item.count += 1;
-    item.area += n(area.area_rai);
-    item.trees += n(area.tree_count);
-  }
-  for (const group of groups) {
-    const key = String(group.group_code || group.id || "").trim();
-    if (!key || derivedGroups.has(key)) continue;
-    derivedGroups.set(key, {
-      ...group,
-      count: areas.filter((area) => String(area.plotGroupId || "") === String(group.id)).length,
-      area: 0,
-      trees: 0,
-    });
-  }
-  const groupRows = [...derivedGroups.values()].map((group) => `
-    <tr ${group.id ? `data-farm-area-group-row="${esc(group.id)}"` : ""}>
-      <td><strong>${esc(group.group_code || "-")}</strong></td>
-      <td>${esc(group.group_name || "-")}</td>
-      <td>${esc(group.group_type || "-")}</td>
-      <td class="num">${fmt(group.count || 0)}</td>
-      <td class="num">${fmt(group.area || 0)}</td>
-      <td class="num">${fmt(group.trees || 0)}</td>
-      <td>${esc(farmTranslateValue(group.status) || "-")}</td>
-    </tr>`).join("");
+  const totalArea = allAreas.reduce((sum, area) => sum + n(area.area_rai), 0);
+  const totalTrees = allAreas.reduce((sum, area) => sum + n(area.tree_count), 0);
+  const rspoCount = allAreas.filter((area) => String(area.rspo_status || "").trim().toUpperCase() === "RSPO").length;
+  const nonRspoCount = allAreas.filter((area) => String(area.rspo_status || "").trim().toUpperCase() === "NON-RSPO").length;
   const areaRows = areas.map((area) => `
-    <tr>
-      <td>${esc(area.estateDisplay || area.estateName || "-")}</td>
-      <td>${esc(area.zoneDisplay || area.zoneName || "-")}</td>
-      <td>${esc(area.blockGroupCode || "-")}</td>
-      <td><strong>${esc(farmAreaBlockDisplay(area))}</strong><small>${esc(area.blockCode && area.blockCode !== area.blockName ? `รหัส Block: ${area.blockCode}` : "")}</small></td>
+    <tr data-farm-area-block-row="${esc(area.id)}">
+      <td><strong>${esc(area.blockName || "-")}</strong></td>
+      <td>${esc(area.blockCode || "-")}</td>
       <td>${esc(area.ap_code || area.AP_code || "-")}</td>
-      <td class="num">${fmt(n(area.area_rai))}</td>
+      <td>${esc(area.estateDisplay || area.estateName || "-")}</td>
+      <td>${esc(area.zoneDisplay || area.zoneName || "ยังไม่ระบุ Zone")}</td>
+      <td>${esc(area.blockGroupCode || "-")}</td>
       <td>${esc(area.planting_year || "-")}</td>
+      <td class="num">${fmt(n(area.area_rai))}</td>
       <td class="num">${fmt(n(area.tree_count))}</td>
       <td>${esc(area.rspo_status || "-")}</td>
-      <td>${esc(farmTranslateValue(area.status) || "-")}</td>
+      <td><span class="farm-map-status status-${esc(area.map_status || "unknown")}">${esc(farmAreaMapStatusLabel(area.map_status))}</span></td>
     </tr>`).join("");
-  const mappedCount = allAreas.filter((area) => Boolean(area.map_boundary)).length;
-  const missingBoundaryCount = Math.max(allAreas.length - mappedCount, 0);
+  const visibleCount = farmVisibleAreaBlocks().length;
+  const budgetCount = farmBudgetScopedBlocks().length;
+  const planningCount = farmPlanningBlockRows().length;
+  const loadingNotice = state.farmAreaMasterLoading
+    ? `<div class="farm-sync-status">กำลังโหลด Canonical Area Master...</div>`
+    : state.farmAreaMasterError
+      ? `<div class="farm-sync-status error">${esc(state.farmAreaMasterError)}</div>`
+      : "";
   return `
     <section class="farm-area-board">
+      ${loadingNotice}
       <div class="farm-activity-toolbar">
         <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหา Block / Zone / กลุ่ม / AP Code"></label>
         <label>สถานะ
@@ -24109,55 +24153,21 @@ function renderFarmAreaBoard() {
         </label>
       </div>
       <section class="farm-hero farm-area-master-kpis">
-        <article><span>Block ในสิทธิ์</span><strong>${fmt(allAreas.length)}</strong><small>ข้อมูล Area Master จากตาราง blocks</small></article>
-        <article><span>Block ที่มี Map Boundary</span><strong>${fmt(mappedCount)}</strong><small>มีขอบเขตแผนที่ในฐานข้อมูล</small></article>
-        <article><span>ยังไม่มี Map Boundary</span><strong>${fmt(missingBoundaryCount)}</strong><small>ยังแสดงในรายการ Area Master</small></article>
+        <article><span>จำนวน Block ใน Master</span><strong>${fmt(allAreas.length)}</strong><small>เฉพาะ canonical rows ที่ actor มีสิทธิ์</small></article>
+        <article><span>จำนวนพื้นที่</span><strong>${fmt(totalArea)}</strong><small>ไร่ จาก Block Master</small></article>
+        <article><span>จำนวนต้น</span><strong>${fmt(totalTrees)}</strong><small>ต้น จาก Block Master</small></article>
+        <article><span>RSPO</span><strong>${fmt(rspoCount)}</strong><small>Block</small></article>
+        <article><span>Non-RSPO</span><strong>${fmt(nonRspoCount)}</strong><small>Block</small></article>
       </section>
-      <div class="farm-area-split">
-        ${hierarchy.hasPlotGroups ? `<article class="farm-panel farm-activity-table-card">
-          <div class="section-head">
-            <h3>ตารางกลุ่มแปลง</h3>
-            <button type="button" data-farm-area-add="plot_groups">เพิ่มกลุ่มแปลง</button>
-          </div>
-          <div class="table-wrap farm-area-table-wrap">
-            <table class="mini-table farm-table">
-              <thead><tr><th>รหัส</th><th>ชื่อกลุ่ม</th><th>ประเภท</th><th>Block</th><th>ไร่</th><th>ต้น</th><th>สถานะ</th></tr></thead>
-              <tbody>${groupRows || `<tr><td colspan="7">ไม่พบกลุ่มแปลง</td></tr>`}</tbody>
-            </table>
-          </div>
-        </article>` : ""}
-        <article class="farm-panel farm-activity-table-card">
-          <div class="section-head">
-            <h3>ตาราง Block</h3>
-            <button type="button" data-farm-area-add="blocks">เพิ่ม Block</button>
-          </div>
-          <div class="table-wrap farm-area-table-wrap">
-            <table class="mini-table farm-table">
-              <thead><tr><th>Estate</th><th>Zone</th><th>Block Group</th><th>Block</th><th>AP Code</th><th>ไร่</th><th>ปีปลูก</th><th>ต้น</th><th>RSPO</th><th>สถานะ</th></tr></thead>
-              <tbody>${areaRows || `<tr><td colspan="10">ไม่พบข้อมูล Block</td></tr>`}</tbody>
-            </table>
-          </div>
-        </article>
-      </div>
       <section class="farm-panel">
-        <div class="section-head"><h3>รายการ Area Master ตามโครงสร้างมาตรฐาน</h3><span>Estate → Zone → Block Group → Block Name</span></div>
+        <div class="section-head">
+          <h3>Area Master</h3>
+          <span>Canonical ${fmt(allAreas.length)} · Visible ${fmt(visibleCount)} · Budget ${fmt(budgetCount)} · Planning ${fmt(planningCount)}</span>
+        </div>
         <div class="table-wrap farm-area-bottom-wrap">
           <table class="mini-table farm-table">
-            <thead><tr><th>Estate</th><th>Zone</th><th>Block Group</th><th>รหัส Block</th><th>ชื่อ Block</th><th>AP Code</th><th>ไร่</th><th>ปีปลูก</th><th>ต้น</th><th>RSPO</th><th>สถานะ</th></tr></thead>
-            <tbody>${areas.map((area) => `
-              <tr>
-                <td>${esc(area.estateDisplay || area.estateName || "-")}</td>
-                <td>${esc(area.zoneDisplay || area.zoneName || "-")}</td>
-                <td>${esc(area.blockGroupCode || "-")}</td>
-                <td><strong>${esc(area.blockCode || "-")}</strong></td>
-                <td>${esc(area.blockName || "-")}</td>
-                <td>${esc(area.ap_code || area.AP_code || "-")}</td>
-                <td class="num">${fmt(n(area.area_rai))}</td>
-                <td>${esc(area.planting_year || "-")}</td>
-                <td class="num">${fmt(n(area.tree_count))}</td>
-                <td>${esc(area.rspo_status || "-")}</td>
-                <td>${esc(farmTranslateValue(area.status) || "-")}</td>
-              </tr>`).join("") || `<tr><td colspan="11">ไม่พบรายการ</td></tr>`}</tbody>
+            <thead><tr><th>Block Name</th><th>Block Code</th><th>AP Code</th><th>Estate</th><th>Zone</th><th>Block Group</th><th>Planting Year</th><th>Area Rai</th><th>Tree Count</th><th>RSPO</th><th>Map Status</th></tr></thead>
+            <tbody>${areaRows || `<tr><td colspan="11">ไม่พบรายการ Area Master ในสิทธิ์</td></tr>`}</tbody>
           </table>
         </div>
       </section>
@@ -26264,10 +26274,7 @@ async function init() {
     // Paint the shell immediately; the database response can fill the page
     // afterward without making the route look frozen on a cold load.
     render();
-    const priorityFarmTables = farmDatabaseTablesForView(state.view);
-    if (priorityFarmTables.length) {
-      await loadFarmTablesFromDatabase({ silent: false, tables: priorityFarmTables });
-    }
+    await loadFarmCurrentViewTables({ silent: false });
   } else {
     const startupLoads = await Promise.allSettled([
       loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(),
@@ -27340,8 +27347,7 @@ async function init() {
       return;
     }
     if (e.target.closest("[data-farm-db-refresh]")) {
-      const viewTables = farmDatabaseTablesForView(state.view);
-      loadFarmTablesFromDatabase({ silent: true, force: true, tables: viewTables.length ? viewTables : null });
+      loadFarmCurrentViewTables({ silent: true, force: true });
       return;
     }
     if (e.target.closest("[data-farm-budget-sync]")) {

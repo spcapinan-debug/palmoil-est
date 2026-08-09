@@ -1,6 +1,7 @@
 const {
   ADMIN_ROLES,
   ApiError,
+  actorCanAccessBlock,
   actorIsUat,
   audit,
   authenticate,
@@ -440,18 +441,6 @@ function databaseBlockPlantingYear(block = {}) {
   if (!shortYear) return 0;
   const year = 2500 + Number(shortYear);
   return year >= 2450 && year <= new Date().getFullYear() + 544 ? year : 0;
-}
-
-function actorCanAccessBlock(actor, block) {
-  if ([...actor.roles].some((role) => ADMIN_ROLES.has(role))) return true;
-  return actor.scopes.some((scope) => {
-    if (["all", "global"].includes(String(scope.scope_type || "").toLowerCase())) return true;
-    if (scope.block_id) return scope.block_id === block.id;
-    if (scope.plot_id) return scope.plot_id === block.plot_id;
-    if (scope.zone_id) return scope.zone_id === block.zone_id;
-    if (scope.estate_id) return scope.estate_id === block.estate_id;
-    return false;
-  });
 }
 
 async function validateBudgetRateBlockRows(actor, rows, selectedPlantingYears = [], selectedBlockIds = []) {

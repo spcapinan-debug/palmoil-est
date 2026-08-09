@@ -17,7 +17,7 @@ function areaHierarchyHarness() {
   const sandbox = {};
   vm.runInNewContext(`${appSource.slice(keyStart, keyEnd)}\n${appSource.slice(hierarchyStart, hierarchyEnd)}\nresult = {
     buildFarmAreaHierarchy, buildFarmLocationTree, farmLocationBlockLabel,
-    assertFarmBlockIdConsistency,
+    assertFarmBlockIdConsistency, farmZoneDisplayName,
   };`, sandbox);
   return sandbox.result;
 }
@@ -114,7 +114,7 @@ test("missing map geometry does not remove normalized Blocks from Area Master", 
   assert.deepEqual(Array.from(model.blocks, (block) => block.id), ["b-a03", "b-a02", "b-a01"]);
 });
 
-test("Area Master, Budget, and Planning use the same scoped Block resolver", () => {
+test("Area Master uses canonical Blocks while Budget and Planning share the scoped resolver", () => {
   const budgetStart = appSource.indexOf("function farmBudgetScopedBlocks");
   const budgetEnd = appSource.indexOf("function farmBudgetBlockHierarchy", budgetStart);
   const planningStart = appSource.indexOf("function farmPlanningBlockRows");
@@ -125,7 +125,7 @@ test("Area Master, Budget, and Planning use the same scoped Block resolver", () 
   const budgetOptionsEnd = appSource.indexOf("function renderFarmBudgetAreaDropdowns", budgetOptionsStart);
   assert.match(appSource.slice(budgetStart, budgetEnd), /farmVisibleAreaBlocks\(\)/);
   assert.match(appSource.slice(planningStart, planningEnd), /farmVisibleAreaBlocks\(\)/);
-  assert.match(appSource.slice(masterStart, masterEnd), /farmVisibleAreaBlocks\(\)/);
+  assert.match(appSource.slice(masterStart, masterEnd), /farmCanonicalAreaBlocks\(\)/);
   assert.match(appSource.slice(budgetOptionsStart, budgetOptionsEnd), /const hierarchy = farmAreaHierarchy\(\)/);
   assert.doesNotMatch(appSource.slice(budgetOptionsStart, budgetOptionsEnd), /farmLookup\("plots"|farmLookup\("zones"/);
 });
@@ -140,6 +140,20 @@ test("Block consistency assertion compares IDs, not display labels", () => {
   assert.throws(() => api.assertFarmBlockIdConsistency({
     areaMaster: ["b-a02"], budget: ["same-label-different-id"], planning: ["b-a02"],
   }), /canonical blocks\.id/);
+});
+
+test("NR1 and NR2 remain explicitly unassigned to a Zone", () => {
+  const api = areaHierarchyHarness();
+  const model = api.buildFarmAreaHierarchy({
+    estates: normalized.estates,
+    zones: normalized.zones,
+    blocks: [
+      { id: "nr-1", estate_id: "estate-1", block_code: "NR1", block_name: "SB170867", ap_code: "EST043", status: "active" },
+      { id: "nr-2", estate_id: "estate-1", block_code: "NR2", block_name: "SB270766", ap_code: "EST044", status: "active" },
+    ],
+  });
+  assert.deepEqual(Array.from(model.blocks, (block) => block.zoneDisplay), ["ยังไม่ระบุ Zone", "ยังไม่ระบุ Zone"]);
+  assert.equal(api.farmZoneDisplayName(""), "ยังไม่ระบุ Zone");
 });
 
 test("AP Code remains internal metadata and is not a location hierarchy level", () => {
@@ -168,9 +182,9 @@ test("Area Master separates Block inventory KPIs from map geometry", () => {
   const start = appSource.indexOf("function renderFarmAreaBoard");
   const end = appSource.indexOf("function farmActivityGroupLabel", start);
   const board = appSource.slice(start, end);
-  assert.match(board, /Block ในสิทธิ์/);
-  assert.match(board, /Block ที่มี Map Boundary/);
-  assert.match(board, /ยังไม่มี Map Boundary/);
+  assert.match(board, /จำนวน Block ใน Master/);
+  assert.match(board, /Map Status/);
+  assert.match(board, /Canonical \$\{fmt\(allAreas\.length\)\}/);
   assert.match(board, /const allAreas = hierarchy\.blocks/);
-  assert.match(board, /Boolean\(area\.map_boundary\)/);
+  assert.doesNotMatch(board, /map_boundary/);
 });
