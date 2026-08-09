@@ -17073,6 +17073,7 @@ details.farm-survey-score-section[open] > summary::after {
     zoom: 1;
   }
 
+  .actions button,
   button,
   input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
   select,
