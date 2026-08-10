@@ -98,13 +98,13 @@ test("Budget and Planning render the same shared material tree", () => {
   assert.match(appSource.slice(rendererStart, rendererEnd), /groupMaterialsByCategory\(materials, categories, picks\.query \|\| ""\)/);
 });
 
-test("Planning explains the derived Block scope without hardcoding UAT Blocks", () => {
+test("Planning explains the full Area catalog without hardcoding Block counts", () => {
   const start = appSource.indexOf("function renderFarmWorkPlanner");
   const end = appSource.indexOf("async function createFarmWorkPlanFromSelection", start);
   const planner = appSource.slice(start, end);
-  assert.match(planner, /const scopedBlockCount = farmBudgetScopedBlocks\(\)\.length/);
-  assert.match(planner, /แสดงพื้นที่ตามสิทธิ์ผู้ใช้งาน: \$\{fmt\(scopedBlockCount\)\} Block/);
-  assert.doesNotMatch(planner, /A01|A02|A03|scopedBlockCount\s*=\s*3/);
+  assert.match(planner, /const catalogBlockCount = farmAreaCatalogBlocks\(\)\.length/);
+  assert.match(planner, /ข้อมูลพื้นที่ทั้งหมด: \$\{fmt\(catalogBlockCount\)\} Block/);
+  assert.doesNotMatch(planner, /A01|A02|A03|catalogBlockCount\s*=\s*103/);
 });
 
 test("scoped and full-scope roles remain data-driven", () => {

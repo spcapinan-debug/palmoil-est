@@ -4247,10 +4247,10 @@ async function loadFarmAreaMasterData({ force = false } = {}) {
   try {
     const url = `${FARM_AREA_MASTER_API}?refresh=${force ? "1" : "0"}&t=${Date.now()}`;
     const { response, payload } = await farmJsonRequest(url, { cache: "no-store" });
-    if (!response.ok || !payload?.ok || !payload.map || !Array.isArray(payload.visibleBlocks)) {
+    if (!response.ok || !payload?.ok || !payload.map || !Array.isArray(payload.catalogBlocks)) {
       throw new Error(farmApiErrorMessage(payload, "Canonical Area Master unavailable"));
     }
-    state.farmCanonicalAreaRows = normalizeFarmDbRows("blocks", payload.visibleBlocks);
+    state.farmCanonicalAreaRows = normalizeFarmDbRows("blocks", payload.catalogBlocks);
     state.farmAreaMapReconciliation = payload.reconciliation || null;
     state.farmAreaMapAudit = payload.audit || null;
     state.blockMapData = {
@@ -4262,7 +4262,7 @@ async function loadFarmAreaMasterData({ force = false } = {}) {
     farmPreviewDiagnostic("area-master-load", {
       ok: true,
       canonicalBlocks: payload.reconciliation?.canonicalDbBlocks || 0,
-      visibleBlocks: state.farmCanonicalAreaRows.length,
+      catalogBlocks: state.farmCanonicalAreaRows.length,
       uniqueMapKeys: payload.reconciliation?.uniqueBlockKeys || 0,
       matchedMaster: payload.reconciliation?.matchedMaster || 0,
     });
@@ -11798,6 +11798,20 @@ function farmCan(action) {
   return (FARM_ROLE_PERMISSIONS[state.farmFilters.role] || FARM_ROLE_PERMISSIONS.viewer).includes(action);
 }
 
+function farmHasWorkspacePermission(permission) {
+  if ([...state.workspaceRoles].some((role) => ["admin", "super_admin"].includes(String(role).toLowerCase()))) return true;
+  return state.workspacePermissions.has(permission);
+}
+
+function farmCanManageBudget() {
+  return farmHasWorkspacePermission("budget.rate_rule.manage");
+}
+
+function farmCanCreatePlanning() {
+  return farmHasWorkspacePermission("farm.plan.create")
+    && farmHasWorkspacePermission("farm.work_order.create");
+}
+
 function farmFieldKey(field) {
   return Array.isArray(field) ? field[0] : field.key;
 }
@@ -14852,7 +14866,7 @@ function farmEnrichPlanningBlock(block = {}) {
 }
 
 function farmPlanningBlockRows() {
-  return farmVisibleAreaBlocks().map(farmEnrichPlanningBlock);
+  return farmAreaCatalogBlocks().map(farmEnrichPlanningBlock);
 }
 
 function farmSelectedPlanningBlocks(picks = farmWorkPlanState()) {
@@ -15341,7 +15355,7 @@ function farmPlanBudgetMatchMessage({ activeRates = [], activity, selectedBlocks
 function renderFarmWorkPlanner() {
   const budgetPicks = farmWorkPlanState();
   const blocks = farmPlanningBlockRows();
-  const scopedBlockCount = farmBudgetScopedBlocks().length;
+  const catalogBlockCount = farmAreaCatalogBlocks().length;
   const activityGroups = farmRows(farmTableByKey("activity_groups"));
   const activities = farmRows(farmTableByKey("activities"));
   const teams = farmRows(farmTableByKey("teams"));
@@ -15532,7 +15546,7 @@ function renderFarmWorkPlanner() {
             <b>Block ${fmt(selectedBlocks.length)} · กิจกรรม ${fmt(budgetPicks.selectedActivities.length || (previewActivity ? 1 : 0))} · วัสดุ ${fmt(selectedMaterials.length || rateMaterialUsageRows.length)} · รถ/เครื่องจักร ${fmt(selectedVehicles.length)} · พนักงาน/ทีม ${fmt(selectedWorkerCount)}</b>
           </div>
           <div class="budget-tree-grid budget-tree-grid-work-order farm-work-budget-selector" data-budget-context="work-plan">
-            <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><p class="budget-tree-scope-note">แสดงพื้นที่ตามสิทธิ์ผู้ใช้งาน: ${fmt(scopedBlockCount)} Block</p><div class="budget-tree-scroll">${renderFarmBudgetPlantingYearSelector(budgetPicks, { idPrefix: "planning", allLabel: "ทุกปี" })}${renderFarmBudgetAreaTree(budgetPicks)}</div></section>
+            <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><p class="budget-tree-scope-note">ข้อมูลพื้นที่ทั้งหมด: ${fmt(catalogBlockCount)} Block</p><div class="budget-tree-scroll">${renderFarmBudgetPlantingYearSelector(budgetPicks, { idPrefix: "planning", allLabel: "ทุกปี" })}${renderFarmBudgetAreaTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>วัสดุ</h4><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>รถ / เครื่องจักร</h4><div class="budget-tree-scroll">${renderFarmBudgetVehicleTree(budgetPicks)}</div></section>
@@ -15588,9 +15602,9 @@ function renderFarmWorkPlanner() {
             </table>
           </div>
           <div class="farm-plan-actions">
-            ${state.farmWorkDetailId ? `<button type="button" class="secondary" data-farm-save-work-plan-edit ${state.farmSyncBusy ? "disabled" : ""}>บันทึกแก้ไขแผน</button>` : ""}
-            <button type="button" data-farm-create-work-plan ${state.farmSyncBusy ? "disabled" : ""}>สร้างแผน</button>
-            ${state.farmWorkDetailId ? `<button type="button" class="danger ghost" data-farm-delete-work-order="${esc(state.farmWorkDetailId)}" ${state.farmSyncBusy ? "disabled" : ""}>ลบ Work Order ที่เลือก</button>` : ""}
+            ${state.farmWorkDetailId ? `<button type="button" class="secondary" data-farm-save-work-plan-edit ${state.farmSyncBusy || !farmCanCreatePlanning() ? "disabled" : ""}>บันทึกแก้ไขแผน</button>` : ""}
+            <button type="button" data-farm-create-work-plan ${state.farmSyncBusy || !farmCanCreatePlanning() ? "disabled" : ""}>สร้างแผน</button>
+            ${state.farmWorkDetailId ? `<button type="button" class="danger ghost" data-farm-delete-work-order="${esc(state.farmWorkDetailId)}" ${state.farmSyncBusy || !farmCanCreatePlanning() ? "disabled" : ""}>ลบ Work Order ที่เลือก</button>` : ""}
           </div>
         </article>
       </div>
@@ -15598,6 +15612,12 @@ function renderFarmWorkPlanner() {
 }
 
 async function createFarmWorkPlanFromSelection() {
+  if (!farmCanCreatePlanning()) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "บัญชีนี้ดูข้อมูลพื้นที่ได้ แต่ไม่มีสิทธิ์สร้างหรือแก้ไขแผน";
+    render();
+    return;
+  }
   const table = farmTableByKey("work_orders");
   const picks = farmWorkPlanState();
   const activities = farmRows(farmTableByKey("activities"));
@@ -21777,6 +21797,12 @@ function farmBudgetYearId(fiscalYear = "") {
 }
 
 async function saveFarmBudgetYearSetting({ silent = false } = {}) {
+  if (!farmCanManageBudget()) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "บัญชีนี้ดูข้อมูลพื้นที่และงบประมาณได้ แต่ไม่มีสิทธิ์แก้ไขอัตรางบประมาณ";
+    if (!silent) render();
+    return null;
+  }
   const picks = farmBudgetContractState();
   const fiscalYear = String(picks.budgetFiscalYear || farmBudgetFiscalYear(picks.budgetStartDate || farmToday())).trim();
   if (!fiscalYear) {
@@ -22933,28 +22959,37 @@ function farmCanonicalAreaHierarchy() {
   });
 }
 
+function farmAreaCatalogHierarchy() {
+  const canonicalRows = state.farmCanonicalAreaRows.filter((block) => String(block.status || "active").toLowerCase() === "active");
+  const databaseRows = farmRowsByKey("blocks").filter((block) => String(block.status || "active").toLowerCase() === "active");
+  return buildFarmAreaHierarchy({
+    estates: farmRowsByKey("estates"),
+    zones: farmRowsByKey("zones"),
+    plotGroups: farmRowsByKey("plot_groups"),
+    plots: farmRowsByKey("plots"),
+    blocks: canonicalRows.length ? canonicalRows : databaseRows,
+    legacyAreas: [],
+  });
+}
+
+function farmAreaCatalogBlocks() {
+  return farmBudgetUniqueBlockRows(farmAreaCatalogHierarchy().blocks);
+}
+
 function farmCanonicalAreaBlocks() {
-  return farmBudgetUniqueBlockRows(farmCanonicalAreaHierarchy().blocks);
+  return farmAreaCatalogBlocks();
 }
 
-function farmBudgetScopedBlocks() {
-  return farmVisibleAreaBlocks();
-}
-
-function farmVisibleAreaBlocks() {
-  return farmBudgetUniqueBlockRows(farmAreaHierarchy().blocks);
-}
-
-function farmAssertVisibleBlockConsistency() {
+function farmAssertAreaCatalogConsistency() {
   return assertFarmBlockIdConsistency({
-    visible: farmVisibleAreaBlocks().map((block) => block.id),
-    budget: farmBudgetScopedBlocks().map((block) => block.id),
+    area: farmAreaCatalogBlocks().map((block) => block.id),
+    budget: farmAreaCatalogBlocks().map((block) => block.id),
     planning: farmPlanningBlockRows().map((block) => block.id),
   });
 }
 
 function farmBudgetBlockHierarchy(block = {}) {
-  const resolved = farmAreaHierarchy().blocks.find((row) => row.id === block.id) || block;
+  const resolved = farmAreaCatalogHierarchy().blocks.find((row) => row.id === block.id) || block;
   return {
     estate: resolved.estateDisplay || farmEstateDisplayName(resolved.estateName || resolved.estate_name),
     zone: resolved.zoneDisplay || farmZoneDisplayName(resolved.zoneName || resolved.zone_name),
@@ -22962,7 +22997,7 @@ function farmBudgetBlockHierarchy(block = {}) {
   };
 }
 
-function farmBudgetSelectedPlantingYears(picks = farmBudgetContractState(), blocks = farmBudgetScopedBlocks()) {
+function farmBudgetSelectedPlantingYears(picks = farmBudgetContractState(), blocks = farmAreaCatalogBlocks()) {
   return farmBudgetPlantingSelectionSummary(blocks, picks.selectedBlocks).selectedYears;
 }
 
@@ -23227,8 +23262,8 @@ function renderFarmBudgetAreaTreeLegacy(picks = farmBudgetContractState()) {
 }
 
 function renderFarmBudgetAreaTree(picks = farmBudgetContractState()) {
-  farmAssertVisibleBlockConsistency();
-  const blocks = farmBudgetScopedBlocks()
+  farmAssertAreaCatalogConsistency();
+  const blocks = farmAreaCatalogBlocks()
     .map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }))
     .filter((block) => farmBudgetMatchesQuery([
       farmBudgetBlockLabel(block), block.estate, block.zone, block.group,
@@ -23257,18 +23292,18 @@ function renderFarmBudgetAreaTree(picks = farmBudgetContractState()) {
 }
 
 function farmBudgetAreaOptions(picks = farmBudgetContractState()) {
-  const hierarchy = farmAreaHierarchy();
-  const scopedBlocks = hierarchy.blocks;
-  const allBlocks = scopedBlocks.filter((block) => farmBudgetMatchesQuery(farmBudgetBlockLabel(block)));
+  const hierarchy = farmAreaCatalogHierarchy();
+  const catalogBlocks = hierarchy.blocks;
+  const allBlocks = catalogBlocks.filter((block) => farmBudgetMatchesQuery(farmBudgetBlockLabel(block)));
   const selectedBlock = picks.selectedBlocks.length === 1
-    ? scopedBlocks.find((block) => block.id === picks.selectedBlocks[0]) || null
+    ? catalogBlocks.find((block) => block.id === picks.selectedBlocks[0]) || null
     : null;
   const estateId = picks.areaEstateId || selectedBlock?.estateId || "";
   const zoneId = picks.areaZoneId || selectedBlock?.zoneId || "";
   const plotId = picks.areaPlotId || selectedBlock?.plotId || "";
-  const visibleEstateIds = new Set(scopedBlocks.map((block) => block.estateId).filter(Boolean));
-  const visibleZoneIds = new Set(scopedBlocks.map((block) => block.zoneId).filter(Boolean));
-  const visiblePlotIds = new Set(scopedBlocks.map((block) => block.plotId).filter(Boolean));
+  const visibleEstateIds = new Set(catalogBlocks.map((block) => block.estateId).filter(Boolean));
+  const visibleZoneIds = new Set(catalogBlocks.map((block) => block.zoneId).filter(Boolean));
+  const visiblePlotIds = new Set(catalogBlocks.map((block) => block.plotId).filter(Boolean));
   const estates = [...hierarchy.estateById.values()].filter((estate) => visibleEstateIds.has(String(estate.id)));
   const filteredZones = [...hierarchy.zoneById.values()]
     .filter((zone) => visibleZoneIds.has(String(zone.id)))
@@ -23276,7 +23311,7 @@ function farmBudgetAreaOptions(picks = farmBudgetContractState()) {
   const filteredPlots = [...hierarchy.plotById.values()]
     .filter((plot) => visiblePlotIds.has(String(plot.id)))
     .filter((plot) => !zoneId || String(plot.zone_id || "") === String(zoneId))
-    .filter((plot) => !estateId || scopedBlocks.some((block) => block.plotId === plot.id && block.estateId === estateId));
+    .filter((plot) => !estateId || catalogBlocks.some((block) => block.plotId === plot.id && block.estateId === estateId));
   const filteredBlocks = allBlocks.filter((block) => {
     if (plotId && block.plotId !== plotId) return false;
     if (zoneId && block.zoneId !== zoneId) return false;
@@ -23728,8 +23763,8 @@ function renderFarmBudgetCreateRateBar() {
     <article class="budget-create-rate-bar">
       <span>${editing ? `กำลังแก้ไข ${esc(editingCode)}` : "เลือกพื้นที่ กิจกรรม และรูปแบบอัตรา แล้วสร้าง Rate"}</span>
       <div class="budget-rate-actions">
-        <button type="button" data-budget-rate-create ${state.farmSyncBusy ? "disabled" : ""}>${editing ? "บันทึกแก้ไข Rate" : "สร้าง Rate"}</button>
-        ${editing ? `<button type="button" class="secondary" data-budget-rate-new ${state.farmSyncBusy ? "disabled" : ""}>สร้าง Rate ใหม่</button>` : ""}
+        <button type="button" data-budget-rate-create ${state.farmSyncBusy || !farmCanManageBudget() ? "disabled" : ""}>${editing ? "บันทึกแก้ไข Rate" : "สร้าง Rate"}</button>
+        ${editing ? `<button type="button" class="secondary" data-budget-rate-new ${state.farmSyncBusy || !farmCanManageBudget() ? "disabled" : ""}>สร้าง Rate ใหม่</button>` : ""}
       </div>
     </article>`;
 }
@@ -23841,8 +23876,8 @@ function renderFarmBudgetEditPanel() {
           `).join("")}
         </div>
         <div class="farm-form-actions budget-rate-edit-actions">
-          <button type="button" data-farm-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกแก้ไข Rate</button>
-          <button type="button" class="danger" data-farm-delete-modal ${farmCan("delete") && !state.farmSyncBusy ? "" : "disabled"}>ลบ Rate</button>
+          <button type="button" data-farm-save ${state.farmSyncBusy || !farmCanManageBudget() ? "disabled" : ""}>บันทึกแก้ไข Rate</button>
+          <button type="button" class="danger" data-farm-delete-modal ${farmCanManageBudget() && !state.farmSyncBusy ? "" : "disabled"}>ลบ Rate</button>
           <button type="button" data-farm-clear>ปิดฟอร์ม</button>
         </div>
       </form>
@@ -23877,7 +23912,7 @@ function renderFarmBudgetYearSettings() {
           </select>
         </label>
         <div class="budget-year-actions">
-          <button type="button" data-budget-year-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกปีอัตรางบประมาณ</button>
+          <button type="button" data-budget-year-save ${state.farmSyncBusy || !farmCanManageBudget() ? "disabled" : ""}>บันทึกปีอัตรางบประมาณ</button>
         </div>
       </div>
       <div class="budget-year-list">
@@ -23891,7 +23926,7 @@ function renderFarmBudgetYearSettings() {
 }
 
 function renderFarmBudgetPlantingYearSelector(picks = farmBudgetContractState(), { idPrefix = "budget", allLabel = "เลือกทุกปี" } = {}) {
-  const blocks = farmBudgetScopedBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
+  const blocks = farmAreaCatalogBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
   const model = farmBudgetPlantingYearGroups(blocks, picks.selectedBlocks, "asc");
   const blockIds = model.years.flatMap((group) => group.blockIds);
   const selectAll = farmBudgetSelectionState(blockIds, picks.selectedBlocks);
@@ -24009,7 +24044,7 @@ function renderFarmAreaMapAudit() {
       </div>
       <div class="farm-area-audit-summary">
         <span>Map without Master <strong>${fmt(mapWithoutMaster.length)}</strong></span>
-        <span>Master without Map ใน scope <strong>${fmt(masterWithoutMap.length)}</strong></span>
+        <span>Master without Map <strong>${fmt(masterWithoutMap.length)}</strong></span>
         <span>Duplicate Map Keys <strong>${fmt(duplicateMapKeys.length)}</strong></span>
         <span>Duplicate Master Keys <strong>${fmt(duplicateMasterKeys.length)}</strong></span>
         <span>Geometry Conflicts <strong>${fmt(geometryConflicts.length)}</strong></span>
@@ -24030,7 +24065,7 @@ function renderFarmAreaMapAudit() {
         </div>
       </details>
       <details open>
-        <summary>MASTER WITHOUT MAP — เฉพาะ Block ใน scope (${fmt(masterWithoutMap.length)})</summary>
+        <summary>MASTER WITHOUT MAP (${fmt(masterWithoutMap.length)})</summary>
         <div class="table-wrap">
           <table class="mini-table farm-table">
             <thead><tr><th>Block Name</th><th>Block Code</th><th>AP Code</th><th>Estate</th><th>Zone</th><th>Planting Year</th><th>Block UUID</th></tr></thead>
@@ -24043,7 +24078,7 @@ function renderFarmAreaMapAudit() {
                 <td>${esc(entry.zone || "ยังไม่ระบุ Zone")}</td>
                 <td>${esc(entry.plantingYear ?? "-")}</td>
                 <td><code>${esc(entry.blockId || "-")}</code></td>
-              </tr>`).join("") || `<tr><td colspan="7">ไม่พบ Master ที่ไม่มี Map ใน scope นี้</td></tr>`}</tbody>
+              </tr>`).join("") || `<tr><td colspan="7">ไม่พบ Master ที่ไม่มี Map</td></tr>`}</tbody>
           </table>
         </div>
       </details>
@@ -24069,26 +24104,20 @@ function renderFarmAreaBlockMap() {
   const stats = state.farmAreaMapReconciliation || {};
   const width = 1000;
   const height = 680;
-  const matchedInScope = features.filter((feature) => feature?.properties?.match_status === "matched" && feature?.properties?.in_scope).length;
-  const matchedOutsideScope = features.filter((feature) => feature?.properties?.match_status === "matched" && !feature?.properties?.in_scope).length;
   const polygons = features.map((feature, index) => {
     const name = feature?.properties?.name || feature?.properties?.map_key || "";
     const status = feature?.properties?.match_status || "unknown";
-    const inScope = Boolean(feature?.properties?.in_scope);
-    const area = inScope ? areaById.get(feature?.properties?.block_id) : null;
+    const area = areaById.get(feature?.properties?.block_id);
     const ring = feature?.geometry?.coordinates?.[0] || [];
     if (!bounds || ring.length < 3) return "";
     const points = ring.map((point) => farmMapProject(point, bounds, width, height)).join(" ");
-    const color = status === "matched" && inScope ? farmMapBlockColor(area, index)
-      : status === "matched" ? "#94a3b8"
-        : status.includes("conflict") ? "#f59e0b" : "#ef4444";
+    const color = status === "matched" ? farmMapBlockColor(area, index)
+      : status.includes("conflict") ? "#f59e0b" : "#ef4444";
     const selected = area?.id && state.farmDetailId === area.id;
-    const statusClass = status === "matched" ? (inScope ? " in-scope" : " outside-scope")
+    const statusClass = status === "matched" ? " matched"
       : status.includes("conflict") ? " map-conflict" : " map-without-master";
     const meta = status === "matched"
-      ? (inScope
-        ? `${area?.zoneDisplay || "ยังไม่ระบุ Zone"} · ${area?.blockGroupCode || "-"} · ${fmt(n(area?.area_rai))} ไร่`
-        : "Matched Master · นอกขอบเขตงานของฉัน")
+      ? `${area?.zoneDisplay || "ยังไม่ระบุ Zone"} · ${area?.blockGroupCode || "-"} · ${fmt(n(area?.area_rai))} ไร่`
       : farmAreaMapStatusLabel(status);
     return `
       <polygon
@@ -24128,7 +24157,7 @@ function renderFarmAreaBlockMap() {
       </div>
       <div class="farm-area-map-status-cards">
         <article><span>Polygon ใน KMZ</span><strong>${fmt(stats.uniqueBlockKeys || features.length)}</strong><small>หลัง normalize และ dedupe</small></article>
-        <article><span>KMZ matched to Master</span><strong>${fmt(stats.matchedMaster || 0)}</strong><small>ใน scope ${fmt(matchedInScope)} · นอก scope ${fmt(matchedOutsideScope)}</small></article>
+        <article><span>Matched KMZ ↔ Block</span><strong>${fmt(stats.matchedMaster || 0)}</strong><small>canonical blocks.block_name</small></article>
         <article><span>KMZ ไม่มี Master</span><strong>${fmt(stats.mapWithoutMaster || 0)}</strong><small>ตรวจด้วย normalized blocks.block_name</small></article>
         <article><span>Master ไม่มี KMZ</span><strong>${fmt(stats.masterWithoutMap || 0)}</strong><small>Block ยังอยู่ใน Master ตามปกติ</small></article>
         <article><span>Map conflicts</span><strong>${fmt(stats.mapConflicts || 0)}</strong><small>geometry + duplicate master key</small></article>
@@ -24144,12 +24173,12 @@ function renderFarmAreaBlockMap() {
         </div>
         <aside class="farm-area-map-side">
           <article><span>Canonical DB Blocks</span><strong>${fmt(stats.canonicalDbBlocks || 0)}</strong><small>server-side master reconciliation</small></article>
-          <article><span>Matched + in my scope</span><strong>${fmt(matchedInScope)}</strong><small>เปิดรายละเอียด Block ได้</small></article>
-          <article><span>Matched + outside my scope</span><strong>${fmt(matchedOutsideScope)}</strong><small>ไม่ใช่ unmatched และไม่เปิดเผย UUID</small></article>
+          <article><span>KMZ Polygons</span><strong>${fmt(stats.uniqueBlockKeys || features.length)}</strong><small>authenticated Area reference</small></article>
+          <article><span>Matched</span><strong>${fmt(stats.matchedMaster || 0)}</strong><small>ใช้ canonical Block UUID ได้</small></article>
           <article class="farm-area-map-selected">
             <span>Block ที่เลือก</span>
             <strong>${esc(selectedCode)}</strong>
-            <small>${esc(selectedArea ? farmAreaMapStatusLabel(selectedArea.map_status) : "เลือกได้เฉพาะ Block ใน scope")}</small>
+            <small>${esc(selectedArea ? farmAreaMapStatusLabel(selectedArea.map_status) : "เลือก Polygon หรือ Block เพื่อดูรายละเอียด")}</small>
           </article>
           ${selectedDetails.length ? `
             <div class="farm-area-map-detail">
@@ -24171,8 +24200,8 @@ function farmAreaBlockDisplay(row) {
 }
 
 function renderFarmAreaBoard() {
-  farmAssertVisibleBlockConsistency();
-  const hierarchy = farmCanonicalAreaHierarchy();
+  farmAssertAreaCatalogConsistency();
+  const hierarchy = farmAreaCatalogHierarchy();
   const query = state.farmFilters.query.trim().toLowerCase();
   const statusOk = (row) => state.farmFilters.status === "all" || String(row.status || "").toLowerCase() === state.farmFilters.status;
   const textOk = (row) => !query || Object.values(row).join(" ").toLowerCase().includes(query);
@@ -24201,8 +24230,8 @@ function renderFarmAreaBoard() {
       <td>${esc(area.rspo_status || "-")}</td>
       <td><span class="farm-map-status status-${esc(area.map_status || "unknown")}">${esc(farmAreaMapStatusLabel(area.map_status))}</span></td>
     </tr>`).join("");
-  const visibleCount = farmVisibleAreaBlocks().length;
-  const budgetCount = farmBudgetScopedBlocks().length;
+  const catalogCount = farmAreaCatalogBlocks().length;
+  const budgetCount = farmAreaCatalogBlocks().length;
   const planningCount = farmPlanningBlockRows().length;
   const loadingNotice = state.farmAreaMasterLoading
     ? `<div class="farm-sync-status">กำลังโหลด Canonical Area Master...</div>`
@@ -24226,7 +24255,7 @@ function renderFarmAreaBoard() {
         </label>
       </div>
       <section class="farm-hero farm-area-master-kpis">
-        <article><span>จำนวน Block ใน Master</span><strong>${fmt(allAreas.length)}</strong><small>เฉพาะ canonical rows ที่ actor มีสิทธิ์</small></article>
+        <article><span>ข้อมูล Block ในระบบ</span><strong>${fmt(allAreas.length)}</strong><small>all active canonical Blocks</small></article>
         <article><span>จำนวนพื้นที่</span><strong>${fmt(totalArea)}</strong><small>ไร่ จาก Block Master</small></article>
         <article><span>จำนวนต้น</span><strong>${fmt(totalTrees)}</strong><small>ต้น จาก Block Master</small></article>
         <article><span>RSPO</span><strong>${fmt(rspoCount)}</strong><small>Block</small></article>
@@ -24235,12 +24264,12 @@ function renderFarmAreaBoard() {
       <section class="farm-panel">
         <div class="section-head">
           <h3>Area Master</h3>
-          <span>Canonical ${fmt(allAreas.length)} · Visible ${fmt(visibleCount)} · Budget ${fmt(budgetCount)} · Planning ${fmt(planningCount)}</span>
+          <span>Area ${fmt(catalogCount)} · Budget ${fmt(budgetCount)} · Planning ${fmt(planningCount)}</span>
         </div>
         <div class="table-wrap farm-area-bottom-wrap">
           <table class="mini-table farm-table">
             <thead><tr><th>Block Name</th><th>Block Code</th><th>AP Code</th><th>Estate</th><th>Zone</th><th>Block Group</th><th>Planting Year</th><th>Area Rai</th><th>Tree Count</th><th>RSPO</th><th>Map Status</th></tr></thead>
-            <tbody>${areaRows || `<tr><td colspan="11">ไม่พบรายการ Area Master ในสิทธิ์</td></tr>`}</tbody>
+            <tbody>${areaRows || `<tr><td colspan="11">ไม่พบรายการ Area Master</td></tr>`}</tbody>
           </table>
         </div>
       </section>
@@ -25074,7 +25103,7 @@ function renderFarmWorkFilters() {
       `<option value="${esc(year)}"${filters.year === year ? " selected" : ""}>${esc(year)}</option>`).join("")}</select></label>
     <label>กิจกรรม<select data-farm-workspace-filter="activity"><option value="all">ทั้งหมด</option>${farmRowsByKey("activities").map((row) =>
       `<option value="${esc(row.id)}"${filters.activity === row.id ? " selected" : ""}>${esc(row.activity_name || row.activity_code)}</option>`).join("")}</select></label>
-    <label>พื้นที่<select data-farm-workspace-filter="block"><option value="all">ทั้งหมด</option>${farmRowsByKey("blocks").map((row) =>
+    <label>พื้นที่<select data-farm-workspace-filter="block"><option value="all">ทั้งหมด</option>${farmAreaCatalogBlocks().map((row) =>
       `<option value="${esc(row.id)}"${filters.block === row.id ? " selected" : ""}>${esc(row.block_code || row.block_name)}</option>`).join("")}</select></label>
     <label>สถานะ<select data-farm-workspace-filter="status"><option value="all">ทั้งหมด</option>${["draft", "submitted", "approved", "planned", "closed"].map((status) =>
       `<option value="${status}"${filters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}</select></label>
@@ -26436,7 +26465,7 @@ async function init() {
       const picks = e.target.closest('[data-budget-context="work-plan"]')
         ? farmWorkPlanState()
         : farmBudgetContractState();
-      const blocks = farmBudgetScopedBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
+      const blocks = farmAreaCatalogBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
       const model = farmBudgetPlantingYearGroups(blocks, picks.selectedBlocks, "asc");
       const targetGroups = e.target.matches("[data-budget-planting-year-all]")
         ? model.years

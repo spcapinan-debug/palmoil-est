@@ -2,7 +2,6 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   ApiError,
-  actorCanAccessBlock,
   authenticate,
   authorize,
   errorResponse,
@@ -23,19 +22,7 @@ function readBlockMapArtifact() {
   };
 }
 
-function redactOutsideScopeFeature(feature) {
-  const inScope = Boolean(feature?.properties?.in_scope);
-  return {
-    ...feature,
-    properties: {
-      ...(feature.properties || {}),
-      block_id: inScope ? (feature.properties?.block_id || null) : null,
-    },
-  };
-}
-
-function buildScopedAreaAudit({ result, canonicalBlocks, visibleBlocks, estates, zones }) {
-  const visibleIds = new Set((visibleBlocks || []).map((block) => block.id).filter(Boolean));
+function buildAreaCatalogAudit({ result, canonicalBlocks, estates, zones }) {
   const blockById = new Map((canonicalBlocks || []).map((block) => [block.id, block]));
   const estateById = new Map((estates || []).map((estate) => [estate.id, estate]));
   const zoneById = new Map((zones || []).map((zone) => [zone.id, zone]));
@@ -52,20 +39,17 @@ function buildScopedAreaAudit({ result, canonicalBlocks, visibleBlocks, estates,
   return {
     mapWithoutMaster: result.reconciliation.mapWithoutMasterEntries || [],
     masterWithoutMap: (result.reconciliation.masterWithoutMapEntries || [])
-      .filter((entry) => visibleIds.has(entry.blockId))
       .map(enrichMasterEntry),
     reconciliationCandidates: (result.reconciliation.reconciliationCandidates || []).map((entry) => ({
       ...entry,
       candidates: (entry.candidates || [])
-        .filter((candidate) => visibleIds.has(candidate.blockId))
         .map(enrichMasterEntry),
     })),
     duplicateMapKeys: result.reconciliation.duplicateMapKeys || [],
     duplicateMasterKeys: (result.reconciliation.duplicateMasterKeys || []).map((entry) => ({
       ...entry,
-      blockIds: (entry.blockIds || []).filter((id) => visibleIds.has(id)),
+      blockIds: entry.blockIds || [],
       blockNames: (entry.blockIds || [])
-        .filter((id) => visibleIds.has(id))
         .map((id) => blockById.get(id)?.block_name)
         .filter(Boolean),
     })).filter((entry) => entry.blockIds.length > 1),
@@ -101,13 +85,12 @@ async function handler(req, res) {
     const result = reconcileFarmAreaMap({
       blocks: canonicalBlocks,
       features: mapArtifact.features,
-      canAccessBlock: (block) => actorCanAccessBlock(actor, block),
     });
-    const visibleBlocks = result.visibleBlocks
+    const catalogBlocks = result.catalogBlocks
       .slice()
       .sort((a, b) => String(a.block_name || "").localeCompare(String(b.block_name || ""), "th", { numeric: true }));
-    const visibleBlockIds = visibleBlocks.map((block) => block.id).filter(Boolean);
-    const audit = buildScopedAreaAudit({ result, canonicalBlocks, visibleBlocks, estates, zones });
+    const catalogBlockIds = catalogBlocks.map((block) => block.id).filter(Boolean);
+    const audit = buildAreaCatalogAudit({ result, canonicalBlocks, estates, zones });
     const {
       duplicateMapKeys,
       duplicateMasterKeys,
@@ -124,13 +107,12 @@ async function handler(req, res) {
         profileId: actor.profile.id,
         displayName: actor.profile.display_name || actor.profile.full_name || actor.profile.email || "User",
         roles: [...actor.roles],
-        scopeTypes: [...new Set(actor.scopes.map((scope) => scope.scope_type || (scope.block_id ? "block" : "unknown")))],
       },
-      visibleBlocks,
+      catalogBlocks,
       diagnostics: {
-        visibleBlockCount: visibleBlocks.length,
-        firstBlockIds: visibleBlockIds.slice(0, 10),
-        lastBlockIds: visibleBlockIds.slice(-10),
+        catalogBlockCount: catalogBlocks.length,
+        firstBlockIds: catalogBlockIds.slice(0, 10),
+        lastBlockIds: catalogBlockIds.slice(-10),
       },
       reconciliation,
       audit,
@@ -138,7 +120,7 @@ async function handler(req, res) {
         type: mapArtifact.type,
         source: mapArtifact.source,
         bounds: mapArtifact.bounds,
-        features: result.map.features.map(redactOutsideScopeFeature),
+        features: result.map.features,
       },
     });
   } catch (error) {
@@ -147,4 +129,4 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
-module.exports._test = { buildScopedAreaAudit, readBlockMapArtifact, redactOutsideScopeFeature };
+module.exports._test = { buildAreaCatalogAudit, readBlockMapArtifact };

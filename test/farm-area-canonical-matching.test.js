@@ -8,7 +8,7 @@ const appSource = fs.readFileSync(path.join(root, "webapp", "app.js"), "utf8");
 const actionSource = fs.readFileSync(path.join(root, "api", "farm-actions.js"), "utf8");
 const mapArtifact = JSON.parse(fs.readFileSync(path.join(root, "webapp", "data", "block_map.json"), "utf8"));
 const { actorCanAccessBlock } = require("../lib/server/farm-api");
-const { buildScopedAreaAudit } = require("../api/farm-area-master")._test;
+const { buildAreaCatalogAudit } = require("../api/farm-area-master")._test;
 const {
   FarmAreaMapConflictError,
   buildCanonicalBlockIndex,
@@ -100,21 +100,22 @@ test("conflicting duplicate Placemark geometries report conflict without choosin
   assert.equal(result.features[0].properties.geometry_conflict, true);
 });
 
-test("a 3-block actor does not make other canonical polygons unmatched", () => {
+test("a 3-block actor still receives the complete authenticated Area catalog", () => {
   const scopedActor = { roles: new Set(["uat_supervisor"]), scopes: blocks.slice(0, 3).map((block) => ({ block_id: block.id })) };
   const result = reconcileFarmAreaMap({
     blocks,
     features: blocks.map((block, index) => polygon(block.block_name, undefined, index)),
-    canAccessBlock: (block) => actorCanAccessBlock(scopedActor, block),
   });
-  assert.equal(result.visibleBlocks.length, 3);
+  assert.equal(actorCanAccessBlock(scopedActor, blocks[3]), false);
+  assert.equal(result.catalogBlocks.length, 4);
   assert.equal(result.reconciliation.matchedMaster, 4);
   assert.equal(result.reconciliation.mapWithoutMaster, 0);
   assert.equal(result.map.features[3].properties.match_status, "matched");
-  assert.equal(result.map.features[3].properties.in_scope, false);
+  assert.equal("in_scope" in result.map.features[3].properties, false);
+  assert.equal(result.map.features[3].properties.block_id, blocks[3].id);
 });
 
-test("estate-scoped actor sees every active Block in that Estate and no other Estate", () => {
+test("estate scope remains operational metadata but does not filter Area reference", () => {
   const estateActor = { roles: new Set(["uat_manager"]), scopes: [{ scope_type: "read_write", estate_id: "estate-1" }] };
   const estateBlocks = [
     { id: "e1-a", estate_id: "estate-1", block_name: "56-A02" },
@@ -124,22 +125,23 @@ test("estate-scoped actor sees every active Block in that Estate and no other Es
   assert.equal(actorCanAccessBlock(estateActor, estateBlocks[0]), true);
   assert.equal(actorCanAccessBlock(estateActor, estateBlocks[1]), true);
   assert.equal(actorCanAccessBlock(estateActor, estateBlocks[2]), false);
-  const result = reconcileFarmAreaMap({ blocks: estateBlocks, features: [], canAccessBlock: (block) => actorCanAccessBlock(estateActor, block) });
-  assert.deepEqual(result.visibleBlocks.map((block) => block.id), ["e1-a", "e1-b"]);
+  const result = reconcileFarmAreaMap({ blocks: estateBlocks, features: [] });
+  assert.deepEqual(result.catalogBlocks.map((block) => block.id), ["e1-a", "e1-b", "e2-a"]);
 });
 
-test("block-scoped Supervisor remains limited to exactly its three canonical UUIDs", () => {
+test("block-scoped Supervisor sees every catalog UUID while assignment checks remain scoped", () => {
   const supervisorIds = blocks.slice(0, 3).map((block) => block.id);
   const actor = { roles: new Set(["uat_supervisor"]), scopes: supervisorIds.map((block_id) => ({ scope_type: "read_write", block_id })) };
-  const result = reconcileFarmAreaMap({ blocks, features: [], canAccessBlock: (block) => actorCanAccessBlock(actor, block) });
-  assert.deepEqual(result.visibleBlocks.map((block) => block.id), supervisorIds);
+  const result = reconcileFarmAreaMap({ blocks, features: [] });
+  assert.equal(actorCanAccessBlock(actor, blocks[3]), false);
+  assert.deepEqual(result.catalogBlocks.map((block) => block.id), blocks.map((block) => block.id));
 });
 
 test("Area Master Block remains visible when geometry does not exist", () => {
   const result = reconcileFarmAreaMap({ blocks, features: blocks.slice(0, 3).map((block) => polygon(block.block_name)), canAccessBlock: () => true });
-  assert.equal(result.visibleBlocks.length, 4);
+  assert.equal(result.catalogBlocks.length, 4);
   assert.equal(result.reconciliation.masterWithoutMap, 1);
-  assert.equal(result.visibleBlocks.find((block) => block.id === "b-49-11").map_status, "master_without_map");
+  assert.equal(result.catalogBlocks.find((block) => block.id === "b-49-11").map_status, "master_without_map");
 });
 
 test("KMZ unmatched diagnostics report every name without force matching", () => {
@@ -170,21 +172,19 @@ test("reconciliation candidates are audit-only and require an explicit verified 
   assert.equal(result.reconciliation.mapWithoutMaster, 1);
 });
 
-test("server audit exposes Master UUIDs only for Blocks inside actor scope", () => {
+test("server audit exposes all authenticated catalog UUIDs independent of actor scope", () => {
   const canonicalBlocks = [
     { id: "inside", block_name: "30-PU1", estate_id: "estate-1", zone_id: null },
     { id: "outside", block_name: "37-T29", estate_id: "estate-2", zone_id: null },
   ];
-  const result = reconcileFarmAreaMap({ blocks: canonicalBlocks, features: [], canAccessBlock: (block) => block.id === "inside" });
-  const audit = buildScopedAreaAudit({
+  const result = reconcileFarmAreaMap({ blocks: canonicalBlocks, features: [] });
+  const audit = buildAreaCatalogAudit({
     result,
     canonicalBlocks,
-    visibleBlocks: result.visibleBlocks,
     estates: [{ id: "estate-1", estate_name: "Kirirat" }, { id: "estate-2", estate_name: "Other" }],
     zones: [],
   });
-  assert.deepEqual(audit.masterWithoutMap.map((entry) => entry.blockId), ["inside"]);
-  assert.doesNotMatch(JSON.stringify(audit), /outside/);
+  assert.deepEqual(audit.masterWithoutMap.map((entry) => entry.blockId), ["inside", "outside"]);
 });
 
 test("checked-in two-source map artifact is normalized before counting", () => {
@@ -195,16 +195,17 @@ test("checked-in two-source map artifact is normalized before counting", () => {
   assert.equal(result.geometryConflicts.length, 0);
 });
 
-test("Area Master uses canonical endpoint while Budget and Planning remain operationally scoped", () => {
+test("Area Master, Budget, and Planning use one global Area catalog", () => {
   const masterStart = appSource.indexOf("function farmAreaBlockRows");
   const masterEnd = appSource.indexOf("function farmMapProject", masterStart);
-  const budgetStart = appSource.indexOf("function farmBudgetScopedBlocks");
-  const budgetEnd = appSource.indexOf("function farmVisibleAreaBlocks", budgetStart);
+  const catalogStart = appSource.indexOf("function farmAreaCatalogBlocks");
+  const catalogEnd = appSource.indexOf("function farmCanonicalAreaBlocks", catalogStart);
   const planningStart = appSource.indexOf("function farmPlanningBlockRows");
   const planningEnd = appSource.indexOf("function farmSelectedPlanningBlocks", planningStart);
   assert.match(appSource.slice(masterStart, masterEnd), /farmCanonicalAreaBlocks\(\)/);
-  assert.match(appSource.slice(budgetStart, budgetEnd), /farmVisibleAreaBlocks\(\)/);
-  assert.match(appSource.slice(planningStart, planningEnd), /farmVisibleAreaBlocks\(\)/);
+  assert.match(appSource.slice(catalogStart, catalogEnd), /farmAreaCatalogHierarchy\(\)/);
+  assert.match(appSource.slice(planningStart, planningEnd), /farmAreaCatalogBlocks\(\)/);
+  assert.doesNotMatch(appSource, /function farmVisibleAreaBlocks|function farmBudgetScopedBlocks/);
   assert.match(appSource, /FARM_AREA_MASTER_API/);
 });
 
@@ -213,16 +214,16 @@ test("map renderer consumes server reconciliation and never rematches by block_c
   const end = appSource.indexOf("function farmAreaGroupDisplay", start);
   const renderer = appSource.slice(start, end);
   assert.match(renderer, /match_status/);
-  assert.match(renderer, /outside-scope/);
+  assert.doesNotMatch(renderer, /in_scope|outside-scope|in-scope/);
   assert.doesNotMatch(renderer, /farmBlockMapKeyVariants|areaByCode|canonicalBlockByMapKey|normalizeFarmBlockName/);
 });
 
-test("Budget and Planning consistency assertion compares operational blocks.id", () => {
-  const start = appSource.indexOf("function farmAssertVisibleBlockConsistency");
+test("Area, Budget, and Planning consistency assertion compares catalog blocks.id", () => {
+  const start = appSource.indexOf("function farmAssertAreaCatalogConsistency");
   const end = appSource.indexOf("function farmBudgetBlockHierarchy", start);
   const assertion = appSource.slice(start, end);
-  assert.match(assertion, /visible:\s*farmVisibleAreaBlocks\(\)/);
-  assert.match(assertion, /budget:\s*farmBudgetScopedBlocks\(\)/);
+  assert.match(assertion, /area:\s*farmAreaCatalogBlocks\(\)/);
+  assert.match(assertion, /budget:\s*farmAreaCatalogBlocks\(\)/);
   assert.match(assertion, /planning:\s*farmPlanningBlockRows\(\)/);
 });
 
@@ -232,8 +233,8 @@ test("Manager Area, Budget, and Planning derive identical UUID sets without KMZ"
   const planningIds = blocks.map((block) => block.id).sort();
   assert.deepEqual(areaIds, budgetIds);
   assert.deepEqual(budgetIds, planningIds);
-  assert.match(appSource, /function farmBudgetScopedBlocks\(\)[\s\S]*?farmVisibleAreaBlocks\(\)/);
-  assert.match(appSource, /function farmPlanningBlockRows\(\)[\s\S]*?farmVisibleAreaBlocks\(\)/);
+  assert.match(appSource, /function farmPlanningBlockRows\(\)[\s\S]*?farmAreaCatalogBlocks\(\)/);
+  assert.match(appSource, /function farmAreaCatalogBlocks\(\)[\s\S]*?farmAreaCatalogHierarchy\(\)/);
 });
 
 test("Work Order creation persists the planned item's canonical block UUID", () => {
@@ -244,9 +245,8 @@ test("Work Order creation persists the planned item's canonical block UUID", () 
   assert.doesNotMatch(createWorkOrder, /block_name/);
 });
 
-test("full-scope resolver supports every authorized Block without hardcoded counts", () => {
-  const fullScopeActor = { roles: new Set(["planner"]), scopes: [{ scope_type: "global" }] };
-  const result = reconcileFarmAreaMap({ blocks, features: [], canAccessBlock: (block) => actorCanAccessBlock(fullScopeActor, block) });
-  assert.equal(result.visibleBlocks.length, blocks.length);
+test("Area catalog supports every active Block without hardcoded counts", () => {
+  const result = reconcileFarmAreaMap({ blocks, features: [] });
+  assert.equal(result.catalogBlocks.length, blocks.length);
   assert.doesNotMatch(fs.readFileSync(path.join(root, "lib", "server", "farm-area-map.js"), "utf8"), /===\s*103|slice\(0,\s*103\)/);
 });

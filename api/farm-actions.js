@@ -725,14 +725,16 @@ async function createWorkOrderFromPlanItem({ args, actor }) {
     `planned_work_items?id=eq.${plannedWorkItemId}&select=*&limit=1`,
     "Planned work item",
   );
+  await one(
+    `blocks?id=eq.${requireUuid(item.block_id, "block_id")}&status=eq.active&select=id&limit=1`,
+    "Active Block",
+  );
   const annual = item.annual_plan_id
     ? await one(`annual_work_plans?id=eq.${item.annual_plan_id}&select=id,plan_year,estate_id,status&limit=1`, "Annual work plan")
     : null;
   const team = item.suggested_team_id
     ? await one(`teams?id=eq.${item.suggested_team_id}&select=id,supervisor_employee_id,contractor_id,status&limit=1`, "Suggested team")
     : null;
-  const scopeTarget = { estate_id: annual?.estate_id || null, plot_id: item.plot_id, block_id: item.block_id };
-  await authorizeWorkOrderScope(actor, scopeTarget);
   const row = {
     work_order_no: actorIsUat(actor)
       ? `WEBTEST-UAT-WO-${randomUUID().slice(0, 8).toUpperCase()}`

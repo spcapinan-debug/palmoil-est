@@ -136,7 +136,7 @@ test("selection summary deduplicates Blocks, years, and area", () => {
   });
 });
 
-test("server rejects a selected Block outside the actor scope", async () => {
+test("Budget accepts an active catalog Block outside assignment scope", async () => {
   const previousFetch = global.fetch;
   const previousUrl = process.env.SUPABASE_URL;
   const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -150,9 +150,11 @@ test("server rejects a selected Block outside the actor scope", async () => {
       estate_id: "estate-2", zone_id: "zone-2", plot_id: "plot-2",
     }]), { status: 200 });
     const actor = { roles: new Set(["planner"]), scopes: [{ block_id: allowedId }] };
-    await assert.rejects(
-      farmTables._test.validateBudgetRateBlockRows(actor, [{ block_id: forbiddenId }], [2560], [forbiddenId]),
-      (error) => error.code === "SCOPE_FORBIDDEN",
+    await farmTables._test.validateBudgetRateBlockRows(
+      actor,
+      [{ block_id: forbiddenId }],
+      [2560],
+      [forbiddenId],
     );
   } finally {
     global.fetch = previousFetch;

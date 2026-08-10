@@ -6014,13 +6014,6 @@ tfoot td {
   cursor: default;
 }
 
-.farm-block-polygon.outside-scope {
-  fill-opacity: .28;
-  stroke: #64748b;
-  stroke-dasharray: 4 3;
-  cursor: default;
-}
-
 .farm-block-polygon.map-without-master {
   fill: #ef4444;
   fill-opacity: .22;

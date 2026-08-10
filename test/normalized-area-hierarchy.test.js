@@ -114,19 +114,20 @@ test("missing map geometry does not remove normalized Blocks from Area Master", 
   assert.deepEqual(Array.from(model.blocks, (block) => block.id), ["b-a03", "b-a02", "b-a01"]);
 });
 
-test("Area Master uses canonical Blocks while Budget and Planning share the scoped resolver", () => {
-  const budgetStart = appSource.indexOf("function farmBudgetScopedBlocks");
-  const budgetEnd = appSource.indexOf("function farmBudgetBlockHierarchy", budgetStart);
+test("Area Master, Budget, and Planning share the global Area catalog", () => {
+  const catalogStart = appSource.indexOf("function farmAreaCatalogBlocks");
+  const catalogEnd = appSource.indexOf("function farmCanonicalAreaBlocks", catalogStart);
   const planningStart = appSource.indexOf("function farmPlanningBlockRows");
   const planningEnd = appSource.indexOf("function farmSelectedPlanningBlocks", planningStart);
   const masterStart = appSource.indexOf("function farmAreaBlockRows");
   const masterEnd = appSource.indexOf("function farmMapProject", masterStart);
   const budgetOptionsStart = appSource.indexOf("function farmBudgetAreaOptions");
   const budgetOptionsEnd = appSource.indexOf("function renderFarmBudgetAreaDropdowns", budgetOptionsStart);
-  assert.match(appSource.slice(budgetStart, budgetEnd), /farmVisibleAreaBlocks\(\)/);
-  assert.match(appSource.slice(planningStart, planningEnd), /farmVisibleAreaBlocks\(\)/);
+  assert.match(appSource.slice(catalogStart, catalogEnd), /farmAreaCatalogHierarchy\(\)/);
+  assert.match(appSource.slice(planningStart, planningEnd), /farmAreaCatalogBlocks\(\)/);
   assert.match(appSource.slice(masterStart, masterEnd), /farmCanonicalAreaBlocks\(\)/);
-  assert.match(appSource.slice(budgetOptionsStart, budgetOptionsEnd), /const hierarchy = farmAreaHierarchy\(\)/);
+  assert.match(appSource.slice(budgetOptionsStart, budgetOptionsEnd), /const hierarchy = farmAreaCatalogHierarchy\(\)/);
+  assert.doesNotMatch(appSource, /function farmVisibleAreaBlocks|function farmBudgetScopedBlocks/);
   assert.doesNotMatch(appSource.slice(budgetOptionsStart, budgetOptionsEnd), /farmLookup\("plots"|farmLookup\("zones"/);
 });
 
@@ -182,9 +183,9 @@ test("Area Master separates Block inventory KPIs from map geometry", () => {
   const start = appSource.indexOf("function renderFarmAreaBoard");
   const end = appSource.indexOf("function farmActivityGroupLabel", start);
   const board = appSource.slice(start, end);
-  assert.match(board, /จำนวน Block ใน Master/);
+  assert.match(board, /ข้อมูล Block ในระบบ/);
   assert.match(board, /Map Status/);
-  assert.match(board, /Canonical \$\{fmt\(allAreas\.length\)\}/);
+  assert.match(board, /Area \$\{fmt\(catalogCount\)\}/);
   assert.match(board, /const allAreas = hierarchy\.blocks/);
   assert.doesNotMatch(board, /map_boundary/);
 });
