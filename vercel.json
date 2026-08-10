@@ -20,7 +20,7 @@
       "dest": "/webapp/data/$1"
     },
     {
-      "src": "/(app\\.js|styles\\.css)",
+      "src": "/(app\\.js|styles\\.css|farm-block-schema\\.js)",
       "dest": "/webapp/$1"
     },
     {

@@ -8,6 +8,7 @@ if (!checkOnly) fs.mkdirSync(outDir, { recursive: true });
 
 let html = fs.readFileSync(path.join(root, "webapp", "index.html"), "utf8");
 const css = fs.readFileSync(path.join(root, "webapp", "styles.css"), "utf8");
+const farmBlockSchema = fs.readFileSync(path.join(root, "webapp", "farm-block-schema.js"), "utf8");
 let app = fs.readFileSync(path.join(root, "webapp", "app.js"), "utf8");
 const data = fs.readFileSync(path.join(root, "webapp", "data", "data.json"), "utf8");
 
@@ -22,6 +23,11 @@ html = html.replace(
 );
 
 html = html.replace(
+  /<script src="(?:\.\/|\/)farm-block-schema\.js\?v=[^"]+"><\/script>/,
+  `<script>\n${farmBlockSchema.replace(/<\//g, "<\\/")}\n</script>`
+);
+
+html = html.replace(
   /<script src="(?:\.\/|\/)app\.js\?v=[^"]+"><\/script>/,
   `<script>window.__PALM_DATA__ = ${data.replace(/<\//g, "<\\/")};</script>\n<script>\n${app.replace(/<\//g, "<\\/")}\n</script>`
 );
@@ -30,6 +36,7 @@ const output = path.join(outDir, "index.html");
 const builtHtml = `<!-- Standalone online export generated ${new Date().toISOString()} -->\n${html}`;
 if (checkOnly) {
   if (!builtHtml.includes("window.__PALM_DATA__")) throw new Error("Standalone data was not embedded");
+  if (!builtHtml.includes("FarmBlockSchema")) throw new Error("Shared farm block schema was not embedded");
   console.log(`standalone export check passed (${(Buffer.byteLength(builtHtml) / 1024 / 1024).toFixed(2)} MB)`);
 } else {
   fs.writeFileSync(output, builtHtml, "utf8");

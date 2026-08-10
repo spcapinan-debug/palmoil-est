@@ -103,6 +103,20 @@ test("DTD, entities, remote NetworkLink, and unexpected executable content are r
   await assert.rejects(parseFarmAreaKmz(zip([{ name: "doc.kml", content: kml() }, { name: "run.exe", content: "x" }])), { code: "KMZ_UNEXPECTED_CONTENT" });
 });
 
+test("remote IconStyle metadata is inert while Polygon and Point counts remain auditable", async () => {
+  const styled = `<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+    <Style id="pin"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href></Icon></IconStyle></Style>
+    <Placemark><name>30-B14</name><Polygon><outerBoundaryIs><LinearRing><coordinates>100,8 101,8 101,9 100,8</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+    <Placemark><name>reference point</name><styleUrl>#pin</styleUrl><Point><coordinates>100,8</coordinates></Point></Placemark>
+  </Document></kml>`;
+  const parsed = await parseFarmAreaKmz(zip([{ name: "doc.kml", content: styled }]));
+  assert.equal(parsed.features.length, 1);
+  assert.equal(parsed.source.placemarkCount, 2);
+  assert.equal(parsed.source.polygonPlacemarkCount, 1);
+  assert.equal(parsed.source.pointPlacemarkCount, 1);
+  assert.equal(parsed.source.otherPlacemarkCount, 0);
+});
+
 test("exact canonical reconciliation keeps blocks.id and reports unmatched/master gaps", async () => {
   const parsed = await parseFarmAreaKmz(zip([{ name: "doc.kml", content: kml([
     { name: "30-B14", coordinates: "100,8 101,8 101,9 100,8" },
@@ -117,13 +131,27 @@ test("exact canonical reconciliation keeps blocks.id and reports unmatched/maste
   assert.deepEqual(blocks.map((block) => block.id), ["canonical-b14", "canonical-a01"]);
 });
 
-test("duplicate Placemark and conflicting geometry block validation", async () => {
+test("disjoint duplicate Placemark parts merge without blocking validation", async () => {
   const parsed = await parseFarmAreaKmz(zip([{ name: "doc.kml", content: kml([
     { name: "30-B14", coordinates: "100,8 101,8 101,9 100,8" },
     { name: "30-B14", coordinates: "102,8 103,8 103,9 102,8" },
   ]) }]));
   const payload = reconciliationPayload({ parsed, blocks: [{ id: "b", block_name: "30-B14", status: "active" }] });
   assert.equal(payload.reconciliation.duplicatePlacemarks, 1);
+  assert.equal(payload.reconciliation.mapConflicts, 0);
+  assert.equal(payload.reconciliation.multipartBlocks, 1);
+  assert.equal(payload.artifact.features[0].geometry.type, "MultiPolygon");
+  assert.equal(payload.validationErrors.length, 0);
+});
+
+test("overlapping duplicate Placemark geometry blocks validation", async () => {
+  const parsed = await parseFarmAreaKmz(zip([{ name: "doc.kml", content: kml([
+    { name: "30-B14", coordinates: "100,8 104,8 104,12 100,12 100,8" },
+    { name: "30-B14", coordinates: "101,9 102,9 102,10 101,9" },
+  ]) }]));
+  const payload = reconciliationPayload({ parsed, blocks: [{ id: "b", block_name: "30-B14", status: "active" }] });
+  assert.equal(payload.reconciliation.duplicatePlacemarks, 1);
+  assert.equal(payload.reconciliation.unresolvedDuplicates, 1);
   assert.equal(payload.reconciliation.mapConflicts, 1);
   assert.ok(payload.validationErrors.some((item) => item.code === "DUPLICATE_PLACEMARK"));
   assert.ok(payload.validationErrors.some((item) => item.code === "GEOMETRY_CONFLICT"));

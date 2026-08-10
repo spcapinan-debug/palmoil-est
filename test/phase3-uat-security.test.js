@@ -102,7 +102,7 @@ test("shared body parser accepts Vercel pre-parsed JSON without rereading the st
 
 test("Preview routing serves the SPA entry point for direct workspace routes", () => {
   assert.deepEqual(vercelConfig.routes.slice(-2), [
-    { src: "/(app\\.js|styles\\.css)", dest: "/webapp/$1" },
+    { src: "/(app\\.js|styles\\.css|farm-block-schema\\.js)", dest: "/webapp/$1" },
     { src: "/(.*)", dest: "/webapp/index.html" },
   ]);
   assert.match(indexHtml, /href="\/styles\.css/);

@@ -16,8 +16,20 @@ const {
   rest,
   rpc,
 } = require("../lib/server/farm-api");
+const { normalizeFarmBlockName } = require("../lib/server/farm-area-map");
+const {
+  BLOCK_RSPO_OPTIONS,
+  BLOCK_STATUS_OPTIONS,
+  validateBlockChanges,
+} = require("../webapp/farm-block-schema");
 
 const ACTIONS = {
+  updateAreaBlock: {
+    permission: "farm.area.manage", execute: updateAreaBlock,
+    params: (args, actor) => ({ args, actor }),
+    auditPayload: (args) => ({ changed_fields: Object.keys(args.changes || {}).sort() }),
+    entity: "blocks", entityId: (args) => args.blockId,
+  },
   create_work_order_from_plan_item: {
     permission: "farm.work_order.create", confirmation: true, execute: createWorkOrderFromPlanItem,
     params: (args, actor) => ({ args, actor }),
@@ -403,6 +415,7 @@ const ACTIONS = {
 };
 
 const UAT_MUTATION_ACTIONS = new Set([
+  "updateAreaBlock",
   "create_work_order_from_plan_item",
   "submit_work_order",
   "approve_work_order",
@@ -503,6 +516,95 @@ function enumValue(value, field, values) {
 function optionalText(value, max) {
   if (value == null || value === "") return null;
   return String(value).slice(0, max);
+}
+
+function databaseValuesEqual(left, right) {
+  if ((left == null || left === "") && (right == null || right === "")) return true;
+  if (typeof left === "number" || typeof right === "number") return Number(left) === Number(right);
+  return left === right;
+}
+
+async function updateAreaBlock({ args }) {
+  const blockId = requireUuid(args.blockId, "blockId");
+  const expectedUpdatedAt = requireText(args.expectedUpdatedAt, "expectedUpdatedAt", 80);
+  if (!args.changes || typeof args.changes !== "object" || Array.isArray(args.changes)) {
+    throw new ApiError(400, "VALIDATION_ERROR", "changes must be an object", { field: "changes" });
+  }
+  const validated = validateBlockChanges(args.changes);
+  if (validated.errors.length) {
+    throw new ApiError(400, "VALIDATION_ERROR", validated.errors[0].message, { errors: validated.errors });
+  }
+  const current = await one(`blocks?id=eq.${blockId}&select=*&limit=1`, "Block");
+  if (new Date(current.updated_at).getTime() !== new Date(expectedUpdatedAt).getTime()) {
+    throw new ApiError(409, "BLOCK_VERSION_CONFLICT", "ข้อมูลนี้ถูกแก้ไขโดยผู้ใช้อื่น กรุณาโหลดข้อมูลล่าสุด", {
+      blockId,
+      expectedUpdatedAt,
+      currentUpdatedAt: current.updated_at,
+    });
+  }
+
+  const changes = { ...validated.changes };
+  const allowedStatuses = BLOCK_STATUS_OPTIONS.map((option) => option.value);
+  const allowedRspoStatuses = BLOCK_RSPO_OPTIONS.map((option) => option.value);
+  if (changes.status != null && !allowedStatuses.includes(changes.status)) {
+    throw new ApiError(400, "BLOCK_STATUS_INVALID", "Block status is not supported", { field: "status" });
+  }
+  if (changes.rspo_status != null && !allowedRspoStatuses.includes(changes.rspo_status)) {
+    throw new ApiError(400, "BLOCK_RSPO_INVALID", "RSPO status is not supported", { field: "rspo_status" });
+  }
+
+  const candidate = { ...current, ...changes };
+  const estate = await one(
+    `estates?id=eq.${requireUuid(candidate.estate_id, "estate_id")}&status=eq.active&select=id&limit=1`,
+    "Estate",
+  );
+  let zone = null;
+  if (candidate.zone_id) {
+    zone = await one(
+      `zones?id=eq.${requireUuid(candidate.zone_id, "zone_id")}&status=eq.active&select=id,estate_id&limit=1`,
+      "Zone",
+    );
+    if (zone.estate_id !== estate.id) {
+      throw new ApiError(400, "ZONE_ESTATE_MISMATCH", "Zone does not belong to the selected Estate", { field: "zone_id" });
+    }
+  }
+  if (candidate.plot_id) {
+    const plot = await one(
+      `plots?id=eq.${requireUuid(candidate.plot_id, "plot_id")}&status=eq.active&select=id,estate_id,zone_id,plot_code&limit=1`,
+      "Plot",
+    );
+    if (plot.estate_id !== estate.id || (plot.zone_id || null) !== (zone?.id || null)) {
+      throw new ApiError(400, "PLOT_SCOPE_MISMATCH", "Plot/AP Code does not belong to the selected Estate and Zone", { field: "plot_id" });
+    }
+    changes.ap_code = plot.plot_code;
+  } else if (Object.prototype.hasOwnProperty.call(changes, "plot_id")) {
+    changes.ap_code = null;
+  }
+
+  if (changes.block_name != null && normalizeFarmBlockName(changes.block_name) !== normalizeFarmBlockName(current.block_name)) {
+    const { data: blockNames } = await rest(`blocks?id=neq.${blockId}&select=id,block_name&limit=5000`);
+    const normalized = normalizeFarmBlockName(changes.block_name);
+    if ((blockNames || []).some((block) => normalizeFarmBlockName(block.block_name) === normalized)) {
+      throw new ApiError(409, "BLOCK_NAME_CONFLICT", "Normalized Block Name already exists", { field: "block_name" });
+    }
+  }
+
+  const changedPatch = Object.fromEntries(Object.entries(changes)
+    .filter(([field, value]) => !databaseValuesEqual(current[field], value)));
+  if (!Object.keys(changedPatch).length) return { ...current, unchanged: true };
+  changedPatch.updated_at = new Date().toISOString();
+  const { data } = await rest(
+    `blocks?id=eq.${blockId}&updated_at=eq.${encodeURIComponent(current.updated_at)}&select=*`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(changedPatch),
+      headers: { Prefer: "return=representation" },
+    },
+  );
+  if (!data?.[0]) {
+    throw new ApiError(409, "BLOCK_VERSION_CONFLICT", "ข้อมูลนี้ถูกแก้ไขโดยผู้ใช้อื่น กรุณาโหลดข้อมูลล่าสุด", { blockId });
+  }
+  return data[0];
 }
 
 async function one(path, label) {
@@ -2045,6 +2147,7 @@ async function handler(req, res) {
     await audit(req, actor, `farm_action.requested.${action}`, definition.entity, definition.entityId?.(args), {
       reason: String(body.reason || args.reason || "").slice(0, 500),
       idempotency_key: idempotencyKey,
+      ...(definition.auditPayload?.(args, actor) || {}),
     });
     const result = definition.execute ? await definition.execute(params) : await rpc(definition.rpc, params);
     const entityId = definition.entityId?.(args) || result?.id || (typeof result === "string" ? result : null);
@@ -2069,4 +2172,5 @@ module.exports._test = {
   requireInventoryUatIssue, requireUatWorkOrder, requireWebTestCode, requestHash,
   calculateConsumedFuel, ensureSurveyFailureFindings, notificationContext, resolveSurveyTemplateForOrder,
   surveyAnswerComplete, surveyQuestionVisible,
+  updateAreaBlock,
 };

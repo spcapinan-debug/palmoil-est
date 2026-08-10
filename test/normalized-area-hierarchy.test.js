@@ -6,6 +6,7 @@ const vm = require("node:vm");
 
 const root = path.join(__dirname, "..");
 const appSource = fs.readFileSync(path.join(root, "webapp", "app.js"), "utf8");
+const blockSchemaSource = fs.readFileSync(path.join(root, "webapp", "farm-block-schema.js"), "utf8");
 
 function areaHierarchyHarness() {
   const keyStart = appSource.indexOf("function farmBlockMapKey(");
@@ -199,7 +200,7 @@ test("Area Master separates Block inventory KPIs from map geometry", () => {
   const end = appSource.indexOf("function farmActivityGroupLabel", start);
   const board = appSource.slice(start, end);
   assert.match(board, /ข้อมูล Block ในระบบ/);
-  assert.match(board, /Map Status/);
+  assert.match(blockSchemaSource, /Map Status/);
   assert.match(board, /Area \$\{fmt\(catalogCount\)\}/);
   assert.match(board, /const allAreas = hierarchy\.blocks/);
   assert.doesNotMatch(board, /map_boundary/);

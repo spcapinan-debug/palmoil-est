@@ -90,11 +90,23 @@ test("duplicate Placemark from two KMZ sources dedupes when geometry is identica
   assert.deepEqual(result.features[0].properties.source_files, ["Master Data/SPC-BLOCK.kmz", "Master Data/SPC-BLOK.kmz"]);
 });
 
-test("conflicting duplicate Placemark geometries report conflict without choosing by load order", () => {
+test("disjoint duplicate Placemark geometries merge as one canonical MultiPolygon", () => {
   const result = dedupeFarmMapFeatures([
     polygon("49-A10-R", "Master Data/SPC-BLOCK.kmz", 0),
     polygon("49-A10-R", "Master Data/SPC-BLOK.kmz", 5),
   ]);
+  assert.equal(result.geometryConflicts.length, 0);
+  assert.equal(result.features[0].geometry.type, "MultiPolygon");
+  assert.equal(result.features[0].properties.duplicate_resolution, "multi_part");
+  assert.equal(result.features[0].properties.polygon_part_count, 2);
+});
+
+test("overlapping duplicate Placemark geometries report conflict without choosing by load order", () => {
+  const left = polygon("49-A10-R", "Master Data/SPC-BLOCK.kmz");
+  const right = polygon("49-A10-R", "Master Data/SPC-BLOK.kmz");
+  left.geometry.coordinates = [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]];
+  right.geometry.coordinates = [[[1, 1], [3, 1], [3, 3], [1, 3], [1, 1]]];
+  const result = dedupeFarmMapFeatures([left, right]);
   assert.equal(result.geometryConflicts.length, 1);
   assert.equal(result.features[0].geometry, null);
   assert.equal(result.features[0].properties.geometry_conflict, true);

@@ -80,7 +80,7 @@ async function processedArtifact(row) {
 }
 
 function reconciliationPayload({ parsed, blocks, previousFeatures = [] }) {
-  const reconciled = reconcileFarmAreaMap({ blocks, features: parsed.features });
+  const reconciled = reconcileFarmAreaMap({ blocks, features: parsed.features, source: parsed.source });
   const comparison = compareFarmAreaMapVersions({ previousFeatures, nextFeatures: reconciled.map.features });
   const bounds = farmMapBounds(reconciled.map.features);
   const reconciliation = reconciled.reconciliation;
@@ -89,8 +89,8 @@ function reconciliationPayload({ parsed, blocks, previousFeatures = [] }) {
   if (!Array.isArray(bounds) || bounds.length !== 4 || bounds.some((value) => !Number.isFinite(value))) {
     validationErrors.push({ code: "INVALID_BOUNDS", message: "Map bounds are invalid" });
   }
-  if (reconciliation.duplicatePlacemarks > 0) {
-    validationErrors.push({ code: "DUPLICATE_PLACEMARK", message: "Duplicate normalized Placemark names must be resolved" });
+  if (reconciliation.unresolvedDuplicates > 0) {
+    validationErrors.push({ code: "DUPLICATE_PLACEMARK", message: "Overlapping duplicate Placemark geometry must be resolved" });
   }
   if (reconciliation.mapConflicts > 0) {
     validationErrors.push({ code: "GEOMETRY_CONFLICT", message: "Geometry or canonical name conflicts must be resolved" });
