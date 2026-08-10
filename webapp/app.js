@@ -43,6 +43,18 @@ const state = {
   farmAreaCatalogDiagnostic: null,
   farmAreaCatalogDiagnosticSignature: "",
   farmAreaMapAudit: null,
+  farmAreaMapVersion: null,
+  farmAreaMapError: "",
+  farmAreaMapLegendGroup: "all",
+  farmAreaMapManageOpen: false,
+  farmAreaMapManageBusy: false,
+  farmAreaMapManageError: "",
+  farmAreaMapVersions: [],
+  farmAreaMapSelectedFile: null,
+  farmAreaMapDraft: null,
+  farmAreaMapPreview: null,
+  farmAreaMapAcknowledgeUnmatched: false,
+  farmAreaMapConfirmWarnings: false,
   farmAreaMasterLoading: false,
   farmAreaMasterError: "",
   farmBudgetRateData: null,
@@ -287,6 +299,7 @@ const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_wei
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
 const FARM_AREA_MASTER_API = window.__FARM_AREA_MASTER_API__ || "/api/farm-area-master";
+const FARM_AREA_MAP_API = window.__FARM_AREA_MAP_API__ || "/api/farm-area-map";
 const FARM_SESSION_API = window.__FARM_SESSION_API__ || "/api/farm-session";
 const FARM_AUTH_API = window.__FARM_AUTH_API__ || "/api/farm-auth";
 const FARM_ACTIONS_API = window.__FARM_ACTIONS_API__ || "/api/farm-actions";
@@ -650,6 +663,18 @@ function resetFarmAuthenticatedData() {
   state.farmAreaCatalogDiagnostic = null;
   state.farmAreaCatalogDiagnosticSignature = "";
   state.farmAreaMapAudit = null;
+  state.farmAreaMapVersion = null;
+  state.farmAreaMapError = "";
+  state.farmAreaMapLegendGroup = "all";
+  state.farmAreaMapManageOpen = false;
+  state.farmAreaMapManageBusy = false;
+  state.farmAreaMapManageError = "";
+  state.farmAreaMapVersions = [];
+  state.farmAreaMapSelectedFile = null;
+  state.farmAreaMapDraft = null;
+  state.farmAreaMapPreview = null;
+  state.farmAreaMapAcknowledgeUnmatched = false;
+  state.farmAreaMapConfirmWarnings = false;
   state.farmAreaMasterLoading = false;
   state.farmAreaMasterError = "";
   state.farmDbErrors = {};
@@ -4279,6 +4304,8 @@ async function loadFarmAreaMasterData({ force = false } = {}) {
     state.farmCanonicalAreaRows = normalizeFarmDbRows("blocks", payload.catalogBlocks);
     state.farmAreaMapReconciliation = payload.reconciliation || null;
     state.farmAreaMapAudit = payload.audit || null;
+    state.farmAreaMapVersion = payload.mapVersion || null;
+    state.farmAreaMapError = payload.map?.error || "";
     state.blockMapData = {
       type: payload.map.type || "FeatureCollection",
       source: payload.map.source || {},
@@ -4291,6 +4318,8 @@ async function loadFarmAreaMasterData({ force = false } = {}) {
       catalogBlocks: state.farmCanonicalAreaRows.length,
       uniqueMapKeys: payload.reconciliation?.uniqueBlockKeys || 0,
       matchedMaster: payload.reconciliation?.matchedMaster || 0,
+      mapVersion: payload.mapVersion?.versionNo || 0,
+      sourceMode: payload.map?.sourceMode || "unknown",
     });
     return true;
   } catch (error) {
@@ -22786,11 +22815,11 @@ function farmZoneDisplayName(value = "") {
 
 function farmBlockGroupCode(block = {}, plotGroup = {}) {
   const direct = [
+    plotGroup.group_code,
+    plotGroup.group_name,
     block.plot_group_code,
     block.plot_group_name,
     block.plot_group,
-    plotGroup.group_code,
-    plotGroup.group_name,
   ].map((value) => String(value || "").trim()).find(Boolean);
   if (direct) return direct;
   const source = [block.block_name, block.area_name, block.terrain_code, block.area_code, block.block_code]
@@ -24060,12 +24089,33 @@ function farmMapProject(point, bounds, width, height) {
   return `${x.toFixed(1)},${y.toFixed(1)}`;
 }
 
-function farmMapBlockColor(row, index) {
-  const zone = String(row?.zone_name || "").toLowerCase();
-  if (zone.includes("upper")) return "#4f83c2";
-  if (zone.includes("lower")) return "#58a875";
-  const palette = ["#d18b4f", "#8e76be", "#5aa6a1", "#c76f79", "#9aa65a"];
-  return palette[index % palette.length];
+function farmAreaGroupKey(row = {}) {
+  const group = String(row?.blockGroupCode || row?.plot_group_code || row?.plot_group_name || "").trim().toUpperCase();
+  return !group || /ไม่ระบุ/.test(group) ? "" : group;
+}
+
+function farmAreaGroupColor(group) {
+  const key = String(group || "").trim().toUpperCase();
+  if (!key) return "#94a3b8";
+  const palette = ["#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#4f46e5", "#65a30d", "#dc2626", "#0f766e"];
+  const canonical = { A: 0, B: 1, C: 2, D: 3, P: 4, PU: 5, T: 6 };
+  if (canonical[key] != null) return palette[canonical[key]];
+  let hash = 2166136261;
+  for (const char of key) {
+    hash ^= char.codePointAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return palette[(hash >>> 0) % palette.length];
+}
+
+function farmMapBlockColor(row) {
+  return farmAreaGroupColor(farmAreaGroupKey(row));
+}
+
+function farmMapFeatureOuterRings(feature = {}) {
+  if (feature?.geometry?.type === "Polygon") return [feature.geometry.coordinates?.[0] || []];
+  if (feature?.geometry?.type === "MultiPolygon") return (feature.geometry.coordinates || []).map((polygon) => polygon?.[0] || []);
+  return [];
 }
 
 function farmAreaMapStatusLabel(status) {
@@ -24076,6 +24126,164 @@ function farmAreaMapStatusLabel(status) {
     map_conflict: "Map conflict",
     master_conflict: "Master key conflict",
   })[status] || "รอตรวจสอบ";
+}
+
+function farmAreaMapVersionLabel(version = state.farmAreaMapVersion) {
+  if (!version || version.status === "bootstrap" || !Number(version.versionNo)) return "Bootstrap · block_map.json";
+  return `v${fmt(version.versionNo)} · ${version.status === "published" ? "Published" : version.status}`;
+}
+
+function farmAreaMapCanManage() {
+  return farmHasWorkspacePermission("farm.area_map.manage");
+}
+
+function farmAreaMapCanPublish() {
+  return farmHasWorkspacePermission("farm.area_map.publish");
+}
+
+function farmAreaMapCanRollback() {
+  return farmHasWorkspacePermission("farm.area_map.rollback");
+}
+
+function farmAreaMapPreviewSummary(preview = state.farmAreaMapPreview) {
+  return preview?.summary || preview?.reconciliation || preview || {};
+}
+
+async function farmAreaMapRequest(action, body = null, method = "POST") {
+  const options = { method, cache: "no-store" };
+  if (body != null) {
+    options.headers = { "Content-Type": "application/json" };
+    options.body = JSON.stringify(body);
+  }
+  const { response, payload } = await farmJsonRequest(`${FARM_AREA_MAP_API}?action=${encodeURIComponent(action)}`, options);
+  if (!response.ok || !payload?.ok) {
+    const error = new Error(farmApiErrorMessage(payload, "Area Map action ไม่สำเร็จ"));
+    error.payload = payload;
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+async function loadFarmAreaMapVersions() {
+  if (!farmAreaMapCanManage()) return [];
+  const payload = await farmAreaMapRequest("versions", null, "GET");
+  state.farmAreaMapVersions = payload.versions || [];
+  return state.farmAreaMapVersions;
+}
+
+function farmAreaMapFileBase64(file) {
+  return file.arrayBuffer().then((arrayBuffer) => {
+    const bytes = new Uint8Array(arrayBuffer);
+    const chunks = [];
+    const chunkSize = 0x8000;
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+      chunks.push(String.fromCharCode(...bytes.subarray(index, index + chunkSize)));
+    }
+    return btoa(chunks.join(""));
+  });
+}
+
+async function runFarmAreaMapUiAction(task) {
+  if (state.farmAreaMapManageBusy) return null;
+  state.farmAreaMapManageBusy = true;
+  state.farmAreaMapManageError = "";
+  render();
+  try {
+    return await task();
+  } catch (error) {
+    state.farmAreaMapManageError = error.message || "Area Map action ไม่สำเร็จ";
+    if (error.payload?.version) state.farmAreaMapDraft = error.payload.version;
+    if (error.payload?.preview) state.farmAreaMapPreview = error.payload.preview;
+    return null;
+  } finally {
+    state.farmAreaMapManageBusy = false;
+    render();
+  }
+}
+
+async function uploadFarmAreaKmz() {
+  const file = state.farmAreaMapSelectedFile;
+  if (!file) {
+    state.farmAreaMapManageError = "กรุณาเลือกไฟล์ KMZ";
+    render();
+    return;
+  }
+  await runFarmAreaMapUiAction(async () => {
+    const payload = await farmAreaMapRequest("upload", {
+      file_name: file.name,
+      file_base64: await farmAreaMapFileBase64(file),
+    });
+    state.farmAreaMapDraft = payload.version;
+    state.farmAreaMapPreview = payload.preview;
+    state.farmAreaMapAcknowledgeUnmatched = Number(payload.version?.unmatchedCount || 0) === 0;
+    state.farmAreaMapConfirmWarnings = false;
+    await loadFarmAreaMapVersions();
+  });
+}
+
+async function validateFarmAreaKmz() {
+  if (!state.farmAreaMapDraft?.id) return;
+  await runFarmAreaMapUiAction(async () => {
+    try {
+      const payload = await farmAreaMapRequest("validate", {
+        version_id: state.farmAreaMapDraft.id,
+        acknowledge_unmatched: state.farmAreaMapAcknowledgeUnmatched,
+      });
+      state.farmAreaMapDraft = payload.version;
+      state.farmAreaMapPreview = payload.preview;
+    } catch (error) {
+      if (error.payload?.version) state.farmAreaMapDraft = error.payload.version;
+      if (error.payload?.preview) state.farmAreaMapPreview = error.payload.preview;
+      throw error;
+    }
+    await loadFarmAreaMapVersions();
+  });
+}
+
+async function publishFarmAreaKmz(versionId = state.farmAreaMapDraft?.id) {
+  if (!versionId) return;
+  await runFarmAreaMapUiAction(async () => {
+    const payload = await farmAreaMapRequest("publish", {
+      version_id: versionId,
+      confirm_warnings: state.farmAreaMapConfirmWarnings,
+    });
+    state.farmAreaMapDraft = payload.version;
+    await Promise.all([loadFarmAreaMapVersions(), loadFarmAreaMasterData({ force: true })]);
+  });
+}
+
+async function previewFarmAreaMapVersion(versionId) {
+  await runFarmAreaMapUiAction(async () => {
+    const { response, payload } = await farmJsonRequest(`${FARM_AREA_MAP_API}?action=preview&version_id=${encodeURIComponent(versionId)}`, { cache: "no-store" });
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "ไม่สามารถเปิด Preview ได้"));
+    state.farmAreaMapDraft = payload.version;
+    state.farmAreaMapPreview = {
+      artifact: payload.map,
+      summary: payload.version.reconciliationSummary || {},
+      validationErrors: payload.version.validationErrors || [],
+    };
+  });
+}
+
+async function rollbackFarmAreaMapVersion(versionId) {
+  const reason = window.prompt("ระบุเหตุผล Rollback KMZ");
+  if (!reason) return;
+  if (!window.confirm("ยืนยันสร้าง Published version ใหม่จากเวอร์ชันนี้? ประวัติเดิมจะไม่ถูกเขียนทับ")) return;
+  await runFarmAreaMapUiAction(async () => {
+    await farmAreaMapRequest("rollback", { version_id: versionId, reason, confirm: true });
+    await Promise.all([loadFarmAreaMapVersions(), loadFarmAreaMasterData({ force: true })]);
+  });
+}
+
+async function rejectFarmAreaMapVersion(versionId) {
+  const reason = window.prompt("ระบุเหตุผล Reject KMZ");
+  if (!reason) return;
+  await runFarmAreaMapUiAction(async () => {
+    const payload = await farmAreaMapRequest("reject", { version_id: versionId, reason });
+    if (state.farmAreaMapDraft?.id === versionId) state.farmAreaMapDraft = payload.version;
+    await loadFarmAreaMapVersions();
+  });
 }
 
 function renderFarmAreaMapAudit() {
@@ -24147,6 +24355,79 @@ function renderFarmAreaMapAudit() {
     </section>`;
 }
 
+function renderFarmAreaMapManagement() {
+  if (!state.farmAreaMapManageOpen || !farmAreaMapCanManage()) return "";
+  const current = state.farmAreaMapVersion || {};
+  const draft = state.farmAreaMapDraft || {};
+  const summary = farmAreaMapPreviewSummary();
+  const validationErrors = state.farmAreaMapPreview?.validationErrors || draft.validationErrors || [];
+  const warnings = Number(summary.removedPolygons || 0) > 0 || Number(summary.matchedDecrease || 0) > 0;
+  const busy = state.farmAreaMapManageBusy;
+  const versions = state.farmAreaMapVersions || [];
+  return `
+    <div class="farm-area-map-modal-backdrop" data-area-map-close></div>
+    <section class="farm-area-map-modal" role="dialog" aria-modal="true" aria-labelledby="areaMapManageTitle">
+      <div class="farm-area-map-modal-head">
+        <div><span>Area Map Master</span><h3 id="areaMapManageTitle">ปรับปรุงแผนที่พื้นที่</h3></div>
+        <button type="button" class="ghost compact" data-area-map-close aria-label="ปิด">×</button>
+      </div>
+      <div class="farm-area-map-current">
+        <div><span>Current Published Version</span><strong>${esc(farmAreaMapVersionLabel(current))}</strong></div>
+        <div><span>ไฟล์</span><strong>${esc(current.originalFileName || "block_map.json")}</strong></div>
+        <div><span>Published</span><strong>${esc(current.publishedAt || "Bootstrap")}</strong></div>
+        <div><span>Polygon / Matched / Unmatched / Conflict</span><strong>${fmt(current.featureCount || state.farmAreaMapReconciliation?.uniqueBlockKeys || 0)} / ${fmt(current.matchedCount || state.farmAreaMapReconciliation?.matchedMaster || 0)} / ${fmt(current.unmatchedCount || state.farmAreaMapReconciliation?.mapWithoutMaster || 0)} / ${fmt(current.conflictCount || state.farmAreaMapReconciliation?.mapConflicts || 0)}</strong></div>
+      </div>
+      ${state.farmAreaMapManageError ? `<div class="farm-sync-status error">${esc(state.farmAreaMapManageError)}</div>` : ""}
+      <div class="farm-area-map-dropzone" data-area-map-dropzone>
+        <strong>ลากและวางไฟล์ KMZ ที่นี่</strong>
+        <span>รับเฉพาะ .kmz ขนาดไม่เกิน 3 MB · Parse และตรวจสอบบน Server</span>
+        <label class="farm-area-map-file-button">เลือกไฟล์ KMZ<input type="file" accept=".kmz,application/vnd.google-earth.kmz" data-area-map-file></label>
+        <small>${esc(state.farmAreaMapSelectedFile ? `${state.farmAreaMapSelectedFile.name} · ${fmt(state.farmAreaMapSelectedFile.size)} bytes` : "ยังไม่ได้เลือกไฟล์")}</small>
+        <button type="button" data-area-map-upload ${busy || !state.farmAreaMapSelectedFile ? "disabled" : ""}>${busy ? "กำลังประมวลผล..." : "อัปโหลดเป็น Draft และ Preview"}</button>
+      </div>
+      ${draft.id ? `
+        <section class="farm-area-map-preview">
+          <div class="section-head"><h4>Preview v${fmt(draft.versionNo)}</h4><span>${esc(draft.status || "draft")} · ${esc(draft.originalFileName || "")}</span></div>
+          <div class="farm-area-map-preview-grid">
+            <article><span>KMZ Polygon</span><strong>${fmt(summary.uniqueBlockKeys ?? draft.featureCount ?? 0)}</strong></article>
+            <article><span>Matched</span><strong>${fmt(summary.matchedMaster ?? draft.matchedCount ?? 0)}</strong></article>
+            <article><span>KMZ ไม่มี Master</span><strong>${fmt(summary.mapWithoutMaster ?? draft.unmatchedCount ?? 0)}</strong></article>
+            <article><span>Master ไม่มี KMZ</span><strong>${fmt(summary.masterWithoutMap ?? draft.masterWithoutMapCount ?? 0)}</strong></article>
+            <article><span>Geometry Changed</span><strong>${fmt(summary.geometryChanged || 0)}</strong></article>
+            <article><span>Geometry Unchanged</span><strong>${fmt(summary.geometryUnchanged || 0)}</strong></article>
+            <article><span>New Polygon</span><strong>${fmt(summary.newPolygons || 0)}</strong></article>
+            <article><span>Removed Polygon</span><strong>${fmt(summary.removedPolygons || 0)}</strong></article>
+            <article><span>Duplicate</span><strong>${fmt(summary.duplicatePlacemarks ?? draft.duplicateCount ?? 0)}</strong></article>
+            <article><span>Conflict</span><strong>${fmt(summary.mapConflicts ?? draft.conflictCount ?? 0)}</strong></article>
+          </div>
+          ${validationErrors.length ? `<div class="farm-area-map-validation-errors">${validationErrors.map((item) => `<span>${esc(item.code)} · ${esc(item.message)}</span>`).join("")}</div>` : `<div class="farm-sync-status success">ไม่พบ parse/security/geometry conflict ที่ขวาง Publish</div>`}
+          <label class="farm-area-map-confirm"><input type="checkbox" data-area-map-ack-unmatched ${state.farmAreaMapAcknowledgeUnmatched ? "checked" : ""}> ตรวจสอบและรับทราบรายการ KMZ ไม่มี Master แล้ว</label>
+          ${warnings ? `<label class="farm-area-map-confirm warning"><input type="checkbox" data-area-map-confirm-warnings ${state.farmAreaMapConfirmWarnings ? "checked" : ""}> ยืนยันคำเตือน: Removed ${fmt(summary.removedPolygons || 0)} / Matched ลดลง ${fmt(summary.matchedDecrease || 0)}</label>` : ""}
+          <div class="farm-area-map-preview-actions">
+            <button type="button" class="secondary" data-area-map-validate ${busy || !['draft', 'validated'].includes(draft.status) ? "disabled" : ""}>Validate</button>
+            ${farmAreaMapCanPublish() ? `<button type="button" data-area-map-publish="${esc(draft.id)}" ${busy || draft.status !== "validated" || (warnings && !state.farmAreaMapConfirmWarnings) ? "disabled" : ""}>Publish</button>` : ""}
+            <button type="button" class="danger ghost" data-area-map-reject="${esc(draft.id)}" ${busy || !['draft', 'validated'].includes(draft.status) ? "disabled" : ""}>Reject</button>
+          </div>
+        </section>` : ""}
+      <section class="farm-area-map-history">
+        <div class="section-head"><h4>Version History</h4><span>${fmt(versions.length)} versions · ${esc(current.deploymentContext || "")}</span></div>
+        <div class="farm-area-map-history-list">
+          ${versions.map((version) => `
+            <article class="status-${esc(version.status)}">
+              <div><strong>v${fmt(version.versionNo)} · ${esc(version.status)}</strong><span>${esc(version.originalFileName || "-")}</span></div>
+              <small>${esc(version.createdAt || "-")} · ${esc(version.uploadedBy || version.uploadedByProfileId || "-")}</small>
+              <small>Polygon ${fmt(version.featureCount)} · Matched ${fmt(version.matchedCount)} · Unmatched ${fmt(version.unmatchedCount)} · Conflict ${fmt(version.conflictCount)}</small>
+              <div class="farm-area-map-history-actions">
+                ${version.featureCount ? `<button type="button" class="ghost compact" data-area-map-preview-version="${esc(version.id)}" ${busy ? "disabled" : ""}>Preview</button>` : ""}
+                ${farmAreaMapCanPublish() && version.status === "validated" ? `<button type="button" class="compact" data-area-map-publish="${esc(version.id)}" ${busy ? "disabled" : ""}>Publish</button>` : ""}
+                ${farmAreaMapCanRollback() && version.featureCount && version.id !== current.id ? `<button type="button" class="secondary compact" data-area-map-rollback="${esc(version.id)}" ${busy ? "disabled" : ""}>Rollback</button>` : ""}
+              </div>
+            </article>`).join("") || `<div class="farm-map-empty">ยังไม่มี Version ใน context นี้</div>`}
+        </div>
+      </section>
+    </section>`;
+}
+
 function renderFarmAreaBlockMap() {
   const map = state.blockMapData || {};
   const features = state.farmAreaMapReconciliation && Array.isArray(map.features) ? map.features : [];
@@ -24156,32 +24437,43 @@ function renderFarmAreaBlockMap() {
   const stats = state.farmAreaMapReconciliation || {};
   const width = 1000;
   const height = 680;
-  const polygons = features.map((feature, index) => {
+  const groupCounts = new Map();
+  for (const feature of features) {
+    if (feature?.properties?.match_status !== "matched") continue;
+    const area = areaById.get(feature?.properties?.block_id);
+    const groupKey = farmAreaGroupKey(area);
+    if (groupKey) groupCounts.set(groupKey, (groupCounts.get(groupKey) || 0) + 1);
+  }
+  const legendGroups = [...groupCounts.entries()].sort(([left], [right]) => left.localeCompare(right, "th", { numeric: true }));
+  const selectedGroup = state.farmAreaMapLegendGroup;
+  const polygons = features.map((feature) => {
     const name = feature?.properties?.name || feature?.properties?.map_key || "";
     const status = feature?.properties?.match_status || "unknown";
     const area = areaById.get(feature?.properties?.block_id);
-    const ring = feature?.geometry?.coordinates?.[0] || [];
-    if (!bounds || ring.length < 3) return "";
-    const points = ring.map((point) => farmMapProject(point, bounds, width, height)).join(" ");
-    const color = status === "matched" ? farmMapBlockColor(area, index)
-      : status.includes("conflict") ? "#f59e0b" : "#ef4444";
+    const groupKey = status === "matched" ? farmAreaGroupKey(area) : "";
+    const rings = farmMapFeatureOuterRings(feature).filter((ring) => ring.length >= 3);
+    if (!bounds || !rings.length) return "";
+    const color = status === "matched" ? farmMapBlockColor(area)
+      : status.includes("conflict") ? "#f59e0b" : "#94a3b8";
     const selected = area?.id && state.farmDetailId === area.id;
     const statusClass = status === "matched" ? " matched"
       : status.includes("conflict") ? " map-conflict" : " map-without-master";
+    const groupMuted = selectedGroup !== "all" && groupKey !== selectedGroup;
     const meta = status === "matched"
       ? `${area?.zoneDisplay || "ยังไม่ระบุ Zone"} · ${area?.blockGroupCode || "-"} · ${fmt(n(area?.area_rai))} ไร่`
       : farmAreaMapStatusLabel(status);
-    return `
+    return rings.map((ring) => `
       <polygon
-        class="farm-block-polygon${selected ? " selected" : ""}${statusClass}"
-        points="${points}"
+        class="farm-block-polygon${selected ? " selected" : ""}${statusClass}${groupMuted ? " group-muted" : ""}"
+        points="${ring.map((point) => farmMapProject(point, bounds, width, height)).join(" ")}"
         fill="${color}"
+        data-map-group="${esc(groupKey || "unmatched")}"
         ${area ? `data-farm-view="${esc(area.id)}"` : ""}
         tabindex="${area ? "0" : "-1"}"
         role="${area ? "button" : "img"}"
         aria-label="${esc(`${name} ${meta}`)}">
         <title>${esc(`${name} | ${meta}`)}</title>
-      </polygon>`;
+      </polygon>`).join("");
   }).join("");
   const selectedArea = areaRows.find((row) => row.id === state.farmDetailId);
   const selectedFeature = selectedArea
@@ -24197,22 +24489,35 @@ function renderFarmAreaBlockMap() {
     ["AP Code", selectedArea.ap_code || "-"],
     ["RSPO", selectedArea.rspo_status || "-"],
     ["Map Status", farmAreaMapStatusLabel(selectedArea.map_status)],
+    ["Map Version", farmAreaMapVersionLabel()],
   ] : [];
   const emptyMessage = state.farmAreaMasterLoading
     ? "กำลังตรวจสอบ Canonical Area Master และ KMZ..."
-    : state.farmAreaMasterError || "ยังไม่มีข้อมูลขอบเขตแผนที่ Block";
+    : state.farmAreaMapError || state.farmAreaMasterError || "ยังไม่มีข้อมูลขอบเขตแผนที่ Block";
+  const mapVersion = state.farmAreaMapVersion || {};
   return `
     <section class="farm-panel farm-area-map-panel">
       <div class="section-head">
-        <h3>สถานะข้อมูลแผนที่ / KMZ</h3>
-        <span>Raw ${fmt(stats.rawPlacemarks || 0)} · Unique ${fmt(stats.uniqueBlockKeys || features.length)} · Duplicate ${fmt(stats.duplicatePlacemarks || 0)}</span>
+        <div><h3>สถานะข้อมูลแผนที่ / KMZ</h3><span>Current Map ${esc(farmAreaMapVersionLabel(mapVersion))}${mapVersion.publishedAt ? ` · ${esc(mapVersion.publishedAt)}` : ""}</span></div>
+        <div class="farm-area-map-head-actions">
+          <span>Raw ${fmt(stats.rawPlacemarks || 0)} · Unique ${fmt(stats.uniqueBlockKeys || features.length)} · Duplicate ${fmt(stats.duplicatePlacemarks || 0)}</span>
+          ${farmAreaMapCanManage() ? `<button type="button" data-area-map-open>⇧ อัปโหลด / ปรับปรุง KMZ</button>` : ""}
+        </div>
       </div>
+      ${state.farmAreaMapError ? `<div class="farm-sync-status error">ไม่สามารถโหลดแผนที่ได้ · ${esc(state.farmAreaMapError)} <button type="button" class="ghost compact" data-farm-area-map-retry>Retry</button></div>` : ""}
       <div class="farm-area-map-status-cards">
         <article><span>Polygon ใน KMZ</span><strong>${fmt(stats.uniqueBlockKeys || features.length)}</strong><small>หลัง normalize และ dedupe</small></article>
         <article><span>Matched KMZ ↔ Block</span><strong>${fmt(stats.matchedMaster || 0)}</strong><small>canonical blocks.block_name</small></article>
         <article><span>KMZ ไม่มี Master</span><strong>${fmt(stats.mapWithoutMaster || 0)}</strong><small>ตรวจด้วย normalized blocks.block_name</small></article>
         <article><span>Master ไม่มี KMZ</span><strong>${fmt(stats.masterWithoutMap || 0)}</strong><small>Block ยังอยู่ใน Master ตามปกติ</small></article>
         <article><span>Map conflicts</span><strong>${fmt(stats.mapConflicts || 0)}</strong><small>geometry + duplicate master key</small></article>
+      </div>
+      <div class="farm-area-map-legend" aria-label="Block Group legend">
+        <strong>Block Group</strong>
+        <div>
+          <button type="button" class="${selectedGroup === "all" ? "active" : ""}" data-area-map-group="all">ทั้งหมด</button>
+          ${legendGroups.map(([group, count]) => `<button type="button" class="${selectedGroup === group ? "active" : ""}" data-area-map-group="${esc(group)}"><i style="--group-color:${farmAreaGroupColor(group)}"></i>${esc(group)} <span>${fmt(count)} Block</span></button>`).join("")}
+        </div>
       </div>
       <div class="farm-area-map-layout">
         <div class="farm-area-map-canvas">
@@ -24240,7 +24545,8 @@ function renderFarmAreaBlockMap() {
         </aside>
       </div>
     </section>
-    ${renderFarmAreaMapAudit()}`;
+    ${renderFarmAreaMapAudit()}
+    ${renderFarmAreaMapManagement()}`;
 }
 
 function farmAreaGroupDisplay(group) {
@@ -26513,6 +26819,27 @@ async function init() {
   document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.matches("[data-area-map-file]")) {
+      const file = e.target.files?.[0] || null;
+      if (file && (!/\.kmz$/i.test(file.name) || file.size <= 0 || file.size > 3 * 1024 * 1024)) {
+        state.farmAreaMapSelectedFile = null;
+        state.farmAreaMapManageError = "รับเฉพาะไฟล์ .kmz ขนาดไม่เกิน 3 MB";
+      } else {
+        state.farmAreaMapSelectedFile = file;
+        state.farmAreaMapManageError = "";
+      }
+      render();
+      return;
+    }
+    if (e.target.matches("[data-area-map-ack-unmatched]")) {
+      state.farmAreaMapAcknowledgeUnmatched = e.target.checked;
+      return;
+    }
+    if (e.target.matches("[data-area-map-confirm-warnings]")) {
+      state.farmAreaMapConfirmWarnings = e.target.checked;
+      render();
+      return;
+    }
     if (e.target.matches("[data-budget-planting-year], [data-budget-planting-year-all]")) {
       const picks = e.target.closest('[data-budget-context="work-plan"]')
         ? farmWorkPlanState()
@@ -27074,7 +27401,82 @@ async function init() {
       render();
     }
   });
+  els.reportPage.addEventListener("dragover", (e) => {
+    if (e.target.closest("[data-area-map-dropzone]")) e.preventDefault();
+  });
+  els.reportPage.addEventListener("drop", (e) => {
+    if (!e.target.closest("[data-area-map-dropzone]")) return;
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0] || null;
+    if (!file || !/\.kmz$/i.test(file.name) || file.size <= 0 || file.size > 3 * 1024 * 1024) {
+      state.farmAreaMapSelectedFile = null;
+      state.farmAreaMapManageError = "รับเฉพาะไฟล์ .kmz ขนาดไม่เกิน 3 MB";
+    } else {
+      state.farmAreaMapSelectedFile = file;
+      state.farmAreaMapManageError = "";
+    }
+    render();
+  });
   els.reportPage.addEventListener("click", async (e) => {
+    if (e.target.closest("[data-area-map-close]")) {
+      state.farmAreaMapManageOpen = false;
+      state.farmAreaMapManageError = "";
+      render();
+      return;
+    }
+    if (e.target.closest("[data-area-map-open]")) {
+      state.farmAreaMapManageOpen = true;
+      state.farmAreaMapManageError = "";
+      render();
+      await runFarmAreaMapUiAction(loadFarmAreaMapVersions);
+      return;
+    }
+    if (e.target.closest("[data-farm-area-map-retry]")) {
+      await loadFarmAreaMasterData({ force: true });
+      return;
+    }
+    const groupFilter = e.target.closest("[data-area-map-group]");
+    if (groupFilter) {
+      const group = groupFilter.dataset.areaMapGroup || "all";
+      state.farmAreaMapLegendGroup = state.farmAreaMapLegendGroup === group ? "all" : group;
+      render();
+      return;
+    }
+    if (e.target.closest("[data-area-map-upload]")) {
+      await uploadFarmAreaKmz();
+      return;
+    }
+    if (e.target.closest("[data-area-map-validate]")) {
+      await validateFarmAreaKmz();
+      return;
+    }
+    const publishMap = e.target.closest("[data-area-map-publish]");
+    if (publishMap) {
+      const version = state.farmAreaMapVersions.find((item) => item.id === publishMap.dataset.areaMapPublish) || state.farmAreaMapDraft;
+      const versionSummary = version?.reconciliationSummary || {};
+      const hasWarnings = Number(versionSummary.removedPolygons || 0) > 0 || Number(versionSummary.matchedDecrease || 0) > 0;
+      if (hasWarnings && !state.farmAreaMapConfirmWarnings) {
+        if (!window.confirm(`ยืนยัน Publish ทั้งที่ Removed ${fmt(versionSummary.removedPolygons || 0)} และ Matched ลดลง ${fmt(versionSummary.matchedDecrease || 0)}?`)) return;
+        state.farmAreaMapConfirmWarnings = true;
+      }
+      await publishFarmAreaKmz(publishMap.dataset.areaMapPublish);
+      return;
+    }
+    const previewMap = e.target.closest("[data-area-map-preview-version]");
+    if (previewMap) {
+      await previewFarmAreaMapVersion(previewMap.dataset.areaMapPreviewVersion);
+      return;
+    }
+    const rollbackMap = e.target.closest("[data-area-map-rollback]");
+    if (rollbackMap) {
+      await rollbackFarmAreaMapVersion(rollbackMap.dataset.areaMapRollback);
+      return;
+    }
+    const rejectMap = e.target.closest("[data-area-map-reject]");
+    if (rejectMap) {
+      await rejectFarmAreaMapVersion(rejectMap.dataset.areaMapReject);
+      return;
+    }
     const dispatchOpen = e.target.closest("[data-farm-dispatch-open]");
     if (dispatchOpen) {
       const orderId = dispatchOpen.dataset.farmDispatchOpen;
