@@ -40,6 +40,8 @@ const state = {
   blockMapData: null,
   farmCanonicalAreaRows: [],
   farmAreaMapReconciliation: null,
+  farmAreaCatalogDiagnostic: null,
+  farmAreaCatalogDiagnosticSignature: "",
   farmAreaMapAudit: null,
   farmAreaMasterLoading: false,
   farmAreaMasterError: "",
@@ -645,6 +647,8 @@ function resetFarmAuthenticatedData() {
   state.farmDbRows = {};
   state.farmCanonicalAreaRows = [];
   state.farmAreaMapReconciliation = null;
+  state.farmAreaCatalogDiagnostic = null;
+  state.farmAreaCatalogDiagnosticSignature = "";
   state.farmAreaMapAudit = null;
   state.farmAreaMasterLoading = false;
   state.farmAreaMasterError = "";
@@ -682,17 +686,32 @@ async function submitFarmSignIn() {
     if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "เข้าสู่ระบบไม่สำเร็จ"));
     if (els.farmAuthPassword) els.farmAuthPassword.value = "";
     resetFarmAuthenticatedData();
-    const loaded = await loadWorkspaceShell();
+    const loaded = await loadWorkspaceShell({ sessionOnly: true });
     if (!loaded || !state.farmSession?.ok) throw new Error("ไม่สามารถโหลด session หลังเข้าสู่ระบบ");
-    await loadFarmCurrentViewTables({ silent: true, force: true });
     closeFarmAuthDialog();
     render();
+    loadFarmPostLoginData();
   } catch (error) {
     if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
   } finally {
     state.farmAuthBusy = false;
     if (els.farmAuthSubmit) els.farmAuthSubmit.disabled = false;
   }
+}
+
+function loadFarmPostLoginData() {
+  return Promise.allSettled([
+    loadWorkspaceNavigationData(),
+    loadFarmCurrentViewTables({ silent: true, force: true }),
+  ]).then((results) => {
+    const failures = results.filter((result) => result.status === "rejected");
+    if (!failures.length) return results.some((result) => result.status === "fulfilled" && result.value !== false);
+    const messages = failures.map((result) => String(result.reason?.message || result.reason || "Post-login workspace data unavailable"));
+    state.farmDbErrors = { ...(state.farmDbErrors || {}), post_login: messages.join(" | ") };
+    farmPreviewDiagnostic("post-login-data", { ok: false, errors: messages });
+    console.warn("Post-login workspace data diagnostic", { errors: messages });
+    return false;
+  });
 }
 
 async function submitFarmSignOut() {
@@ -4028,14 +4047,48 @@ function openWorkspaceRoute(route) {
   return true;
 }
 
-async function loadWorkspaceShell() {
+const WORKSPACE_SHELL_TABLES = [
+  "system_settings", "v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs",
+  "v_management_action_center", "v_system_module_readiness",
+];
+
+async function loadWorkspaceNavigationData() {
+  const tables = WORKSPACE_SHELL_TABLES.join(",");
+  const tableRequest = await farmJsonRequest(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000`, {
+    cache: "no-store",
+  });
+  const payload = tableRequest.payload;
+  if (!tableRequest.response.ok || !payload?.ok) {
+    const error = new Error(farmApiErrorMessage(payload, "Workspace navigation unavailable"));
+    error.connectionState = farmConnectionStateFromResponse(tableRequest.response, payload);
+    throw error;
+  }
+  state.farmConnectionState = farmDataConnectionState(payload, WORKSPACE_SHELL_TABLES);
+  state.farmConnectionError = "";
+  const tabs = payload.tables?.v_app_workspace_tabs || [];
+  const tabMetadata = new Map(tabs.map((item) => [item.id, item]));
+  state.workspaceNavigation = (payload.tables?.v_app_navigation || []).map((item) => ({
+    ...item,
+    is_primary: tabMetadata.get(item.id)?.is_primary ?? false,
+    is_hidden: tabMetadata.get(item.id)?.is_hidden ?? false,
+  }));
+  state.workspaceDefinitions = payload.tables?.v_app_workspace_definition || [];
+  state.workspaceTabs = tabs;
+  state.workspaceActionCenter = payload.tables?.v_management_action_center || [];
+  state.workspaceReadiness = payload.tables?.v_system_module_readiness || [];
+  state.dynamicMenuEnabled = workspaceFlag(payload.tables?.system_settings, "system.dynamic_menu_enabled");
+  readActionCenterFiltersFromUrl();
+  const requestedRoute = requestedWorkspaceRouteFromUrl();
+  if (requestedRoute) applyWorkspaceRoute(requestedRoute);
+  renderDynamicWorkspaceMenu();
+  loadWorkNotifications({ silent: true });
+  return true;
+}
+
+async function loadWorkspaceShell({ sessionOnly = false } = {}) {
   try {
     state.farmConnectionState = "LOADING";
     state.farmConnectionError = "";
-    const tables = [
-      "system_settings", "v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs",
-      "v_management_action_center", "v_system_module_readiness",
-    ].join(",");
     const sessionRequest = await farmJsonRequest(FARM_SESSION_API, { cache: "no-store" }, { retrySession: false });
     const session = sessionRequest.payload;
     if (!sessionRequest.response.ok || !session?.ok) {
@@ -4057,28 +4110,6 @@ async function loadWorkspaceShell() {
     state.farmAuthRequired = false;
     state.workspacePermissions = new Set(session.permissions || []);
     state.workspaceRoles = new Set(session.roles || []);
-    const tableRequest = await farmJsonRequest(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000`, {
-      cache: "no-store",
-    });
-    const payload = tableRequest.payload;
-    if (!tableRequest.response.ok || !payload?.ok) {
-      const error = new Error(farmApiErrorMessage(payload, "Workspace navigation unavailable"));
-      error.connectionState = farmConnectionStateFromResponse(tableRequest.response, payload);
-      throw error;
-    }
-    state.farmConnectionState = farmDataConnectionState(payload, tables.split(","));
-    state.farmConnectionError = "";
-    const tabs = payload.tables?.v_app_workspace_tabs || [];
-    const tabMetadata = new Map(tabs.map((item) => [item.id, item]));
-    state.workspaceNavigation = (payload.tables?.v_app_navigation || []).map((item) => ({
-      ...item,
-      is_primary: tabMetadata.get(item.id)?.is_primary ?? false,
-      is_hidden: tabMetadata.get(item.id)?.is_hidden ?? false,
-    }));
-    state.workspaceDefinitions = payload.tables?.v_app_workspace_definition || [];
-    state.workspaceTabs = tabs;
-    state.workspaceActionCenter = payload.tables?.v_management_action_center || [];
-    state.workspaceReadiness = payload.tables?.v_system_module_readiness || [];
     farmPreviewDiagnostic("session", {
       ok: true,
       httpStatus: sessionRequest.response.status,
@@ -4086,13 +4117,8 @@ async function loadWorkspaceShell() {
       roles: session.roles || [],
       scopeCount: session.scopes?.length || 0,
     });
-    state.dynamicMenuEnabled = workspaceFlag(payload.tables?.system_settings, "system.dynamic_menu_enabled");
-    readActionCenterFiltersFromUrl();
-    const requestedRoute = requestedWorkspaceRouteFromUrl();
-    if (requestedRoute) applyWorkspaceRoute(requestedRoute);
-    renderDynamicWorkspaceMenu();
     renderFarmAuthState();
-    loadWorkNotifications({ silent: true });
+    if (!sessionOnly) await loadWorkspaceNavigationData();
     return true;
   } catch (error) {
     const connectionState = error.connectionState || "NETWORK_ERROR";
@@ -22827,10 +22853,29 @@ function buildFarmLocationTree(blocks = []) {
   });
 }
 
-function assertFarmBlockIdConsistency({ visible = null, areaMaster = [], budget = [], planning = [] } = {}) {
-  const signature = (ids) => [...new Set((ids || []).filter(Boolean))].sort().join("|");
-  const visibleSignature = signature(visible == null ? areaMaster : visible);
-  if (visibleSignature !== signature(budget) || visibleSignature !== signature(planning)) {
+function checkFarmBlockIdConsistency({ area = null, visible = null, areaMaster = [], budget = [], planning = [] } = {}) {
+  const ids = (values) => [...new Set((values || []).filter(Boolean))].sort();
+  const areaIds = ids(area ?? visible ?? areaMaster);
+  const budgetIds = ids(budget);
+  const planningIds = ids(planning);
+  const areaSet = new Set(areaIds);
+  const budgetSet = new Set(budgetIds);
+  const planningSet = new Set(planningIds);
+  const sameIds = (left, right) => left.length === right.length && left.every((id, index) => id === right[index]);
+  return {
+    ok: sameIds(areaIds, budgetIds) && sameIds(areaIds, planningIds),
+    areaCount: areaIds.length,
+    budgetCount: budgetIds.length,
+    planningCount: planningIds.length,
+    missingInArea: [...new Set([...budgetIds, ...planningIds])].filter((id) => !areaSet.has(id)),
+    missingInBudget: areaIds.filter((id) => !budgetSet.has(id)),
+    missingInPlanning: areaIds.filter((id) => !planningSet.has(id)),
+  };
+}
+
+function assertFarmBlockIdConsistency(input = {}) {
+  const diagnostic = checkFarmBlockIdConsistency(input);
+  if (!diagnostic.ok) {
     throw new Error("Visible Area, Budget, and Planning must expose identical canonical blocks.id values");
   }
   return true;
@@ -22980,12 +23025,19 @@ function farmCanonicalAreaBlocks() {
   return farmAreaCatalogBlocks();
 }
 
-function farmAssertAreaCatalogConsistency() {
-  return assertFarmBlockIdConsistency({
+function farmCheckAreaCatalogConsistency() {
+  const diagnostic = checkFarmBlockIdConsistency({
     area: farmAreaCatalogBlocks().map((block) => block.id),
     budget: farmAreaCatalogBlocks().map((block) => block.id),
     planning: farmPlanningBlockRows().map((block) => block.id),
   });
+  const signature = JSON.stringify(diagnostic);
+  state.farmAreaCatalogDiagnostic = diagnostic;
+  if (!diagnostic.ok && signature !== state.farmAreaCatalogDiagnosticSignature) {
+    console.warn("Area catalog consistency diagnostic", diagnostic);
+  }
+  state.farmAreaCatalogDiagnosticSignature = signature;
+  return diagnostic;
 }
 
 function farmBudgetBlockHierarchy(block = {}) {
@@ -23262,7 +23314,7 @@ function renderFarmBudgetAreaTreeLegacy(picks = farmBudgetContractState()) {
 }
 
 function renderFarmBudgetAreaTree(picks = farmBudgetContractState()) {
-  farmAssertAreaCatalogConsistency();
+  farmCheckAreaCatalogConsistency();
   const blocks = farmAreaCatalogBlocks()
     .map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }))
     .filter((block) => farmBudgetMatchesQuery([
@@ -24200,7 +24252,7 @@ function farmAreaBlockDisplay(row) {
 }
 
 function renderFarmAreaBoard() {
-  farmAssertAreaCatalogConsistency();
+  farmCheckAreaCatalogConsistency();
   const hierarchy = farmAreaCatalogHierarchy();
   const query = state.farmFilters.query.trim().toLowerCase();
   const statusOk = (row) => state.farmFilters.status === "all" || String(row.status || "").toLowerCase() === state.farmFilters.status;

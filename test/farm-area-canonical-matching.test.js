@@ -218,13 +218,15 @@ test("map renderer consumes server reconciliation and never rematches by block_c
   assert.doesNotMatch(renderer, /farmBlockMapKeyVariants|areaByCode|canonicalBlockByMapKey|normalizeFarmBlockName/);
 });
 
-test("Area, Budget, and Planning consistency assertion compares catalog blocks.id", () => {
-  const start = appSource.indexOf("function farmAssertAreaCatalogConsistency");
+test("Area, Budget, and Planning consistency diagnostic compares catalog blocks.id", () => {
+  const start = appSource.indexOf("function farmCheckAreaCatalogConsistency");
   const end = appSource.indexOf("function farmBudgetBlockHierarchy", start);
-  const assertion = appSource.slice(start, end);
-  assert.match(assertion, /area:\s*farmAreaCatalogBlocks\(\)/);
-  assert.match(assertion, /budget:\s*farmAreaCatalogBlocks\(\)/);
-  assert.match(assertion, /planning:\s*farmPlanningBlockRows\(\)/);
+  const diagnostic = appSource.slice(start, end);
+  assert.match(diagnostic, /area:\s*farmAreaCatalogBlocks\(\)/);
+  assert.match(diagnostic, /budget:\s*farmAreaCatalogBlocks\(\)/);
+  assert.match(diagnostic, /planning:\s*farmPlanningBlockRows\(\)/);
+  assert.match(diagnostic, /console\.warn\("Area catalog consistency diagnostic"/);
+  assert.doesNotMatch(diagnostic, /throw new Error/);
 });
 
 test("Manager Area, Budget, and Planning derive identical UUID sets without KMZ", () => {

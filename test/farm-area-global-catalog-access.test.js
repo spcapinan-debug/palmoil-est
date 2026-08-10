@@ -53,7 +53,7 @@ test("Area, Budget, Planning, planting year, and location tree use farmAreaCatal
   assert.match(appSource, /function renderFarmBudgetAreaTree[\s\S]*?const blocks = farmAreaCatalogBlocks\(\)/);
   assert.match(appSource, /function renderFarmBudgetPlantingYearSelector[\s\S]*?const blocks = farmAreaCatalogBlocks\(\)/);
   assert.match(appSource, /function renderFarmWorkFilters\(\)[\s\S]*?farmAreaCatalogBlocks\(\)\.map/);
-  assert.match(appSource, /function farmAssertAreaCatalogConsistency[\s\S]*?area:\s*farmAreaCatalogBlocks\(\)[\s\S]*?budget:\s*farmAreaCatalogBlocks\(\)/);
+  assert.match(appSource, /function farmCheckAreaCatalogConsistency[\s\S]*?area:\s*farmAreaCatalogBlocks\(\)[\s\S]*?budget:\s*farmAreaCatalogBlocks\(\)/);
   assert.doesNotMatch(appSource, /function farmVisibleAreaBlocks|function farmBudgetScopedBlocks/);
 });
 

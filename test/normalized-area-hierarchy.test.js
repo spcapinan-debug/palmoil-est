@@ -17,7 +17,7 @@ function areaHierarchyHarness() {
   const sandbox = {};
   vm.runInNewContext(`${appSource.slice(keyStart, keyEnd)}\n${appSource.slice(hierarchyStart, hierarchyEnd)}\nresult = {
     buildFarmAreaHierarchy, buildFarmLocationTree, farmLocationBlockLabel,
-    assertFarmBlockIdConsistency, farmZoneDisplayName,
+    assertFarmBlockIdConsistency, checkFarmBlockIdConsistency, farmZoneDisplayName,
   };`, sandbox);
   return sandbox.result;
 }
@@ -141,6 +141,21 @@ test("Block consistency assertion compares IDs, not display labels", () => {
   assert.throws(() => api.assertFarmBlockIdConsistency({
     areaMaster: ["b-a02"], budget: ["same-label-different-id"], planning: ["b-a02"],
   }), /canonical blocks\.id/);
+});
+
+test("Block consistency diagnostic reports mismatches without throwing", () => {
+  const diagnostic = areaHierarchyHarness().checkFarmBlockIdConsistency({
+    area: ["b-a01", "b-a02"],
+    budget: ["b-a02"],
+    planning: ["b-a01", "b-a03"],
+  });
+  assert.equal(diagnostic.ok, false);
+  assert.equal(diagnostic.areaCount, 2);
+  assert.equal(diagnostic.budgetCount, 1);
+  assert.equal(diagnostic.planningCount, 2);
+  assert.deepEqual(Array.from(diagnostic.missingInArea), ["b-a03"]);
+  assert.deepEqual(Array.from(diagnostic.missingInBudget), ["b-a01"]);
+  assert.deepEqual(Array.from(diagnostic.missingInPlanning), ["b-a02"]);
 });
 
 test("NR1 and NR2 remain explicitly unassigned to a Zone", () => {
