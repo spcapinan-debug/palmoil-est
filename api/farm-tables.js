@@ -1,5 +1,4 @@
 const {
-  ADMIN_ROLES,
   ApiError,
   actorCanAccessBlock,
   actorIsUat,
@@ -134,6 +133,11 @@ const WRITE_PERMISSIONS = {
   survey_findings: "survey.finding.manage",
   activity_performance_standards: "performance.standard.manage",
   activity_budget_rate_recommendations: "budget.recommendation.generate",
+  budget_years: "budget.rate_rule.manage",
+  budget_activity_rates: "budget.rate_rule.manage",
+  budget_rate_blocks: "budget.rate_rule.manage",
+  budget_rate_materials: "budget.rate_rule.manage",
+  budget_rate_roles: "budget.rate_rule.manage",
   budget_rate_rule_sets: "budget.rate_rule.manage",
   budget_rate_rules: "budget.rate_rule.manage",
   budget_rate_rule_conditions: "budget.rate_rule.manage",
@@ -168,6 +172,7 @@ const OPTIONAL_TABLES = new Set([...TABLES].filter((name) => name.startsWith("v_
 ));
 const CACHE_MS = 30_000;
 const cache = new Map();
+const AREA_REFERENCE_TABLES = new Set(["blocks", "estates", "zones", "plots", "plot_groups"]);
 const ACTION_ONLY_TABLES = new Set([
   "goods_issue_daily_usage", "goods_issues", "goods_issue_lines",
   "goods_returns", "goods_return_lines", "sku_conversions", "unit_conversions",
@@ -263,14 +268,14 @@ function setOf(rows, field) {
 }
 
 async function uatReadContext(actor) {
-  const blockIds = new Set(actor.scopes.map((scope) => scope.block_id).filter(Boolean));
-  if (!blockIds.size) throw new ApiError(403, "SCOPE_FORBIDDEN", "UAT identity has no active block scope");
-  const [orders, blocks] = await Promise.all([
-    rest(`work_orders?block_id=in.(${[...blockIds].join(",")})&select=id,work_order_no,planned_work_item_id,status,team_id,contractor_id`)
-      .then(({ data }) => data || []),
-    rest(`blocks?id=in.(${[...blockIds].join(",")})&select=id,block_code,block_name`)
-      .then(({ data }) => data || []),
-  ]);
+  const allBlocks = await rest("blocks?status=eq.active&select=id,block_code,block_name,estate_id,zone_id,plot_id&limit=5000")
+    .then(({ data }) => data || []);
+  const blocks = allBlocks.filter((block) => actorCanAccessBlock(actor, block));
+  const blockIds = setOf(blocks, "id");
+  const orders = blockIds.size
+    ? await rest(`work_orders?block_id=in.(${[...blockIds].join(",")})&select=id,work_order_no,planned_work_item_id,status,team_id,contractor_id`)
+      .then(({ data }) => data || [])
+    : [];
   const blockKeys = new Set(blocks.flatMap((row) => [row.id, row.block_code, row.block_name]).filter(Boolean));
   const workOrderIds = setOf(orders, "id");
   const plannedItemIds = setOf(orders, "planned_work_item_id");
@@ -361,8 +366,8 @@ function uatActionCenterRows(rows, context) {
 }
 
 function uatRowAllowed(table, row, context) {
+  if (AREA_REFERENCE_TABLES.has(table)) return String(row.status || "active").toLowerCase() === "active";
   if (!UAT_OPERATIONAL_TABLES.has(table)) {
-    if (table === "blocks") return context.blockIds.has(row.id);
     if (table === "attachments") return context.surveyAttachmentIds.has(row.id);
     if (table === "v_management_action_center") return ["farm.work", "farm.daily"].includes(row.module_key);
     if (table === "v_available_inbound_weight_tickets") {
@@ -443,7 +448,7 @@ function databaseBlockPlantingYear(block = {}) {
   return year >= 2450 && year <= new Date().getFullYear() + 544 ? year : 0;
 }
 
-async function validateBudgetRateBlockRows(actor, rows, selectedPlantingYears = [], selectedBlockIds = []) {
+async function validateBudgetRateBlockRows(_actor, rows, selectedPlantingYears = [], selectedBlockIds = []) {
   const blockIds = rows.map((row) => requireUuid(row.block_id, "block_id"));
   if (new Set(blockIds).size !== blockIds.length) {
     throw new ApiError(400, "DUPLICATE_BLOCK_ID", "selectedBlockIds must not contain duplicate block IDs");
@@ -467,9 +472,6 @@ async function validateBudgetRateBlockRows(actor, rows, selectedPlantingYears = 
     if (String(block.status || "").toLowerCase() !== "active") {
       throw new ApiError(400, "BLOCK_INACTIVE", "A selected Block is not active");
     }
-    if (!actorCanAccessBlock(actor, block)) {
-      throw new ApiError(403, "SCOPE_FORBIDDEN", "A selected Block is outside your assigned scope");
-    }
   }
   if (selectedPlantingYears !== undefined && !Array.isArray(selectedPlantingYears)) {
     throw new ApiError(400, "VALIDATION_ERROR", "selectedPlantingYears must be an array");
@@ -485,6 +487,22 @@ async function validateBudgetRateBlockRows(actor, rows, selectedPlantingYears = 
     }
   }
   return blocks;
+}
+
+function areaReferenceRows(table, rows = []) {
+  if (!AREA_REFERENCE_TABLES.has(table)) return rows;
+  return rows.filter((row) => String(row.status || "active").toLowerCase() === "active");
+}
+
+async function validateActiveBlockRows(rows = []) {
+  const blockIds = [...new Set(rows.map((row) => row.block_id).filter(Boolean).map((id) => requireUuid(id, "block_id")))];
+  if (!blockIds.length) return [];
+  const { data } = await rest(`blocks?id=in.(${blockIds.join(",")})&status=eq.active&select=id`);
+  const activeIds = new Set((data || []).map((block) => block.id));
+  if (blockIds.some((id) => !activeIds.has(id))) {
+    throw new ApiError(400, "BLOCK_NOT_ACTIVE", "Selected Block must exist and be active");
+  }
+  return data || [];
 }
 
 function safeTableError(error) {
@@ -509,10 +527,12 @@ function requireUatPlan(plan) {
   }
 }
 
-function requireUatBlock(actor, blockId) {
-  if (!blockId || !actor.scopes.some((scope) => scope.block_id === blockId)) {
-    throw new ApiError(403, "SCOPE_FORBIDDEN", "Plan item is outside your assigned block scope");
-  }
+async function requireActiveCatalogBlock(blockId) {
+  const id = requireUuid(blockId, "block_id");
+  const block = await rest(`blocks?id=eq.${encodeURIComponent(id)}&status=eq.active&select=id&limit=1`)
+    .then(({ data }) => data?.[0]);
+  if (!block) throw new ApiError(400, "BLOCK_NOT_ACTIVE", "Plan item Block must exist and be active");
+  return block;
 }
 
 async function enforceUatTableWrite(actor, table, rows) {
@@ -538,7 +558,7 @@ async function enforceUatTableWrite(actor, table, rows) {
       const plan = await rest(`annual_work_plans?id=eq.${encodeURIComponent(annualPlanId)}&select=id,plan_name,note&limit=1`)
         .then(({ data }) => data?.[0]);
       requireUatPlan(plan);
-      requireUatBlock(actor, row.block_id || existing?.block_id);
+      await requireActiveCatalogBlock(row.block_id || existing?.block_id);
     }
     return;
   }
@@ -552,7 +572,7 @@ async function enforceUatTableWrite(actor, table, rows) {
       if (!itemId) throw new ApiError(400, "VALIDATION_ERROR", "planned_work_item_id is required");
       const { item, plan } = await uatPlanForItem(itemId);
       requireUatPlan(plan);
-      requireUatBlock(actor, item.block_id);
+      await requireActiveCatalogBlock(item.block_id);
     }
     return;
   }
@@ -587,6 +607,10 @@ async function handleGet(req, res, url, actor) {
     }
     try {
       const read = await readTable(table, limit, offset);
+      if (AREA_REFERENCE_TABLES.has(table)) {
+        const rows = areaReferenceRows(table, read.rows);
+        return { ...read, rows, rawTotal: read.total, total: rows.length };
+      }
       if (table === "app_notifications") {
         const rows = read.rows.filter((row) => row.recipient_profile_id === actor.profile.id
           || (row.recipient_employee_id && row.recipient_employee_id === actor.profile.employee_id));
@@ -594,10 +618,6 @@ async function handleGet(req, res, url, actor) {
       }
       if (table === "app_notification_preferences") {
         const rows = read.rows.filter((row) => row.profile_id === actor.profile.id);
-        return { ...read, rows, rawTotal: read.total, total: rows.length };
-      }
-      if (table === "blocks" && ![...actor.roles].some((role) => ADMIN_ROLES.has(role))) {
-        const rows = read.rows.filter((row) => actorCanAccessBlock(actor, row));
         return { ...read, rows, rawTotal: read.total, total: rows.length };
       }
       if (!context) return { ...read, rawTotal: read.total };
@@ -656,6 +676,9 @@ async function handlePost(req, res, actor) {
   if (rows.length > 500) throw new ApiError(400, "VALIDATION_ERROR", "A request may write at most 500 rows");
   if (table === "budget_rate_blocks") {
     await validateBudgetRateBlockRows(actor, rows, body.selectedPlantingYears, body.selectedBlockIds);
+  }
+  if (["planned_work_items", "work_orders"].includes(table)) {
+    await validateActiveBlockRows(rows);
   }
   await enforceUatTableWrite(actor, table, rows);
   const conflict = String(body.onConflict || CONFLICT_KEYS[table] || "id");
@@ -726,7 +749,9 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports._test = {
-  ACTION_ONLY_TABLES, OPTIONAL_TABLES, TABLES, UAT_OPERATIONAL_TABLES, cache, clearCache, parallelMap,
+  ACTION_ONLY_TABLES, AREA_REFERENCE_TABLES, OPTIONAL_TABLES, TABLES, UAT_OPERATIONAL_TABLES, WRITE_PERMISSIONS,
+  areaReferenceRows, cache, clearCache, parallelMap,
   actorCanAccessBlock, databaseBlockPlantingYear, enforceUatTableWrite, normalizePlantingYear,
-  requestedTables, safeTableError, tableName, uatActionCenterRows, uatRowAllowed, validateBudgetRateBlockRows,
+  requestedTables, requireActiveCatalogBlock, safeTableError, tableName, uatActionCenterRows, uatRowAllowed,
+  validateActiveBlockRows, validateBudgetRateBlockRows, writePermission,
 };

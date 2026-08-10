@@ -122,7 +122,7 @@ test("plan save failures retain planning Block and planting-year state", () => {
   assert.doesNotMatch(catchBody, /selectedBlocks\s*=\s*\[\]|plantingYearSelectedBlockIds\s*=\s*\[\]/);
 });
 
-test("server rejects a planned item outside the UAT actor Block scope", async () => {
+test("Planning accepts an active catalog Block outside UAT assignment scope", async () => {
   const previousFetch = global.fetch;
   const previousUrl = process.env.SUPABASE_URL;
   const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -134,9 +134,10 @@ test("server rejects a planned item outside the UAT actor Block scope", async ()
     process.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-test-key";
     global.fetch = async () => new Response(JSON.stringify([{ id: planId, plan_name: "WEBTEST-UAT-PLAN" }]), { status: 200 });
     const actor = { roles: new Set(["uat_manager"]), scopes: [{ block_id: allowedId }] };
-    await assert.rejects(
-      farmTables._test.enforceUatTableWrite(actor, "planned_work_items", [{ annual_plan_id: planId, block_id: forbiddenId }]),
-      (error) => error.code === "SCOPE_FORBIDDEN",
+    await farmTables._test.enforceUatTableWrite(
+      actor,
+      "planned_work_items",
+      [{ annual_plan_id: planId, block_id: forbiddenId }],
     );
   } finally {
     global.fetch = previousFetch;

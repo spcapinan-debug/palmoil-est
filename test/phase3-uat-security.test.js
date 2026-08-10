@@ -67,7 +67,8 @@ test("UAT read filter isolates operational rows while retaining master data", ()
   assert.equal(farmTables._test.uatRowAllowed("work_results", { id: "result-uat" }, context), true);
   assert.equal(farmTables._test.uatRowAllowed("survey_responses", { id: "real-survey" }, context), false);
   assert.equal(farmTables._test.uatRowAllowed("blocks", { id: "block-uat" }, context), true);
-  assert.equal(farmTables._test.uatRowAllowed("blocks", { id: "real-block" }, context), false);
+  assert.equal(farmTables._test.uatRowAllowed("blocks", { id: "real-block", status: "active" }, context), true);
+  assert.equal(farmTables._test.uatRowAllowed("blocks", { id: "old-block", status: "inactive" }, context), false);
   assert.equal(farmTables._test.uatRowAllowed("activities", { id: "master-activity" }, context), true);
   assert.deepEqual(
     farmTables._test.uatActionCenterRows([
