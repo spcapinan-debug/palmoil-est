@@ -1,5 +1,3 @@
-const fs = require("node:fs");
-const path = require("node:path");
 const {
   ApiError,
   authenticate,
@@ -10,16 +8,14 @@ const {
   rest,
 } = require("../lib/server/farm-api");
 const { reconcileFarmAreaMap } = require("../lib/server/farm-area-map");
+const {
+  areaMapVersionClient,
+  loadActiveAreaMapArtifact,
+  readStaticAreaMapArtifact,
+} = require("../lib/server/farm-area-map-store");
 
 function readBlockMapArtifact() {
-  const filePath = path.join(process.cwd(), "webapp", "data", "block_map.json");
-  const payload = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  return {
-    type: payload.type || "FeatureCollection",
-    source: payload.source || {},
-    bounds: Array.isArray(payload.bounds) ? payload.bounds : [],
-    features: Array.isArray(payload.features) ? payload.features : [],
-  };
+  return readStaticAreaMapArtifact();
 }
 
 function buildAreaCatalogAudit({ result, canonicalBlocks, estates, zones }) {
@@ -73,12 +69,23 @@ async function handler(req, res) {
       roles: ["uat_manager", "uat_supervisor"],
     });
 
-    const [blockResult, estateResult, zoneResult, mapArtifact] = await Promise.all([
+    const [blockResult, estateResult, zoneResult, mapLoad] = await Promise.all([
       rest("blocks?status=eq.active&select=*&order=block_name.asc&limit=5000"),
       rest("estates?select=id,estate_code,estate_name,status&limit=5000"),
       rest("zones?select=id,zone_code,zone_name,estate_id,status&limit=5000"),
-      Promise.resolve().then(readBlockMapArtifact),
+      loadActiveAreaMapArtifact().catch((error) => {
+        if (error?.code === "SCHEMA_MISMATCH") {
+          return { artifact: readStaticAreaMapArtifact(), version: null, sourceMode: "bootstrap" };
+        }
+        return {
+          artifact: { type: "FeatureCollection", source: { mode: "unavailable" }, bounds: [], features: [] },
+          version: error?.details?.version || null,
+          sourceMode: "unavailable",
+          error: error?.message || "Published Area map artifact is unavailable",
+        };
+      }),
     ]);
+    const mapArtifact = mapLoad.artifact;
     const canonicalBlocks = Array.isArray(blockResult.data) ? blockResult.data : [];
     const estates = Array.isArray(estateResult.data) ? estateResult.data : [];
     const zones = Array.isArray(zoneResult.data) ? zoneResult.data : [];
@@ -107,6 +114,7 @@ async function handler(req, res) {
         profileId: actor.profile.id,
         displayName: actor.profile.display_name || actor.profile.full_name || actor.profile.email || "User",
         roles: [...actor.roles],
+        permissions: [...actor.permissions],
       },
       catalogBlocks,
       diagnostics: {
@@ -116,9 +124,12 @@ async function handler(req, res) {
       },
       reconciliation,
       audit,
+      mapVersion: areaMapVersionClient(mapLoad.version),
       map: {
         type: mapArtifact.type,
         source: mapArtifact.source,
+        sourceMode: mapLoad.sourceMode,
+        error: mapLoad.error || null,
         bounds: mapArtifact.bounds,
         features: result.map.features,
       },

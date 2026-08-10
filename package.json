@@ -5,5 +5,9 @@
     "build": "node webapp/scripts/build_online_export.mjs --check",
     "lint": "node scripts/check-syntax.mjs",
     "test": "node --test"
+  },
+  "dependencies": {
+    "saxes": "6.0.0",
+    "yauzl": "3.4.0"
   }
 }
