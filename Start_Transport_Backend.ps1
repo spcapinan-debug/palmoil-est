@@ -1,7 +1,14 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$env:PALM_DATA_DIR = $root
+$preferredDataDir = "H:\My Drive\Work\ขนส่งออก"
+if (-not $env:PALM_DATA_DIR) {
+    if (Test-Path -LiteralPath (Join-Path $preferredDataDir "Data.xlsx")) {
+        $env:PALM_DATA_DIR = $preferredDataDir
+    } else {
+        $env:PALM_DATA_DIR = $root
+    }
+}
 $apiUrl = "http://127.0.0.1:8080/api/health"
 
 function Test-Api {
@@ -79,4 +86,4 @@ if (-not $started) {
 }
 
 Write-Host "Transport backend started: $apiUrl"
-Write-Host "Refresh Data can now read: $root\Data.xlsx"
+Write-Host "Refresh Data can now read: $(Join-Path $env:PALM_DATA_DIR 'Data.xlsx')"
