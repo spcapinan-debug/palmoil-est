@@ -322,6 +322,36 @@
   border-color: #d7a49d;
 }
 
+.system-user-page { position: relative; }
+.system-user-toolbar { align-items: end; }
+.system-user-table .link-button { padding: 0; border: 0; background: transparent; color: #165d45; font: inherit; font-weight: 700; text-align: left; text-decoration: underline; }
+.system-user-table td { vertical-align: top; }
+.system-user-table td small { display: block; margin-top: .35rem; }
+.warning-text { color: #a34d00; }
+.system-user-drawer {
+  position: fixed; z-index: 1200; inset: 0 0 0 auto; width: min(520px, 100vw); overflow-y: auto;
+  padding: 1.25rem; border: 0; border-left: 1px solid #d8e2dc; background: #fff; box-shadow: -18px 0 45px rgb(24 52 42 / 18%);
+  display: grid; align-content: start; gap: 1rem;
+}
+.system-user-drawer::before { content: ""; position: fixed; inset: 0 min(520px, 100vw) 0 0; background: rgb(13 28 22 / 35%); pointer-events: none; }
+.system-user-drawer header, .system-user-drawer footer { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.system-user-drawer header h3, .system-user-drawer header p { margin: .15rem 0; }
+.system-user-drawer header > button { font-size: 1.5rem; }
+.system-user-drawer label { display: grid; gap: .4rem; font-weight: 700; }
+.system-user-drawer input, .system-user-drawer select { width: 100%; min-height: 42px; padding: .65rem .75rem; border: 1px solid #c9d8d0; border-radius: 8px; background: #fff; }
+.system-user-drawer .password-toggle { display: flex; align-items: center; font-weight: 400; }
+.system-user-drawer .password-toggle input { width: auto; min-height: auto; }
+.system-user-employee-card { display: grid; gap: .3rem; padding: .8rem; border-radius: 9px; background: #f2f7f4; color: #40564c; }
+.employee-system-account dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .75rem; }
+.employee-system-account dl div { padding: .75rem; border-radius: 8px; background: #f4f7f5; }
+.employee-system-account dt { color: #61746b; font-size: .8rem; }
+.employee-system-account dd { margin: .25rem 0 0; font-weight: 700; }
+
+@media (max-width: 700px) {
+  .system-user-drawer { width: 100vw; }
+  .system-user-drawer::before { display: none; }
+}
+
 /* Phase 4 inventory lifecycle workspace */
 .farm-inventory-workspace {
   min-width: 0;

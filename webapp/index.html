@@ -223,13 +223,24 @@
         </p>
         <div id="farmAuthFields" class="farm-auth-fields">
           <label>
-            อีเมล
-            <input id="farmAuthEmail" name="email" type="email" autocomplete="username" required>
+            ผู้ใช้งาน / อีเมล
+            <input id="farmAuthIdentifier" name="identifier" type="text" autocomplete="username" placeholder="Username หรือ Email" required>
           </label>
           <label>
             รหัสผ่าน
             <input id="farmAuthPassword" name="password" type="password" autocomplete="current-password" required>
           </label>
+        </div>
+        <div id="farmOwnPasswordFields" class="farm-auth-fields hidden">
+          <label>
+            รหัสผ่านใหม่
+            <input id="farmOwnPassword" type="password" autocomplete="new-password" minlength="8">
+          </label>
+          <label>
+            ยืนยันรหัสผ่านใหม่
+            <input id="farmOwnPasswordConfirm" type="password" autocomplete="new-password" minlength="8">
+          </label>
+          <button id="farmOwnPasswordSubmit" type="button">เปลี่ยนรหัสผ่าน</button>
         </div>
         <p id="farmAuthStatus" class="farm-auth-status" role="status" aria-live="polite"></p>
         <div class="farm-auth-actions">

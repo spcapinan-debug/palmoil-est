@@ -64,8 +64,8 @@ const TABLES = new Set([
 
 const READ_RESTRICTED = {
   audit_logs: "system.audit.view",
-  profiles: "system.user.manage",
-  profile_roles: "system.role.manage",
+  profiles: ["system.user.view", "system.user.manage"],
+  profile_roles: ["system.user.view", "system.user.role.manage", "system.role.manage"],
   roles: "system.role.manage",
   permissions: "system.role.manage",
   role_permissions: "system.role.manage",
@@ -186,6 +186,7 @@ const ACTION_ONLY_TABLES = new Set([
   "app_notification_rules", "app_notifications", "app_notification_deliveries",
   "app_notification_preferences", "app_notification_jobs",
 ]);
+const SYSTEM_USER_TABLES = new Set(["profiles", "profile_roles"]);
 
 function tableName(value) {
   const name = String(value || "").trim();
@@ -665,6 +666,9 @@ async function handlePost(req, res, actor) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   const table = tableName(body.table);
+  if (SYSTEM_USER_TABLES.has(table)) {
+    throw new ApiError(403, "USER_API_REQUIRED", `${table} must be changed through /api/farm-users`);
+  }
   if (ACTION_ONLY_TABLES.has(table)) {
     throw new ApiError(403, "ACTION_REQUIRED", `${table} must be changed through /api/farm-actions`);
   }
@@ -701,6 +705,9 @@ async function handleDelete(req, res, url, actor) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   const table = tableName(body.table || url.searchParams.get("table"));
+  if (SYSTEM_USER_TABLES.has(table)) {
+    throw new ApiError(403, "USER_API_REQUIRED", `${table} must be changed through /api/farm-users`);
+  }
   if (actorIsUat(actor)) {
     throw new ApiError(403, "UAT_DELETE_FORBIDDEN", "UAT identities cannot delete records");
   }
@@ -749,7 +756,7 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports._test = {
-  ACTION_ONLY_TABLES, AREA_REFERENCE_TABLES, OPTIONAL_TABLES, TABLES, UAT_OPERATIONAL_TABLES, WRITE_PERMISSIONS,
+  ACTION_ONLY_TABLES, AREA_REFERENCE_TABLES, OPTIONAL_TABLES, SYSTEM_USER_TABLES, TABLES, UAT_OPERATIONAL_TABLES, WRITE_PERMISSIONS,
   areaReferenceRows, cache, clearCache, parallelMap,
   actorCanAccessBlock, databaseBlockPlantingYear, enforceUatTableWrite, normalizePlantingYear,
   requestedTables, requireActiveCatalogBlock, safeTableError, tableName, uatActionCenterRows, uatRowAllowed,

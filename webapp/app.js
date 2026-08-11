@@ -145,6 +145,12 @@ const state = {
   farmConnectionState: "LOADING",
   farmConnectionError: "",
   farmAuthBusy: false,
+  systemUsers: [],
+  systemUserEmployees: [],
+  systemUserRoles: [],
+  systemUsersLoading: false,
+  systemUsersLoaded: false,
+  systemUserDrawer: null,
   workNotifications: [],
   notificationDeliveries: [],
   notificationCenterOpen: false,
@@ -249,8 +255,12 @@ const els = {
   farmAuthClose: document.querySelector("#farmAuthClose"),
   farmAuthCancel: document.querySelector("#farmAuthCancel"),
   farmAuthFields: document.querySelector("#farmAuthFields"),
-  farmAuthEmail: document.querySelector("#farmAuthEmail"),
+  farmAuthIdentifier: document.querySelector("#farmAuthIdentifier"),
   farmAuthPassword: document.querySelector("#farmAuthPassword"),
+  farmOwnPassword: document.querySelector("#farmOwnPassword"),
+  farmOwnPasswordConfirm: document.querySelector("#farmOwnPasswordConfirm"),
+  farmOwnPasswordFields: document.querySelector("#farmOwnPasswordFields"),
+  farmOwnPasswordSubmit: document.querySelector("#farmOwnPasswordSubmit"),
   farmAuthDescription: document.querySelector("#farmAuthDescription"),
   farmAuthStatus: document.querySelector("#farmAuthStatus"),
   farmAuthSubmit: document.querySelector("#farmAuthSubmit"),
@@ -289,6 +299,7 @@ const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
 const FARM_AREA_MASTER_API = window.__FARM_AREA_MASTER_API__ || "/api/farm-area-master";
 const FARM_SESSION_API = window.__FARM_SESSION_API__ || "/api/farm-session";
 const FARM_AUTH_API = window.__FARM_AUTH_API__ || "/api/farm-auth";
+const FARM_USERS_API = window.__FARM_USERS_API__ || "/api/farm-users";
 const FARM_ACTIONS_API = window.__FARM_ACTIONS_API__ || "/api/farm-actions";
 const FARM_BUDGET_SYNC_API = window.__FARM_BUDGET_SYNC_API__ || "/api/farm-budget-sync";
 const FARM_DB_TABLE_CACHE_MS = 30 * 1000;
@@ -418,7 +429,7 @@ function renderWorkNotificationCenter() {
 }
 
 async function loadWorkNotifications({ silent = false } = {}) {
-  if (!state.workspacePermissions.has("notification.view")) {
+  if (!actorCan("notification.view")) {
     state.workNotifications = [];
     state.notificationError = state.farmSession?.ok ? "ไม่มีสิทธิ์ดูการแจ้งเตือน" : "กรุณาเข้าสู่ระบบ";
     renderWorkNotificationCenter();
@@ -427,7 +438,7 @@ async function loadWorkNotifications({ silent = false } = {}) {
   state.notificationLoading = true;
   if (!silent) renderWorkNotificationCenter();
   try {
-    const includeDeliveries = state.workspacePermissions.has("notification.delivery.view");
+    const includeDeliveries = actorCan("notification.delivery.view");
     const tables = includeDeliveries ? "app_notifications,app_notification_deliveries" : "app_notifications";
     const request = await farmJsonRequest(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000&refresh=1`, { cache: "no-store" });
     if (!request.response.ok || !request.payload?.ok) throw new Error(farmApiErrorMessage(request.payload, "Notification API unavailable"));
@@ -619,12 +630,13 @@ function setFarmAuthDialogMode() {
   const displayName = state.farmSession?.profile?.displayName || "";
   const roles = [...state.workspaceRoles].map(farmRoleLabel).join(", ");
   els.farmAuthFields?.classList.toggle("hidden", authenticated);
+  els.farmOwnPasswordFields?.classList.toggle("hidden", !authenticated);
   els.farmAuthSubmit?.classList.toggle("hidden", authenticated);
   els.farmAuthSignOut?.classList.toggle("hidden", !authenticated);
   if (els.farmAuthDescription) {
     els.farmAuthDescription.textContent = authenticated
       ? `เข้าสู่ระบบเป็น ${displayName}${roles ? ` · ${roles}` : ""}`
-      : "ใช้บัญชี UAT ของระบบ ข้อมูลรหัสผ่านจะถูกส่งตรงไปยัง API และไม่ถูกบันทึกในเบราว์เซอร์";
+      : "เข้าสู่ระบบด้วย Username หรือ Email รหัสผ่านจะถูกตรวจโดย Supabase Auth และไม่ถูกบันทึกในเบราว์เซอร์";
   }
   if (els.farmAuthStatus) els.farmAuthStatus.textContent = "";
 }
@@ -633,12 +645,14 @@ function openFarmAuthDialog() {
   if (!els.farmAuthDialog) return;
   setFarmAuthDialogMode();
   if (!els.farmAuthDialog.open) els.farmAuthDialog.showModal();
-  if (!state.farmSession?.ok) els.farmAuthEmail?.focus();
+  if (!state.farmSession?.ok) els.farmAuthIdentifier?.focus();
 }
 
 function closeFarmAuthDialog() {
   if (els.farmAuthDialog?.open) els.farmAuthDialog.close();
   if (els.farmAuthPassword) els.farmAuthPassword.value = "";
+  if (els.farmOwnPassword) els.farmOwnPassword.value = "";
+  if (els.farmOwnPasswordConfirm) els.farmOwnPasswordConfirm.value = "";
 }
 
 function resetFarmAuthenticatedData() {
@@ -661,15 +675,20 @@ function resetFarmAuthenticatedData() {
   state.workspaceTabs = [];
   state.workspaceActionCenter = [];
   state.workspaceReadiness = [];
+  state.systemUsers = [];
+  state.systemUserEmployees = [];
+  state.systemUserRoles = [];
+  state.systemUsersLoaded = false;
+  state.systemUserDrawer = null;
   resetFarmDerivedCaches();
 }
 
 async function submitFarmSignIn() {
   if (state.farmAuthBusy) return;
-  const email = els.farmAuthEmail?.value.trim() || "";
+  const identifier = els.farmAuthIdentifier?.value.trim() || "";
   const password = els.farmAuthPassword?.value || "";
-  if (!email || !password) {
-    if (els.farmAuthStatus) els.farmAuthStatus.textContent = "กรุณากรอกอีเมลและรหัสผ่าน";
+  if (!identifier || !password) {
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = "กรุณากรอก Username หรือ Email และรหัสผ่าน";
     return;
   }
   state.farmAuthBusy = true;
@@ -680,7 +699,7 @@ async function submitFarmSignIn() {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "sign_in", email, password }),
+      body: JSON.stringify({ action: "sign_in", identifier, password }),
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "เข้าสู่ระบบไม่สำเร็จ"));
@@ -696,6 +715,32 @@ async function submitFarmSignIn() {
   } finally {
     state.farmAuthBusy = false;
     if (els.farmAuthSubmit) els.farmAuthSubmit.disabled = false;
+  }
+}
+
+async function submitFarmOwnPassword() {
+  const password = els.farmOwnPassword?.value || "";
+  const confirm = els.farmOwnPasswordConfirm?.value || "";
+  if (password.length < 8 || password !== confirm) {
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = password.length < 8
+      ? "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร"
+      : "ยืนยันรหัสผ่านไม่ตรงกัน";
+    return;
+  }
+  els.farmOwnPasswordSubmit.disabled = true;
+  try {
+    const { response, payload } = await farmJsonRequest(FARM_USERS_API, {
+      method: "POST",
+      body: JSON.stringify({ action: "change_own_password", password }),
+    });
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "เปลี่ยนรหัสผ่านไม่สำเร็จ"));
+    els.farmOwnPassword.value = "";
+    els.farmOwnPasswordConfirm.value = "";
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = "เปลี่ยนรหัสผ่านแล้ว";
+  } catch (error) {
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
+  } finally {
+    els.farmOwnPasswordSubmit.disabled = false;
   }
 }
 
@@ -3976,10 +4021,21 @@ function workspaceLegacyView(item) {
   return "farm-reports";
 }
 
+function actorIsSuperAdmin() {
+  return [...state.workspaceRoles].some((role) => String(role).toLowerCase() === "super_admin");
+}
+
+function actorHasPermission(permission) {
+  return Boolean(permission && state.workspacePermissions.has(permission));
+}
+
+function actorCan(permission) {
+  return actorIsSuperAdmin() || actorHasPermission(permission);
+}
+
 function workspaceCanAccess(item) {
   if (!item.required_permission_key) return true;
-  if ([...state.workspaceRoles].some((role) => ["admin", "super_admin", "director"].includes(String(role).toLowerCase()))) return true;
-  return state.workspacePermissions.has(item.required_permission_key);
+  return actorCan(item.required_permission_key);
 }
 
 function workspaceRouteCanAccess(route) {
@@ -11863,8 +11919,7 @@ function farmCan(action) {
 }
 
 function farmHasWorkspacePermission(permission) {
-  if ([...state.workspaceRoles].some((role) => ["admin", "super_admin"].includes(String(role).toLowerCase()))) return true;
-  return state.workspacePermissions.has(permission);
+  return actorCan(permission);
 }
 
 function farmCanManageBudget() {
@@ -12183,6 +12238,9 @@ function appendFarmVersionLog(table, original, nextRow) {
 async function saveFarmRow() {
   const module = selectedFarmModule();
   const table = selectedFarmTable(module);
+  if (module.id === "farm-governance" && table.key === "profiles") {
+    return renderSystemUserManagement(module, table);
+  }
   const editId = state.farmEditId;
   const original = editId ? farmRows(table).find((row) => row.id === editId) : null;
   const shouldVersion = original && isFarmVersionedTable(table.key);
@@ -18390,12 +18448,154 @@ function renderFarmInventoryLegacyOverview() {
 }
 
 function farmInventoryCan(permission) {
-  const admin = ["super_admin", "director", "estate_manager"].some((role) =>
-    state.workspaceRoles.has(role));
-  return admin
-    || state.workspacePermissions.has("inventory.manage")
-    || state.workspacePermissions.has(permission)
+  return actorCan("inventory.manage")
+    || actorCan(permission)
     || (!state.workspaceRoles.size && state.farmFilters.role === "super_admin");
+}
+
+async function loadSystemUsers({ force = false } = {}) {
+  if (state.systemUsersLoading || (state.systemUsersLoaded && !force)) return;
+  if (!actorCan("system.user.view") && !actorCan("system.user.manage")) return;
+  state.systemUsersLoading = true;
+  try {
+    const { response, payload } = await farmJsonRequest(FARM_USERS_API, { cache: "no-store" });
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "โหลดบัญชีผู้ใช้งานไม่สำเร็จ"));
+    state.systemUsers = payload.users || [];
+    state.systemUserEmployees = payload.employees || [];
+    state.systemUserRoles = payload.roles || [];
+    state.systemUsersLoaded = true;
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = error.message;
+  } finally {
+    state.systemUsersLoading = false;
+    render();
+  }
+}
+
+function systemEmployeeLabel(employee = {}) {
+  return [employee.employee_code, employee.full_name].filter(Boolean).join(" · ");
+}
+
+function systemUserEmployeeFromInput(value = "") {
+  return state.systemUserEmployees.find((employee) => employee.id === value || systemEmployeeLabel(employee) === value) || null;
+}
+
+function systemUserRole(roleId = "") {
+  return state.systemUserRoles.find((role) => role.id === roleId) || null;
+}
+
+function renderSystemUserDrawer() {
+  const drawer = state.systemUserDrawer;
+  if (!drawer) return "";
+  const current = state.systemUsers.find((user) => user.id === drawer.profileId) || null;
+  const resetMode = drawer.mode === "reset";
+  const editMode = Boolean(current) && !resetMode;
+  const selectedEmployee = state.systemUserEmployees.find((employee) => employee.id === (drawer.employeeId || current?.employeeId)) || null;
+  const existingEmployeeUser = !editMode && selectedEmployee
+    ? state.systemUsers.find((user) => user.employeeId === selectedEmployee.id && user.status === "active")
+    : null;
+  const canAssignSuper = actorIsSuperAdmin();
+  if (resetMode) {
+    return `<aside class="system-user-drawer" role="dialog" aria-modal="true" aria-labelledby="systemUserDrawerTitle">
+      <header><div><small>Supabase Auth</small><h3 id="systemUserDrawerTitle">ตั้งรหัสผ่านใหม่</h3><p>${esc(current?.employeeName || current?.username || "")}</p></div><button type="button" data-system-user-close aria-label="ปิด">×</button></header>
+      <label>รหัสผ่านใหม่<input id="systemUserPassword" type="password" minlength="8" autocomplete="new-password"></label>
+      <label>ยืนยันรหัสผ่าน<input id="systemUserPasswordConfirm" type="password" minlength="8" autocomplete="new-password"></label>
+      <label class="password-toggle"><input type="checkbox" data-system-user-show-password> แสดงรหัสผ่าน</label>
+      <footer><button type="button" data-system-user-close>ยกเลิก</button><button type="button" data-system-user-save>ตั้งรหัสผ่านใหม่</button></footer>
+    </aside>`;
+  }
+  const employeeValue = selectedEmployee ? systemEmployeeLabel(selectedEmployee) : "";
+  return `<aside class="system-user-drawer" role="dialog" aria-modal="true" aria-labelledby="systemUserDrawerTitle">
+    <header><div><small>Employee-linked account</small><h3 id="systemUserDrawerTitle">${editMode ? "แก้ไขบัญชีผู้ใช้งาน" : "สร้างผู้ใช้งาน"}</h3></div><button type="button" data-system-user-close aria-label="ปิด">×</button></header>
+    <label>พนักงาน *
+      ${editMode
+        ? `<input value="${esc([current.employeeCode, current.employeeName].filter(Boolean).join(" · "))}" readonly>`
+        : `<input id="systemUserEmployee" list="systemUserEmployeeOptions" value="${esc(employeeValue)}" placeholder="ค้นหารหัส ชื่อ หรือชื่อเล่น" autocomplete="off">
+          <datalist id="systemUserEmployeeOptions">${state.systemUserEmployees.map((employee) => `<option value="${esc(systemEmployeeLabel(employee))}">${esc(employee.nickname || "")}</option>`).join("")}</datalist>`}
+    </label>
+    <section class="system-user-employee-card">
+      ${selectedEmployee ? `<b>${esc(selectedEmployee.employee_code)} · ${esc(selectedEmployee.full_name)}</b><span>ชื่อเล่น: ${esc(selectedEmployee.nickname || "-")}</span><span>ตำแหน่ง: ${esc(selectedEmployee.position || "-")}</span><span>แผนก: ${esc(selectedEmployee.departmentName || "-")}</span><span>สถานะ: ${esc(selectedEmployee.status || "-")}</span>${existingEmployeeUser ? `<strong class="warning-text">พนักงานรายนี้มีบัญชีผู้ใช้งานแล้ว: ${esc(existingEmployeeUser.username || "-")} · ${esc(existingEmployeeUser.roleName || existingEmployeeUser.role || "-")} · ${esc(existingEmployeeUser.status)}</strong><button type="button" data-system-user-edit="${esc(existingEmployeeUser.id)}">แก้ไขบัญชี</button>` : ""}` : "เลือกพนักงานเพื่อดูข้อมูลจาก HR"}
+    </section>
+    <label>Username *<input id="systemUserUsername" value="${esc(current?.username || "")}" pattern="[A-Za-z0-9._-]{3,50}" autocomplete="off"></label>
+    <label>Email *<input id="systemUserEmail" type="email" value="${esc(current?.email || "")}" autocomplete="off"></label>
+    ${editMode ? "" : `<label>Password *<input id="systemUserPassword" type="password" minlength="8" autocomplete="new-password"></label>
+      <label>ยืนยัน Password *<input id="systemUserPasswordConfirm" type="password" minlength="8" autocomplete="new-password"></label>
+      <label class="password-toggle"><input type="checkbox" data-system-user-show-password> แสดงรหัสผ่าน</label>`}
+    <label>LINE ID<input id="systemUserLineId" value="${esc(current?.lineId || "")}" autocomplete="off"></label>
+    <label>บทบาท *<select id="systemUserRole">${state.systemUserRoles
+      .filter((role) => canAssignSuper || role.role_key !== "super_admin" || role.id === current?.roleId)
+      .map((role) => `<option value="${esc(role.id)}"${role.id === current?.roleId ? " selected" : ""}>${esc(role.role_name || role.role_key)}${role.description ? ` — ${esc(role.description)}` : ""}</option>`).join("")}</select></label>
+    <label>สถานะ<select id="systemUserStatus"><option value="active"${current?.status !== "inactive" ? " selected" : ""}>active</option><option value="inactive"${current?.status === "inactive" ? " selected" : ""}>inactive</option></select></label>
+    <footer><button type="button" data-system-user-close>ยกเลิก</button><button type="button" data-system-user-save>${editMode ? "บันทึก" : "สร้างผู้ใช้งาน"}</button></footer>
+  </aside>`;
+}
+
+function renderSystemUserManagement(module, table) {
+  if (!state.systemUsersLoaded && !state.systemUsersLoading) queueMicrotask(() => loadSystemUsers());
+  const canManage = actorCan("system.user.manage");
+  const canResetPassword = actorCan("system.user.password.reset") || canManage;
+  const rows = state.systemUsers.filter((user) => {
+    const query = state.farmFilters.query.trim().toLowerCase();
+    const statusOk = state.farmFilters.status === "all" || user.status === state.farmFilters.status;
+    return statusOk && (!query || Object.values(user).join(" ").toLowerCase().includes(query));
+  });
+  return `<div class="farm-page system-user-page">
+    <div class="report-title"><div><h2>ผู้ใช้งานระบบ</h2><p>บัญชี Login ที่ผูกกับ Employee Master และ Supabase Auth</p></div><button type="button" data-system-user-refresh>Refresh</button></div>
+    ${renderFarmConnectionNotice()}
+    ${renderFarmGovernanceBoard(table)}
+    ${state.farmSyncMessage ? `<div class="farm-sync-status ${esc(state.farmSyncStatus)}">${esc(state.farmSyncMessage)}</div>` : ""}
+    <section class="farm-toolbar system-user-toolbar">
+      <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="พนักงาน รหัส Username Email Role"></label>
+      <label>สถานะ<select id="farmStatusFilter">${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}</select></label>
+      <button type="button" data-system-user-new ${canManage ? "" : "disabled"}>+ สร้างผู้ใช้งาน</button>
+    </section>
+    <section class="farm-panel"><div class="section-head"><div><h3>บัญชีผู้ใช้งาน</h3><span>${state.systemUsersLoading ? "กำลังโหลด…" : `${fmt(rows.length)} บัญชี`}</span></div></div>
+      <div class="table-wrap"><table class="mini-table farm-table system-user-table"><thead><tr><th>พนักงาน</th><th>รหัสพนักงาน</th><th>Username</th><th>Email</th><th>LINE ID</th><th>Role</th><th>สถานะ</th><th>เข้าสู่ระบบล่าสุด</th><th>Actions</th></tr></thead>
+      <tbody>${rows.map((user) => `<tr>
+        <td><button class="link-button" type="button" data-system-user-employee="${esc(user.employeeId || "")}">${esc(user.employeeName || "ไม่ผูกพนักงาน")}</button>${user.employeeStatus && user.employeeStatus !== "active" ? `<small class="warning-text">พนักงาน ${esc(user.employeeStatus)} — แนะนำให้ปิดบัญชี</small>` : ""}</td>
+        <td>${esc(user.employeeCode || "-")}</td><td>${esc(user.username || "-")}</td><td>${esc(user.email || "-")}</td><td>${esc(user.lineId || "-")}</td><td>${esc(user.roleName || user.role || "-")}</td><td>${esc(user.status)}</td><td>${esc(user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString("th-TH") : "-")}</td>
+        <td class="farm-actions"><button type="button" data-system-user-edit="${esc(user.id)}" ${canManage ? "" : "disabled"}>แก้ไข</button><button type="button" data-system-user-reset="${esc(user.id)}" ${(canResetPassword && (actorIsSuperAdmin() || user.role !== "super_admin")) ? "" : "disabled"}>ตั้งรหัสผ่านใหม่</button></td>
+      </tr>`).join("") || `<tr><td colspan="9">${state.systemUsersLoading ? "กำลังโหลดข้อมูล" : "ไม่พบบัญชีผู้ใช้งาน"}</td></tr>`}</tbody></table></div>
+    </section>${renderSystemUserDrawer()}
+  </div>`;
+}
+
+async function submitSystemUserDrawer() {
+  const drawer = state.systemUserDrawer;
+  if (!drawer) return;
+  const password = document.querySelector("#systemUserPassword")?.value || "";
+  const confirmation = document.querySelector("#systemUserPasswordConfirm")?.value || "";
+  let body;
+  if (drawer.mode === "reset") {
+    if (password !== confirmation) throw new Error("ยืนยันรหัสผ่านไม่ตรงกัน");
+    body = { action: "reset_password", profileId: drawer.profileId, password };
+  } else {
+    const current = state.systemUsers.find((user) => user.id === drawer.profileId) || null;
+    const employee = current || systemUserEmployeeFromInput(document.querySelector("#systemUserEmployee")?.value || "");
+    if (!employee) throw new Error("กรุณาเลือกพนักงานจาก Employee Master");
+    if (!current && password !== confirmation) throw new Error("ยืนยันรหัสผ่านไม่ตรงกัน");
+    body = {
+      action: current ? "update_user" : "create_user",
+      ...(current ? { profileId: current.id } : { employeeId: employee.id, password }),
+      username: document.querySelector("#systemUserUsername")?.value || "",
+      email: document.querySelector("#systemUserEmail")?.value || "",
+      lineId: document.querySelector("#systemUserLineId")?.value || "",
+      roleId: document.querySelector("#systemUserRole")?.value || "",
+      status: document.querySelector("#systemUserStatus")?.value || "active",
+    };
+  }
+  state.farmSyncBusy = true;
+  try {
+    const { response, payload } = await farmJsonRequest(FARM_USERS_API, { method: "POST", body: JSON.stringify(body) });
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "บันทึกบัญชีผู้ใช้งานไม่สำเร็จ"));
+    state.systemUserDrawer = null;
+    state.farmSyncStatus = "success";
+    state.farmSyncMessage = body.action === "reset_password" ? "ตั้งรหัสผ่านใหม่แล้ว" : "บันทึกบัญชีผู้ใช้งานแล้ว";
+    await loadSystemUsers({ force: true });
+  } finally {
+    state.farmSyncBusy = false;
+  }
 }
 
 function farmInventoryIssueWorkspaceRows() {
@@ -24481,6 +24681,19 @@ function farmPeopleSummary(table, rows) {
   return `ใช้งาน ${fmt(activeCount)} · รายวัน ${fmt(daily)} · รายเดือน ${fmt(monthly)} · รายเหมา ${fmt(contract)}`;
 }
 
+function renderEmployeeSystemAccount() {
+  if (state.farmTableId !== "employees" || !state.farmDetailId) return "";
+  if (!actorCan("system.user.view") && !actorCan("system.user.manage")) return "";
+  if (!state.systemUsersLoaded && !state.systemUsersLoading) queueMicrotask(() => loadSystemUsers());
+  const employee = farmRowsByKey("employees").find((row) => row.id === state.farmDetailId);
+  if (!employee) return "";
+  const user = state.systemUsers.find((row) => row.employeeId === employee.id);
+  return `<section class="farm-panel employee-system-account"><div class="section-head"><div><h3>บัญชีผู้ใช้งานระบบ</h3><span>${esc(employee.employee_code || "")} · ${esc(employee.full_name || "")}</span></div></div>
+    ${state.systemUsersLoading ? "กำลังโหลด…" : user ? `<dl><div><dt>Username</dt><dd>${esc(user.username || "-")}</dd></div><div><dt>Email</dt><dd>${esc(user.email || "-")}</dd></div><div><dt>LINE ID</dt><dd>${esc(user.lineId || "-")}</dd></div><div><dt>Role</dt><dd>${esc(user.roleName || user.role || "-")}</dd></div><div><dt>Status</dt><dd>${esc(user.status)}</dd></div><div><dt>Last Login</dt><dd>${esc(user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString("th-TH") : "-")}</dd></div></dl>`
+      : `<p>ยังไม่มีบัญชีผู้ใช้งาน</p>${actorCan("system.user.manage") ? `<button type="button" data-system-user-create-employee="${esc(employee.id)}">สร้างบัญชีผู้ใช้งาน</button>` : ""}`}
+  </section>`;
+}
+
 function renderFarmPeopleBoard(table, rows, tables) {
   const columns = farmPeopleColumns(table);
   const summary = farmPeopleSummary(table, rows);
@@ -24538,6 +24751,7 @@ function renderFarmPeopleBoard(table, rows, tables) {
         </div>
       </section>
     </section>
+    ${renderEmployeeSystemAccount()}
     ${renderFarmActivityModal()}`;
 }
 
@@ -26373,6 +26587,7 @@ function bindCriticalUiEvents() {
     submitFarmSignIn();
   });
   els.farmAuthSignOut?.addEventListener("click", submitFarmSignOut);
+  els.farmOwnPasswordSubmit?.addEventListener("click", submitFarmOwnPassword);
   els.farmAuthDialog?.addEventListener("click", (event) => {
     if (event.target === els.farmAuthDialog) closeFarmAuthDialog();
   });
@@ -26551,6 +26766,14 @@ async function init() {
   document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.id === "systemUserEmployee") {
+      const employee = systemUserEmployeeFromInput(e.target.value);
+      if (employee && state.systemUserDrawer) {
+        state.systemUserDrawer.employeeId = employee.id;
+        render();
+      }
+      return;
+    }
     if (e.target.matches("[data-budget-planting-year], [data-budget-planting-year-all]")) {
       const picks = e.target.closest('[data-budget-context="work-plan"]')
         ? farmWorkPlanState()
@@ -27113,6 +27336,63 @@ async function init() {
     }
   });
   els.reportPage.addEventListener("click", async (e) => {
+    if (e.target.closest("[data-system-user-close]")) {
+      state.systemUserDrawer = null;
+      render();
+      return;
+    }
+    if (e.target.closest("[data-system-user-refresh]")) {
+      await loadSystemUsers({ force: true });
+      return;
+    }
+    if (e.target.closest("[data-system-user-new]")) {
+      state.systemUserDrawer = { mode: "create", employeeId: "" };
+      render();
+      return;
+    }
+    const editUser = e.target.closest("[data-system-user-edit]");
+    if (editUser) {
+      state.systemUserDrawer = { mode: "edit", profileId: editUser.dataset.systemUserEdit };
+      render();
+      return;
+    }
+    const resetUser = e.target.closest("[data-system-user-reset]");
+    if (resetUser) {
+      state.systemUserDrawer = { mode: "reset", profileId: resetUser.dataset.systemUserReset };
+      render();
+      return;
+    }
+    const employeeUser = e.target.closest("[data-system-user-employee]");
+    if (employeeUser?.dataset.systemUserEmployee) {
+      state.view = "farm-people";
+      state.farmTableId = "employees";
+      state.farmDetailId = employeeUser.dataset.systemUserEmployee;
+      render();
+      return;
+    }
+    const createEmployeeUser = e.target.closest("[data-system-user-create-employee]");
+    if (createEmployeeUser) {
+      state.view = "farm-governance";
+      state.farmTableId = "profiles";
+      state.systemUserDrawer = { mode: "create", employeeId: createEmployeeUser.dataset.systemUserCreateEmployee };
+      render();
+      return;
+    }
+    if (e.target.closest("[data-system-user-show-password]")) {
+      const visible = e.target.checked;
+      document.querySelectorAll("#systemUserPassword, #systemUserPasswordConfirm").forEach((input) => { input.type = visible ? "text" : "password"; });
+      return;
+    }
+    if (e.target.closest("[data-system-user-save]")) {
+      try {
+        await submitSystemUserDrawer();
+      } catch (error) {
+        state.farmSyncStatus = "error";
+        state.farmSyncMessage = error.message;
+        render();
+      }
+      return;
+    }
     const dispatchOpen = e.target.closest("[data-farm-dispatch-open]");
     if (dispatchOpen) {
       const orderId = dispatchOpen.dataset.farmDispatchOpen;
