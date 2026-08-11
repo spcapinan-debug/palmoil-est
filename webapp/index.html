@@ -230,6 +230,20 @@
             รหัสผ่าน
             <input id="farmAuthPassword" name="password" type="password" autocomplete="current-password" required>
           </label>
+          <button id="farmForgotPassword" class="link-button" type="button">ลืมรหัสผ่าน? ส่งลิงก์ทางอีเมล</button>
+        </div>
+        <div id="farmRecoveryPasswordFields" class="farm-auth-fields hidden">
+          <p>ตั้งรหัสผ่านใหม่จากลิงก์ที่ Supabase ส่งทางอีเมล</p>
+          <label>
+            รหัสผ่านใหม่
+            <input id="farmRecoveryPassword" type="password" autocomplete="new-password" minlength="8">
+          </label>
+          <label>
+            ยืนยันรหัสผ่านใหม่
+            <input id="farmRecoveryPasswordConfirm" type="password" autocomplete="new-password" minlength="8">
+          </label>
+          <label class="password-toggle"><input id="farmRecoveryShowPassword" type="checkbox"> แสดงรหัสผ่าน</label>
+          <button id="farmRecoveryPasswordSubmit" type="button">บันทึกรหัสผ่านใหม่</button>
         </div>
         <div id="farmOwnPasswordFields" class="farm-auth-fields hidden">
           <label>

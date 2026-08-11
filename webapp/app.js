@@ -145,6 +145,7 @@ const state = {
   farmConnectionState: "LOADING",
   farmConnectionError: "",
   farmAuthBusy: false,
+  farmPasswordRecoveryToken: "",
   systemUsers: [],
   systemUserEmployees: [],
   systemUserRoles: [],
@@ -257,6 +258,12 @@ const els = {
   farmAuthFields: document.querySelector("#farmAuthFields"),
   farmAuthIdentifier: document.querySelector("#farmAuthIdentifier"),
   farmAuthPassword: document.querySelector("#farmAuthPassword"),
+  farmForgotPassword: document.querySelector("#farmForgotPassword"),
+  farmRecoveryPasswordFields: document.querySelector("#farmRecoveryPasswordFields"),
+  farmRecoveryPassword: document.querySelector("#farmRecoveryPassword"),
+  farmRecoveryPasswordConfirm: document.querySelector("#farmRecoveryPasswordConfirm"),
+  farmRecoveryShowPassword: document.querySelector("#farmRecoveryShowPassword"),
+  farmRecoveryPasswordSubmit: document.querySelector("#farmRecoveryPasswordSubmit"),
   farmOwnPassword: document.querySelector("#farmOwnPassword"),
   farmOwnPasswordConfirm: document.querySelector("#farmOwnPasswordConfirm"),
   farmOwnPasswordFields: document.querySelector("#farmOwnPasswordFields"),
@@ -627,14 +634,18 @@ function renderFarmConnectionNotice() {
 
 function setFarmAuthDialogMode() {
   const authenticated = Boolean(state.farmSession?.ok);
+  const recovering = Boolean(state.farmPasswordRecoveryToken);
   const displayName = state.farmSession?.profile?.displayName || "";
   const roles = [...state.workspaceRoles].map(farmRoleLabel).join(", ");
-  els.farmAuthFields?.classList.toggle("hidden", authenticated);
-  els.farmOwnPasswordFields?.classList.toggle("hidden", !authenticated);
-  els.farmAuthSubmit?.classList.toggle("hidden", authenticated);
-  els.farmAuthSignOut?.classList.toggle("hidden", !authenticated);
+  els.farmAuthFields?.classList.toggle("hidden", authenticated || recovering);
+  els.farmRecoveryPasswordFields?.classList.toggle("hidden", !recovering);
+  els.farmOwnPasswordFields?.classList.toggle("hidden", !authenticated || recovering);
+  els.farmAuthSubmit?.classList.toggle("hidden", authenticated || recovering);
+  els.farmAuthSignOut?.classList.toggle("hidden", !authenticated || recovering);
   if (els.farmAuthDescription) {
-    els.farmAuthDescription.textContent = authenticated
+    els.farmAuthDescription.textContent = recovering
+      ? "กรอกรหัสผ่านใหม่ ลิงก์นี้ใช้ยืนยันตัวตนผ่าน Supabase Auth และอาจหมดอายุได้"
+      : authenticated
       ? `เข้าสู่ระบบเป็น ${displayName}${roles ? ` · ${roles}` : ""}`
       : "เข้าสู่ระบบด้วย Username หรือ Email รหัสผ่านจะถูกตรวจโดย Supabase Auth และไม่ถูกบันทึกในเบราว์เซอร์";
   }
@@ -653,6 +664,16 @@ function closeFarmAuthDialog() {
   if (els.farmAuthPassword) els.farmAuthPassword.value = "";
   if (els.farmOwnPassword) els.farmOwnPassword.value = "";
   if (els.farmOwnPasswordConfirm) els.farmOwnPasswordConfirm.value = "";
+  if (els.farmRecoveryPassword) els.farmRecoveryPassword.value = "";
+  if (els.farmRecoveryPasswordConfirm) els.farmRecoveryPasswordConfirm.value = "";
+}
+
+function captureFarmPasswordRecovery() {
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  if (hash.get("type") !== "recovery" || !hash.get("access_token")) return false;
+  state.farmPasswordRecoveryToken = hash.get("access_token");
+  window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
+  return true;
 }
 
 function resetFarmAuthenticatedData() {
@@ -715,6 +736,61 @@ async function submitFarmSignIn() {
   } finally {
     state.farmAuthBusy = false;
     if (els.farmAuthSubmit) els.farmAuthSubmit.disabled = false;
+  }
+}
+
+async function submitFarmPasswordResetRequest() {
+  const identifier = els.farmAuthIdentifier?.value.trim() || "";
+  if (!identifier) {
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = "กรุณากรอก Username หรือ Email ก่อน";
+    return;
+  }
+  els.farmForgotPassword.disabled = true;
+  try {
+    const response = await fetch(FARM_AUTH_API, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "request_password_reset", identifier }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "ส่งลิงก์ตั้งรหัสผ่านไม่สำเร็จ"));
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = payload.message;
+  } catch (error) {
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
+  } finally {
+    els.farmForgotPassword.disabled = false;
+  }
+}
+
+async function submitFarmRecoveryPassword() {
+  const password = els.farmRecoveryPassword?.value || "";
+  const confirm = els.farmRecoveryPasswordConfirm?.value || "";
+  if (password.length < 8 || password !== confirm) {
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = password.length < 8
+      ? "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร"
+      : "ยืนยันรหัสผ่านไม่ตรงกัน";
+    return;
+  }
+  els.farmRecoveryPasswordSubmit.disabled = true;
+  try {
+    const response = await fetch(FARM_AUTH_API, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "complete_password_reset", accessToken: state.farmPasswordRecoveryToken, password }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "ตั้งรหัสผ่านใหม่ไม่สำเร็จ"));
+    state.farmPasswordRecoveryToken = "";
+    els.farmRecoveryPassword.value = "";
+    els.farmRecoveryPasswordConfirm.value = "";
+    setFarmAuthDialogMode();
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = "ตั้งรหัสผ่านใหม่แล้ว กรุณาเข้าสู่ระบบ";
+  } catch (error) {
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
+  } finally {
+    els.farmRecoveryPasswordSubmit.disabled = false;
   }
 }
 
@@ -26584,9 +26660,17 @@ function bindCriticalUiEvents() {
   els.farmAuthCancel?.addEventListener("click", closeFarmAuthDialog);
   els.farmAuthForm?.addEventListener("submit", (event) => {
     event.preventDefault();
-    submitFarmSignIn();
+    if (state.farmPasswordRecoveryToken) submitFarmRecoveryPassword();
+    else submitFarmSignIn();
   });
   els.farmAuthSignOut?.addEventListener("click", submitFarmSignOut);
+  els.farmForgotPassword?.addEventListener("click", submitFarmPasswordResetRequest);
+  els.farmRecoveryPasswordSubmit?.addEventListener("click", submitFarmRecoveryPassword);
+  els.farmRecoveryShowPassword?.addEventListener("change", () => {
+    const type = els.farmRecoveryShowPassword.checked ? "text" : "password";
+    els.farmRecoveryPassword.type = type;
+    els.farmRecoveryPasswordConfirm.type = type;
+  });
   els.farmOwnPasswordSubmit?.addEventListener("click", submitFarmOwnPassword);
   els.farmAuthDialog?.addEventListener("click", (event) => {
     if (event.target === els.farmAuthDialog) closeFarmAuthDialog();
@@ -26656,6 +26740,7 @@ function downloadCsv() {
 
 async function init() {
   ensurePrintPreviewElements();
+  const passwordRecoveryRequested = captureFarmPasswordRecovery();
   applySidebarState();
   loadFarmResultDraftCache();
   state.view = initialViewFromUrl();
@@ -28683,6 +28768,7 @@ async function init() {
   render();
   renderWorkNotificationCenter();
   startLiveRefresh();
+  if (passwordRecoveryRequested) openFarmAuthDialog();
   if (new URLSearchParams(window.location.search).has("autoRefresh")) autoRefreshTransportFromQuery();
 }
 
