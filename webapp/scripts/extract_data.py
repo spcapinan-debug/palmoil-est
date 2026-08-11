@@ -21,11 +21,10 @@ def source_roots() -> list[Path]:
     for raw in [
         # Let the local launcher or a developer pin the real workbook folder.
         os.environ.get("PALM_DATA_DIR"),
+        r"H:\My Drive\Work\ขนส่งออก",
         str(ROOT),
         str(ROOT.parent),
-        r"H:\My Drive\Work\ขนส่งออก",
         str(Path.cwd()),
-        str(ROOT),
     ]:
         if not raw:
             continue
@@ -126,7 +125,7 @@ def first_existing(paths: list[Path], label: str, *, newest: bool = True) -> Pat
     raise FileNotFoundError(f"Missing {label}. Tried: {choices}")
 
 
-DATA_WORKBOOK = first_existing(DATA_WORKBOOK_CANDIDATES, "data workbook")
+DATA_WORKBOOK = first_existing(DATA_WORKBOOK_CANDIDATES, "data workbook", newest=False)
 REPORT_WORKBOOK = first_existing(REPORT_WORKBOOK_CANDIDATES, "report workbook", newest=False)
 
 

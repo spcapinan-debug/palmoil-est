@@ -4898,6 +4898,20 @@ async function refreshTransportFromQuery() {
   els.refreshTransportBtn.disabled = true;
   let clearPersistOk = false;
   try {
+    if (transportRefreshUsesHostedSnapshot()) {
+      await loadPayload({ silent: true });
+      await loadMillWeightData();
+      await loadClearOverridesFromServer();
+      setDefaultTransportDateRange();
+      render();
+      const rowCount = state.payload?.source?.rowCount || state.payload?.records?.length || 0;
+      setClearSyncStatus(`Refresh Data succeeded - loaded the latest deployed Data.xlsx snapshot (${fmt(rowCount)} rows)`, "success");
+      els.refreshTransportBtn.textContent = `Data ${fmt(rowCount)} rows`;
+      window.setTimeout(() => {
+        els.refreshTransportBtn.textContent = original;
+      }, 2500);
+      return;
+    }
     writeClearOverridesLocal();
     clearPersistOk = await persistClearOverridesToServer();
     const res = await fetchJsonWithRetry(`${TRANSPORT_REFRESH_API}?t=${Date.now()}`, { method: "POST", cache: "no-store" }, 120000, 1);
@@ -5146,9 +5160,20 @@ function currentMonthStartIso(reference = todayIso()) {
   return day ? `${day.slice(0, 7)}-01` : "";
 }
 
+function transportDefaultDateRange(source = {}, reference = todayIso()) {
+  const today = isoDay(reference);
+  const dateMin = isoDay(source?.dateMin);
+  const dateMax = isoDay(source?.dateMax);
+  const todayOutsideData = dateMax && (today > dateMax || (dateMin && today < dateMin));
+  const end = todayOutsideData ? dateMax : today;
+  const monthStart = currentMonthStartIso(end);
+  const start = dateMin && dateMin > monthStart ? dateMin : monthStart;
+  return { start, end };
+}
+
 function setDefaultTransportDateRange() {
-  const end = todayIso();
-  setDateValue(els.startDate, currentMonthStartIso(end));
+  const { start, end } = transportDefaultDateRange(state.payload?.source || {});
+  setDateValue(els.startDate, start);
   setDateValue(els.endDate, end);
 }
 
@@ -5322,6 +5347,19 @@ function endpointIsLocalOnly(url) {
     const endpoint = new URL(url, window.location.href);
     return ["127.0.0.1", "localhost", "::1"].includes(endpoint.hostname)
       && !["127.0.0.1", "localhost", "::1"].includes(window.location.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function transportRefreshUsesHostedSnapshot(locationLike = window.location, endpoint = TRANSPORT_REFRESH_API) {
+  try {
+    const locationHost = String(locationLike?.hostname || "").toLowerCase();
+    const endpointHost = new URL(endpoint, locationLike?.href || "https://example.invalid").hostname.toLowerCase();
+    const localHosts = ["127.0.0.1", "localhost", "::1"];
+    return String(locationLike?.protocol || "").toLowerCase() === "https:"
+      && localHosts.includes(endpointHost)
+      && !localHosts.includes(locationHost);
   } catch {
     return false;
   }

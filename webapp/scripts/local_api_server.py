@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -176,12 +177,18 @@ def transport_status():
     data = read_json(DATA_JSON, {})
     mill = read_json(MILL_JSON, {})
     clear = read_json(CLEAR_RAMP_JSON, {})
-    workbook = None
-    for name in ["Data.xlsx", "data.xlsx", "Data.xlsm", "data.xlsm"]:
-        candidate = ROOT / name
-        if candidate.exists():
-            workbook = candidate
-            break
+    roots = []
+    configured_root = os.environ.get("PALM_DATA_DIR", "").strip()
+    if configured_root:
+        roots.append(Path(configured_root))
+    roots.extend([Path(r"H:\My Drive\Work\ขนส่งออก"), ROOT])
+    candidates = []
+    for source_root in roots:
+        for name in ["Data.xlsx", "data.xlsx", "Data.xlsm", "data.xlsm"]:
+            candidate = source_root / name
+            if candidate.exists() and candidate not in candidates:
+                candidates.append(candidate)
+    workbook = candidates[0] if candidates else None
     return {
         "ok": True,
         "service": "palm-local-api",

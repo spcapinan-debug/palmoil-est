@@ -16,11 +16,10 @@ def source_roots() -> list[Path]:
     roots: list[Path] = []
     for raw in [
         os.environ.get("PALM_DATA_DIR"),
+        r"H:\My Drive\Work\ขนส่งออก",
         str(ROOT),
         str(ROOT.parent),
-        r"H:\My Drive\Work\ขนส่งออก",
         str(Path.cwd()),
-        str(ROOT),
     ]:
         if not raw:
             continue
@@ -58,7 +57,7 @@ FIELDS = [
 def first_existing(paths: list[Path]) -> Path:
     existing = [path for path in paths if path.is_file()]
     if existing:
-        return max(existing, key=lambda path: path.stat().st_mtime)
+        return existing[0]
     choices = ", ".join(str(path) for path in paths)
     raise FileNotFoundError(f"Missing Data workbook. Tried: {choices}")
 
