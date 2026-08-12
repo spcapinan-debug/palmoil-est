@@ -4656,6 +4656,9 @@ function farmDatabaseTablesForView(view = state.view) {
   if (!isFarmView(view)) return [];
   const module = farmModuleMap()[view] || null;
   const tableSet = new Set(view === "farm-inventory" ? [] : (module?.tables || []));
+  if (view === "farm-activities") {
+    ["materials", "units", "activity_material_usage_rates"].forEach((key) => tableSet.add(key));
+  }
   if (view === "farm-inventory") {
     const sharedTables = [
       "inventory_master",

@@ -121,5 +121,7 @@ test("Activity UI has canonical form and no fake material standard seed", () => 
   assert.match(source, /renderFarmMaterialStandardSection/);
   assert.match(source, /data-material-standard-new/);
   assert.match(source, /create_activity_material_standard_draft/);
+  assert.match(source, /view === "farm-activities"/);
+  assert.match(source, /\["materials", "units", "activity_material_usage_rates"\]/);
   assert.doesNotMatch(source, /usage-fert-tree/);
 });
