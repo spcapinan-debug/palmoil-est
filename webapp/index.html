@@ -5,10 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ระบบบริหารงานสวนปาล์มคีรีรัฐ</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230b3158'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='38' fill='white'%3ER%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="/styles.css?v=phase3-workspace-20260726-r2">
+    <link rel="stylesheet" href="/styles.css?v=auth-gate-recovery-20260812">
   </head>
   <body>
-    <div class="app-shell">
+    <section id="farmAuthGate" class="farm-auth-gate" aria-labelledby="farmAuthGateTitle">
+      <div class="farm-auth-gate-card">
+        <div class="farm-auth-gate-brand" aria-hidden="true">SPC</div>
+        <p class="eyebrow">Kirirat Palm Management</p>
+        <h1 id="farmAuthGateTitle">ระบบบริหารงานสวนปาล์ม</h1>
+        <p id="farmAuthGateDescription" class="farm-auth-description">เข้าสู่ระบบด้วย Username หรือ Email</p>
+        <form id="farmAuthGateLoginForm" class="farm-auth-gate-screen" data-auth-screen="login">
+          <label>ผู้ใช้งาน / อีเมล<input id="farmAuthGateIdentifier" type="text" autocomplete="username" placeholder="Username หรือ Email" required></label>
+          <label>รหัสผ่าน<span class="farm-auth-password-control"><input id="farmAuthGatePassword" type="password" autocomplete="current-password" required><button id="farmAuthGateShowPassword" type="button" aria-label="แสดงรหัสผ่าน" aria-pressed="false">แสดง</button></span></label>
+          <button id="farmAuthGateSubmit" class="farm-auth-primary" type="submit">เข้าสู่ระบบ</button>
+          <button id="farmAuthGateForgot" class="link-button" type="button">ลืมรหัสผ่าน?</button>
+        </form>
+        <form id="farmAuthGateForgotForm" class="farm-auth-gate-screen hidden" data-auth-screen="forgot-password">
+          <label>Username หรือ Email<input id="farmAuthGateForgotIdentifier" type="text" autocomplete="username" placeholder="Username หรือ Email" required></label>
+          <button id="farmAuthGateForgotSubmit" class="farm-auth-primary" type="submit">ส่งลิงก์ตั้งรหัสผ่านใหม่</button>
+          <button class="link-button" type="button" data-auth-show-login>กลับเข้าสู่ระบบ</button>
+        </form>
+        <form id="farmAuthGateResetForm" class="farm-auth-gate-screen hidden" data-auth-screen="reset-password">
+          <label>รหัสผ่านใหม่<input id="farmAuthGateRecoveryPassword" type="password" autocomplete="new-password" minlength="8" required></label>
+          <label>ยืนยันรหัสผ่านใหม่<input id="farmAuthGateRecoveryConfirm" type="password" autocomplete="new-password" minlength="8" required></label>
+          <label class="password-toggle"><input id="farmAuthGateRecoveryShow" type="checkbox"> แสดงรหัสผ่าน</label>
+          <button id="farmAuthGateRecoverySubmit" class="farm-auth-primary" type="submit">บันทึกรหัสผ่านใหม่</button>
+        </form>
+        <div id="farmAuthGateError" class="farm-auth-gate-screen hidden" data-auth-screen="recovery-error">
+          <p>ลิงก์ตั้งรหัสผ่านไม่ถูกต้องหรือหมดอายุ</p>
+          <button type="button" class="farm-auth-primary" data-auth-show-forgot>ส่งลิงก์ใหม่</button>
+          <button class="link-button" type="button" data-auth-show-login>กลับเข้าสู่ระบบ</button>
+        </div>
+        <p id="farmAuthGateStatus" class="farm-auth-status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+    <div id="farmAppShell" class="app-shell" hidden>
       <aside class="sidebar" id="appSidebar">
         <div class="brand">
           <a href="#" class="brand-lockup" data-view="dashboard">
@@ -281,6 +312,6 @@
       </div>
     </div>
 
-    <script src="/app.js?v=phase3-workspace-20260726-r2"></script>
+    <script src="/app.js?v=auth-gate-recovery-20260812"></script>
   </body>
 </html>

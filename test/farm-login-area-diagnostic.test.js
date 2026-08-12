@@ -12,11 +12,12 @@ function functionSource(name, nextName) {
   return appSource.slice(start, end);
 }
 
-test("successful auth closes the modal before non-critical Area data loading", () => {
+test("successful auth reveals the app gate only after its secure session is restored", () => {
   const signIn = functionSource("submitFarmSignIn", "loadFarmPostLoginData");
   assert.match(signIn, /const loaded = await loadWorkspaceShell\(\{ sessionOnly: true \}\)/);
   assert.match(signIn, /if \(!loaded \|\| !state\.farmSession\?\.ok\) throw/);
-  assert.ok(signIn.indexOf("closeFarmAuthDialog();") < signIn.indexOf("loadFarmPostLoginData();"));
+  assert.ok(signIn.indexOf("showFarmAuthenticatedApplication();") > signIn.indexOf("if (!loaded || !state.farmSession?.ok) throw"));
+  assert.match(signIn, /await startAuthenticatedApplication\(\)/);
   assert.doesNotMatch(signIn, /await loadFarmCurrentViewTables/);
 });
 

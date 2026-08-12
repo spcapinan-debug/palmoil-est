@@ -146,6 +146,10 @@ const state = {
   farmConnectionError: "",
   farmAuthBusy: false,
   farmPasswordRecoveryToken: "",
+  farmAuthScreen: "login",
+  farmAppInitialized: false,
+  farmAppActive: false,
+  liveRefreshTimer: null,
   systemUsers: [],
   systemUserEmployees: [],
   systemUserRoles: [],
@@ -222,7 +226,24 @@ function resetFarmDerivedCaches() {
 }
 
 const els = {
-  appShell: document.querySelector(".app-shell"),
+  appShell: document.querySelector("#farmAppShell"),
+  farmAuthGate: document.querySelector("#farmAuthGate"),
+  farmAuthGateTitle: document.querySelector("#farmAuthGateTitle"),
+  farmAuthGateDescription: document.querySelector("#farmAuthGateDescription"),
+  farmAuthGateStatus: document.querySelector("#farmAuthGateStatus"),
+  farmAuthGateLoginForm: document.querySelector("#farmAuthGateLoginForm"),
+  farmAuthGateIdentifier: document.querySelector("#farmAuthGateIdentifier"),
+  farmAuthGatePassword: document.querySelector("#farmAuthGatePassword"),
+  farmAuthGateSubmit: document.querySelector("#farmAuthGateSubmit"),
+  farmAuthGateForgot: document.querySelector("#farmAuthGateForgot"),
+  farmAuthGateForgotForm: document.querySelector("#farmAuthGateForgotForm"),
+  farmAuthGateForgotIdentifier: document.querySelector("#farmAuthGateForgotIdentifier"),
+  farmAuthGateForgotSubmit: document.querySelector("#farmAuthGateForgotSubmit"),
+  farmAuthGateResetForm: document.querySelector("#farmAuthGateResetForm"),
+  farmAuthGateRecoveryPassword: document.querySelector("#farmAuthGateRecoveryPassword"),
+  farmAuthGateRecoveryConfirm: document.querySelector("#farmAuthGateRecoveryConfirm"),
+  farmAuthGateRecoveryShow: document.querySelector("#farmAuthGateRecoveryShow"),
+  farmAuthGateRecoverySubmit: document.querySelector("#farmAuthGateRecoverySubmit"),
   sidebar: document.querySelector("#appSidebar"),
   sidebarToggle: document.querySelector("#sidebarToggle"),
   sourceInfo: document.querySelector("#sourceInfo"),
@@ -585,6 +606,9 @@ async function farmJsonRequest(url, options = {}, { retrySession = true } = {}) 
       return farmJsonRequest(url, options, { retrySession: false });
     }
   }
+  if (response.status === 401 && state.farmAppActive) {
+    stopFarmAuthenticatedApplication("Session หมดอายุ กรุณาเข้าสู่ระบบใหม่");
+  }
   return { response, payload };
 }
 
@@ -668,11 +692,94 @@ function closeFarmAuthDialog() {
   if (els.farmRecoveryPasswordConfirm) els.farmRecoveryPasswordConfirm.value = "";
 }
 
-function captureFarmPasswordRecovery() {
+function setFarmAuthGateStatus(message = "", tone = "") {
+  if (!els.farmAuthGateStatus) return;
+  els.farmAuthGateStatus.textContent = message;
+  els.farmAuthGateStatus.classList.toggle("success", tone === "success");
+}
+
+function showFarmAuthScreen(screen = "login", message = "", tone = "") {
+  const copy = {
+    login: ["ระบบบริหารงานสวนปาล์ม", "เข้าสู่ระบบด้วย Username หรือ Email"],
+    "forgot-password": ["ลืมรหัสผ่าน", "ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ไปยังอีเมลที่ผูกกับบัญชี"],
+    "reset-password": ["ตั้งรหัสผ่านใหม่", "ลิงก์ได้รับการยืนยันแล้ว กรุณากำหนดรหัสผ่านใหม่"],
+    "recovery-error": ["ลิงก์ตั้งรหัสผ่านใช้ไม่ได้", "ลิงก์อาจไม่ถูกต้อง หมดอายุ หรือถูกเปิดไปแล้ว"],
+  };
+  state.farmAuthScreen = copy[screen] ? screen : "login";
+  els.farmAuthGate?.removeAttribute("hidden");
+  if (els.appShell) els.appShell.hidden = true;
+  document.querySelectorAll("[data-auth-screen]").forEach((node) => {
+    node.classList.toggle("hidden", node.dataset.authScreen !== state.farmAuthScreen);
+  });
+  if (els.farmAuthGateTitle) els.farmAuthGateTitle.textContent = copy[state.farmAuthScreen][0];
+  if (els.farmAuthGateDescription) els.farmAuthGateDescription.textContent = copy[state.farmAuthScreen][1];
+  setFarmAuthGateStatus(message, tone);
+  const focusTarget = state.farmAuthScreen === "login"
+    ? els.farmAuthGateIdentifier
+    : state.farmAuthScreen === "forgot-password"
+      ? els.farmAuthGateForgotIdentifier
+      : state.farmAuthScreen === "reset-password"
+        ? els.farmAuthGateRecoveryPassword
+        : null;
+  window.setTimeout(() => focusTarget?.focus(), 0);
+}
+
+function showFarmAuthenticatedApplication() {
+  els.farmAuthGate?.setAttribute("hidden", "");
+  if (els.appShell) els.appShell.hidden = false;
+  state.farmAppActive = true;
+}
+
+function stopFarmAuthenticatedApplication(message = "") {
+  if (state.liveRefreshTimer) window.clearInterval(state.liveRefreshTimer);
+  state.liveRefreshTimer = null;
+  state.farmAppActive = false;
+  state.farmSession = null;
+  state.farmAuthRequired = true;
+  state.farmConnectionState = message ? "SESSION_EXPIRED" : "AUTH_REQUIRED";
+  resetFarmAuthenticatedData();
+  closeFarmAuthDialog();
+  showFarmAuthScreen("login", message);
+}
+
+function cleanFarmRecoveryUrl() {
+  window.history.replaceState({}, "", window.location.pathname || "/");
+}
+
+async function detectFarmPasswordRecovery() {
+  const query = new URLSearchParams(window.location.search);
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  if (hash.get("type") !== "recovery" || !hash.get("access_token")) return false;
-  state.farmPasswordRecoveryToken = hash.get("access_token");
-  window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
+  const expected = query.has("password_recovery") || hash.get("type") === "recovery";
+  const callbackError = hash.get("error_code") || hash.get("error") || query.get("error_code") || query.get("error");
+  if (callbackError) {
+    cleanFarmRecoveryUrl();
+    showFarmAuthScreen("recovery-error");
+    return true;
+  }
+  const accessToken = hash.get("type") === "recovery" ? hash.get("access_token") || "" : "";
+  if (!accessToken) {
+    if (!expected) return false;
+    cleanFarmRecoveryUrl();
+    showFarmAuthScreen("recovery-error");
+    return true;
+  }
+  state.farmPasswordRecoveryToken = accessToken;
+  cleanFarmRecoveryUrl();
+  showFarmAuthScreen("reset-password", "กำลังตรวจสอบลิงก์…");
+  try {
+    const response = await fetch(FARM_AUTH_API, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "validate_password_recovery", accessToken }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) throw new Error("invalid recovery link");
+    showFarmAuthScreen("reset-password");
+  } catch {
+    state.farmPasswordRecoveryToken = "";
+    showFarmAuthScreen("recovery-error");
+  }
   return true;
 }
 
@@ -706,15 +813,15 @@ function resetFarmAuthenticatedData() {
 
 async function submitFarmSignIn() {
   if (state.farmAuthBusy) return;
-  const identifier = els.farmAuthIdentifier?.value.trim() || "";
-  const password = els.farmAuthPassword?.value || "";
+  const identifier = els.farmAuthGateIdentifier?.value.trim() || "";
+  const password = els.farmAuthGatePassword?.value || "";
   if (!identifier || !password) {
-    if (els.farmAuthStatus) els.farmAuthStatus.textContent = "กรุณากรอก Username หรือ Email และรหัสผ่าน";
+    setFarmAuthGateStatus("กรุณากรอก Username หรือ Email และรหัสผ่าน");
     return;
   }
   state.farmAuthBusy = true;
-  if (els.farmAuthSubmit) els.farmAuthSubmit.disabled = true;
-  if (els.farmAuthStatus) els.farmAuthStatus.textContent = "กำลังเข้าสู่ระบบ…";
+  if (els.farmAuthGateSubmit) els.farmAuthGateSubmit.disabled = true;
+  setFarmAuthGateStatus("กำลังเข้าสู่ระบบ…");
   try {
     const response = await fetch(FARM_AUTH_API, {
       method: "POST",
@@ -724,28 +831,27 @@ async function submitFarmSignIn() {
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "เข้าสู่ระบบไม่สำเร็จ"));
-    if (els.farmAuthPassword) els.farmAuthPassword.value = "";
+    if (els.farmAuthGatePassword) els.farmAuthGatePassword.value = "";
     resetFarmAuthenticatedData();
     const loaded = await loadWorkspaceShell({ sessionOnly: true });
     if (!loaded || !state.farmSession?.ok) throw new Error("ไม่สามารถโหลด session หลังเข้าสู่ระบบ");
-    closeFarmAuthDialog();
-    render();
-    loadFarmPostLoginData();
+    showFarmAuthenticatedApplication();
+    await startAuthenticatedApplication();
   } catch (error) {
-    if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
+    showFarmAuthScreen("login", error.message);
   } finally {
     state.farmAuthBusy = false;
-    if (els.farmAuthSubmit) els.farmAuthSubmit.disabled = false;
+    if (els.farmAuthGateSubmit) els.farmAuthGateSubmit.disabled = false;
   }
 }
 
 async function submitFarmPasswordResetRequest() {
-  const identifier = els.farmAuthIdentifier?.value.trim() || "";
+  const identifier = els.farmAuthGateForgotIdentifier?.value.trim() || "";
   if (!identifier) {
-    if (els.farmAuthStatus) els.farmAuthStatus.textContent = "กรุณากรอก Username หรือ Email ก่อน";
+    setFarmAuthGateStatus("กรุณากรอก Username หรือ Email ก่อน");
     return;
   }
-  els.farmForgotPassword.disabled = true;
+  els.farmAuthGateForgotSubmit.disabled = true;
   try {
     const response = await fetch(FARM_AUTH_API, {
       method: "POST",
@@ -755,24 +861,24 @@ async function submitFarmPasswordResetRequest() {
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "ส่งลิงก์ตั้งรหัสผ่านไม่สำเร็จ"));
-    if (els.farmAuthStatus) els.farmAuthStatus.textContent = payload.message;
-  } catch (error) {
-    if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
+    setFarmAuthGateStatus(payload.message, "success");
+  } catch {
+    setFarmAuthGateStatus("หากบัญชีนี้ใช้งานได้ ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ไปยังอีเมลที่ผูกไว้", "success");
   } finally {
-    els.farmForgotPassword.disabled = false;
+    els.farmAuthGateForgotSubmit.disabled = false;
   }
 }
 
 async function submitFarmRecoveryPassword() {
-  const password = els.farmRecoveryPassword?.value || "";
-  const confirm = els.farmRecoveryPasswordConfirm?.value || "";
+  const password = els.farmAuthGateRecoveryPassword?.value || "";
+  const confirm = els.farmAuthGateRecoveryConfirm?.value || "";
   if (password.length < 8 || password !== confirm) {
-    if (els.farmAuthStatus) els.farmAuthStatus.textContent = password.length < 8
+    setFarmAuthGateStatus(password.length < 8
       ? "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร"
-      : "ยืนยันรหัสผ่านไม่ตรงกัน";
+      : "ยืนยันรหัสผ่านไม่ตรงกัน");
     return;
   }
-  els.farmRecoveryPasswordSubmit.disabled = true;
+  els.farmAuthGateRecoverySubmit.disabled = true;
   try {
     const response = await fetch(FARM_AUTH_API, {
       method: "POST",
@@ -783,14 +889,14 @@ async function submitFarmRecoveryPassword() {
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "ตั้งรหัสผ่านใหม่ไม่สำเร็จ"));
     state.farmPasswordRecoveryToken = "";
-    els.farmRecoveryPassword.value = "";
-    els.farmRecoveryPasswordConfirm.value = "";
-    setFarmAuthDialogMode();
-    if (els.farmAuthStatus) els.farmAuthStatus.textContent = "ตั้งรหัสผ่านใหม่แล้ว กรุณาเข้าสู่ระบบ";
-  } catch (error) {
-    if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
+    els.farmAuthGateRecoveryPassword.value = "";
+    els.farmAuthGateRecoveryConfirm.value = "";
+    showFarmAuthScreen("login", "ตั้งรหัสผ่านใหม่แล้ว กรุณาเข้าสู่ระบบ", "success");
+  } catch {
+    state.farmPasswordRecoveryToken = "";
+    showFarmAuthScreen("recovery-error");
   } finally {
-    els.farmRecoveryPasswordSubmit.disabled = false;
+    els.farmAuthGateRecoverySubmit.disabled = false;
   }
 }
 
@@ -849,13 +955,7 @@ async function submitFarmSignOut() {
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "ออกจากระบบไม่สำเร็จ"));
-    state.farmSession = null;
-    state.farmAuthRequired = true;
-    state.farmConnectionState = "AUTH_REQUIRED";
-    resetFarmAuthenticatedData();
-    renderFarmAuthState();
-    closeFarmAuthDialog();
-    render();
+    stopFarmAuthenticatedApplication();
   } catch (error) {
     if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
   } finally {
@@ -4232,10 +4332,6 @@ async function loadWorkspaceShell({ sessionOnly = false } = {}) {
       state.dynamicMenuEnabled = false;
       state.farmDbErrors = farmClearResolvedErrors(state.farmDbErrors, ["workspace_navigation"], {});
       renderFarmAuthState();
-      if (isFarmView(state.view)) {
-        render();
-        if (state.farmAuthRequired) window.setTimeout(() => openFarmAuthDialog(), 0);
-      }
       return false;
     }
     state.farmSession = session;
@@ -4262,10 +4358,6 @@ async function loadWorkspaceShell({ sessionOnly = false } = {}) {
       ? { ...(state.farmDbErrors || {}), workspace_navigation: error.message }
       : farmClearResolvedErrors(state.farmDbErrors, ["workspace_navigation"], {});
     renderFarmAuthState();
-    if (isFarmView(state.view)) {
-      render();
-      if (state.farmAuthRequired) window.setTimeout(() => openFarmAuthDialog(), 0);
-    }
     return false;
   }
 }
@@ -4732,10 +4824,8 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
     state.farmDbWarnings = state.farmDbWarnings || {};
     farmPreviewDiagnostic("table-load", { ok: false, requestedTables: tableKeys, error: error.message });
     renderFarmAuthState();
-    if (isFarmView(state.view) && state.farmAuthRequired) {
-      render();
-      window.setTimeout(() => openFarmAuthDialog(), 0);
-    }
+    if (state.farmAuthRequired && state.farmAppActive) stopFarmAuthenticatedApplication("Session หมดอายุ กรุณาเข้าสู่ระบบใหม่");
+    else if (state.farmAppActive) render();
     return false;
   } finally {
     if (farmDbTableInflight.get(requestKey) === request) farmDbTableInflight.delete(requestKey);
@@ -5837,9 +5927,12 @@ async function loadFarmBudgetRateData() {
 }
 
 function startLiveRefresh() {
-  if (!state.liveMode) return;
-  window.setInterval(async () => {
+  if (state.liveRefreshTimer) window.clearInterval(state.liveRefreshTimer);
+  state.liveRefreshTimer = null;
+  if (!state.liveMode || !state.farmAppActive) return;
+  state.liveRefreshTimer = window.setInterval(async () => {
     try {
+      if (!state.farmAppActive) return;
       await loadPayload({ silent: true });
     } catch (error) {
       setSourceRefreshError(error);
@@ -26678,6 +26771,40 @@ function bindCriticalUiEvents() {
   return true;
 }
 
+function bindFarmAuthGateEvents() {
+  els.farmAuthGateLoginForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitFarmSignIn();
+  });
+  els.farmAuthGateForgot?.addEventListener("click", () => {
+    if (els.farmAuthGateForgotIdentifier) els.farmAuthGateForgotIdentifier.value = els.farmAuthGateIdentifier?.value.trim() || "";
+    showFarmAuthScreen("forgot-password");
+  });
+  els.farmAuthGateForgotForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitFarmPasswordResetRequest();
+  });
+  els.farmAuthGateResetForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitFarmRecoveryPassword();
+  });
+  els.farmAuthGate?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-auth-show-login]")) showFarmAuthScreen("login");
+    if (event.target.closest("[data-auth-show-forgot]")) showFarmAuthScreen("forgot-password");
+  });
+  els.farmAuthGateRecoveryShow?.addEventListener("change", () => {
+    const type = els.farmAuthGateRecoveryShow.checked ? "text" : "password";
+    els.farmAuthGateRecoveryPassword.type = type;
+    els.farmAuthGateRecoveryConfirm.type = type;
+  });
+  document.querySelector("#farmAuthGateShowPassword")?.addEventListener("click", (event) => {
+    const visible = els.farmAuthGatePassword?.type === "text";
+    if (els.farmAuthGatePassword) els.farmAuthGatePassword.type = visible ? "password" : "text";
+    event.currentTarget.textContent = visible ? "แสดง" : "ซ่อน";
+    event.currentTarget.setAttribute("aria-pressed", String(!visible));
+  });
+}
+
 function ensureFarmViewState(view = state.view) {
   if (!isFarmView(view)) return;
   const module = farmModuleMap()[view] || FARM_MODULES[0];
@@ -26738,9 +26865,15 @@ function downloadCsv() {
   URL.revokeObjectURL(url);
 }
 
-async function init() {
+async function startAuthenticatedApplication() {
+  if (state.farmAppInitialized) {
+    renderFarmAuthState();
+    render();
+    startLiveRefresh();
+    return loadFarmPostLoginData();
+  }
+  state.farmAppInitialized = true;
   ensurePrintPreviewElements();
-  const passwordRecoveryRequested = captureFarmPasswordRecovery();
   applySidebarState();
   loadFarmResultDraftCache();
   state.view = initialViewFromUrl();
@@ -28768,11 +28901,22 @@ async function init() {
   render();
   renderWorkNotificationCenter();
   startLiveRefresh();
-  if (passwordRecoveryRequested) openFarmAuthDialog();
   if (new URLSearchParams(window.location.search).has("autoRefresh")) autoRefreshTransportFromQuery();
 }
 
+async function init() {
+  bindFarmAuthGateEvents();
+  if (await detectFarmPasswordRecovery()) return;
+  const restored = await loadWorkspaceShell({ sessionOnly: true });
+  if (!restored || !state.farmSession?.ok) {
+    showFarmAuthScreen("login");
+    return;
+  }
+  showFarmAuthenticatedApplication();
+  await startAuthenticatedApplication();
+}
+
 init().catch((error) => {
-  els.sourceInfo.textContent = "โหลดข้อมูลไม่สำเร็จ";
-  els.reportPage.innerHTML = `<div class="report-title"><h2>${error.message}</h2></div>`;
+  state.farmAppActive = false;
+  showFarmAuthScreen("login", "ไม่สามารถเริ่มระบบได้ กรุณาลองใหม่");
 });

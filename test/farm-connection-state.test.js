@@ -63,9 +63,13 @@ test("successful retries clear stale API and requested-table errors without hidi
   );
 });
 
-test("farm routes paint before workspace I/O and auth failures open the login dialog", () => {
-  assert.match(appSource, /ensureFarmViewState\(state\.view\);\s*render\(\);\s*await loadWorkspaceShell\(\)/);
+test("bootstrap restores the session before revealing or starting the application", () => {
+  const initStart = appSource.indexOf("async function init()");
+  const initSource = appSource.slice(initStart);
+  assert.ok(initSource.indexOf("await detectFarmPasswordRecovery()") < initSource.indexOf("loadWorkspaceShell({ sessionOnly: true })"));
+  assert.ok(initSource.indexOf("loadWorkspaceShell({ sessionOnly: true })") < initSource.indexOf("showFarmAuthenticatedApplication()"));
+  assert.ok(initSource.indexOf("showFarmAuthenticatedApplication()") < initSource.indexOf("startAuthenticatedApplication()"));
   assert.match(appSource, /state\.farmAuthRequired = farmConnectionNeedsLogin\(connectionState\)/);
-  assert.match(appSource, /window\.setTimeout\(\(\) => openFarmAuthDialog\(\), 0\)/);
+  assert.doesNotMatch(appSource, /window\.setTimeout\(\(\) => openFarmAuthDialog\(\), 0\)/);
   assert.doesNotMatch(appSource, /farmAuthRequired = \/access token\|invalid token\|expired\|auth_required/i);
 });

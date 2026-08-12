@@ -123,10 +123,8 @@ async function requestPasswordReset(req, res, body) {
   });
 }
 
-async function completePasswordReset(req, res, body) {
-  const accessToken = requireText(body.accessToken, "accessToken", 4096);
-  const password = requireText(body.password, "password", 1024);
-  if (password.length < 8) throw new ApiError(400, "WEAK_PASSWORD", "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
+async function validateRecoveryAccess(accessTokenValue) {
+  const accessToken = requireText(accessTokenValue, "accessToken", 4096);
   const { url, serviceKey } = config();
   const headers = { apikey: serviceKey, Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" };
   const userResponse = await fetch(`${url}/auth/v1/user`, { headers });
@@ -135,6 +133,18 @@ async function completePasswordReset(req, res, body) {
   const profiles = await rest(`profiles?id=eq.${encodeURIComponent(user.id)}&status=eq.active&select=id&limit=1`)
     .then(({ data }) => data || []);
   if (profiles.length !== 1) throw new ApiError(401, "INVALID_RECOVERY_LINK", "ลิงก์ตั้งรหัสผ่านไม่ถูกต้องหรือหมดอายุ");
+  return { headers, url };
+}
+
+async function validatePasswordRecovery(req, res, body) {
+  await validateRecoveryAccess(body.accessToken);
+  return json(res, 200, { ok: true });
+}
+
+async function completePasswordReset(req, res, body) {
+  const password = requireText(body.password, "password", 1024);
+  if (password.length < 8) throw new ApiError(400, "WEAK_PASSWORD", "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
+  const { headers, url } = await validateRecoveryAccess(body.accessToken);
   const updateResponse = await fetch(`${url}/auth/v1/user`, {
     method: "PUT",
     headers,
@@ -187,6 +197,7 @@ async function handler(req, res) {
     if (action === "sign_in") return await signIn(req, res, body);
     if (action === "sign_out") return await signOut(req, res);
     if (action === "request_password_reset") return await requestPasswordReset(req, res, body);
+    if (action === "validate_password_recovery") return await validatePasswordRecovery(req, res, body);
     if (action === "complete_password_reset") return await completePasswordReset(req, res, body);
     throw new ApiError(400, "ACTION_NOT_ALLOWED", "Auth action is not allowed");
   } catch (error) {

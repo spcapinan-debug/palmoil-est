@@ -234,6 +234,28 @@ test("recovery token updates only its active user's password and is never logged
   const authSource = fs.readFileSync(path.join(__dirname, "..", "api", "farm-auth.js"), "utf8");
   assert.doesNotMatch(authSource, /console\.(?:log|info|warn|error)\([^\n]*(?:accessToken|password)/);
 });
+test("recovery validation verifies the active user without changing its password", async (t) => {
+  const calls = [];
+  await withAuthFetch(t, async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).endsWith("/auth/v1/user") && !options.method) return Response.json({ id: "4a216447-bf6c-4952-857d-bfadbc793ffe" });
+    if (String(url).includes("profiles?id=eq.4a216447")) return Response.json([{ id: "4a216447-bf6c-4952-857d-bfadbc793ffe" }]);
+    return Response.json({}, { status: 404 });
+  }, async () => {
+    const res = responseRecorder();
+    await farmAuth({
+      method: "POST",
+      body: { action: "validate_password_recovery", accessToken: "recovery-access-token" },
+      headers: {},
+    }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+  });
+  const validation = calls.find((call) => call.url.endsWith("/auth/v1/user"));
+  assert.equal(validation.options.headers.Authorization, "Bearer recovery-access-token");
+  assert.equal(calls.some((call) => call.options.method === "PUT"), false);
+});
+
 
 test("password recovery rejects HTTP and malicious configured callback schemes", () => {
   const previous = process.env.FARM_AUTH_RECOVERY_REDIRECT_URL;
@@ -283,11 +305,13 @@ test("email recovery stays generic for active, unknown, inactive, and provider e
   assert.equal(recoverCalls, 1);
 });
 
-test("recovery UI strips tokens, checks password policy and supports show or hide", () => {
-  assert.match(appSource, /hash\.get\("type"\) !== "recovery"/);
-  assert.match(appSource, /history\.replaceState\(\{\}, "",/);
+test("recovery gate validates then strips tokens, checks password policy and supports show or hide", () => {
+  assert.match(appSource, /const accessToken = hash\.get\("type"\) === "recovery" \? hash\.get\("access_token"\)/);
+  assert.match(appSource, /cleanFarmRecoveryUrl\(\)/);
+  assert.match(appSource, /action: "validate_password_recovery"/);
+  assert.match(appSource, /showFarmAuthScreen\("recovery-error"\)/);
   assert.match(appSource, /password\.length < 8 \|\| password !== confirm/);
-  assert.match(appSource, /farmRecoveryShowPassword\.checked \? "text" : "password"/);
+  assert.match(appSource, /farmAuthGateRecoveryShow\.checked \? "text" : "password"/);
   assert.doesNotMatch(appSource, /localStorage\.[^(]+\([^\n]*(?:access_token|farmPasswordRecoveryToken)/);
   assert.doesNotMatch(appSource, /console\.(?:log|info|warn|error)\([^\n]*(?:access_token|farmPasswordRecoveryToken)/);
 });

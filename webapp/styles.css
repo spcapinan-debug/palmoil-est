@@ -17254,6 +17254,81 @@ details.farm-survey-score-section[open] > summary::after {
     min-height: 44px !important;
   }
 
+/* Authentication and password recovery are isolated from the application shell. */
+.farm-auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-items: center;
+  overflow: auto;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(51, 105, 74, 0.16), transparent 38%),
+    #f3f6f2;
+}
+
+.farm-auth-gate[hidden],
+#farmAppShell[hidden] {
+  display: none !important;
+}
+
+.farm-auth-gate-card {
+  width: min(100%, 430px);
+  padding: 32px;
+  border: 1px solid #d7e0d7;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(22, 47, 32, 0.14);
+}
+
+.farm-auth-gate-brand {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 20px;
+  place-items: center;
+  border-radius: 14px;
+  background: #245c3d;
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.farm-auth-gate-card h1 { margin: 0 0 8px; font-size: 1.55rem; }
+.farm-auth-description { margin: 0 0 24px; color: #5c6b61; }
+.farm-auth-gate-screen { display: grid; gap: 16px; }
+.farm-auth-gate-screen.hidden { display: none; }
+.farm-auth-gate-screen label { display: grid; gap: 7px; font-weight: 650; }
+.farm-auth-gate-screen input:not([type="checkbox"]) {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid #bdc9c0;
+  border-radius: 10px;
+  font: inherit;
+}
+
+.farm-auth-password-control { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.farm-auth-password-control button,
+.farm-auth-gate-screen button { min-height: 44px; }
+.farm-auth-password-control button { padding-inline: 12px; }
+.farm-auth-primary {
+  border: 0;
+  border-radius: 10px;
+  background: #245c3d;
+  color: #fff;
+  font-weight: 750;
+}
+.farm-auth-primary:disabled { cursor: wait; opacity: 0.65; }
+.farm-auth-status { min-height: 1.5em; margin: 16px 0 0; color: #a33c2f; }
+.farm-auth-status.success { color: #1f7048; }
+
+@media (max-width: 520px) {
+  .farm-auth-gate { padding: 14px; }
+
   .app-notification-backdrop,
   .app-notification-center {
     zoom: 1;
