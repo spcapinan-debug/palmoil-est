@@ -143,6 +143,8 @@ const state = {
   farmSession: null,
   farmAuthRequired: false,
   farmConnectionState: "LOADING",
+  farmCoreHealth: "LOADING",
+  farmModuleHealth: {},
   farmConnectionError: "",
   farmAuthBusy: false,
   farmPasswordRecoveryToken: "",
@@ -357,17 +359,46 @@ function farmConnectionStateFromResponse(response, payload = {}) {
   return status > 0 ? "CONNECTED" : "NETWORK_ERROR";
 }
 
+const FARM_CORE_DATA_TABLES = new Set([
+  "blocks", "activity_groups", "activities", "employees", "teams", "materials",
+  "annual_work_plans", "planned_work_items", "work_orders", "work_results",
+]);
+
 function farmDataConnectionState(payload = {}, requestedTables = []) {
-  const coreTables = new Set([
-    "blocks", "activity_groups", "activities", "employees", "teams", "materials",
-    "annual_work_plans", "planned_work_items", "work_orders", "work_results",
-  ]);
   const requested = new Set(requestedTables || []);
   const failedTables = Object.keys(payload?.errors || {});
-  if (failedTables.some((table) => requested.has(table) && coreTables.has(table))) {
+  if (failedTables.some((table) => requested.has(table) && FARM_CORE_DATA_TABLES.has(table))) {
     return "DATABASE_ERROR";
   }
-  return failedTables.length ? "PARTIAL_DATA" : "CONNECTED";
+  return "CONNECTED";
+}
+
+function farmModuleHealthState(errors = {}, requestedTables = []) {
+  const requested = new Set(requestedTables || []);
+  const failedTables = Object.keys(errors || {}).filter((table) => requested.has(table));
+  return { state: failedTables.length ? "DEGRADED" : "READY", failedTables };
+}
+
+function farmCoreHealthFromConnectionState(connectionState = "LOADING") {
+  if (["CONNECTED", "PARTIAL_DATA"].includes(connectionState)) return "READY";
+  if (connectionState === "NETWORK_ERROR") return "OFFLINE";
+  if (["AUTH_REQUIRED", "SESSION_EXPIRED"].includes(connectionState)) return "AUTH_REQUIRED";
+  if (connectionState === "LOADING") return "LOADING";
+  return "ERROR";
+}
+
+function setFarmCoreHealth(connectionState, error = "") {
+  state.farmConnectionState = connectionState;
+  state.farmCoreHealth = farmCoreHealthFromConnectionState(connectionState);
+  state.farmConnectionError = error;
+}
+
+function setFarmModuleHealth(moduleKey, health = {}) {
+  if (!moduleKey) return;
+  state.farmModuleHealth = {
+    ...(state.farmModuleHealth || {}),
+    [moduleKey]: { state: "READY", failedTables: [], ...health },
+  };
 }
 
 function farmClearResolvedErrors(currentErrors = {}, requestedTables = [], nextErrors = {}) {
@@ -644,18 +675,34 @@ function renderFarmAuthState() {
 
 function renderFarmConnectionNotice() {
   const connectionState = state.farmConnectionState || "LOADING";
-  if (connectionState === "CONNECTED") return "";
+  const globalCriticalStates = new Set(["DATABASE_ERROR", "NETWORK_ERROR", "PERMISSION_DENIED"]);
+  if (!globalCriticalStates.has(connectionState)) return "";
   const notices = {
-    LOADING: ["loading", "กำลังตรวจสอบการเชื่อมต่อข้อมูลสวนปาล์ม…"],
-    AUTH_REQUIRED: ["warning", "กรุณาเข้าสู่ระบบบริหารงานสวนปาล์มเพื่อโหลดข้อมูลจริง"],
-    SESSION_EXPIRED: ["warning", "Session หมดอายุ กรุณาเข้าสู่ระบบใหม่"],
     PERMISSION_DENIED: ["error", "บัญชีนี้ไม่มีสิทธิ์เข้าถึงข้อมูลสวนปาล์มส่วนนี้"],
-    PARTIAL_DATA: ["warning", "ข้อมูลหลักพร้อมใช้งาน แต่ข้อมูลเสริมบางส่วนยังไม่พร้อม"],
     DATABASE_ERROR: ["error", "Farm API ไม่สามารถโหลดข้อมูลหลักจากฐานข้อมูลได้"],
     NETWORK_ERROR: ["error", "ไม่สามารถเชื่อมต่อ Farm API ได้ กรุณาลองใหม่"],
   };
   const [tone, message] = notices[connectionState] || notices.NETWORK_ERROR;
   return `<div class="farm-sync-status ${tone}" data-farm-connection-notice="${esc(connectionState)}">${esc(message)}</div>`;
+}
+
+function farmModuleHealthForView(view = state.view) {
+  const stored = state.farmModuleHealth?.[view];
+  if (stored) return stored;
+  const requestedTables = typeof farmDatabaseTablesForView === "function" ? farmDatabaseTablesForView(view) : [];
+  return farmModuleHealthState(state.farmDbErrors || {}, requestedTables);
+}
+
+function renderFarmModuleHealthNotice(view = state.view) {
+  const health = farmModuleHealthForView(view);
+  if (!health || health.state === "READY" || health.state === "LOADING") return "";
+  const failedTables = Array.isArray(health.failedTables) ? health.failedTables : [];
+  const service = health.service || (failedTables.length ? `/api/farm-tables: ${failedTables.join(", ")}` : "ข้อมูลเสริมของ Module");
+  const message = health.message || "ข้อมูลเสริมบางส่วนของหน้านี้ยังไม่พร้อม ข้อมูลหลักยังใช้งานได้";
+  return `<div class="farm-sync-status warning" data-farm-module-warning="${esc(view)}">
+    <span>${esc(message)} <small>${esc(service)}</small></span>
+    <button type="button" data-farm-db-refresh>ลองใหม่</button>
+  </div>`;
 }
 
 function setFarmAuthDialogMode() {
@@ -738,7 +785,7 @@ function stopFarmAuthenticatedApplication(message = "") {
   state.farmAppActive = false;
   state.farmSession = null;
   state.farmAuthRequired = true;
-  state.farmConnectionState = message ? "SESSION_EXPIRED" : "AUTH_REQUIRED";
+  setFarmCoreHealth(message ? "SESSION_EXPIRED" : "AUTH_REQUIRED", message);
   resetFarmAuthenticatedData();
   closeFarmAuthDialog();
   showFarmAuthScreen("login", message);
@@ -797,6 +844,8 @@ function resetFarmAuthenticatedData() {
   state.farmAreaMasterLoading = false;
   state.farmAreaMasterError = "";
   state.farmDbErrors = {};
+  state.farmCoreHealth = farmCoreHealthFromConnectionState(state.farmConnectionState);
+  state.farmModuleHealth = {};
   state.farmDbTableMeta = {};
   state.workspacePermissions = new Set();
   state.workspaceRoles = new Set();
@@ -4297,8 +4346,9 @@ async function loadWorkspaceNavigationData() {
     error.connectionState = farmConnectionStateFromResponse(tableRequest.response, payload);
     throw error;
   }
-  state.farmConnectionState = farmDataConnectionState(payload, WORKSPACE_SHELL_TABLES);
-  state.farmConnectionError = "";
+  const connectionState = farmDataConnectionState(payload, WORKSPACE_SHELL_TABLES);
+  setFarmCoreHealth(connectionState);
+  setFarmModuleHealth("workspace-shell", { ...farmModuleHealthState(payload.errors || {}, WORKSPACE_SHELL_TABLES), service: FARM_TABLES_API });
   const tabs = payload.tables?.v_app_workspace_tabs || [];
   const tabMetadata = new Map(tabs.map((item) => [item.id, item]));
   state.workspaceNavigation = (payload.tables?.v_app_navigation || []).map((item) => ({
@@ -4321,15 +4371,13 @@ async function loadWorkspaceNavigationData() {
 
 async function loadWorkspaceShell({ sessionOnly = false } = {}) {
   try {
-    state.farmConnectionState = "LOADING";
-    state.farmConnectionError = "";
+    setFarmCoreHealth("LOADING");
     const sessionRequest = await farmJsonRequest(FARM_SESSION_API, { cache: "no-store" }, { retrySession: false });
     const session = sessionRequest.payload;
     if (!sessionRequest.response.ok || !session?.ok) {
       const connectionState = farmConnectionStateFromResponse(sessionRequest.response, session);
       state.farmSession = null;
-      state.farmConnectionState = connectionState;
-      state.farmConnectionError = farmApiErrorMessage(session, "Workspace session unavailable");
+      setFarmCoreHealth(connectionState, farmApiErrorMessage(session, "Workspace session unavailable"));
       state.farmAuthRequired = farmConnectionNeedsLogin(connectionState);
       state.dynamicMenuEnabled = false;
       state.farmDbErrors = farmClearResolvedErrors(state.farmDbErrors, ["workspace_navigation"], {});
@@ -4352,8 +4400,7 @@ async function loadWorkspaceShell({ sessionOnly = false } = {}) {
     return true;
   } catch (error) {
     const connectionState = error.connectionState || "NETWORK_ERROR";
-    state.farmConnectionState = connectionState;
-    state.farmConnectionError = String(error.message || "Workspace unavailable");
+    setFarmCoreHealth(connectionState, String(error.message || "Workspace unavailable"));
     state.farmAuthRequired = farmConnectionNeedsLogin(connectionState);
     state.dynamicMenuEnabled = false;
     state.farmDbErrors = ["DATABASE_ERROR", "NETWORK_ERROR"].includes(connectionState)
@@ -4495,6 +4542,7 @@ async function loadBlockMapData() {
 async function loadFarmAreaMasterData({ force = false } = {}) {
   state.farmAreaMasterLoading = true;
   state.farmAreaMasterError = "";
+  setFarmModuleHealth("farm-area", { state: "LOADING", service: FARM_AREA_MASTER_API });
   if (state.view === "farm-area") render();
   try {
     const url = `${FARM_AREA_MASTER_API}?refresh=${force ? "1" : "0"}&t=${Date.now()}`;
@@ -4518,9 +4566,15 @@ async function loadFarmAreaMasterData({ force = false } = {}) {
       uniqueMapKeys: payload.reconciliation?.uniqueBlockKeys || 0,
       matchedMaster: payload.reconciliation?.matchedMaster || 0,
     });
+    setFarmModuleHealth("farm-area", { state: "READY", service: FARM_AREA_MASTER_API });
     return true;
   } catch (error) {
     state.farmAreaMasterError = String(error.message || "Canonical Area Master unavailable");
+    setFarmModuleHealth("farm-area", {
+      state: "DEGRADED",
+      service: FARM_AREA_MASTER_API,
+      message: "ไม่สามารถโหลดแผนที่ KMZ ได้ ข้อมูล Area Master ยังใช้งานได้",
+    });
     farmPreviewDiagnostic("area-master-load", { ok: false, error: state.farmAreaMasterError });
     return false;
   } finally {
@@ -4792,8 +4846,9 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
     state.farmDbTableMeta = replaceSnapshot ? (payload.tableMeta || {}) : { ...(state.farmDbTableMeta || {}), ...(payload.tableMeta || {}) };
     state.farmDbErrors = replaceSnapshot ? (payload.errors || {})
       : farmClearResolvedErrors(state.farmDbErrors, tableKeys, payload.errors || {});
-    state.farmConnectionState = farmDataConnectionState({ errors: state.farmDbErrors }, allTableKeys);
-    state.farmConnectionError = "";
+    const connectionState = farmDataConnectionState({ errors: state.farmDbErrors }, allTableKeys);
+    setFarmCoreHealth(connectionState);
+    setFarmModuleHealth(state.view, { ...farmModuleHealthState(state.farmDbErrors, requestedKeys), service: FARM_TABLES_API });
     state.farmDbWarnings = replaceSnapshot ? (payload.warnings || {}) : { ...(state.farmDbWarnings || {}), ...(payload.warnings || {}) };
     farmMarkTablesLoaded(Object.keys(nextRows));
     if (silent) render();
@@ -4816,8 +4871,7 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
       resetFarmDerivedCaches();
     }
     const connectionState = error.connectionState || "NETWORK_ERROR";
-    state.farmConnectionState = connectionState;
-    state.farmConnectionError = String(error.message || "Farm tables unavailable");
+    setFarmCoreHealth(connectionState, String(error.message || "Farm tables unavailable"));
     state.farmAuthRequired = farmConnectionNeedsLogin(connectionState);
     state.farmDbSource = { mode: "supabase-real-only", error: error.message };
     state.farmDbErrors = ["DATABASE_ERROR", "NETWORK_ERROR"].includes(connectionState)
@@ -18714,6 +18768,7 @@ function renderSystemUserManagement(module, table) {
   return `<div class="farm-page system-user-page">
     <div class="report-title"><div><h2>ผู้ใช้งานระบบ</h2><p>บัญชี Login ที่ผูกกับ Employee Master และ Supabase Auth</p></div><button type="button" data-system-user-refresh>Refresh</button></div>
     ${renderFarmConnectionNotice()}
+    ${renderFarmModuleHealthNotice(module.id)}
     ${renderFarmGovernanceBoard(table)}
     ${state.farmSyncMessage ? `<div class="farm-sync-status ${esc(state.farmSyncStatus)}">${esc(state.farmSyncMessage)}</div>` : ""}
     <section class="farm-toolbar system-user-toolbar">
@@ -25824,6 +25879,7 @@ function renderFarmPage() {
         <button type="button" data-farm-db-refresh>Refresh DB</button>
       </div>
       ${renderFarmConnectionNotice()}
+      ${renderFarmModuleHealthNotice(module.id)}
       ${isBudgetPage ? "" : renderFarmWorkflowNav(module)}
       ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isBudgetPage ? renderFarmBudgetBoard() : ""}

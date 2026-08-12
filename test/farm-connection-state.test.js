@@ -8,7 +8,7 @@ const helperStart = appSource.indexOf("function farmConnectionStateFromResponse"
 const helperEnd = appSource.indexOf("function farmPreviewDiagnostic", helperStart);
 assert.ok(helperStart >= 0 && helperEnd > helperStart);
 const helpers = Function(`${appSource.slice(helperStart, helperEnd)}
-  return { farmConnectionStateFromResponse, farmDataConnectionState, farmClearResolvedErrors };
+  return { farmConnectionStateFromResponse, farmDataConnectionState, farmModuleHealthState, farmCoreHealthFromConnectionState, farmClearResolvedErrors };
 `)();
 
 test("farm session failures remain auth or permission states instead of database failures", () => {
@@ -36,7 +36,11 @@ test("core success with optional failure stays usable and core failure is a data
   assert.equal(helpers.farmDataConnectionState({ errors: {} }, requested), "CONNECTED");
   assert.equal(
     helpers.farmDataConnectionState({ errors: { app_notifications: { code: "TABLE_READ_FAILED" } } }, requested),
-    "PARTIAL_DATA",
+    "CONNECTED",
+  );
+  assert.deepEqual(
+    helpers.farmModuleHealthState({ app_notifications: { code: "TABLE_READ_FAILED" } }, requested),
+    { state: "DEGRADED", failedTables: ["app_notifications"] },
   );
   assert.equal(
     helpers.farmDataConnectionState({ errors: { work_orders: { code: "TABLE_READ_FAILED" } } }, requested),
@@ -61,6 +65,23 @@ test("successful retries clear stale API and requested-table errors without hidi
     ),
     { work_orders: { code: "TABLE_READ_FAILED" } },
   );
+});
+
+test("core health stays ready for supplementary failures and preserves critical states", () => {
+  assert.equal(helpers.farmCoreHealthFromConnectionState("CONNECTED"), "READY");
+  assert.equal(helpers.farmCoreHealthFromConnectionState("PARTIAL_DATA"), "READY");
+  assert.equal(helpers.farmCoreHealthFromConnectionState("NETWORK_ERROR"), "OFFLINE");
+  assert.equal(helpers.farmCoreHealthFromConnectionState("DATABASE_ERROR"), "ERROR");
+  assert.equal(helpers.farmCoreHealthFromConnectionState("SESSION_EXPIRED"), "AUTH_REQUIRED");
+});
+
+test("global notice excludes supplementary state and module notices are route-scoped", () => {
+  const globalNotice = appSource.slice(appSource.indexOf("function renderFarmConnectionNotice"), appSource.indexOf("function farmModuleHealthForView"));
+  assert.doesNotMatch(globalNotice, /PARTIAL_DATA:\s*\[/);
+  assert.doesNotMatch(globalNotice, /ข้อมูลหลักพร้อมใช้งาน แต่ข้อมูลเสริมบางส่วนยังไม่พร้อม/);
+  assert.match(appSource, /data-farm-module-warning="\$\{esc\(view\)\}"/);
+  assert.match(appSource, /renderFarmModuleHealthNotice\(module\.id\)/);
+  assert.match(appSource, /globalCriticalStates = new Set\(\["DATABASE_ERROR", "NETWORK_ERROR", "PERMISSION_DENIED"\]\)/);
 });
 
 test("bootstrap restores the session before revealing or starting the application", () => {
