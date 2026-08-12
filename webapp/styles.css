@@ -6464,6 +6464,16 @@ tfoot td {
   font-weight: 900;
 }
 
+.farm-material-standard-panel .section-head button {
+  min-height: 32px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 900;
+}
+
 .farm-activity-table-wrap {
   max-height: 520px;
   overflow: auto;

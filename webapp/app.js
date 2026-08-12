@@ -59,6 +59,7 @@ const state = {
   farmInventoryCalculation: null,
   farmSelectedTeamId: "",
   farmActivityModalTable: "",
+  farmMaterialStandardModal: null,
   farmBudgetContract: {
     query: "",
     contractType: "Role Based Compounded",
@@ -2719,15 +2720,19 @@ const FARM_TABLE_SCHEMAS = {
     fields: [
       F("activity_id", "กิจกรรม", { references: "activities", required: true }),
       F("material_id", "วัสดุ", { references: "materials", required: true }),
-      F("usage_basis", "ฐานคำนวณ", { options: ["per_tree", "per_rai", "per_work_order", "per_ton"] }),
+      F("usage_basis", "ฐานคำนวณ", { options: ["per_tree", "per_rai"], required: true }),
       F("usage_rate", "อัตราใช้", { type: "number", required: true }),
-      F("usage_unit", "หน่วยใช้"),
-      F("effective_start_date", "เริ่มใช้", { type: "date" }),
+      F("unit_id", "หน่วยมาตรฐาน", { references: "units", required: true }),
+      F("fiscal_year", "ปีมาตรฐาน", { required: true }),
+      F("version_no", "เวอร์ชัน", { type: "number" }),
+      F("effective_start_date", "เริ่มใช้", { type: "date", required: true }),
+      F("effective_end_date", "สิ้นสุด", { type: "date" }),
+      F("approval_status", "สถานะอนุมัติ", { options: ["draft", "approved", "inactive"] }),
+      F("source_type", "แหล่งที่มา"),
+      F("note", "หมายเหตุ", { type: "textarea" }),
       F("status", "สถานะ", { type: "status" }),
     ],
-    seed: [
-      { id: "usage-fert-tree", activity_id: "activity-fertilizer-0030", material_id: "material-fert-25", usage_basis: "per_tree", usage_rate: "2", usage_unit: "kg", status: "active" },
-    ],
+    seed: [],
   },
   survey_templates: {
     moduleId: "farm-activities",
@@ -24981,6 +24986,39 @@ function renderFarmPeopleBoard(table, rows, tables) {
     ${renderFarmActivityModal()}`;
 }
 
+function renderFarmMaterialStandardSection(activity) {
+  if (!activity) return `<section class="farm-panel"><div class="section-head"><h3>มาตรฐานการใช้วัสดุ</h3><span>เลือกกิจกรรมเพื่อดูมาตรฐาน</span></div></section>`;
+  const standards = farmRowsByKey("activity_material_usage_rates").filter((row) => row.activity_id === activity.id).sort((a, b) => Number(b.version_no || 0) - Number(a.version_no || 0));
+  const label = (id, key, code, name) => { const row = farmRowsByKey(key).find((item) => item.id === id); return row ? [row[code], row[name]].filter(Boolean).join(" - ") : "-"; };
+  const canManage = actorCan("performance.standard.manage");
+  return `<section class="farm-panel farm-material-standard-panel"><div class="section-head"><div><h3>มาตรฐานการใช้วัสดุ</h3><span>${esc(farmActivityRowLabel(activity))} · Canonical Supabase</span></div><button data-material-standard-new="${esc(activity.id)}" ${canManage ? "" : "disabled"}>เพิ่มฉบับร่าง</button></div>
+    <div class="table-wrap farm-activity-bottom-wrap"><table class="mini-table farm-table"><thead><tr><th>วัสดุ</th><th>ฐาน</th><th>อัตรา</th><th>หน่วย</th><th>ปี/รุ่น</th><th>ช่วงมีผล</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>
+    ${standards.map((row) => { const draft = row.approval_status === "draft" && row.status !== "inactive"; const active = row.status !== "inactive" && row.approval_status !== "inactive"; return `<tr><td>${esc(label(row.material_id, "materials", "material_code", "material_name"))}</td><td>${esc(row.usage_basis)}</td><td class="num">${esc(row.usage_rate)}</td><td>${esc(label(row.unit_id, "units", "unit_code", "unit_name"))}</td><td>${esc(row.fiscal_year)} / v${esc(row.version_no)}</td><td>${esc(row.effective_start_date)} – ${esc(row.effective_end_date || "ไม่สิ้นสุด")}</td><td>${esc(row.approval_status || row.status)}</td><td class="farm-actions"><button data-material-standard-edit="${esc(row.id)}" ${canManage && draft ? "" : "disabled"}>แก้ไข</button><button data-material-standard-approve="${esc(row.id)}" ${canManage && draft ? "" : "disabled"}>อนุมัติ</button><button data-material-standard-inactivate="${esc(row.id)}" ${canManage && active ? "" : "disabled"}>ปิดใช้</button></td></tr>`; }).join("") || `<tr><td colspan="8">ยังไม่มีมาตรฐานที่บันทึกจริงสำหรับกิจกรรมนี้</td></tr>`}</tbody></table></div></section>`;
+}
+
+function renderFarmMaterialStandardModal() {
+  const modal = state.farmMaterialStandardModal;
+  if (!modal) return "";
+  const activity = farmRowsByKey("activities").find((row) => row.id === modal.activity_id);
+  const materials = farmRowsByKey("materials").filter((row) => row.status !== "inactive");
+  const units = farmRowsByKey("units").filter((row) => row.status !== "inactive");
+  const row = modal.row || {};
+  const options = (rows, code, name, selected) => rows.map((item) => `<option value="${esc(item.id)}"${item.id === selected ? " selected" : ""}>${esc([item[code], item[name]].filter(Boolean).join(" - "))}</option>`).join("");
+  return `<div class="farm-activity-modal" role="dialog" aria-modal="true"><div class="farm-activity-modal-card is-wide"><div class="farm-activity-modal-head"><div><h3>${row.id ? "แก้ไขฉบับร่าง" : "เพิ่มมาตรฐานการใช้วัสดุ"}</h3><span>${esc(farmActivityRowLabel(activity))}</span></div><button data-material-standard-close>×</button></div><form class="farm-form farm-activity-modal-form is-wide" data-material-standard-form>
+    <label>วัสดุ<select name="material_id" required>${options(materials, "material_code", "material_name", row.material_id)}</select></label><label>ฐานคำนวณ<select name="usage_basis"><option value="per_tree"${row.usage_basis === "per_tree" ? " selected" : ""}>per_tree</option><option value="per_rai"${row.usage_basis === "per_rai" ? " selected" : ""}>per_rai</option></select></label><label>อัตราใช้<input name="usage_rate" type="number" min="0.000001" step="any" value="${esc(row.usage_rate || "")}" required></label><label>หน่วยมาตรฐาน<select name="unit_id" required>${options(units, "unit_code", "unit_name", row.unit_id)}</select></label><label>ปีมาตรฐาน<input name="fiscal_year" pattern="[0-9]{4}" maxlength="4" value="${esc(row.fiscal_year || new Date().getFullYear() + 543)}" required></label><label>เริ่มใช้<input name="effective_start_date" type="date" value="${esc(row.effective_start_date || farmToday())}" required></label><label>สิ้นสุด<input name="effective_end_date" type="date" value="${esc(row.effective_end_date || "")}"></label><label>แหล่งที่มา<input name="source_type" maxlength="80" value="${esc(row.source_type || "manual")}" required></label><label>หมายเหตุ<textarea name="note" maxlength="2000">${esc(row.note || "")}</textarea></label><div class="farm-form-actions"><button type="button" data-material-standard-save>บันทึกฉบับร่าง</button><button type="button" data-material-standard-close>ยกเลิก</button></div></form></div></div>`;
+}
+
+async function saveFarmMaterialStandardDraft() {
+  const modal = state.farmMaterialStandardModal;
+  const form = document.querySelector("[data-material-standard-form]");
+  if (!modal || !form || !form.reportValidity()) return;
+  const values = Object.fromEntries(new FormData(form));
+  const args = { ...values, activity_id: modal.activity_id, usage_rate: Number(values.usage_rate), effective_end_date: values.effective_end_date || null };
+  if (modal.row?.id) args.standard_id = modal.row.id;
+  await runFarmAction(modal.row?.id ? "update_activity_material_standard_draft" : "create_activity_material_standard_draft", args);
+  state.farmMaterialStandardModal = null;
+}
+
 function renderFarmActivitiesBoard() {
   const groupTable = farmTableByKey("activity_groups");
   const activityTable = farmTableByKey("activities");
@@ -25022,6 +25060,7 @@ function renderFarmActivitiesBoard() {
         <td>${esc(farmTranslateValue(activity.status) || "-")}</td>
       </tr>`;
   }).join("");
+  const selectedActivity = allActivities.find((row) => row.id === state.farmDetailId) || activities[0] || null;
   return `
     <section class="farm-activity-board">
       <div class="farm-activity-toolbar">
@@ -25083,8 +25122,10 @@ function renderFarmActivitiesBoard() {
           </table>
         </div>
       </section>
+      ${renderFarmMaterialStandardSection(selectedActivity)}
     </section>
-    ${renderFarmActivityModal()}`;
+    ${renderFarmActivityModal()}
+    ${renderFarmMaterialStandardModal()}`;
 }
 
 function renderFarmManagementDashboard() {
@@ -28113,6 +28154,38 @@ async function startAuthenticatedApplication() {
       picks.budgetStartDate = budgetYearPick.dataset.start || picks.budgetStartDate;
       picks.budgetEndDate = budgetYearPick.dataset.end || picks.budgetEndDate;
       picks.budgetStatus = budgetYearPick.dataset.status || picks.budgetStatus;
+      render();
+      return;
+    }
+    const standardNew = e.target.closest("[data-material-standard-new]");
+    if (standardNew) {
+      state.farmMaterialStandardModal = { activity_id: standardNew.dataset.materialStandardNew, row: null };
+      render();
+      return;
+    }
+    const standardEdit = e.target.closest("[data-material-standard-edit]");
+    if (standardEdit) {
+      const row = farmRowsByKey("activity_material_usage_rates").find((item) => item.id === standardEdit.dataset.materialStandardEdit);
+      if (row) state.farmMaterialStandardModal = { activity_id: row.activity_id, row };
+      render();
+      return;
+    }
+    const standardApprove = e.target.closest("[data-material-standard-approve]");
+    if (standardApprove) {
+      if (window.confirm("ยืนยันอนุมัติมาตรฐานฉบับนี้")) runFarmAction("approve_activity_material_standard", { standard_id: standardApprove.dataset.materialStandardApprove }, { confirmed: true }).catch(() => {});
+      return;
+    }
+    const standardInactive = e.target.closest("[data-material-standard-inactivate]");
+    if (standardInactive) {
+      if (window.confirm("ยืนยันปิดใช้มาตรฐานฉบับนี้")) runFarmAction("inactivate_activity_material_standard", { standard_id: standardInactive.dataset.materialStandardInactivate }, { confirmed: true }).catch(() => {});
+      return;
+    }
+    if (e.target.closest("[data-material-standard-save]")) {
+      saveFarmMaterialStandardDraft().catch(() => {});
+      return;
+    }
+    if (e.target.closest("[data-material-standard-close]")) {
+      state.farmMaterialStandardModal = null;
       render();
       return;
     }

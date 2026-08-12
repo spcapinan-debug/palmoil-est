@@ -177,6 +177,7 @@ const ACTION_ONLY_TABLES = new Set([
   "goods_issue_daily_usage", "goods_issues", "goods_issue_lines",
   "goods_returns", "goods_return_lines", "sku_conversions", "unit_conversions",
   "stock_balances", "stock_transactions",
+  "activity_material_usage_rates",
   "fuel_requisitions", "fuel_issues", "vehicle_fuel_balances", "vehicle_fuel_consumption_periods",
   "payroll_periods", "payroll_period_lines", "payroll_employee_summaries",
   "payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines",

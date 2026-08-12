@@ -18,6 +18,26 @@ const {
 } = require("../lib/server/farm-api");
 
 const ACTIONS = {
+  create_activity_material_standard_draft: {
+    permission: "performance.standard.manage", execute: createActivityMaterialStandardDraft,
+    params: (args, actor) => ({ args, actor }),
+    entity: "activity_material_usage_rates",
+  },
+  update_activity_material_standard_draft: {
+    permission: "performance.standard.manage", execute: updateActivityMaterialStandardDraft,
+    params: (args, actor) => ({ args, actor }),
+    entity: "activity_material_usage_rates", entityId: (args) => args.standard_id,
+  },
+  approve_activity_material_standard: {
+    permission: "performance.standard.manage", confirmation: true, execute: approveActivityMaterialStandard,
+    params: (args, actor) => ({ args, actor }),
+    entity: "activity_material_usage_rates", entityId: (args) => args.standard_id,
+  },
+  inactivate_activity_material_standard: {
+    permission: "performance.standard.manage", confirmation: true, execute: inactivateActivityMaterialStandard,
+    params: (args, actor) => ({ args, actor }),
+    entity: "activity_material_usage_rates", entityId: (args) => args.standard_id,
+  },
   create_work_order_from_plan_item: {
     permission: "farm.work_order.create", confirmation: true, execute: createWorkOrderFromPlanItem,
     params: (args, actor) => ({ args, actor }),
@@ -513,6 +533,154 @@ async function one(path, label) {
 
 function actorIsAdmin(actor) {
   return [...actor.roles].some((role) => ADMIN_ROLES.has(role));
+}
+
+const MATERIAL_USAGE_BASES = new Set(["per_tree", "per_rai"]);
+
+function activityMaterialStandardInput(args) {
+  const usageBasis = requireText(args.usage_basis, "usage_basis", 40);
+  if (!MATERIAL_USAGE_BASES.has(usageBasis)) {
+    throw new ApiError(400, "VALIDATION_ERROR", "usage_basis must use an existing canonical basis", { field: "usage_basis" });
+  }
+  const fiscalYear = requireText(args.fiscal_year, "fiscal_year", 16);
+  if (!/^\d{4}$/.test(fiscalYear)) {
+    throw new ApiError(400, "VALIDATION_ERROR", "fiscal_year must be four digits", { field: "fiscal_year" });
+  }
+  const start = requiredDate(args.effective_start_date, "effective_start_date");
+  const end = args.effective_end_date ? requiredDate(args.effective_end_date, "effective_end_date") : null;
+  if (end && end < start) {
+    throw new ApiError(400, "VALIDATION_ERROR", "effective_end_date must not precede effective_start_date");
+  }
+  return {
+    activity_id: requireUuid(args.activity_id, "activity_id"),
+    material_id: requireUuid(args.material_id, "material_id"),
+    unit_id: requireUuid(args.unit_id, "unit_id"),
+    fiscal_year: fiscalYear,
+    usage_basis: usageBasis,
+    usage_rate: requiredNumber(args.usage_rate, "usage_rate", { minimum: Number.EPSILON }),
+    usage_unit: null,
+    effective_start_date: start,
+    effective_end_date: end,
+    source_type: requireText(args.source_type || "manual", "source_type", 80),
+    note: optionalText(args.note, 2000),
+  };
+}
+
+async function requireActiveStandardParent(table, id, label) {
+  const row = await one(`${table}?id=eq.${encodeURIComponent(id)}&select=id,status&limit=1`, label);
+  if (String(row.status || "active") !== "active") {
+    throw new ApiError(409, "INACTIVE_REFERENCE", `${label} is inactive`);
+  }
+  return row;
+}
+
+async function validateActivityMaterialStandardParents(input) {
+  await Promise.all([
+    requireActiveStandardParent("activities", input.activity_id, "Activity"),
+    requireActiveStandardParent("materials", input.material_id, "Material"),
+    requireActiveStandardParent("units", input.unit_id, "Unit"),
+  ]);
+}
+
+async function nextActivityMaterialStandardVersion(input) {
+  const path = `activity_material_usage_rates?activity_id=eq.${encodeURIComponent(input.activity_id)}`
+    + `&material_id=eq.${encodeURIComponent(input.material_id)}`
+    + `&fiscal_year=eq.${encodeURIComponent(input.fiscal_year)}`
+    + "&select=version_no&order=version_no.desc&limit=1";
+  const rows = await rest(path).then(({ data }) => data || []);
+  return Number(rows[0]?.version_no || 0) + 1;
+}
+
+async function createActivityMaterialStandardDraft({ args, actor }) {
+  const input = activityMaterialStandardInput(args);
+  await validateActivityMaterialStandardParents(input);
+  const now = new Date().toISOString();
+  const version = await nextActivityMaterialStandardVersion(input);
+  const rows = await rest("activity_material_usage_rates", {
+    method: "POST",
+    body: JSON.stringify({
+      ...input,
+      version_no: version,
+      approval_status: "draft",
+      status: "active",
+      created_by_profile_id: actor.profile.id,
+      updated_by_profile_id: actor.profile.id,
+      created_at: now,
+      updated_at: now,
+    }),
+    headers: { Prefer: "return=representation" },
+  }).then(({ data }) => data || []);
+  return rows[0];
+}
+
+async function standardById(id) {
+  return one(`activity_material_usage_rates?id=eq.${encodeURIComponent(requireUuid(id, "standard_id"))}&select=*&limit=1`, "Activity material standard");
+}
+
+async function updateActivityMaterialStandardDraft({ args, actor }) {
+  const current = await standardById(args.standard_id);
+  if (current.approval_status !== "draft" || current.status !== "active") {
+    throw new ApiError(409, "STANDARD_NOT_DRAFT", "Only an active draft can be edited");
+  }
+  const input = activityMaterialStandardInput({ ...current, ...args });
+  await validateActivityMaterialStandardParents(input);
+  const rows = await rest(`activity_material_usage_rates?id=eq.${encodeURIComponent(current.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ...input, updated_by_profile_id: actor.profile.id, updated_at: new Date().toISOString() }),
+    headers: { Prefer: "return=representation" },
+  }).then(({ data }) => data || []);
+  return rows[0];
+}
+
+function standardPeriodsOverlap(left, right) {
+  const leftEnd = left.effective_end_date || "9999-12-31";
+  const rightEnd = right.effective_end_date || "9999-12-31";
+  return left.effective_start_date <= rightEnd && right.effective_start_date <= leftEnd;
+}
+
+async function approveActivityMaterialStandard({ args, actor }) {
+  const current = await standardById(args.standard_id);
+  if (current.approval_status !== "draft" || current.status !== "active") {
+    throw new ApiError(409, "STANDARD_NOT_DRAFT", "Only an active draft can be approved");
+  }
+  await validateActivityMaterialStandardParents(current);
+  const candidates = await rest(
+    `activity_material_usage_rates?activity_id=eq.${encodeURIComponent(current.activity_id)}`
+      + `&material_id=eq.${encodeURIComponent(current.material_id)}`
+      + `&approval_status=eq.approved&status=eq.active&select=id,effective_start_date,effective_end_date`,
+  ).then(({ data }) => data || []);
+  if (candidates.some((row) => row.id !== current.id && standardPeriodsOverlap(current, row))) {
+    throw new ApiError(409, "STANDARD_PERIOD_OVERLAP", "An approved standard already covers this effective period");
+  }
+  const now = new Date().toISOString();
+  const rows = await rest(`activity_material_usage_rates?id=eq.${encodeURIComponent(current.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      approval_status: "approved",
+      approved_by_profile_id: actor.profile.id,
+      approved_at: now,
+      updated_by_profile_id: actor.profile.id,
+      updated_at: now,
+    }),
+    headers: { Prefer: "return=representation" },
+  }).then(({ data }) => data || []);
+  return rows[0];
+}
+
+async function inactivateActivityMaterialStandard({ args, actor }) {
+  const current = await standardById(args.standard_id);
+  if (current.approval_status === "inactive" || current.status === "inactive") return current;
+  const rows = await rest(`activity_material_usage_rates?id=eq.${encodeURIComponent(current.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      approval_status: "inactive",
+      status: "inactive",
+      updated_by_profile_id: actor.profile.id,
+      updated_at: new Date().toISOString(),
+    }),
+    headers: { Prefer: "return=representation" },
+  }).then(({ data }) => data || []);
+  return rows[0];
 }
 
 function requireUatWorkOrder(order) {
@@ -2067,6 +2235,8 @@ module.exports = handler;
 module.exports._test = {
   ACTIONS, INVENTORY_UAT_ACTIONS, UAT_MUTATION_ACTIONS, enforceActionScope, enforceUatMutation,
   requireInventoryUatIssue, requireUatWorkOrder, requireWebTestCode, requestHash,
-  calculateConsumedFuel, ensureSurveyFailureFindings, notificationContext, resolveSurveyTemplateForOrder,
+  activityMaterialStandardInput, calculateConsumedFuel, ensureSurveyFailureFindings,
+  nextActivityMaterialStandardVersion, notificationContext, resolveSurveyTemplateForOrder,
+  standardPeriodsOverlap,
   surveyAnswerComplete, surveyQuestionVisible,
 };
