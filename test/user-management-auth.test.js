@@ -311,7 +311,9 @@ test("recovery gate validates then strips tokens, checks password policy and sup
   assert.match(appSource, /action: "validate_password_recovery"/);
   assert.match(appSource, /showFarmAuthScreen\("recovery-error"\)/);
   assert.match(appSource, /password\.length < 8 \|\| password !== confirm/);
-  assert.match(appSource, /farmAuthGateRecoveryShow\.checked \? "text" : "password"/);
+  assert.match(appSource, /const bindVisibility = \(button, input\)/);
+  assert.match(appSource, /bindVisibility\(els\.farmAuthGateRecoveryShow, els\.farmAuthGateRecoveryPassword\)/);
+  assert.match(appSource, /bindVisibility\(els\.farmAuthGateRecoveryConfirmShow, els\.farmAuthGateRecoveryConfirm\)/);
   assert.doesNotMatch(appSource, /localStorage\.[^(]+\([^\n]*(?:access_token|farmPasswordRecoveryToken)/);
   assert.doesNotMatch(appSource, /console\.(?:log|info|warn|error)\([^\n]*(?:access_token|farmPasswordRecoveryToken)/);
 });

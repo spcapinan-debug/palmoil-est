@@ -226,24 +226,26 @@ function resetFarmDerivedCaches() {
 }
 
 const els = {
-  appShell: document.querySelector("#farmAppShell"),
-  farmAuthGate: document.querySelector("#farmAuthGate"),
-  farmAuthGateTitle: document.querySelector("#farmAuthGateTitle"),
-  farmAuthGateDescription: document.querySelector("#farmAuthGateDescription"),
-  farmAuthGateStatus: document.querySelector("#farmAuthGateStatus"),
-  farmAuthGateLoginForm: document.querySelector("#farmAuthGateLoginForm"),
-  farmAuthGateIdentifier: document.querySelector("#farmAuthGateIdentifier"),
-  farmAuthGatePassword: document.querySelector("#farmAuthGatePassword"),
-  farmAuthGateSubmit: document.querySelector("#farmAuthGateSubmit"),
-  farmAuthGateForgot: document.querySelector("#farmAuthGateForgot"),
-  farmAuthGateForgotForm: document.querySelector("#farmAuthGateForgotForm"),
-  farmAuthGateForgotIdentifier: document.querySelector("#farmAuthGateForgotIdentifier"),
-  farmAuthGateForgotSubmit: document.querySelector("#farmAuthGateForgotSubmit"),
-  farmAuthGateResetForm: document.querySelector("#farmAuthGateResetForm"),
-  farmAuthGateRecoveryPassword: document.querySelector("#farmAuthGateRecoveryPassword"),
-  farmAuthGateRecoveryConfirm: document.querySelector("#farmAuthGateRecoveryConfirm"),
-  farmAuthGateRecoveryShow: document.querySelector("#farmAuthGateRecoveryShow"),
-  farmAuthGateRecoverySubmit: document.querySelector("#farmAuthGateRecoverySubmit"),
+  appShell: document.querySelector("#appShell"),
+  farmAuthGate: document.querySelector("#authShell"),
+  farmAuthGateTitle: document.querySelector("#authTitle"),
+  farmAuthGateDescription: document.querySelector("#authDescription"),
+  farmAuthGateStatus: document.querySelector("#authStatus"),
+  farmAuthGateLoginForm: document.querySelector("#authLoginForm"),
+  farmAuthGateIdentifier: document.querySelector("#authIdentifier"),
+  farmAuthGatePassword: document.querySelector("#authPassword"),
+  farmAuthGateShowPassword: document.querySelector("#authTogglePassword"),
+  farmAuthGateSubmit: document.querySelector("#authSubmit"),
+  farmAuthGateForgot: document.querySelector("#authForgot"),
+  farmAuthGateForgotForm: document.querySelector("#authForgotForm"),
+  farmAuthGateForgotIdentifier: document.querySelector("#authForgotIdentifier"),
+  farmAuthGateForgotSubmit: document.querySelector("#authForgotSubmit"),
+  farmAuthGateResetForm: document.querySelector("#authResetForm"),
+  farmAuthGateRecoveryPassword: document.querySelector("#authResetPassword"),
+  farmAuthGateRecoveryConfirm: document.querySelector("#authResetConfirm"),
+  farmAuthGateRecoveryShow: document.querySelector("#authToggleResetPassword"),
+  farmAuthGateRecoveryConfirmShow: document.querySelector("#authToggleResetConfirm"),
+  farmAuthGateRecoverySubmit: document.querySelector("#authResetSubmit"),
   sidebar: document.querySelector("#appSidebar"),
   sidebarToggle: document.querySelector("#sidebarToggle"),
   sourceInfo: document.querySelector("#sourceInfo"),
@@ -26792,17 +26794,16 @@ function bindFarmAuthGateEvents() {
     if (event.target.closest("[data-auth-show-login]")) showFarmAuthScreen("login");
     if (event.target.closest("[data-auth-show-forgot]")) showFarmAuthScreen("forgot-password");
   });
-  els.farmAuthGateRecoveryShow?.addEventListener("change", () => {
-    const type = els.farmAuthGateRecoveryShow.checked ? "text" : "password";
-    els.farmAuthGateRecoveryPassword.type = type;
-    els.farmAuthGateRecoveryConfirm.type = type;
+  const bindVisibility = (button, input) => button?.addEventListener("click", () => {
+    if (!input) return;
+    const visible = input.type === "text";
+    input.type = visible ? "password" : "text";
+    button.setAttribute("aria-pressed", String(!visible));
+    button.setAttribute("aria-label", visible ? "แสดงรหัสผ่าน" : "ซ่อนรหัสผ่าน");
   });
-  document.querySelector("#farmAuthGateShowPassword")?.addEventListener("click", (event) => {
-    const visible = els.farmAuthGatePassword?.type === "text";
-    if (els.farmAuthGatePassword) els.farmAuthGatePassword.type = visible ? "password" : "text";
-    event.currentTarget.textContent = visible ? "แสดง" : "ซ่อน";
-    event.currentTarget.setAttribute("aria-pressed", String(!visible));
-  });
+  bindVisibility(els.farmAuthGateShowPassword, els.farmAuthGatePassword);
+  bindVisibility(els.farmAuthGateRecoveryShow, els.farmAuthGateRecoveryPassword);
+  bindVisibility(els.farmAuthGateRecoveryConfirmShow, els.farmAuthGateRecoveryConfirm);
 }
 
 function ensureFarmViewState(view = state.view) {
