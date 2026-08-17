@@ -59,7 +59,6 @@ const state = {
   farmInventoryCalculation: null,
   farmSelectedTeamId: "",
   farmActivityModalTable: "",
-  farmMaterialStandardModal: null,
   farmBudgetContract: {
     query: "",
     contractType: "Role Based Compounded",
@@ -1333,9 +1332,9 @@ const FARM_MODULES = [
     id: "farm-activities",
     title: "ข้อมูลกิจกรรม",
     group: "Master Data",
-    accent: "Activity + Material Usage + Survey",
-    description: "จัดการกลุ่มกิจกรรม กิจกรรม อัตราใช้วัสดุตามกิจกรรม และแบบประเมินประสิทธิภาพ",
-    tables: ["activity_groups", "wage_codes", "activities", "activity_wage_codes", "activity_material_rates", "survey_templates", "survey_questions"],
+    accent: "Activity + Wage + Survey",
+    description: "จัดการกลุ่มกิจกรรม กิจกรรม รหัสค่าแรง และแบบประเมินประสิทธิภาพ",
+    tables: ["activity_groups", "wage_codes", "activities", "activity_wage_codes", "survey_templates", "survey_questions"],
     fields: [
       ["code", "รหัสกิจกรรม", "ACT-001"],
       ["name", "กิจกรรม", "ใส่ปุ๋ย"],
@@ -4656,9 +4655,6 @@ function farmDatabaseTablesForView(view = state.view) {
   if (!isFarmView(view)) return [];
   const module = farmModuleMap()[view] || null;
   const tableSet = new Set(view === "farm-inventory" ? [] : (module?.tables || []));
-  if (view === "farm-activities") {
-    ["materials", "units", "sku_conversions", "unit_conversions", "activity_material_usage_rates"].forEach((key) => tableSet.add(key));
-  }
   if (view === "farm-inventory") {
     const sharedTables = [
       "inventory_master",
@@ -4760,7 +4756,7 @@ function farmDatabaseTablesForView(view = state.view) {
       "work_order_machines",
     ];
     if (view === "farm-work" || view === "farm-performance") {
-      workflowTables.push("survey_templates", "survey_questions", "activity_material_usage_rates", "budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_roles");
+      workflowTables.push("survey_templates", "survey_questions", "budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_roles");
     }
     if (["farm-work", "farm-dispatch", "farm-result", "farm-performance"].includes(view)) {
       workflowTables.push("work_results");
@@ -11886,16 +11882,6 @@ function farmCleanRows(tableId, rows) {
       readonly: true,
     })));
   }
-  if (tableId === "activity_material_rates") {
-    return mergeCleanRows(rows, farmRowsByKey("activity_material_usage_rates").map((row) => ({
-      ...row,
-      id: `activity-material-${row.id}`,
-      tableId,
-      moduleId: "farm-activities",
-      readonly: true,
-      item_id: row.material_id ? `item-${row.material_id}` : "",
-    })));
-  }
   if (tableId === "inventory_master") {
     const materials = farmRowsByKey("materials").map((row) => ({
       id: `item-${row.id}`,
@@ -15426,7 +15412,7 @@ function farmBudgetMaterialUsageSummary(rows = []) {
   }).join("<br>");
 }
 
-function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}, selectedMaterials = [], selectedUsageRate = {} } = {}) {
+function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}, selectedMaterials = [] } = {}) {
   const rateRows = farmBudgetMaterialUsageRows(rate, [block]);
   if (rateRows.length) {
     const plannedRows = rateRows.map((row, index) => ({
@@ -15471,23 +15457,21 @@ function farmWorkOrderMaterialPlanRows({ workOrderId = "", rate = {}, block = {}
       })).filter((row) => row.work_order_id && row.material_id);
     return [...plannedRows, ...manualRows];
   }
-  const usageBasis = selectedUsageRate.usage_basis || "manual";
-  const materialBase = usageBasis === "per_tree" ? n(block.tree_count) : usageBasis === "per_rai" ? n(block.area_rai) : 1;
-  return (selectedMaterials || []).map((material, index) => ({
+  return (selectedMaterials || []).map((material) => ({
     id: "",
     moduleId: "farm-work",
     tableId: "work_order_materials",
     work_order_id: workOrderId,
     material_id: material.id,
-    planned_quantity: materialBase * n(selectedUsageRate.usage_rate || 0),
+    planned_quantity: 0,
     issued_quantity: 0,
     used_quantity: "",
     unit_id: material.base_unit_id || material.unit_id || "",
     status: "planned",
     note: JSON.stringify({
       material_name: material.material_name || material.material_code || "",
-      unit_name: selectedUsageRate.usage_unit || farmDispatchMaterialUnitName({}, material),
-      source: "manual_usage",
+      unit_name: farmDispatchMaterialUnitName({}, material),
+      source: "manual_plan",
     }),
   })).filter((row) => row.work_order_id && row.material_id);
 }
@@ -15580,7 +15564,7 @@ async function reconcileFarmWorkOrderChildren(table, orderId, keepIds = new Set(
   }
 }
 
-async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], selectedVehicles = [], selectedMaterials = [], selectedUsageRate = {}, selectedRate = {}, block = {} } = {}) {
+async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], selectedVehicles = [], selectedMaterials = [], selectedRate = {}, block = {} } = {}) {
   if (!order?.id) return;
   const workerTable = farmTableByKey("work_order_workers");
   const machineTable = farmTableByKey("work_order_machines");
@@ -15595,7 +15579,6 @@ async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], 
     rate: selectedRate,
     block,
     selectedMaterials,
-    selectedUsageRate,
   }).map((row) => ({
     ...row,
     material_id: farmResolveRecordId("materials", row.material_id, ["material_code", "material_name"]),
@@ -15656,7 +15639,7 @@ async function persistFarmWorkPlanResources({ order = {}, selectedWorkers = [], 
   }
 }
 
-async function finalizeFarmWorkPlanOrder(savedRow, { selectedWorkers = [], selectedVehicles = [], selectedMaterials = [], selectedUsageRate = {}, selectedRate = {}, block = {}, activity = {} } = {}) {
+async function finalizeFarmWorkPlanOrder(savedRow, { selectedWorkers = [], selectedVehicles = [], selectedMaterials = [], selectedRate = {}, block = {}, activity = {} } = {}) {
   const warnings = [];
   try {
     await persistFarmWorkPlanResources({
@@ -15664,7 +15647,6 @@ async function finalizeFarmWorkPlanOrder(savedRow, { selectedWorkers = [], selec
       selectedWorkers,
       selectedVehicles: selectedVehicles.map ? selectedVehicles.map((vehicle) => typeof vehicle === "string" ? vehicle : vehicle.id).filter(Boolean) : [],
       selectedMaterials,
-      selectedUsageRate,
       selectedRate,
       block,
     });
@@ -15718,7 +15700,6 @@ function renderFarmWorkPlanner() {
   const employees = farmRows(farmTableByKey("employees"));
   const materials = farmRows(farmTableByKey("materials"));
   const vehicles = farmRows(farmTableByKey("vehicles"));
-  const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
   const budgetRates = farmRows(farmTableByKey("budget_activity_rates"));
   const workOrders = farmWorkOrders().slice().sort((a, b) => farmDateMs(b.startDate) - farmDateMs(a.startDate));
   const selectedActivities = budgetPicks.selectedActivities.length
@@ -15754,8 +15735,6 @@ function renderFarmWorkPlanner() {
     ? previewTeams.map((team) => team.team_name || team.team_code || farmRecordLabel(farmTableByKey("teams"), team)).filter(Boolean).join(", ")
     : (selectedEmployeeIds.length ? "เลือกเป็นรายคน" : "-");
   const selectedBlocks = farmSelectedPlanningBlocks(budgetPicks);
-  const totalRai = selectedBlocks.reduce((sum, row) => sum + n(row.area_rai), 0);
-  const totalTrees = selectedBlocks.reduce((sum, row) => sum + n(row.tree_count), 0);
   const activeBudgetRates = budgetRates.filter((row) => String(row.status || "active").toLowerCase() !== "inactive");
   const matchingBudgetRates = activeBudgetRates.filter((row) =>
     previewActivity
@@ -15800,22 +15779,17 @@ function renderFarmWorkPlanner() {
   const selectedVehicles = budgetPicks.selectedVehicles.length
     ? vehicles.filter((vehicle) => budgetPicks.selectedVehicles.includes(vehicle.id))
     : [];
-  const selectedUsageRate = usageRates.find((row) => row.activity_id === previewActivity?.id) || {
-    usage_basis: materialBudgetRate?.comparison_basis === "tree_count" ? "per_tree" : materialBudgetRate?.comparison_basis === "area_rai" ? "per_rai" : "manual",
-    usage_rate: materialBudgetRate?.rate_amount || 0,
-  };
   const selectedMaterial = selectedMaterials[0]
-    || materials.find((row) => row.id === (selectedUsageRate.material_id || materialBudgetRate?.material_id || selectedBudgetRate?.material_id))
+    || materials.find((row) => row.id === (materialBudgetRate?.material_id || selectedBudgetRate?.material_id))
     || {};
   const rateMaterialUsageRows = selectedBudgetRate?.id
     ? farmBudgetMaterialUsageRows(selectedBudgetRate, budgetMatchedBlocks.length ? budgetMatchedBlocks : selectedBlocks)
     : [];
   const previewSurvey = farmSurveyForActivity(previewActivity);
   const previewSurveyQuestions = farmSurveyQuestions(previewSurvey);
-  const calculationBase = selectedUsageRate.usage_basis === "per_tree" ? totalTrees : selectedUsageRate.usage_basis === "per_rai" ? totalRai : selectedBlocks.length;
   const materialQuantity = rateMaterialUsageRows.length
     ? rateMaterialUsageRows.reduce((sum, row) => sum + n(row.displayQuantity), 0)
-    : selectedMaterials.length ? calculationBase * n(selectedUsageRate.usage_rate || 0) : 0;
+    : 0;
   const budgetBlocksForCalculation = selectedBudgetRate?.id
     ? (budgetMatchedBlocks.length ? budgetMatchedBlocks : selectedBlocks)
     : [];
@@ -15827,11 +15801,10 @@ function renderFarmWorkPlanner() {
     ? (budgetCalculationWarning || savedRateMatchWarning || "คำนวณตามอัตรางบประมาณที่ match กับกิจกรรมและ Block/AP ที่เลือกเท่านั้น")
     : budgetMismatchMessage;
   const budgetRateNoticeOk = Boolean(selectedBudgetRate?.id && !budgetCalculationWarning && !savedRateMatchWarning);
-  const materialRate = selectedMaterials.length ? n(materialBudgetRate?.rate_amount || 0) : 0;
   const laborCost = laborEstimate.amount;
   const materialCost = rateMaterialUsageRows.length
     ? rateMaterialUsageRows.reduce((sum, row) => sum + n(row.amount), 0)
-    : materialQuantity * materialRate;
+    : 0;
   const totalCost = laborCost + materialCost;
   const plotCountText = `${fmt(selectedBlocks.length)} จาก ${fmt(blocks.length)} Block`;
   const selectedWorkerCount = selectedEmployeeIds.length || previewMembers.length || selectedTeamIds.length || 0;
@@ -15950,7 +15923,7 @@ function renderFarmWorkPlanner() {
                 ${budgetCalculationWarning ? `<tr><th>สถานะคำนวณ</th><td>${esc(budgetCalculationWarning)}</td></tr>` : ""}
                 <tr><th>ฐานคำนวณ</th><td>${esc(laborEstimate.label)} ${moneyNf.format(laborEstimate.quantity)} ${esc(laborEstimate.unit)} / ข้อมูลแปลง ${moneyNf.format(totalRai)} ไร่ / ${fmt(totalTrees)} ต้น</td></tr>
                 <tr><th>ค่าแรง</th><td>${moneyNf.format(laborEstimate.quantity)} ${esc(laborEstimate.unit)} × ${esc(laborEstimate.rateLabel)} = ${moneyNf.format(laborCost)}</td></tr>
-                <tr><th>วัสดุ</th><td>${rateMaterialUsageRows.length ? farmBudgetMaterialUsageSummary(rateMaterialUsageRows) : `${esc(selectedMaterial.material_name || "-")} · ${moneyNf.format(materialQuantity)} ${esc(selectedUsageRate.usage_unit || "")}`}</td></tr>
+                <tr><th>วัสดุ</th><td>${rateMaterialUsageRows.length ? farmBudgetMaterialUsageSummary(rateMaterialUsageRows) : `${esc(selectedMaterial.material_name || "-")} · ${moneyNf.format(materialQuantity)} ${esc(farmDispatchMaterialUnitName({}, selectedMaterial))}`}</td></tr>
                 <tr><th>ต้นทุนวัสดุ</th><td>${rateMaterialUsageRows.length ? `${moneyNf.format(materialCost)} จากอัตราวัสดุใน Rate` : `${moneyNf.format(materialQuantity)} × ${moneyNf.format(materialRate)} = ${moneyNf.format(materialCost)}`}</td></tr>
                 <tr class="total"><th>รวมประมาณการ</th><td>${moneyNf.format(totalCost)}</td></tr>
               </tbody>
@@ -15979,7 +15952,6 @@ async function createFarmWorkPlanFromSelection() {
   const budgetRates = farmRows(farmTableByKey("budget_activity_rates"));
   const materials = farmRows(farmTableByKey("materials"));
   const vehicles = farmRows(farmTableByKey("vehicles"));
-  const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
   const selectedBlocks = farmSelectedPlanningBlocks(picks);
   const selectedActivities = picks.selectedActivities.length
     ? activities.filter((activity) => picks.selectedActivities.includes(activity.id))
@@ -16020,17 +15992,13 @@ async function createFarmWorkPlanFromSelection() {
             throw new Error(farmPlanBudgetMatchMessage({ activeRates, activity, selectedBlocks: [block], matchingRates: ratePool }));
           }
           const estimate = farmBudgetRateCost(selectedRate, [block]);
-          const materialRate = farmBestBudgetRateForPlan(activeRates, activity, [block], ["material"]);
-          const selectedUsageRate = usageRates.find((row) => row.activity_id === activity.id && (!row.material_id || selectedMaterials.some((material) => material.id === row.material_id))) || {};
           const rateMaterialUsageRows = farmBudgetMaterialUsageRows(selectedRate, [block]);
-          const usageBasis = selectedUsageRate.usage_basis || (materialRate?.comparison_basis === "tree_count" ? "per_tree" : materialRate?.comparison_basis === "area_rai" ? "per_rai" : "manual");
-          const materialBase = usageBasis === "per_tree" ? n(block.tree_count) : usageBasis === "per_rai" ? n(block.area_rai) : 1;
           const materialQuantity = rateMaterialUsageRows.length
             ? rateMaterialUsageRows.reduce((sum, row) => sum + n(row.displayQuantity), 0)
-            : selectedMaterials.length ? materialBase * n(selectedUsageRate.usage_rate || 0) : 0;
+            : 0;
           const materialCost = rateMaterialUsageRows.length
             ? rateMaterialUsageRows.reduce((sum, row) => sum + n(row.amount), 0)
-            : materialQuantity * n(materialRate?.rate_amount || 0);
+            : 0;
           const title = `${activity.activity_name || activity.activity_code || "งาน"} ${block.block_name || block.block_code || block.id}`;
           const blockDbId = farmPlanningBlockDbId(block);
           const noteLines = [
@@ -16082,7 +16050,7 @@ async function createFarmWorkPlanFromSelection() {
           const savedRow = { ...row, ...(saved.row || {}) };
           state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === savedRow.id || item.work_order_no === savedRow.work_order_no)));
           state.farmRecords.push(savedRow);
-          warnings.push(...await finalizeFarmWorkPlanOrder(savedRow, { selectedWorkers: picks.selectedWorkers, selectedVehicles, selectedMaterials, selectedUsageRate, selectedRate, block, activity }));
+          warnings.push(...await finalizeFarmWorkPlanOrder(savedRow, { selectedWorkers: picks.selectedWorkers, selectedVehicles, selectedMaterials, selectedRate, block, activity }));
           created.push(savedRow.id || savedRow.work_order_no);
         }
       }
@@ -16138,7 +16106,6 @@ async function saveFarmWorkPlanEditFromSelection() {
   const budgetRates = farmRows(farmTableByKey("budget_activity_rates"));
   const materials = farmRows(farmTableByKey("materials"));
   const vehicles = farmRows(farmTableByKey("vehicles"));
-  const usageRates = farmRows(farmTableByKey("activity_material_usage_rates"));
   const selectedBlocks = farmSelectedPlanningBlocks(picks);
   const selectedActivities = picks.selectedActivities.length
     ? activities.filter((activity) => picks.selectedActivities.includes(activity.id))
@@ -16178,17 +16145,13 @@ async function saveFarmWorkPlanEditFromSelection() {
             || ratePool[0];
           if (!selectedRate?.id) throw new Error(farmPlanBudgetMatchMessage({ activeRates, activity, selectedBlocks: [block], matchingRates: ratePool }));
           const estimate = farmBudgetRateCost(selectedRate, [block]);
-          const materialRate = farmBestBudgetRateForPlan(activeRates, activity, [block], ["material"]);
-          const selectedUsageRate = usageRates.find((row) => row.activity_id === activity.id && (!row.material_id || selectedMaterials.some((material) => material.id === row.material_id))) || {};
           const rateMaterialUsageRows = farmBudgetMaterialUsageRows(selectedRate, [block]);
-          const usageBasis = selectedUsageRate.usage_basis || (materialRate?.comparison_basis === "tree_count" ? "per_tree" : materialRate?.comparison_basis === "area_rai" ? "per_rai" : "manual");
-          const materialBase = usageBasis === "per_tree" ? n(block.tree_count) : usageBasis === "per_rai" ? n(block.area_rai) : 1;
           const materialQuantity = rateMaterialUsageRows.length
             ? rateMaterialUsageRows.reduce((sum, row) => sum + n(row.displayQuantity), 0)
-            : selectedMaterials.length ? materialBase * n(selectedUsageRate.usage_rate || 0) : 0;
+            : 0;
           const materialCost = rateMaterialUsageRows.length
             ? rateMaterialUsageRows.reduce((sum, row) => sum + n(row.amount), 0)
-            : materialQuantity * n(materialRate?.rate_amount || 0);
+            : 0;
           const survey = farmSurveyForActivity(activity);
           const existingSibling = occurrenceNo === 1
             ? currentOrder
@@ -16251,7 +16214,7 @@ async function saveFarmWorkPlanEditFromSelection() {
           const savedRow = { ...row, ...(saved.row || {}) };
           state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === savedRow.id || item.work_order_no === savedRow.work_order_no)));
           state.farmRecords.push(savedRow);
-          warnings.push(...await finalizeFarmWorkPlanOrder(savedRow, { selectedWorkers: picks.selectedWorkers, selectedVehicles, selectedMaterials, selectedUsageRate, selectedRate, block, activity }));
+          warnings.push(...await finalizeFarmWorkPlanOrder(savedRow, { selectedWorkers: picks.selectedWorkers, selectedVehicles, selectedMaterials, selectedRate, block, activity }));
           savedIds.push(savedRow.id || savedRow.work_order_no);
         }
       }
@@ -24989,20 +24952,20 @@ function renderFarmPeopleBoard(table, rows, tables) {
     ${renderFarmActivityModal()}`;
 }
 
-const FARM_MATERIAL_STANDARD_NO_UNIT_MESSAGE = "ยังไม่ได้กำหนดหน่วยสำหรับวัสดุนี้";
-const FARM_MATERIAL_STANDARD_DATA_GAP_MESSAGE = "DATA QUALITY GAP: ความสัมพันธ์หน่วยของวัสดุอ้างอิงข้อมูลหน่วยที่ไม่พร้อมใช้งาน";
+const FARM_MATERIAL_UNIT_NO_UNIT_MESSAGE = "ยังไม่ได้กำหนดหน่วยสำหรับวัสดุนี้";
+const FARM_MATERIAL_UNIT_DATA_GAP_MESSAGE = "DATA QUALITY GAP: ความสัมพันธ์หน่วยของวัสดุอ้างอิงข้อมูลหน่วยที่ไม่พร้อมใช้งาน";
 
-function farmMaterialStandardActiveRow(row) {
+function farmMaterialActiveRow(row) {
   return Boolean(row) && String(row.status || "active").toLowerCase() === "active";
 }
 
-function farmMaterialStandardUnitModel(materialId, currentUnitId, {
+function farmMaterialUnitModel(materialId, currentUnitId, {
   materials = [],
   units = [],
   skuConversions = [],
   unitConversions = [],
 } = {}) {
-  const material = materials.find((row) => row.id === materialId && farmMaterialStandardActiveRow(row));
+  const material = materials.find((row) => row.id === materialId && farmMaterialActiveRow(row));
   if (!material) return { units: [], selectedUnitId: "", dataQualityGap: false };
 
   const unitById = new Map(units.filter((row) => row?.id).map((row) => [row.id, row]));
@@ -25013,7 +24976,7 @@ function farmMaterialStandardUnitModel(materialId, currentUnitId, {
   const addCompatibleUnit = (unitId) => {
     if (!unitId || compatibleIds.has(unitId)) return;
     const unit = unitById.get(unitId);
-    if (!unit || !farmMaterialStandardActiveRow(unit) || !String(unit.unit_name || "").trim()) {
+    if (!unit || !farmMaterialActiveRow(unit) || !String(unit.unit_name || "").trim()) {
       unresolvedIds.add(unitId);
       return;
     }
@@ -25028,14 +24991,14 @@ function farmMaterialStandardUnitModel(materialId, currentUnitId, {
 
   addCanonicalAnchor(material.base_unit_id);
   for (const conversion of skuConversions) {
-    if (conversion.material_id !== material.id || !farmMaterialStandardActiveRow(conversion)) continue;
+    if (conversion.material_id !== material.id || !farmMaterialActiveRow(conversion)) continue;
     addCanonicalAnchor(conversion.from_unit_id);
     addCanonicalAnchor(conversion.to_unit_id);
   }
 
   const directAnchors = new Set(canonicalAnchors);
   for (const conversion of unitConversions) {
-    if (!farmMaterialStandardActiveRow(conversion)) continue;
+    if (!farmMaterialActiveRow(conversion)) continue;
     const explicitlyRelated = conversion.material_id && conversion.material_id === material.id;
     const touchesMaterialUnit = directAnchors.has(conversion.from_unit_id) || directAnchors.has(conversion.to_unit_id);
     if (!explicitlyRelated && !touchesMaterialUnit) continue;
@@ -25053,9 +25016,9 @@ function farmMaterialStandardUnitModel(materialId, currentUnitId, {
   };
 }
 
-function farmMaterialStandardUnitOptions(model) {
+function farmMaterialUnitOptions(model) {
   if (!model.units.length) {
-    return `<option value="" selected>${esc(FARM_MATERIAL_STANDARD_NO_UNIT_MESSAGE)}</option>`;
+    return `<option value="" selected>${esc(FARM_MATERIAL_UNIT_NO_UNIT_MESSAGE)}</option>`;
   }
   const placeholder = model.selectedUnitId
     ? ""
@@ -25065,91 +25028,14 @@ function farmMaterialStandardUnitOptions(model) {
   ).join("");
 }
 
-function farmMaterialStandardUnitStatus(model) {
-  if (model.dataQualityGap) return FARM_MATERIAL_STANDARD_DATA_GAP_MESSAGE;
-  return model.units.length ? "" : FARM_MATERIAL_STANDARD_NO_UNIT_MESSAGE;
+function farmMaterialUnitStatus(model) {
+  if (model.dataQualityGap) return FARM_MATERIAL_UNIT_DATA_GAP_MESSAGE;
+  return model.units.length ? "" : FARM_MATERIAL_UNIT_NO_UNIT_MESSAGE;
 }
 
-function farmMaterialStandardUnitName(unitId, units = []) {
+function farmMaterialUnitName(unitId, units = []) {
   const unit = units.find((row) => row.id === unitId);
   return unit ? String(unit.unit_name || "").trim() : "";
-}
-
-function farmMaterialStandardDraftArgs(modal, values) {
-  const args = {
-    activity_id: modal.activity_id,
-    material_id: values.material_id,
-    unit_id: values.unit_id,
-    fiscal_year: values.fiscal_year,
-    usage_basis: values.usage_basis,
-    usage_rate: Number(values.usage_rate),
-    effective_start_date: values.effective_start_date,
-    effective_end_date: values.effective_end_date || null,
-    source_type: values.source_type,
-    note: values.note,
-  };
-  if (modal.row?.id) args.standard_id = modal.row.id;
-  return args;
-}
-
-function syncFarmMaterialStandardUnitSelect(form) {
-  const materialSelect = form?.querySelector('select[name="material_id"]');
-  const unitSelect = form?.querySelector('select[name="unit_id"]');
-  if (!materialSelect || !unitSelect) return null;
-  const model = farmMaterialStandardUnitModel(materialSelect.value, unitSelect.value, {
-    materials: farmRowsByKey("materials"),
-    units: farmRowsByKey("units"),
-    skuConversions: farmRowsByKey("sku_conversions"),
-    unitConversions: farmRowsByKey("unit_conversions"),
-  });
-  unitSelect.innerHTML = farmMaterialStandardUnitOptions(model);
-  unitSelect.value = model.selectedUnitId;
-  const status = form.querySelector("[data-material-standard-unit-status]");
-  if (status) {
-    status.textContent = farmMaterialStandardUnitStatus(model);
-    status.hidden = !status.textContent;
-  }
-  return model;
-}
-
-function renderFarmMaterialStandardSection(activity) {
-  if (!activity) return `<section class="farm-panel"><div class="section-head"><h3>มาตรฐานการใช้วัสดุ</h3><span>เลือกกิจกรรมเพื่อดูมาตรฐาน</span></div></section>`;
-  const standards = farmRowsByKey("activity_material_usage_rates").filter((row) => row.activity_id === activity.id).sort((a, b) => Number(b.version_no || 0) - Number(a.version_no || 0));
-  const units = farmRowsByKey("units");
-  const label = (id, key, code, name) => { const row = farmRowsByKey(key).find((item) => item.id === id); return row ? [row[code], row[name]].filter(Boolean).join(" - ") : "-"; };
-  const canManage = actorCan("performance.standard.manage");
-  return `<section class="farm-panel farm-material-standard-panel"><div class="section-head"><div><h3>มาตรฐานการใช้วัสดุ</h3><span>${esc(farmActivityRowLabel(activity))} · Canonical Supabase</span></div><button data-material-standard-new="${esc(activity.id)}" ${canManage ? "" : "disabled"}>เพิ่มฉบับร่าง</button></div>
-    <div class="table-wrap farm-activity-bottom-wrap"><table class="mini-table farm-table"><thead><tr><th>วัสดุ</th><th>ฐาน</th><th>อัตรา</th><th>หน่วย</th><th>ปี/รุ่น</th><th>ช่วงมีผล</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>
-    ${standards.map((row) => { const draft = row.approval_status === "draft" && row.status !== "inactive"; const active = row.status !== "inactive" && row.approval_status !== "inactive"; return `<tr><td>${esc(label(row.material_id, "materials", "material_code", "material_name"))}</td><td>${esc(row.usage_basis)}</td><td class="num">${esc(row.usage_rate)}</td><td>${esc(farmMaterialStandardUnitName(row.unit_id, units) || FARM_MATERIAL_STANDARD_DATA_GAP_MESSAGE)}</td><td>${esc(row.fiscal_year)} / v${esc(row.version_no)}</td><td>${esc(row.effective_start_date)} – ${esc(row.effective_end_date || "ไม่สิ้นสุด")}</td><td>${esc(row.approval_status || row.status)}</td><td class="farm-actions"><button data-material-standard-edit="${esc(row.id)}" ${canManage && draft ? "" : "disabled"}>แก้ไข</button><button data-material-standard-approve="${esc(row.id)}" ${canManage && draft ? "" : "disabled"}>อนุมัติ</button><button data-material-standard-inactivate="${esc(row.id)}" ${canManage && active ? "" : "disabled"}>ปิดใช้</button></td></tr>`; }).join("") || `<tr><td colspan="8">ยังไม่มีมาตรฐานที่บันทึกจริงสำหรับกิจกรรมนี้</td></tr>`}</tbody></table></div></section>`;
-}
-
-function renderFarmMaterialStandardModal() {
-  const modal = state.farmMaterialStandardModal;
-  if (!modal) return "";
-  const activity = farmRowsByKey("activities").find((row) => row.id === modal.activity_id);
-  const materials = farmRowsByKey("materials").filter((row) => row.status !== "inactive");
-  const row = modal.row || {};
-  const selectedMaterialId = materials.some((material) => material.id === row.material_id) ? row.material_id : materials[0]?.id || "";
-  const materialOptions = materials.map((item) => `<option value="${esc(item.id)}"${item.id === selectedMaterialId ? " selected" : ""}>${esc([item.material_code, item.material_name].filter(Boolean).join(" - "))}</option>`).join("");
-  const unitModel = farmMaterialStandardUnitModel(selectedMaterialId, row.unit_id || "", {
-    materials,
-    units: farmRowsByKey("units"),
-    skuConversions: farmRowsByKey("sku_conversions"),
-    unitConversions: farmRowsByKey("unit_conversions"),
-  });
-  const unitStatus = farmMaterialStandardUnitStatus(unitModel);
-  return `<div class="farm-activity-modal" role="dialog" aria-modal="true"><div class="farm-activity-modal-card is-wide"><div class="farm-activity-modal-head"><div><h3>${row.id ? "แก้ไขฉบับร่าง" : "เพิ่มมาตรฐานการใช้วัสดุ"}</h3><span>${esc(farmActivityRowLabel(activity))}</span></div><button data-material-standard-close>×</button></div><form class="farm-form farm-activity-modal-form is-wide" data-material-standard-form>
-    <label>วัสดุ<select name="material_id" data-material-standard-material required>${materialOptions}</select></label><label>ฐานคำนวณ<select name="usage_basis"><option value="per_tree"${row.usage_basis === "per_tree" ? " selected" : ""}>per_tree</option><option value="per_rai"${row.usage_basis === "per_rai" ? " selected" : ""}>per_rai</option></select></label><label>อัตราใช้<input name="usage_rate" type="number" min="0.000001" step="any" value="${esc(row.usage_rate || "")}" required></label><label>หน่วยมาตรฐาน<select name="unit_id" required>${farmMaterialStandardUnitOptions(unitModel)}</select><small data-material-standard-unit-status${unitStatus ? "" : " hidden"}>${esc(unitStatus)}</small></label><label>ปีมาตรฐาน<input name="fiscal_year" pattern="[0-9]{4}" maxlength="4" value="${esc(row.fiscal_year || new Date().getFullYear() + 543)}" required></label><label>เริ่มใช้<input name="effective_start_date" type="date" value="${esc(row.effective_start_date || farmToday())}" required></label><label>สิ้นสุด<input name="effective_end_date" type="date" value="${esc(row.effective_end_date || "")}"></label><label>แหล่งที่มา<input name="source_type" maxlength="80" value="${esc(row.source_type || "manual")}" required></label><label>หมายเหตุ<textarea name="note" maxlength="2000">${esc(row.note || "")}</textarea></label><div class="farm-form-actions"><button type="button" data-material-standard-save>บันทึกฉบับร่าง</button><button type="button" data-material-standard-close>ยกเลิก</button></div></form></div></div>`;
-}
-
-async function saveFarmMaterialStandardDraft() {
-  const modal = state.farmMaterialStandardModal;
-  const form = document.querySelector("[data-material-standard-form]");
-  if (!modal || !form || !form.reportValidity()) return;
-  const values = Object.fromEntries(new FormData(form));
-  const args = farmMaterialStandardDraftArgs(modal, values);
-  await runFarmAction(modal.row?.id ? "update_activity_material_standard_draft" : "create_activity_material_standard_draft", args);
-  state.farmMaterialStandardModal = null;
 }
 
 function renderFarmActivitiesBoard() {
@@ -25193,7 +25079,6 @@ function renderFarmActivitiesBoard() {
         <td>${esc(farmTranslateValue(activity.status) || "-")}</td>
       </tr>`;
   }).join("");
-  const selectedActivity = allActivities.find((row) => row.id === state.farmDetailId) || activities[0] || null;
   return `
     <section class="farm-activity-board">
       <div class="farm-activity-toolbar">
@@ -25255,10 +25140,8 @@ function renderFarmActivitiesBoard() {
           </table>
         </div>
       </section>
-      ${renderFarmMaterialStandardSection(selectedActivity)}
     </section>
-    ${renderFarmActivityModal()}
-    ${renderFarmMaterialStandardModal()}`;
+    ${renderFarmActivityModal()}`;
 }
 
 function renderFarmManagementDashboard() {
@@ -27215,10 +27098,6 @@ async function startAuthenticatedApplication() {
   document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
   els.reportPage.addEventListener("change", (e) => {
-    if (e.target.matches("[data-material-standard-material]")) {
-      syncFarmMaterialStandardUnitSelect(e.target.closest("[data-material-standard-form]"));
-      return;
-    }
     if (e.target.id === "systemUserEmployee") {
       const employee = systemUserEmployeeFromInput(e.target.value);
       if (employee && state.systemUserDrawer) {
@@ -28291,38 +28170,6 @@ async function startAuthenticatedApplication() {
       picks.budgetStartDate = budgetYearPick.dataset.start || picks.budgetStartDate;
       picks.budgetEndDate = budgetYearPick.dataset.end || picks.budgetEndDate;
       picks.budgetStatus = budgetYearPick.dataset.status || picks.budgetStatus;
-      render();
-      return;
-    }
-    const standardNew = e.target.closest("[data-material-standard-new]");
-    if (standardNew) {
-      state.farmMaterialStandardModal = { activity_id: standardNew.dataset.materialStandardNew, row: null };
-      render();
-      return;
-    }
-    const standardEdit = e.target.closest("[data-material-standard-edit]");
-    if (standardEdit) {
-      const row = farmRowsByKey("activity_material_usage_rates").find((item) => item.id === standardEdit.dataset.materialStandardEdit);
-      if (row) state.farmMaterialStandardModal = { activity_id: row.activity_id, row };
-      render();
-      return;
-    }
-    const standardApprove = e.target.closest("[data-material-standard-approve]");
-    if (standardApprove) {
-      if (window.confirm("ยืนยันอนุมัติมาตรฐานฉบับนี้")) runFarmAction("approve_activity_material_standard", { standard_id: standardApprove.dataset.materialStandardApprove }, { confirmed: true }).catch(() => {});
-      return;
-    }
-    const standardInactive = e.target.closest("[data-material-standard-inactivate]");
-    if (standardInactive) {
-      if (window.confirm("ยืนยันปิดใช้มาตรฐานฉบับนี้")) runFarmAction("inactivate_activity_material_standard", { standard_id: standardInactive.dataset.materialStandardInactivate }, { confirmed: true }).catch(() => {});
-      return;
-    }
-    if (e.target.closest("[data-material-standard-save]")) {
-      saveFarmMaterialStandardDraft().catch(() => {});
-      return;
-    }
-    if (e.target.closest("[data-material-standard-close]")) {
-      state.farmMaterialStandardModal = null;
       render();
       return;
     }

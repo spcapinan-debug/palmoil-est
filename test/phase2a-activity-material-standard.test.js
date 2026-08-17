@@ -11,18 +11,17 @@ const farmTables = require("../api/farm-tables");
 const appSource = fs.readFileSync(path.join(__dirname, "..", "webapp", "app.js"), "utf8");
 
 function materialUnitHarness() {
-  const start = appSource.indexOf("const FARM_MATERIAL_STANDARD_NO_UNIT_MESSAGE");
-  const end = appSource.indexOf("function renderFarmMaterialStandardSection", start);
+  const start = appSource.indexOf("const FARM_MATERIAL_UNIT_NO_UNIT_MESSAGE");
+  const end = appSource.indexOf("function renderFarmActivitiesBoard", start);
   assert.ok(start >= 0 && end > start, "material unit helpers must remain inspectable");
   const sandbox = { esc: (value) => String(value ?? "") };
   vm.runInNewContext(`${appSource.slice(start, end)}
 result = {
-  FARM_MATERIAL_STANDARD_NO_UNIT_MESSAGE,
-  farmMaterialStandardUnitModel,
-  farmMaterialStandardUnitOptions,
-  farmMaterialStandardUnitStatus,
-  farmMaterialStandardUnitName,
-  farmMaterialStandardDraftArgs,
+  FARM_MATERIAL_UNIT_NO_UNIT_MESSAGE,
+  farmMaterialUnitModel,
+  farmMaterialUnitOptions,
+  farmMaterialUnitStatus,
+  farmMaterialUnitName,
 };`, sandbox);
   return sandbox.result;
 }
@@ -158,23 +157,44 @@ test("migration is additive, contains no data rewrite, and hardens grants and ov
   assert.doesNotMatch(migration, /(?:alter table|update|delete from|insert into)\s+public\.(?:work_order_materials|planned_work_materials|budget_activity_rates)/i);
 });
 
-test("Activity UI has canonical form and no fake material standard seed", () => {
-  assert.match(appSource, /renderFarmMaterialStandardSection/);
-  assert.match(appSource, /data-material-standard-new/);
-  assert.match(appSource, /create_activity_material_standard_draft/);
-  assert.match(appSource, /view === "farm-activities"/);
-  assert.match(appSource, /\["materials", "units", "sku_conversions", "unit_conversions", "activity_material_usage_rates"\]/);
-  assert.doesNotMatch(appSource, /usage-fert-tree/);
+test("Activity UI has no Material Standard management or draft-write entry point", () => {
+  assert.match(appSource, /function renderFarmActivitiesBoard/);
+  assert.doesNotMatch(appSource, /renderFarmMaterialStandard|farmMaterialStandardModal|data-material-standard/);
+  assert.doesNotMatch(appSource, /มาตรฐานการใช้วัสดุ|เพิ่มมาตรฐานการใช้วัสดุ/);
+  assert.doesNotMatch(appSource, /create_activity_material_standard_draft|update_activity_material_standard_draft/);
+  const tableLoader = appSource.slice(
+    appSource.indexOf("function farmDatabaseTablesForView"),
+    appSource.indexOf("async function loadFarmTablesFromDatabase"),
+  );
+  assert.doesNotMatch(tableLoader, /activity_material_usage_rates/);
+});
+
+test("Planning material quantities use Budget relations and never Activity Standard fallback", () => {
+  const planningStart = appSource.indexOf("function farmWorkOrderMaterialPlanRows");
+  const planningEnd = appSource.indexOf("function farmNewUuid", planningStart);
+  const createStart = appSource.indexOf("async function createFarmWorkPlanFromSelection");
+  const createEnd = appSource.indexOf("async function saveFarmWorkPlanEditFromSelection", createStart);
+  const editStart = createEnd;
+  const editEnd = appSource.indexOf("function farmDispatchCandidateOrders", editStart);
+  for (const source of [
+    appSource.slice(planningStart, planningEnd),
+    appSource.slice(createStart, createEnd),
+    appSource.slice(editStart, editEnd),
+  ]) {
+    assert.match(source, /farmBudgetMaterialUsageRows/);
+    assert.doesNotMatch(source, /activity_material_usage_rates|selectedUsageRate/);
+  }
+  assert.match(appSource.slice(planningStart, planningEnd), /planned_quantity: 0/);
 });
 
 test("unit dropdown labels use only units.unit_name while values remain units.id", () => {
   const api = materialUnitHarness();
   const fixture = materialUnitFixture();
-  const model = api.farmMaterialStandardUnitModel(fixture.ids.baseOnly, "", {
+  const model = api.farmMaterialUnitModel(fixture.ids.baseOnly, "", {
     materials: fixture.materials,
     units: fixture.units,
   });
-  const html = api.farmMaterialStandardUnitOptions(model);
+  const html = api.farmMaterialUnitOptions(model);
   assert.match(html, new RegExp(`value="${fixture.ids.kg}"`));
   assert.match(html, />กิโลกรัม<\/option>/);
   assert.doesNotMatch(html, /INTERNAL-KG|INTERNAL-BAG|unit_code/);
@@ -184,7 +204,7 @@ test("unit dropdown labels use only units.unit_name while values remain units.id
 test("base-unit-only Material exposes and auto-selects only its canonical base unit", () => {
   const api = materialUnitHarness();
   const fixture = materialUnitFixture();
-  const model = api.farmMaterialStandardUnitModel(fixture.ids.baseOnly, "", {
+  const model = api.farmMaterialUnitModel(fixture.ids.baseOnly, "", {
     materials: fixture.materials,
     units: fixture.units,
     skuConversions: [],
@@ -197,7 +217,7 @@ test("base-unit-only Material exposes and auto-selects only its canonical base u
 test("active Material SKU conversions add only their canonical endpoint units", () => {
   const api = materialUnitHarness();
   const fixture = materialUnitFixture();
-  const model = api.farmMaterialStandardUnitModel(fixture.ids.skuMaterial, "", {
+  const model = api.farmMaterialUnitModel(fixture.ids.skuMaterial, "", {
     materials: fixture.materials,
     units: fixture.units,
     skuConversions: [
@@ -212,7 +232,7 @@ test("active Material SKU conversions add only their canonical endpoint units", 
 test("active unit conversions add only endpoints directly connected to Material canonical units", () => {
   const api = materialUnitHarness();
   const fixture = materialUnitFixture();
-  const model = api.farmMaterialStandardUnitModel(fixture.ids.globalMaterial, "", {
+  const model = api.farmMaterialUnitModel(fixture.ids.globalMaterial, "", {
     materials: fixture.materials,
     units: fixture.units,
     unitConversions: [
@@ -227,7 +247,7 @@ test("active unit conversions add only endpoints directly connected to Material 
 test("unrelated units and the global units fallback are prohibited", () => {
   const api = materialUnitHarness();
   const fixture = materialUnitFixture();
-  const model = api.farmMaterialStandardUnitModel(fixture.ids.noUnitMaterial, "", {
+  const model = api.farmMaterialUnitModel(fixture.ids.noUnitMaterial, "", {
     materials: fixture.materials,
     units: fixture.units,
     unitConversions: [
@@ -236,14 +256,14 @@ test("unrelated units and the global units fallback are prohibited", () => {
   });
   assert.equal(model.units.length, 0);
   assert.equal(model.selectedUnitId, "");
-  assert.equal(api.farmMaterialStandardUnitStatus(model), "ยังไม่ได้กำหนดหน่วยสำหรับวัสดุนี้");
-  assert.match(api.farmMaterialStandardUnitOptions(model), />ยังไม่ได้กำหนดหน่วยสำหรับวัสดุนี้<\/option>/);
+  assert.equal(api.farmMaterialUnitStatus(model), "ยังไม่ได้กำหนดหน่วยสำหรับวัสดุนี้");
+  assert.match(api.farmMaterialUnitOptions(model), />ยังไม่ได้กำหนดหน่วยสำหรับวัสดุนี้<\/option>/);
 });
 
 test("changing Material clears an incompatible unit when multiple compatible units remain", () => {
   const api = materialUnitHarness();
   const fixture = materialUnitFixture();
-  const model = api.farmMaterialStandardUnitModel(fixture.ids.skuMaterial, fixture.ids.unrelated, {
+  const model = api.farmMaterialUnitModel(fixture.ids.skuMaterial, fixture.ids.unrelated, {
     materials: fixture.materials,
     units: fixture.units,
     skuConversions: [
@@ -251,14 +271,13 @@ test("changing Material clears an incompatible unit when multiple compatible uni
     ],
   });
   assert.equal(model.selectedUnitId, "");
-  assert.match(api.farmMaterialStandardUnitOptions(model), /value="" selected>เลือกหน่วยมาตรฐาน/);
-  assert.match(appSource, /data-material-standard-material[\s\S]*syncFarmMaterialStandardUnitSelect/);
+  assert.match(api.farmMaterialUnitOptions(model), /value="" selected>เลือกหน่วยมาตรฐาน/);
 });
 
 test("exactly one compatible unit safely auto-selects after Material reconciliation", () => {
   const api = materialUnitHarness();
   const fixture = materialUnitFixture();
-  const model = api.farmMaterialStandardUnitModel(fixture.ids.baseOnly, fixture.ids.unrelated, {
+  const model = api.farmMaterialUnitModel(fixture.ids.baseOnly, fixture.ids.unrelated, {
     materials: fixture.materials,
     units: fixture.units,
   });
@@ -269,7 +288,7 @@ test("usage_basis remains calculation metadata and never adds a Material unit", 
   const api = materialUnitHarness();
   const fixture = materialUnitFixture();
   const material = fixture.materials.find((row) => row.id === fixture.ids.noUnitMaterial);
-  const model = api.farmMaterialStandardUnitModel(material.id, "", {
+  const model = api.farmMaterialUnitModel(material.id, "", {
     materials: [{ ...material, usage_basis: "per_rai" }],
     units: fixture.units,
   });
@@ -277,49 +296,11 @@ test("usage_basis remains calculation metadata and never adds a Material unit", 
   assert.equal(model.units.length, 0);
 });
 
-test("draft payload keeps canonical unit_id and excludes unit names, codes, and legacy usage text", () => {
-  const api = materialUnitHarness();
-  const fixture = materialUnitFixture();
-  const standardId = randomUUID();
-  const payload = api.farmMaterialStandardDraftArgs(
-    { activity_id: randomUUID(), row: { id: standardId } },
-    {
-      material_id: fixture.ids.baseOnly,
-      unit_id: fixture.ids.kg,
-      unit_name: "กิโลกรัม",
-      unit_code: "INTERNAL-KG",
-      usage_unit: "kg",
-      usage_basis: "per_rai",
-      usage_rate: "15",
-      fiscal_year: "2569",
-      effective_start_date: "2026-01-01",
-      effective_end_date: "",
-      source_type: "manual",
-      note: "dynamic fixture",
-    },
-  );
-  assert.equal(payload.unit_id, fixture.ids.kg);
-  assert.equal(payload.usage_basis, "per_rai");
-  assert.equal(payload.standard_id, standardId);
-  assert.equal(payload.usage_rate, 15);
-  assert.equal(Object.hasOwn(payload, "unit_name"), false);
-  assert.equal(Object.hasOwn(payload, "unit_code"), false);
-  assert.equal(Object.hasOwn(payload, "usage_unit"), false);
-});
-
-test("existing standards resolve saved unit_id directly to units.unit_name", () => {
-  const api = materialUnitHarness();
-  const fixture = materialUnitFixture();
-  assert.equal(api.farmMaterialStandardUnitName(fixture.ids.bag, fixture.units), "กระสอบ 25 กก.");
-  assert.equal(api.farmMaterialStandardUnitName(randomUUID(), fixture.units), "");
-  assert.match(appSource, /farmMaterialStandardUnitName\(row\.unit_id, units\)/);
-});
-
 test("duplicate semantic unit names retain canonical identity and are never first-name guessed", () => {
   const api = materialUnitHarness();
   const fixture = materialUnitFixture();
   const duplicateMaterial = { id: randomUUID(), base_unit_id: fixture.ids.kgDuplicate, status: "active" };
-  const model = api.farmMaterialStandardUnitModel(duplicateMaterial.id, fixture.ids.kg, {
+  const model = api.farmMaterialUnitModel(duplicateMaterial.id, fixture.ids.kg, {
     materials: [duplicateMaterial],
     units: fixture.units,
   });
@@ -331,7 +312,7 @@ test("duplicate semantic unit names retain canonical identity and are never firs
 test("canonical unit IDs deduplicate across base, SKU, and unit-conversion relationships", () => {
   const api = materialUnitHarness();
   const fixture = materialUnitFixture();
-  const model = api.farmMaterialStandardUnitModel(fixture.ids.skuMaterial, fixture.ids.kg, {
+  const model = api.farmMaterialUnitModel(fixture.ids.skuMaterial, fixture.ids.kg, {
     materials: fixture.materials,
     units: fixture.units,
     skuConversions: [
@@ -350,11 +331,11 @@ test("dangling canonical relationships report DATA QUALITY GAP without name or c
   const fixture = materialUnitFixture();
   const missingUnitId = randomUUID();
   const material = { id: randomUUID(), base_unit_id: missingUnitId, status: "active" };
-  const model = api.farmMaterialStandardUnitModel(material.id, "", {
+  const model = api.farmMaterialUnitModel(material.id, "", {
     materials: [material],
     units: fixture.units,
   });
   assert.equal(model.units.length, 0);
   assert.equal(model.dataQualityGap, true);
-  assert.match(api.farmMaterialStandardUnitStatus(model), /^DATA QUALITY GAP:/);
+  assert.match(api.farmMaterialUnitStatus(model), /^DATA QUALITY GAP:/);
 });
