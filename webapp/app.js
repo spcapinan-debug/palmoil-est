@@ -4657,7 +4657,7 @@ function farmDatabaseTablesForView(view = state.view) {
   const module = farmModuleMap()[view] || null;
   const tableSet = new Set(view === "farm-inventory" ? [] : (module?.tables || []));
   if (view === "farm-activities") {
-    ["materials", "units", "activity_material_usage_rates"].forEach((key) => tableSet.add(key));
+    ["materials", "units", "sku_conversions", "unit_conversions", "activity_material_usage_rates"].forEach((key) => tableSet.add(key));
   }
   if (view === "farm-inventory") {
     const sharedTables = [
@@ -24989,14 +24989,138 @@ function renderFarmPeopleBoard(table, rows, tables) {
     ${renderFarmActivityModal()}`;
 }
 
+const FARM_MATERIAL_STANDARD_NO_UNIT_MESSAGE = "ยังไม่ได้กำหนดหน่วยสำหรับวัสดุนี้";
+const FARM_MATERIAL_STANDARD_DATA_GAP_MESSAGE = "DATA QUALITY GAP: ความสัมพันธ์หน่วยของวัสดุอ้างอิงข้อมูลหน่วยที่ไม่พร้อมใช้งาน";
+
+function farmMaterialStandardActiveRow(row) {
+  return Boolean(row) && String(row.status || "active").toLowerCase() === "active";
+}
+
+function farmMaterialStandardUnitModel(materialId, currentUnitId, {
+  materials = [],
+  units = [],
+  skuConversions = [],
+  unitConversions = [],
+} = {}) {
+  const material = materials.find((row) => row.id === materialId && farmMaterialStandardActiveRow(row));
+  if (!material) return { units: [], selectedUnitId: "", dataQualityGap: false };
+
+  const unitById = new Map(units.filter((row) => row?.id).map((row) => [row.id, row]));
+  const compatibleUnits = [];
+  const compatibleIds = new Set();
+  const canonicalAnchors = new Set();
+  const unresolvedIds = new Set();
+  const addCompatibleUnit = (unitId) => {
+    if (!unitId || compatibleIds.has(unitId)) return;
+    const unit = unitById.get(unitId);
+    if (!unit || !farmMaterialStandardActiveRow(unit) || !String(unit.unit_name || "").trim()) {
+      unresolvedIds.add(unitId);
+      return;
+    }
+    compatibleIds.add(unitId);
+    compatibleUnits.push(unit);
+  };
+  const addCanonicalAnchor = (unitId) => {
+    if (!unitId) return;
+    canonicalAnchors.add(unitId);
+    addCompatibleUnit(unitId);
+  };
+
+  addCanonicalAnchor(material.base_unit_id);
+  for (const conversion of skuConversions) {
+    if (conversion.material_id !== material.id || !farmMaterialStandardActiveRow(conversion)) continue;
+    addCanonicalAnchor(conversion.from_unit_id);
+    addCanonicalAnchor(conversion.to_unit_id);
+  }
+
+  const directAnchors = new Set(canonicalAnchors);
+  for (const conversion of unitConversions) {
+    if (!farmMaterialStandardActiveRow(conversion)) continue;
+    const explicitlyRelated = conversion.material_id && conversion.material_id === material.id;
+    const touchesMaterialUnit = directAnchors.has(conversion.from_unit_id) || directAnchors.has(conversion.to_unit_id);
+    if (!explicitlyRelated && !touchesMaterialUnit) continue;
+    addCompatibleUnit(conversion.from_unit_id);
+    addCompatibleUnit(conversion.to_unit_id);
+  }
+
+  const selectedUnitId = compatibleIds.has(currentUnitId)
+    ? currentUnitId
+    : compatibleUnits.length === 1 ? compatibleUnits[0].id : "";
+  return {
+    units: compatibleUnits,
+    selectedUnitId,
+    dataQualityGap: unresolvedIds.size > 0,
+  };
+}
+
+function farmMaterialStandardUnitOptions(model) {
+  if (!model.units.length) {
+    return `<option value="" selected>${esc(FARM_MATERIAL_STANDARD_NO_UNIT_MESSAGE)}</option>`;
+  }
+  const placeholder = model.selectedUnitId
+    ? ""
+    : `<option value="" selected>เลือกหน่วยมาตรฐาน</option>`;
+  return placeholder + model.units.map((unit) =>
+    `<option value="${esc(unit.id)}"${unit.id === model.selectedUnitId ? " selected" : ""}>${esc(unit.unit_name)}</option>`
+  ).join("");
+}
+
+function farmMaterialStandardUnitStatus(model) {
+  if (model.dataQualityGap) return FARM_MATERIAL_STANDARD_DATA_GAP_MESSAGE;
+  return model.units.length ? "" : FARM_MATERIAL_STANDARD_NO_UNIT_MESSAGE;
+}
+
+function farmMaterialStandardUnitName(unitId, units = []) {
+  const unit = units.find((row) => row.id === unitId);
+  return unit ? String(unit.unit_name || "").trim() : "";
+}
+
+function farmMaterialStandardDraftArgs(modal, values) {
+  const args = {
+    activity_id: modal.activity_id,
+    material_id: values.material_id,
+    unit_id: values.unit_id,
+    fiscal_year: values.fiscal_year,
+    usage_basis: values.usage_basis,
+    usage_rate: Number(values.usage_rate),
+    effective_start_date: values.effective_start_date,
+    effective_end_date: values.effective_end_date || null,
+    source_type: values.source_type,
+    note: values.note,
+  };
+  if (modal.row?.id) args.standard_id = modal.row.id;
+  return args;
+}
+
+function syncFarmMaterialStandardUnitSelect(form) {
+  const materialSelect = form?.querySelector('select[name="material_id"]');
+  const unitSelect = form?.querySelector('select[name="unit_id"]');
+  if (!materialSelect || !unitSelect) return null;
+  const model = farmMaterialStandardUnitModel(materialSelect.value, unitSelect.value, {
+    materials: farmRowsByKey("materials"),
+    units: farmRowsByKey("units"),
+    skuConversions: farmRowsByKey("sku_conversions"),
+    unitConversions: farmRowsByKey("unit_conversions"),
+  });
+  unitSelect.innerHTML = farmMaterialStandardUnitOptions(model);
+  unitSelect.value = model.selectedUnitId;
+  const status = form.querySelector("[data-material-standard-unit-status]");
+  if (status) {
+    status.textContent = farmMaterialStandardUnitStatus(model);
+    status.hidden = !status.textContent;
+  }
+  return model;
+}
+
 function renderFarmMaterialStandardSection(activity) {
   if (!activity) return `<section class="farm-panel"><div class="section-head"><h3>มาตรฐานการใช้วัสดุ</h3><span>เลือกกิจกรรมเพื่อดูมาตรฐาน</span></div></section>`;
   const standards = farmRowsByKey("activity_material_usage_rates").filter((row) => row.activity_id === activity.id).sort((a, b) => Number(b.version_no || 0) - Number(a.version_no || 0));
+  const units = farmRowsByKey("units");
   const label = (id, key, code, name) => { const row = farmRowsByKey(key).find((item) => item.id === id); return row ? [row[code], row[name]].filter(Boolean).join(" - ") : "-"; };
   const canManage = actorCan("performance.standard.manage");
   return `<section class="farm-panel farm-material-standard-panel"><div class="section-head"><div><h3>มาตรฐานการใช้วัสดุ</h3><span>${esc(farmActivityRowLabel(activity))} · Canonical Supabase</span></div><button data-material-standard-new="${esc(activity.id)}" ${canManage ? "" : "disabled"}>เพิ่มฉบับร่าง</button></div>
     <div class="table-wrap farm-activity-bottom-wrap"><table class="mini-table farm-table"><thead><tr><th>วัสดุ</th><th>ฐาน</th><th>อัตรา</th><th>หน่วย</th><th>ปี/รุ่น</th><th>ช่วงมีผล</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>
-    ${standards.map((row) => { const draft = row.approval_status === "draft" && row.status !== "inactive"; const active = row.status !== "inactive" && row.approval_status !== "inactive"; return `<tr><td>${esc(label(row.material_id, "materials", "material_code", "material_name"))}</td><td>${esc(row.usage_basis)}</td><td class="num">${esc(row.usage_rate)}</td><td>${esc(label(row.unit_id, "units", "unit_code", "unit_name"))}</td><td>${esc(row.fiscal_year)} / v${esc(row.version_no)}</td><td>${esc(row.effective_start_date)} – ${esc(row.effective_end_date || "ไม่สิ้นสุด")}</td><td>${esc(row.approval_status || row.status)}</td><td class="farm-actions"><button data-material-standard-edit="${esc(row.id)}" ${canManage && draft ? "" : "disabled"}>แก้ไข</button><button data-material-standard-approve="${esc(row.id)}" ${canManage && draft ? "" : "disabled"}>อนุมัติ</button><button data-material-standard-inactivate="${esc(row.id)}" ${canManage && active ? "" : "disabled"}>ปิดใช้</button></td></tr>`; }).join("") || `<tr><td colspan="8">ยังไม่มีมาตรฐานที่บันทึกจริงสำหรับกิจกรรมนี้</td></tr>`}</tbody></table></div></section>`;
+    ${standards.map((row) => { const draft = row.approval_status === "draft" && row.status !== "inactive"; const active = row.status !== "inactive" && row.approval_status !== "inactive"; return `<tr><td>${esc(label(row.material_id, "materials", "material_code", "material_name"))}</td><td>${esc(row.usage_basis)}</td><td class="num">${esc(row.usage_rate)}</td><td>${esc(farmMaterialStandardUnitName(row.unit_id, units) || FARM_MATERIAL_STANDARD_DATA_GAP_MESSAGE)}</td><td>${esc(row.fiscal_year)} / v${esc(row.version_no)}</td><td>${esc(row.effective_start_date)} – ${esc(row.effective_end_date || "ไม่สิ้นสุด")}</td><td>${esc(row.approval_status || row.status)}</td><td class="farm-actions"><button data-material-standard-edit="${esc(row.id)}" ${canManage && draft ? "" : "disabled"}>แก้ไข</button><button data-material-standard-approve="${esc(row.id)}" ${canManage && draft ? "" : "disabled"}>อนุมัติ</button><button data-material-standard-inactivate="${esc(row.id)}" ${canManage && active ? "" : "disabled"}>ปิดใช้</button></td></tr>`; }).join("") || `<tr><td colspan="8">ยังไม่มีมาตรฐานที่บันทึกจริงสำหรับกิจกรรมนี้</td></tr>`}</tbody></table></div></section>`;
 }
 
 function renderFarmMaterialStandardModal() {
@@ -25004,11 +25128,18 @@ function renderFarmMaterialStandardModal() {
   if (!modal) return "";
   const activity = farmRowsByKey("activities").find((row) => row.id === modal.activity_id);
   const materials = farmRowsByKey("materials").filter((row) => row.status !== "inactive");
-  const units = farmRowsByKey("units").filter((row) => row.status !== "inactive");
   const row = modal.row || {};
-  const options = (rows, code, name, selected) => rows.map((item) => `<option value="${esc(item.id)}"${item.id === selected ? " selected" : ""}>${esc([item[code], item[name]].filter(Boolean).join(" - "))}</option>`).join("");
+  const selectedMaterialId = materials.some((material) => material.id === row.material_id) ? row.material_id : materials[0]?.id || "";
+  const materialOptions = materials.map((item) => `<option value="${esc(item.id)}"${item.id === selectedMaterialId ? " selected" : ""}>${esc([item.material_code, item.material_name].filter(Boolean).join(" - "))}</option>`).join("");
+  const unitModel = farmMaterialStandardUnitModel(selectedMaterialId, row.unit_id || "", {
+    materials,
+    units: farmRowsByKey("units"),
+    skuConversions: farmRowsByKey("sku_conversions"),
+    unitConversions: farmRowsByKey("unit_conversions"),
+  });
+  const unitStatus = farmMaterialStandardUnitStatus(unitModel);
   return `<div class="farm-activity-modal" role="dialog" aria-modal="true"><div class="farm-activity-modal-card is-wide"><div class="farm-activity-modal-head"><div><h3>${row.id ? "แก้ไขฉบับร่าง" : "เพิ่มมาตรฐานการใช้วัสดุ"}</h3><span>${esc(farmActivityRowLabel(activity))}</span></div><button data-material-standard-close>×</button></div><form class="farm-form farm-activity-modal-form is-wide" data-material-standard-form>
-    <label>วัสดุ<select name="material_id" required>${options(materials, "material_code", "material_name", row.material_id)}</select></label><label>ฐานคำนวณ<select name="usage_basis"><option value="per_tree"${row.usage_basis === "per_tree" ? " selected" : ""}>per_tree</option><option value="per_rai"${row.usage_basis === "per_rai" ? " selected" : ""}>per_rai</option></select></label><label>อัตราใช้<input name="usage_rate" type="number" min="0.000001" step="any" value="${esc(row.usage_rate || "")}" required></label><label>หน่วยมาตรฐาน<select name="unit_id" required>${options(units, "unit_code", "unit_name", row.unit_id)}</select></label><label>ปีมาตรฐาน<input name="fiscal_year" pattern="[0-9]{4}" maxlength="4" value="${esc(row.fiscal_year || new Date().getFullYear() + 543)}" required></label><label>เริ่มใช้<input name="effective_start_date" type="date" value="${esc(row.effective_start_date || farmToday())}" required></label><label>สิ้นสุด<input name="effective_end_date" type="date" value="${esc(row.effective_end_date || "")}"></label><label>แหล่งที่มา<input name="source_type" maxlength="80" value="${esc(row.source_type || "manual")}" required></label><label>หมายเหตุ<textarea name="note" maxlength="2000">${esc(row.note || "")}</textarea></label><div class="farm-form-actions"><button type="button" data-material-standard-save>บันทึกฉบับร่าง</button><button type="button" data-material-standard-close>ยกเลิก</button></div></form></div></div>`;
+    <label>วัสดุ<select name="material_id" data-material-standard-material required>${materialOptions}</select></label><label>ฐานคำนวณ<select name="usage_basis"><option value="per_tree"${row.usage_basis === "per_tree" ? " selected" : ""}>per_tree</option><option value="per_rai"${row.usage_basis === "per_rai" ? " selected" : ""}>per_rai</option></select></label><label>อัตราใช้<input name="usage_rate" type="number" min="0.000001" step="any" value="${esc(row.usage_rate || "")}" required></label><label>หน่วยมาตรฐาน<select name="unit_id" required>${farmMaterialStandardUnitOptions(unitModel)}</select><small data-material-standard-unit-status${unitStatus ? "" : " hidden"}>${esc(unitStatus)}</small></label><label>ปีมาตรฐาน<input name="fiscal_year" pattern="[0-9]{4}" maxlength="4" value="${esc(row.fiscal_year || new Date().getFullYear() + 543)}" required></label><label>เริ่มใช้<input name="effective_start_date" type="date" value="${esc(row.effective_start_date || farmToday())}" required></label><label>สิ้นสุด<input name="effective_end_date" type="date" value="${esc(row.effective_end_date || "")}"></label><label>แหล่งที่มา<input name="source_type" maxlength="80" value="${esc(row.source_type || "manual")}" required></label><label>หมายเหตุ<textarea name="note" maxlength="2000">${esc(row.note || "")}</textarea></label><div class="farm-form-actions"><button type="button" data-material-standard-save>บันทึกฉบับร่าง</button><button type="button" data-material-standard-close>ยกเลิก</button></div></form></div></div>`;
 }
 
 async function saveFarmMaterialStandardDraft() {
@@ -25016,8 +25147,7 @@ async function saveFarmMaterialStandardDraft() {
   const form = document.querySelector("[data-material-standard-form]");
   if (!modal || !form || !form.reportValidity()) return;
   const values = Object.fromEntries(new FormData(form));
-  const args = { ...values, activity_id: modal.activity_id, usage_rate: Number(values.usage_rate), effective_end_date: values.effective_end_date || null };
-  if (modal.row?.id) args.standard_id = modal.row.id;
+  const args = farmMaterialStandardDraftArgs(modal, values);
   await runFarmAction(modal.row?.id ? "update_activity_material_standard_draft" : "create_activity_material_standard_draft", args);
   state.farmMaterialStandardModal = null;
 }
@@ -27085,6 +27215,10 @@ async function startAuthenticatedApplication() {
   document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.matches("[data-material-standard-material]")) {
+      syncFarmMaterialStandardUnitSelect(e.target.closest("[data-material-standard-form]"));
+      return;
+    }
     if (e.target.id === "systemUserEmployee") {
       const employee = systemUserEmployeeFromInput(e.target.value);
       if (employee && state.systemUserDrawer) {
