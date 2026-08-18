@@ -296,6 +296,26 @@ const ACTIONS = {
     params: (args, actor) => ({ args, actor }),
     entity: "fuel_issues",
   },
+  create_budget_block_material_rate: {
+    permission: "budget.rate_rule.manage", rpc: "apply_budget_block_material_rates",
+    params: (args, actor) => budgetBlockMaterialActionParams(args, actor, "create"),
+    entity: "budget_rate_block_materials",
+  },
+  update_budget_block_material_rate: {
+    permission: "budget.rate_rule.manage", rpc: "apply_budget_block_material_rates",
+    params: (args, actor) => budgetBlockMaterialActionParams(args, actor, "update"),
+    entity: "budget_rate_block_materials", entityId: (args) => args.row_id,
+  },
+  deactivate_budget_block_material_rate: {
+    permission: "budget.rate_rule.manage", confirmation: true, rpc: "apply_budget_block_material_rates",
+    params: (args, actor) => budgetBlockMaterialActionParams(args, actor, "deactivate"),
+    entity: "budget_rate_block_materials", entityId: (args) => args.row_id,
+  },
+  bulk_apply_budget_block_material_rate: {
+    permission: "budget.rate_rule.manage", confirmation: true, rpc: "apply_budget_block_material_rates",
+    params: (args, actor) => budgetBlockMaterialActionParams(args, actor, "bulk_apply"),
+    entity: "budget_rate_block_materials",
+  },
   preview_budget_rule_set_movement: {
     permission: "budget.rate_rule.view", rpc: "preview_budget_rule_set_movement",
     params: (args) => ({ p_target_rule_set_id: requireUuid(args.rule_set_id, "rule_set_id") }),
@@ -523,6 +543,47 @@ function enumValue(value, field, values) {
 function optionalText(value, max) {
   if (value == null || value === "") return null;
   return String(value).slice(0, max);
+}
+
+const BUDGET_MATERIAL_USAGE_BASES = ["tree_count", "area_rai", "manual_qty", "bag_count"];
+const BUDGET_MATERIAL_STATUSES = ["active", "inactive"];
+
+function budgetBlockMaterialTextIds(value, field) {
+  if (!Array.isArray(value)) {
+    throw new ApiError(400, "VALIDATION_ERROR", `${field} must be an array`, { field });
+  }
+  const ids = [...new Set(value.map((id) => requireText(id, field, 200)))];
+  if (!ids.length || ids.length > 500) {
+    throw new ApiError(400, "VALIDATION_ERROR", `${field} must contain between 1 and 500 IDs`, { field });
+  }
+  return ids;
+}
+
+function budgetBlockMaterialActionParams(args, actor, operation) {
+  const blockIds = budgetBlockMaterialTextIds(args.budget_rate_block_ids, "budget_rate_block_ids");
+  if (["create", "update", "deactivate"].includes(operation) && blockIds.length !== 1) {
+    throw new ApiError(400, "VALIDATION_ERROR", `${operation} requires exactly one Budget Block`, {
+      field: "budget_rate_block_ids",
+    });
+  }
+  return {
+    p_operation: operation,
+    p_budget_year_id: requireText(args.budget_year_id, "budget_year_id", 200),
+    p_budget_activity_rate_id: requireText(args.budget_activity_rate_id, "budget_activity_rate_id", 200),
+    p_budget_rate_block_ids: blockIds,
+    p_material_id: requireUuid(args.material_id, "material_id"),
+    p_usage_basis: enumValue(args.usage_basis, "usage_basis", BUDGET_MATERIAL_USAGE_BASES),
+    p_usage_rate: requiredNumber(args.usage_rate, "usage_rate", { minimum: Number.EPSILON }),
+    p_unit_id: requireUuid(args.unit_id, "unit_id"),
+    p_actor_profile_id: actor.profile.id,
+    p_unit_cost: optionalNumber(args.unit_cost, "unit_cost"),
+    p_amount_per_basis: optionalNumber(args.amount_per_basis, "amount_per_basis"),
+    p_status: enumValue(args.status || (operation === "deactivate" ? "inactive" : "active"), "status", BUDGET_MATERIAL_STATUSES),
+    p_note: optionalText(args.note, 2000),
+    p_row_id: ["update", "deactivate"].includes(operation)
+      ? requireUuid(args.row_id, "row_id")
+      : null,
+  };
 }
 
 async function one(path, label) {
@@ -2235,7 +2296,7 @@ module.exports = handler;
 module.exports._test = {
   ACTIONS, INVENTORY_UAT_ACTIONS, UAT_MUTATION_ACTIONS, enforceActionScope, enforceUatMutation,
   requireInventoryUatIssue, requireUatWorkOrder, requireWebTestCode, requestHash,
-  activityMaterialStandardInput, calculateConsumedFuel, ensureSurveyFailureFindings,
+  activityMaterialStandardInput, budgetBlockMaterialActionParams, calculateConsumedFuel, ensureSurveyFailureFindings,
   nextActivityMaterialStandardVersion, notificationContext, resolveSurveyTemplateForOrder,
   standardPeriodsOverlap,
   surveyAnswerComplete, surveyQuestionVisible,

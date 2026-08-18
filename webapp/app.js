@@ -85,6 +85,20 @@ const state = {
     unitName: "ไร่",
     rateAmount: "",
   },
+  farmBudgetMaterialFilters: { year: "all", activity: "all", block: "all", material: "all" },
+  farmBudgetMaterialDraft: {
+    rowId: "",
+    budgetActivityRateId: "",
+    selectedBudgetRateBlockIds: [],
+    materialId: "",
+    usageBasis: "area_rai",
+    usageRate: "",
+    unitId: "",
+    unitCost: "",
+    amountPerBasis: "",
+    status: "active",
+    note: "",
+  },
   farmWorkPlan: {
     selectedBlocks: [],
     plantingYearSelectedBlockIds: [],
@@ -1481,7 +1495,7 @@ const FARM_MODULES = [
     group: "งานจัดการสวนปาล์ม",
     accent: "Budget → Activity Rate → Block → Payroll",
     description: "จัดเก็บงบประมาณและเรทงานตามปี กิจกรรม และ Block เพื่อใช้วางแผน Work Order และคำนวณค่าแรงจากฐานเทียบที่กำหนด",
-    tables: ["budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_roles"],
+    tables: ["budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_block_materials", "budget_rate_roles"],
     fields: [
       ["code", "รหัสอัตรา", "BUD-001"],
       ["name", "ชื่ออัตรา", "ค่าแรงใส่ปุ๋ย"],
@@ -3743,6 +3757,25 @@ const FARM_TABLE_SCHEMAS = {
     ],
     seed: [],
   },
+  budget_rate_block_materials: {
+    moduleId: "farm-budget",
+    title: "อัตราวัสดุราย Block",
+    primaryKey: "id",
+    codeField: "material_id",
+    labelField: "budget_rate_block_id",
+    fields: [
+      F("budget_rate_block_id", "Block ที่ใช้ Rate", { references: "budget_rate_blocks", required: true }),
+      F("material_id", "วัสดุ", { references: "materials", required: true }),
+      F("usage_basis", "ฐานเทียบ", { options: ["tree_count", "area_rai", "manual_qty", "bag_count"], required: true }),
+      F("usage_rate", "อัตราการใช้", { type: "number", required: true }),
+      F("unit_id", "หน่วย", { references: "units", required: true }),
+      F("unit_cost", "ราคาต่อหน่วย", { type: "number" }),
+      F("amount_per_basis", "ต้นทุนต่อฐานเทียบ", { type: "number" }),
+      F("status", "สถานะ", { type: "status" }),
+      F("note", "หมายเหตุ"),
+    ],
+    seed: [],
+  },
   budget_rate_roles: {
     moduleId: "farm-budget",
     title: "กลุ่มคนงานตามเรท",
@@ -4726,6 +4759,7 @@ function farmDatabaseTablesForView(view = state.view) {
       "budget_activity_rates",
       "budget_rate_blocks",
       "budget_rate_materials",
+      "budget_rate_block_materials",
       "budget_rate_roles",
       "blocks",
       "areas",
@@ -4738,6 +4772,8 @@ function farmDatabaseTablesForView(view = state.view) {
       "material_categories",
       "materials",
       "units",
+      "sku_conversions",
+      "unit_conversions",
       "vehicles",
       "teams",
       "team_members",
@@ -4926,7 +4962,7 @@ async function runFarmAction(action, args = {}, { confirmed = false, reason = ""
       body: JSON.stringify({ action, args, confirmed, reason, idempotency_key: idempotencyKey }),
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) throw new Error(farmApiErrorMessage(payload, "Server Action ไม่สำเร็จ"));
+    if (!response.ok || !payload.ok) throw farmApiRequestError(response, payload, "Server Action ไม่สำเร็จ");
     state.farmSyncStatus = "success";
     state.farmSyncMessage = "บันทึกสำเร็จ";
     return payload.result;
@@ -12595,7 +12631,6 @@ async function createFarmBudgetRatesFromSelection() {
   }
   const rateTable = farmTableByKey("budget_activity_rates");
   const blockTable = farmTableByKey("budget_rate_blocks");
-  const materialTable = farmTableByKey("budget_rate_materials");
   const roleTable = farmTableByKey("budget_rate_roles");
   const nowKey = Date.now().toString(36);
   const rateAmount = n(picks.rateAmount || 0);
@@ -12664,22 +12699,6 @@ async function createFarmBudgetRatesFromSelection() {
           selectedPlantingYears: farmBudgetPlantingSelectionSummary(blocks, blocks.map((item) => item.id)).selectedYears,
         },
       );
-      for (const material of materials) {
-        await persistFarmRowToDatabase(materialTable, {
-          id: `budget-material-${nowKey}-${sequence}-${farmBudgetSafeCode(material.id)}`,
-          moduleId: "farm-budget",
-          tableId: "budget_rate_materials",
-          budget_rate_id: savedRateId,
-          material_id: material.id,
-          material_name: material.material_name || material.item_name || material.name || "",
-          usage_quantity: picks.baseMaterialQuantity || "",
-          usage_unit: picks.baseUsageUnit || farmLookupLabel("units", material.base_unit_id) || "",
-          usage_basis: farmBudgetUsageBasisToComparison(picks.baseMaterialBasis) || picks.comparisonBasis,
-          unit_cost: "",
-          amount_per_basis: "",
-          status: "active",
-        });
-      }
       for (const worker of workers) {
         await persistFarmRowToDatabase(roleTable, {
           id: `budget-role-${nowKey}-${sequence}-${farmBudgetSafeCode(worker.kind)}-${farmBudgetSafeCode(worker.row.id)}`,
@@ -12735,7 +12754,7 @@ async function createFarmBudgetRatesFromSelection() {
     state.farmDetailId = created[0] || "";
     state.farmBudgetEditingRateId = "";
     state.farmSyncStatus = "success";
-    state.farmSyncMessage = `สร้าง Rate แล้ว ${fmt(created.length)} กิจกรรม พร้อมผูก Block ${fmt(blocks.length)} วัสดุ ${fmt(materials.length)} กลุ่มคนงาน ${fmt(workers.length)} และเรทเสริม ${fmt((picks.extraRates || []).length)}`;
+    state.farmSyncMessage = `สร้าง Rate แล้ว ${fmt(created.length)} กิจกรรม พร้อมผูก Block ${fmt(blocks.length)} กลุ่มคนงาน ${fmt(workers.length)} และเรทเสริม ${fmt((picks.extraRates || []).length)} · เพิ่มอัตราวัสดุราย Block ในส่วน Canonical Material Budget`;
     await loadFarmTablesFromDatabase({ silent: false, tables: farmDatabaseTablesForView("farm-budget") });
     const loadedIds = new Set(farmRowsByKey("budget_activity_rates").map((row) => String(row.id)));
     for (const row of createdRows) {
@@ -12790,7 +12809,6 @@ async function saveFarmBudgetSelectedRateFromSelection() {
   const activityGroup = activity?.activity_group_id ? farmLookup("activity_groups", activity.activity_group_id) : null;
   const rateTable = farmTableByKey("budget_activity_rates");
   const blockTable = farmTableByKey("budget_rate_blocks");
-  const materialTable = farmTableByKey("budget_rate_materials");
   const roleTable = farmTableByKey("budget_rate_roles");
   const rateAmount = n(picks.rateAmount || 0);
   const effectiveUnitName = farmBudgetNormalizeRateUom(picks.unitName || original.unit_name || "");
@@ -12848,7 +12866,7 @@ async function saveFarmBudgetSelectedRateFromSelection() {
   try {
     const savedRate = await persistFarmRowToDatabase(rateTable, rateRow);
     const savedRateId = savedRate.row?.id || rateRow.id;
-    await deleteFarmBudgetRelationsForRate(original, savedRateId, materialTable, roleTable, blockTable);
+    await deleteFarmBudgetRelationsForRate(original, savedRateId, roleTable, blockTable);
     if (blocksForRate.length) {
       await persistFarmRowsToDatabase(
         blockTable,
@@ -12860,22 +12878,6 @@ async function saveFarmBudgetSelectedRateFromSelection() {
       );
     }
     let sequence = 1;
-    for (const material of materials) {
-      await persistFarmRowToDatabase(materialTable, {
-        id: `budget-material-${farmBudgetSafeCode(savedRateId)}-${farmBudgetSafeCode(material.id)}`,
-        moduleId: "farm-budget",
-        tableId: "budget_rate_materials",
-        budget_rate_id: savedRateId,
-        material_id: material.id,
-        material_name: material.material_name || material.item_name || material.name || "",
-        usage_quantity: picks.baseMaterialQuantity || "",
-        usage_unit: picks.baseUsageUnit || farmLookupLabel("units", material.base_unit_id) || "",
-        usage_basis: farmBudgetUsageBasisToComparison(picks.baseMaterialBasis) || picks.comparisonBasis,
-        unit_cost: "",
-        amount_per_basis: "",
-        status: "active",
-      });
-    }
     for (const worker of workers) {
       await persistFarmRowToDatabase(roleTable, {
         id: `budget-role-${farmBudgetSafeCode(savedRateId)}-${farmBudgetSafeCode(worker.kind)}-${farmBudgetSafeCode(worker.row.id)}`,
@@ -22978,12 +22980,11 @@ function farmBudgetGroupedRates(rates = []) {
   }).sort((a, b) => String(a.activity_name || a.rate_code || "").localeCompare(String(b.activity_name || b.rate_code || ""), "th"));
 }
 
-async function deleteFarmBudgetRelationsForRate(rate = {}, savedRateId = "", materialTable, roleTable, blockTable = farmTableByKey("budget_rate_blocks")) {
+async function deleteFarmBudgetRelationsForRate(rate = {}, savedRateId = "", roleTable, blockTable = farmTableByKey("budget_rate_blocks")) {
   const rateIds = farmBudgetRateIds({ ...rate, _budgetGroupIds: [...farmBudgetRateIds(rate), savedRateId].filter(Boolean) });
   if (!rateIds.size) return;
   const rowsToDelete = [
     ...farmRowsByKey("budget_rate_blocks").map((row) => ({ table: blockTable, row })),
-    ...farmRowsByKey("budget_rate_materials").map((row) => ({ table: materialTable, row })),
     ...farmRowsByKey("budget_rate_roles").map((row) => ({ table: roleTable, row })),
   ].filter((item) => item.table && item.row?.id && rateIds.has(String(item.row.budget_rate_id || "")));
   for (const item of rowsToDelete) {
@@ -22991,9 +22992,8 @@ async function deleteFarmBudgetRelationsForRate(rate = {}, savedRateId = "", mat
   }
   state.farmDbRows = state.farmDbRows || {};
   state.farmDbRows.budget_rate_blocks = (state.farmDbRows.budget_rate_blocks || []).filter((row) => !rateIds.has(String(row.budget_rate_id || "")));
-  state.farmDbRows.budget_rate_materials = (state.farmDbRows.budget_rate_materials || []).filter((row) => !rateIds.has(String(row.budget_rate_id || "")));
   state.farmDbRows.budget_rate_roles = (state.farmDbRows.budget_rate_roles || []).filter((row) => !rateIds.has(String(row.budget_rate_id || "")));
-  state.farmRecords = state.farmRecords.filter((row) => !["budget_rate_blocks", "budget_rate_materials", "budget_rate_roles"].includes(row.tableId) || !rateIds.has(String(row.budget_rate_id || "")));
+  state.farmRecords = state.farmRecords.filter((row) => !["budget_rate_blocks", "budget_rate_roles"].includes(row.tableId) || !rateIds.has(String(row.budget_rate_id || "")));
   resetFarmDerivedCaches();
 }
 
@@ -23020,7 +23020,6 @@ async function deleteFarmBudgetRateWithRelations(rateId = "") {
   if (!window.confirm(`ยืนยันลบ Rate ${label} และข้อมูลที่ผูกกับ Rate นี้ทั้งหมด?`)) return;
   const rateTable = farmTableByKey("budget_activity_rates");
   const blockTable = farmTableByKey("budget_rate_blocks");
-  const materialTable = farmTableByKey("budget_rate_materials");
   const roleTable = farmTableByKey("budget_rate_roles");
   const rateIds = farmBudgetRateIds(rate);
   const rateRows = farmBudgetRateGroupRows(rate).filter((row) => row.id && rateIds.has(String(row.id)));
@@ -23029,7 +23028,7 @@ async function deleteFarmBudgetRateWithRelations(rateId = "") {
   state.farmSyncMessage = "กำลังลบ Rate และข้อมูลที่ผูกอยู่...";
   render();
   try {
-    await deleteFarmBudgetRelationsForRate(rate, rate.id, materialTable, roleTable, blockTable);
+    await deleteFarmBudgetRelationsForRate(rate, rate.id, roleTable, blockTable);
     for (const row of rateRows.length ? rateRows : [rate]) {
       await deleteFarmRowFromDatabase(rateTable, row.id);
       rateIds.add(String(row.id));
@@ -24462,6 +24461,265 @@ function renderFarmBudgetPlantingYearSelector(picks = farmBudgetContractState(),
     </div>`;
 }
 
+function farmBudgetCanonicalMaterialDraft() {
+  return state.farmBudgetMaterialDraft;
+}
+
+function farmBudgetCanonicalActivityLabel(rate = {}) {
+  return [rate.activity_code, rate.activity_name || rate.rate_code].filter(Boolean).join(" - ") || rate.id || "-";
+}
+
+function farmBudgetCanonicalBlockRelationLabel(relation = {}) {
+  const block = farmLookup("blocks", relation.block_id);
+  return [
+    block?.block_code || relation.terrain_code,
+    block?.block_name || relation.block_name,
+  ].filter(Boolean).join(" - ") || relation.id || "-";
+}
+
+function farmBudgetCanonicalMaterialLabel(material = {}) {
+  return [material.material_code, material.material_name || material.item_name || material.name]
+    .filter(Boolean).join(" - ") || material.id || "-";
+}
+
+function farmBudgetCanonicalMaterialRows() {
+  return farmRowsByKey("budget_rate_block_materials").map((row) => {
+    const budgetRateBlock = farmLookup("budget_rate_blocks", row.budget_rate_block_id) || {};
+    const budgetActivityRate = farmLookup("budget_activity_rates", budgetRateBlock.budget_rate_id) || {};
+    const budgetYear = farmLookup("budget_years", budgetActivityRate.budget_year_id) || {};
+    const block = farmLookup("blocks", budgetRateBlock.block_id) || {};
+    const material = farmLookup("materials", row.material_id) || {};
+    const unit = farmLookup("units", row.unit_id) || {};
+    return {
+      ...row,
+      budget_year_id: budgetActivityRate.budget_year_id || "",
+      fiscal_year: budgetYear.fiscal_year || budgetActivityRate.fiscal_year || "",
+      budget_activity_rate_id: budgetActivityRate.id || budgetRateBlock.budget_rate_id || "",
+      activity_label: farmBudgetCanonicalActivityLabel(budgetActivityRate),
+      block_id: budgetRateBlock.block_id || "",
+      block_label: farmBudgetCanonicalBlockRelationLabel(budgetRateBlock),
+      material_label: farmBudgetCanonicalMaterialLabel(material),
+      unit_label: String(unit.unit_name || "").trim(),
+      budgetRateBlock,
+      budgetActivityRate,
+      budgetYear,
+      block,
+      material,
+      unit,
+    };
+  });
+}
+
+function farmBudgetCanonicalRateBlocks(rateId = "") {
+  return farmRowsByKey("budget_rate_blocks")
+    .filter((row) => row.budget_rate_id === rateId && String(row.status || "active") === "active")
+    .sort((a, b) => farmBudgetCanonicalBlockRelationLabel(a).localeCompare(farmBudgetCanonicalBlockRelationLabel(b), "th", { numeric: true }));
+}
+
+function farmBudgetCanonicalUnitModel(draft = farmBudgetCanonicalMaterialDraft()) {
+  return farmMaterialUnitModel(draft.materialId, draft.unitId, {
+    materials: farmRowsByKey("materials"),
+    units: farmRowsByKey("units"),
+    skuConversions: farmRowsByKey("sku_conversions"),
+    unitConversions: farmRowsByKey("unit_conversions"),
+  });
+}
+
+function resetFarmBudgetCanonicalMaterialDraft({ keepRate = false } = {}) {
+  const previous = farmBudgetCanonicalMaterialDraft();
+  state.farmBudgetMaterialDraft = {
+    rowId: "",
+    budgetActivityRateId: keepRate ? previous.budgetActivityRateId : "",
+    selectedBudgetRateBlockIds: [],
+    materialId: "",
+    usageBasis: "area_rai",
+    usageRate: "",
+    unitId: "",
+    unitCost: "",
+    amountPerBasis: "",
+    status: "active",
+    note: "",
+  };
+}
+
+function editFarmBudgetCanonicalMaterial(rowId = "") {
+  const row = farmBudgetCanonicalMaterialRows().find((item) => item.id === rowId);
+  if (!row) return false;
+  state.farmBudgetMaterialDraft = {
+    rowId: row.id,
+    budgetActivityRateId: row.budget_activity_rate_id,
+    selectedBudgetRateBlockIds: [row.budget_rate_block_id],
+    materialId: row.material_id,
+    usageBasis: row.usage_basis,
+    usageRate: row.usage_rate,
+    unitId: row.unit_id,
+    unitCost: row.unit_cost ?? "",
+    amountPerBasis: row.amount_per_basis ?? "",
+    status: row.status || "active",
+    note: row.note || "",
+  };
+  return true;
+}
+
+function farmBudgetCanonicalErrorMessage(error) {
+  if (error?.status === 401) return "กรุณาเข้าสู่ระบบก่อนบันทึกอัตราวัสดุราย Block";
+  if (error?.status === 403) return "บัญชีนี้ไม่มีสิทธิ์แก้ไขอัตรางบประมาณ";
+  if (error?.code === "BUDGET_BLOCK_MATERIAL_DUPLICATE") return "Block นี้มีวัสดุรายการนี้อยู่แล้ว กรุณาแก้ไขแถวเดิม";
+  if (error?.code === "CANONICAL_BUDGET_BLOCK_MATERIAL_PROTECTED") return error.message;
+  if (error?.code === "MATERIAL_UNIT_INCOMPATIBLE") return "หน่วยที่เลือกไม่รองรับวัสดุรายการนี้";
+  if (error?.status === 400) return `ข้อมูลอัตราวัสดุไม่ถูกต้อง: ${error.message}`;
+  return error?.message || "ไม่สามารถบันทึกอัตราวัสดุราย Block ได้";
+}
+
+function farmBudgetCanonicalActionArgs(row = null) {
+  const draft = farmBudgetCanonicalMaterialDraft();
+  const rate = farmLookup("budget_activity_rates", draft.budgetActivityRateId);
+  const blockIds = [...new Set(draft.selectedBudgetRateBlockIds || [])];
+  if (!rate?.id || !rate.budget_year_id) throw new Error("กรุณาเลือกปีงบประมาณและกิจกรรม");
+  if (!blockIds.length) throw new Error("กรุณาเลือก Block อย่างน้อย 1 รายการ");
+  if (!draft.materialId) throw new Error("กรุณาเลือกวัสดุ");
+  const unitModel = farmBudgetCanonicalUnitModel(draft);
+  if (!unitModel.units.some((unit) => unit.id === draft.unitId)) {
+    throw Object.assign(new Error("หน่วยที่เลือกไม่รองรับวัสดุรายการนี้"), { status: 400, code: "MATERIAL_UNIT_INCOMPATIBLE" });
+  }
+  return {
+    row_id: row?.id || draft.rowId || null,
+    budget_year_id: rate.budget_year_id,
+    budget_activity_rate_id: rate.id,
+    budget_rate_block_ids: blockIds,
+    material_id: draft.materialId,
+    usage_basis: draft.usageBasis,
+    usage_rate: draft.usageRate,
+    unit_id: draft.unitId,
+    unit_cost: draft.unitCost === "" ? null : draft.unitCost,
+    amount_per_basis: draft.amountPerBasis === "" ? null : draft.amountPerBasis,
+    status: draft.status || "active",
+    note: draft.note || null,
+  };
+}
+
+async function saveFarmBudgetCanonicalMaterial() {
+  const draft = farmBudgetCanonicalMaterialDraft();
+  const blockCount = new Set(draft.selectedBudgetRateBlockIds || []).size;
+  const action = draft.rowId
+    ? "update_budget_block_material_rate"
+    : blockCount > 1 ? "bulk_apply_budget_block_material_rate" : "create_budget_block_material_rate";
+  try {
+    const args = farmBudgetCanonicalActionArgs();
+    await runFarmAction(action, args, {
+      confirmed: action === "bulk_apply_budget_block_material_rate",
+      reason: action === "bulk_apply_budget_block_material_rate"
+        ? "ใช้ Material Budget เดียวกันกับ Block ที่เลือก"
+        : "บันทึก Canonical per-Block Material Budget",
+    });
+    resetFarmBudgetCanonicalMaterialDraft({ keepRate: true });
+    state.farmSyncStatus = "success";
+    state.farmSyncMessage = action === "bulk_apply_budget_block_material_rate"
+      ? `บันทึกอัตราวัสดุแยก ${fmt(blockCount)} Block แล้ว`
+      : "บันทึกอัตราวัสดุราย Block แล้ว";
+    render();
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = farmBudgetCanonicalErrorMessage(error);
+    render();
+  }
+}
+
+async function deactivateFarmBudgetCanonicalMaterial(rowId = "") {
+  const row = farmBudgetCanonicalMaterialRows().find((item) => item.id === rowId);
+  if (!row || !window.confirm(`ยืนยันปิดใช้งาน ${row.material_label} สำหรับ ${row.block_label}?`)) return;
+  editFarmBudgetCanonicalMaterial(row.id);
+  state.farmBudgetMaterialDraft.status = "inactive";
+  try {
+    await runFarmAction("deactivate_budget_block_material_rate", farmBudgetCanonicalActionArgs(row), {
+      confirmed: true,
+      reason: "ปิดใช้งาน Canonical per-Block Material Budget",
+    });
+    resetFarmBudgetCanonicalMaterialDraft({ keepRate: true });
+    state.farmSyncStatus = "success";
+    state.farmSyncMessage = "ปิดใช้งานอัตราวัสดุราย Block แล้ว";
+    render();
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = farmBudgetCanonicalErrorMessage(error);
+    render();
+  }
+}
+
+function renderFarmBudgetCanonicalMaterialEditor() {
+  const allRows = farmBudgetCanonicalMaterialRows();
+  const filters = state.farmBudgetMaterialFilters;
+  const draft = farmBudgetCanonicalMaterialDraft();
+  const rates = farmRowsByKey("budget_activity_rates")
+    .filter((rate) => farmBudgetCanonicalRateBlocks(rate.id).length)
+    .sort((a, b) => farmBudgetCanonicalActivityLabel(a).localeCompare(farmBudgetCanonicalActivityLabel(b), "th", { numeric: true }));
+  const selectedRate = farmLookup("budget_activity_rates", draft.budgetActivityRateId);
+  const selectedYear = selectedRate ? farmLookup("budget_years", selectedRate.budget_year_id) : null;
+  const rateBlocks = selectedRate ? farmBudgetCanonicalRateBlocks(selectedRate.id) : [];
+  const materials = farmRowsByKey("materials")
+    .filter(farmMaterialActiveRow)
+    .sort((a, b) => farmBudgetCanonicalMaterialLabel(a).localeCompare(farmBudgetCanonicalMaterialLabel(b), "th", { numeric: true }));
+  const unitModel = farmBudgetCanonicalUnitModel(draft);
+  const visibleRows = allRows.filter((row) => (
+    (filters.year === "all" || row.budget_year_id === filters.year)
+    && (filters.activity === "all" || row.budget_activity_rate_id === filters.activity)
+    && (filters.block === "all" || row.budget_rate_block_id === filters.block)
+    && (filters.material === "all" || row.material_id === filters.material)
+  ));
+  const years = [...new Map(allRows.filter((row) => row.budget_year_id).map((row) => [row.budget_year_id, row])).values()];
+  const activities = [...new Map(allRows.filter((row) => row.budget_activity_rate_id).map((row) => [row.budget_activity_rate_id, row])).values()];
+  const blocks = [...new Map(allRows.filter((row) => row.budget_rate_block_id).map((row) => [row.budget_rate_block_id, row])).values()];
+  const rowMaterials = [...new Map(allRows.filter((row) => row.material_id).map((row) => [row.material_id, row])).values()];
+  const selectedBlockCount = new Set(draft.selectedBudgetRateBlockIds || []).size;
+  return `
+    <article class="farm-budget-canonical-materials">
+      <div class="section-head">
+        <div><h3>Material Budget ราย Block</h3><span>Canonical source of truth · ${fmt(allRows.length)} รายการ · แต่ละ Block แก้ไขอัตราได้อิสระ</span></div>
+        <span class="status-pill">budget_rate_block_materials</span>
+      </div>
+      <div class="budget-canonical-filters">
+        <label>ปีงบประมาณ<select data-budget-canonical-filter="year"><option value="all">ทั้งหมด</option>${years.map((row) => `<option value="${esc(row.budget_year_id)}"${filters.year === row.budget_year_id ? " selected" : ""}>${esc(row.fiscal_year || row.budget_year_id)}</option>`).join("")}</select></label>
+        <label>กิจกรรม<select data-budget-canonical-filter="activity"><option value="all">ทั้งหมด</option>${activities.map((row) => `<option value="${esc(row.budget_activity_rate_id)}"${filters.activity === row.budget_activity_rate_id ? " selected" : ""}>${esc(row.activity_label)}</option>`).join("")}</select></label>
+        <label>Block<select data-budget-canonical-filter="block"><option value="all">ทั้งหมด</option>${blocks.map((row) => `<option value="${esc(row.budget_rate_block_id)}"${filters.block === row.budget_rate_block_id ? " selected" : ""}>${esc(row.block_label)}</option>`).join("")}</select></label>
+        <label>วัสดุ<select data-budget-canonical-filter="material"><option value="all">ทั้งหมด</option>${rowMaterials.map((row) => `<option value="${esc(row.material_id)}"${filters.material === row.material_id ? " selected" : ""}>${esc(row.material_label)}</option>`).join("")}</select></label>
+      </div>
+      <section class="budget-canonical-editor">
+        <div class="budget-canonical-editor-grid">
+          <label>ปีงบประมาณ<input value="${esc(selectedYear?.fiscal_year || "-")}" readonly></label>
+          <label>กิจกรรม / Rate *<select data-budget-canonical-draft="budgetActivityRateId"><option value="">เลือกกิจกรรม</option>${rates.map((rate) => `<option value="${esc(rate.id)}"${draft.budgetActivityRateId === rate.id ? " selected" : ""}>${esc(farmBudgetCanonicalActivityLabel(rate))}</option>`).join("")}</select></label>
+          <label>วัสดุ *<select data-budget-canonical-draft="materialId"><option value="">เลือกวัสดุ</option>${materials.map((material) => `<option value="${esc(material.id)}"${draft.materialId === material.id ? " selected" : ""}>${esc(farmBudgetCanonicalMaterialLabel(material))}</option>`).join("")}</select></label>
+          <label>ฐานการใช้ *<select data-budget-canonical-draft="usageBasis">${["tree_count", "area_rai", "manual_qty", "bag_count"].map((basis) => `<option value="${basis}"${draft.usageBasis === basis ? " selected" : ""}>${esc(farmTranslateValue(basis))}</option>`).join("")}</select></label>
+          <label>อัตราการใช้ *<input data-budget-canonical-draft="usageRate" type="number" min="0" step="0.0001" value="${esc(draft.usageRate)}"></label>
+          <label>หน่วย *<select data-budget-canonical-draft="unitId" ${draft.materialId ? "" : "disabled"}>${farmMaterialUnitOptions(unitModel)}</select><small>${esc(farmMaterialUnitStatus(unitModel))}</small></label>
+          <label>ราคาต่อหน่วย<input data-budget-canonical-draft="unitCost" type="number" min="0" step="0.01" value="${esc(draft.unitCost)}"></label>
+          <label>ต้นทุนต่อฐานเทียบ<input data-budget-canonical-draft="amountPerBasis" type="number" min="0" step="0.01" value="${esc(draft.amountPerBasis)}"></label>
+          <label>สถานะ<select data-budget-canonical-draft="status">${["active", "inactive"].map((status) => `<option value="${status}"${draft.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}</select></label>
+          <label class="budget-canonical-note">หมายเหตุ<textarea data-budget-canonical-draft="note" rows="2">${esc(draft.note)}</textarea></label>
+        </div>
+        <fieldset class="budget-canonical-blocks" ${selectedRate ? "" : "disabled"}>
+          <legend>Block ที่ใช้ Rate ${selectedBlockCount ? `· เลือก ${fmt(selectedBlockCount)}` : ""}</legend>
+          ${rateBlocks.map((relation) => `<label><input type="checkbox" data-budget-canonical-block="${esc(relation.id)}"${draft.selectedBudgetRateBlockIds.includes(relation.id) ? " checked" : ""}${draft.rowId && !draft.selectedBudgetRateBlockIds.includes(relation.id) ? " disabled" : ""}> <span>${esc(farmBudgetCanonicalBlockRelationLabel(relation))}</span></label>`).join("") || "<small>เลือกกิจกรรมเพื่อดู Block</small>"}
+        </fieldset>
+        <div class="budget-canonical-actions">
+          <button type="button" data-budget-canonical-save ${state.farmSyncBusy || !farmCanManageBudget() ? "disabled" : ""}>${draft.rowId ? "บันทึกแก้ไข Block นี้" : selectedBlockCount > 1 ? `ใช้กับ Block ที่เลือก (${fmt(selectedBlockCount)})` : "เพิ่ม Material Rate"}</button>
+          <button type="button" class="secondary" data-budget-canonical-reset ${state.farmSyncBusy ? "disabled" : ""}>ล้างฟอร์ม</button>
+        </div>
+      </section>
+      <div class="table-wrap farm-table-wrap budget-canonical-table-wrap">
+        <table class="mini-table farm-table budget-canonical-table">
+          <thead><tr><th>ปี</th><th>กิจกรรม</th><th>Block</th><th>วัสดุ</th><th>Rate</th><th>Basis</th><th>Unit</th><th>Cost</th><th>Amount/Basis</th><th>สถานะ</th><th>หมายเหตุ</th><th>จัดการ</th></tr></thead>
+          <tbody>${visibleRows.map((row) => `<tr${draft.rowId === row.id ? ' class="is-selected"' : ""}>
+            <td>${esc(row.fiscal_year || "-")}</td><td>${esc(row.activity_label)}</td><td><strong>${esc(row.block_label)}</strong></td><td>${esc(row.material_label)}</td>
+            <td class="num">${esc(row.usage_rate)}</td><td>${esc(farmTranslateValue(row.usage_basis))}</td><td>${esc(row.unit_label || "DATA QUALITY GAP")}</td>
+            <td class="num">${row.unit_cost === "" ? "-" : esc(row.unit_cost)}</td><td class="num">${row.amount_per_basis === "" ? "-" : esc(row.amount_per_basis)}</td>
+            <td>${esc(farmTranslateValue(row.status))}</td><td>${esc(row.note || "-")}</td>
+            <td class="farm-actions"><button type="button" data-budget-canonical-edit="${esc(row.id)}" ${state.farmSyncBusy || !farmCanManageBudget() ? "disabled" : ""}>แก้ไข</button><button type="button" class="danger" data-budget-canonical-deactivate="${esc(row.id)}" ${state.farmSyncBusy || !farmCanManageBudget() || row.status === "inactive" ? "disabled" : ""}>ปิดใช้</button></td>
+          </tr>`).join("") || '<tr><td colspan="12">ไม่พบอัตราวัสดุราย Block ตามตัวกรอง</td></tr>'}</tbody>
+        </table>
+      </div>
+    </article>`;
+}
+
 function renderFarmBudgetBoard() {
   const rates = farmRowsByKey("budget_activity_rates");
   const picks = farmBudgetContractState();
@@ -24472,13 +24730,14 @@ function renderFarmBudgetBoard() {
         <div class="budget-tree-grid budget-tree-grid-wide-area">
           <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetPlantingYearSelector(picks)}${renderFarmBudgetAreaTree(picks)}</div></section>
           <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree()}</div></section>
-          <section class="budget-tree-card"><h4>วัสดุ</h4><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree()}</div></section>
+          <section class="budget-tree-card"><h4>วัสดุอ้างอิง</h4><small class="budget-tree-scope-note">ไม่บันทึกอัตรา Legacy · จัดการอัตราราย Block ในส่วน Canonical ด้านล่าง</small><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree()}</div></section>
           <section class="budget-tree-card"><h4>พนักงาน</h4><div class="budget-tree-scroll">${renderFarmBudgetWorkerTree()}</div></section>
         </div>
       </article>
       ${renderFarmBudgetExtraRateRows()}
       ${renderFarmBudgetCreateRateBar()}
       ${renderFarmBudgetRateTable(rates)}
+      ${renderFarmBudgetCanonicalMaterialEditor()}
       ${renderFarmActivityModal()}
     </section>`;
 }
@@ -27120,6 +27379,33 @@ async function startAuthenticatedApplication() {
   document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.matches("[data-budget-canonical-filter]")) {
+      state.farmBudgetMaterialFilters[e.target.dataset.budgetCanonicalFilter] = e.target.value || "all";
+      render();
+      return;
+    }
+    if (e.target.matches("[data-budget-canonical-draft]")) {
+      const draft = farmBudgetCanonicalMaterialDraft();
+      const field = e.target.dataset.budgetCanonicalDraft;
+      draft[field] = e.target.value;
+      if (field === "budgetActivityRateId") draft.selectedBudgetRateBlockIds = [];
+      if (field === "materialId") {
+        draft.unitId = "";
+        draft.unitId = farmBudgetCanonicalUnitModel(draft).selectedUnitId;
+      }
+      render();
+      return;
+    }
+    if (e.target.matches("[data-budget-canonical-block]")) {
+      const draft = farmBudgetCanonicalMaterialDraft();
+      const selected = new Set(draft.selectedBudgetRateBlockIds || []);
+      const blockId = e.target.dataset.budgetCanonicalBlock;
+      if (e.target.checked) selected.add(blockId);
+      else selected.delete(blockId);
+      draft.selectedBudgetRateBlockIds = [...selected];
+      render();
+      return;
+    }
     if (e.target.id === "systemUserEmployee") {
       const employee = systemUserEmployeeFromInput(e.target.value);
       if (employee && state.systemUserDrawer) {
@@ -27690,6 +27976,27 @@ async function startAuthenticatedApplication() {
     }
   });
   els.reportPage.addEventListener("click", async (e) => {
+    if (e.target.closest("[data-budget-canonical-save]")) {
+      await saveFarmBudgetCanonicalMaterial();
+      return;
+    }
+    if (e.target.closest("[data-budget-canonical-reset]")) {
+      resetFarmBudgetCanonicalMaterialDraft({ keepRate: true });
+      render();
+      return;
+    }
+    const canonicalEdit = e.target.closest("[data-budget-canonical-edit]");
+    if (canonicalEdit) {
+      editFarmBudgetCanonicalMaterial(canonicalEdit.dataset.budgetCanonicalEdit);
+      render();
+      requestAnimationFrame(() => document.querySelector(".budget-canonical-editor")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      return;
+    }
+    const canonicalDeactivate = e.target.closest("[data-budget-canonical-deactivate]");
+    if (canonicalDeactivate) {
+      await deactivateFarmBudgetCanonicalMaterial(canonicalDeactivate.dataset.budgetCanonicalDeactivate);
+      return;
+    }
     if (e.target.closest("[data-system-user-close]")) {
       state.systemUserDrawer = null;
       render();
