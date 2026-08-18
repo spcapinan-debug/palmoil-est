@@ -188,6 +188,8 @@ const ACTION_ONLY_TABLES = new Set([
   "app_notification_preferences", "app_notification_jobs",
 ]);
 const SYSTEM_USER_TABLES = new Set(["profiles", "profile_roles"]);
+const CANONICAL_BUDGET_PROTECTION_CODE = "CANONICAL_BUDGET_BLOCK_MATERIAL_PROTECTED";
+const CANONICAL_BUDGET_PROTECTION_MESSAGE = "รายการนี้มีอัตราวัสดุราย Block แบบใหม่แล้ว ไม่สามารถแก้ไขด้วยขั้นตอนเดิมได้";
 
 function tableName(value) {
   const name = String(value || "").trim();
@@ -491,6 +493,53 @@ async function validateBudgetRateBlockRows(_actor, rows, selectedPlantingYears =
   return blocks;
 }
 
+function uniqueBudgetIds(values = []) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function budgetIdInFilter(values = []) {
+  const csv = values.map((value) => `"${String(value).replace(/"/g, '\\"')}"`).join(",");
+  return encodeURIComponent(`in.(${csv})`);
+}
+
+async function budgetRateBlockIdsForHeaders(headerIds = []) {
+  const ids = uniqueBudgetIds(headerIds);
+  const blockIds = [];
+  for (let index = 0; index < ids.length; index += 100) {
+    const filter = budgetIdInFilter(ids.slice(index, index + 100));
+    const { data } = await rest(`budget_rate_blocks?budget_rate_id=${filter}&select=id&limit=5000`);
+    blockIds.push(...(data || []).map((row) => row.id).filter(Boolean));
+  }
+  return uniqueBudgetIds(blockIds);
+}
+
+async function canonicalBudgetChildForBlocks(blockIds = []) {
+  const ids = uniqueBudgetIds(blockIds);
+  for (let index = 0; index < ids.length; index += 100) {
+    const filter = budgetIdInFilter(ids.slice(index, index + 100));
+    const { data } = await rest(
+      `budget_rate_block_materials?budget_rate_block_id=${filter}&select=id,budget_rate_block_id&limit=1`,
+    );
+    if (data?.[0]) return data[0];
+  }
+  return null;
+}
+
+async function assertLegacyBudgetMutationSafe(table, rowIds = []) {
+  if (!["budget_activity_rates", "budget_rate_blocks"].includes(table)) return;
+  const ids = uniqueBudgetIds(rowIds);
+  if (!ids.length) return;
+  const blockIds = table === "budget_rate_blocks" ? ids : await budgetRateBlockIdsForHeaders(ids);
+  const canonicalChild = await canonicalBudgetChildForBlocks(blockIds);
+  if (canonicalChild) {
+    throw new ApiError(
+      409,
+      CANONICAL_BUDGET_PROTECTION_CODE,
+      CANONICAL_BUDGET_PROTECTION_MESSAGE,
+    );
+  }
+}
+
 function areaReferenceRows(table, rows = []) {
   if (!AREA_REFERENCE_TABLES.has(table)) return rows;
   return rows.filter((row) => String(row.status || "active").toLowerCase() === "active");
@@ -679,6 +728,7 @@ async function handlePost(req, res, actor) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   if (rows.length > 500) throw new ApiError(400, "VALIDATION_ERROR", "A request may write at most 500 rows");
+  await assertLegacyBudgetMutationSafe(table, rows.map((row) => row.id));
   if (table === "budget_rate_blocks") {
     await validateBudgetRateBlockRows(actor, rows, body.selectedPlantingYears, body.selectedBlockIds);
   }
@@ -717,7 +767,9 @@ async function handleDelete(req, res, url, actor) {
   }
   writePermission(actor, table);
   if (body.all === true) throw new ApiError(403, "DELETE_ALL_DISABLED", "Bulk table deletion is disabled");
-  const id = requireUuid(body.id || url.searchParams.get("id"), "id");
+  const rawId = body.id || url.searchParams.get("id");
+  await assertLegacyBudgetMutationSafe(table, [rawId]);
+  const id = requireUuid(rawId, "id");
   const { data } = await rest(`${table}?id=eq.${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: { Prefer: "return=representation" },
@@ -758,7 +810,7 @@ async function handler(req, res) {
 module.exports = handler;
 module.exports._test = {
   ACTION_ONLY_TABLES, AREA_REFERENCE_TABLES, OPTIONAL_TABLES, SYSTEM_USER_TABLES, TABLES, UAT_OPERATIONAL_TABLES, WRITE_PERMISSIONS,
-  areaReferenceRows, cache, clearCache, parallelMap,
+  CANONICAL_BUDGET_PROTECTION_CODE, areaReferenceRows, assertLegacyBudgetMutationSafe, cache, clearCache, parallelMap,
   actorCanAccessBlock, databaseBlockPlantingYear, enforceUatTableWrite, normalizePlantingYear,
   requestedTables, requireActiveCatalogBlock, safeTableError, tableName, uatActionCenterRows, uatRowAllowed,
   validateActiveBlockRows, validateBudgetRateBlockRows, writePermission,

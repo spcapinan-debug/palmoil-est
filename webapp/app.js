@@ -334,6 +334,7 @@ const FARM_AUTH_API = window.__FARM_AUTH_API__ || "/api/farm-auth";
 const FARM_USERS_API = window.__FARM_USERS_API__ || "/api/farm-users";
 const FARM_ACTIONS_API = window.__FARM_ACTIONS_API__ || "/api/farm-actions";
 const FARM_BUDGET_SYNC_API = window.__FARM_BUDGET_SYNC_API__ || "/api/farm-budget-sync";
+const FARM_CANONICAL_BUDGET_PROTECTION_CODE = "CANONICAL_BUDGET_BLOCK_MATERIAL_PROTECTED";
 const FARM_DB_TABLE_CACHE_MS = 30 * 1000;
 const farmDbTableLoadedAt = new Map();
 const farmDbTableInflight = new Map();
@@ -348,6 +349,20 @@ function farmApiHeaders(extra = {}) {
 
 function farmApiErrorMessage(payload, fallback) {
   return payload?.error?.message || payload?.message || payload?.error || fallback;
+}
+
+function farmApiRequestError(response, payload, fallback) {
+  const error = new Error(farmApiErrorMessage(payload, fallback));
+  error.code = payload?.error?.code || payload?.code || "";
+  error.status = Number(response?.status || 0);
+  return error;
+}
+
+function farmBudgetLegacyMutationErrorMessage(error, fallback) {
+  if (error?.code === FARM_CANONICAL_BUDGET_PROTECTION_CODE) {
+    return error.message || "รายการนี้มีอัตราวัสดุราย Block แบบใหม่แล้ว ไม่สามารถแก้ไขด้วยขั้นตอนเดิมได้";
+  }
+  return `${fallback}: ${error?.message || "ไม่สามารถบันทึกข้อมูลได้"}`;
 }
 
 function farmConnectionStateFromResponse(response, payload = {}) {
@@ -4947,7 +4962,7 @@ async function persistFarmRowToDatabase(table, row) {
     cache: "no-store",
   });
   const payload = await res.json().catch(() => ({}));
-  if (!res.ok || payload?.ok === false) throw new Error(farmApiErrorMessage(payload, `Farm API ${res.status}`));
+  if (!res.ok || payload?.ok === false) throw farmApiRequestError(res, payload, `Farm API ${res.status}`);
   const saved = payload.row ? mergeFarmDbRow(table.key, payload.row) : null;
   return { ...payload, row: saved || payload.row || row };
 }
@@ -4961,7 +4976,7 @@ async function persistFarmRowsToDatabase(table, rows, metadata = {}) {
     cache: "no-store",
   });
   const payload = await res.json().catch(() => ({}));
-  if (!res.ok || payload?.ok === false) throw new Error(farmApiErrorMessage(payload, `Farm API ${res.status}`));
+  if (!res.ok || payload?.ok === false) throw farmApiRequestError(res, payload, `Farm API ${res.status}`);
   const savedRows = (payload.rows || uniqueRows).map((row) => mergeFarmDbRow(table.key, row) || row);
   return { ...payload, rows: savedRows };
 }
@@ -4987,7 +5002,7 @@ async function deleteFarmRowFromDatabase(table, id) {
     cache: "no-store",
   });
   const payload = await res.json().catch(() => ({}));
-  if (!res.ok || payload?.ok === false) throw new Error(farmApiErrorMessage(payload, `Farm API ${res.status}`));
+  if (!res.ok || payload?.ok === false) throw farmApiRequestError(res, payload, `Farm API ${res.status}`);
   return payload;
 }
 
@@ -12916,7 +12931,7 @@ async function saveFarmBudgetSelectedRateFromSelection() {
     await loadFarmTablesFromDatabase({ silent: false, tables: farmDatabaseTablesForView("farm-budget") });
   } catch (error) {
     state.farmSyncStatus = "error";
-    state.farmSyncMessage = `บันทึกแก้ไข Rate ไม่สำเร็จ: ${error.message}`;
+    state.farmSyncMessage = farmBudgetLegacyMutationErrorMessage(error, "บันทึกแก้ไข Rate ไม่สำเร็จ");
   } finally {
     state.farmSyncBusy = false;
     render();
@@ -13087,18 +13102,23 @@ async function deleteFarmRow(id = state.farmEditId, tableKey = state.farmActivit
     updatedAt: new Date().toISOString(),
   };
   const shouldDeleteOnline = !row.readonly || row._farmFallback || row.databaseId;
-  state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === row.id || item._overrideOf === row.id || item.id === `override-${row.id}`)));
-  state.farmRecords.push(deleteMarker);
-  state.farmEditId = "";
-  state.farmDetailId = "";
-  state.farmActivityModalTable = "";
-  saveFarmRecords();
+  const deferLocalDelete = table.key === "budget_activity_rates" && shouldDeleteOnline;
+  const applyLocalDelete = () => {
+    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && (item.id === row.id || item._overrideOf === row.id || item.id === `override-${row.id}`)));
+    state.farmRecords.push(deleteMarker);
+    state.farmEditId = "";
+    state.farmDetailId = "";
+    state.farmActivityModalTable = "";
+    saveFarmRecords();
+  };
+  if (!deferLocalDelete) applyLocalDelete();
   state.farmSyncBusy = true;
   state.farmSyncStatus = "";
   state.farmSyncMessage = "กำลังลบข้อมูล...";
   render();
   try {
     if (shouldDeleteOnline) await deleteFarmRowFromDatabase(table, row.id);
+    if (deferLocalDelete) applyLocalDelete();
     state.farmDbRows = {
       ...state.farmDbRows,
       [table.key]: (state.farmDbRows?.[table.key] || []).filter((item) => item.id !== row.id && item.databaseId !== row.databaseId),
@@ -13108,10 +13128,12 @@ async function deleteFarmRow(id = state.farmEditId, tableKey = state.farmActivit
     state.farmSyncMessage = `ลบข้อมูลแล้ว: ${label}`;
     await loadFarmCurrentViewTables({ silent: false, extraTables: [table.key] });
   } catch (error) {
-    state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && item._deleted && (item.id === row.id || item._overrideOf === row.id)));
-    saveFarmRecords();
+    if (!deferLocalDelete) {
+      state.farmRecords = state.farmRecords.filter((item) => !(item.tableId === table.key && item._deleted && (item.id === row.id || item._overrideOf === row.id)));
+      saveFarmRecords();
+    }
     state.farmSyncStatus = "error";
-    state.farmSyncMessage = `ลบไม่สำเร็จ: ${error.message}`;
+    state.farmSyncMessage = farmBudgetLegacyMutationErrorMessage(error, "ลบไม่สำเร็จ");
   } finally {
     state.farmSyncBusy = false;
     render();
@@ -23023,7 +23045,7 @@ async function deleteFarmBudgetRateWithRelations(rateId = "") {
     await loadFarmTablesFromDatabase({ silent: false, tables: farmDatabaseTablesForView("farm-budget") });
   } catch (error) {
     state.farmSyncStatus = "error";
-    state.farmSyncMessage = `ลบ Rate ไม่สำเร็จ: ${error.message}`;
+    state.farmSyncMessage = farmBudgetLegacyMutationErrorMessage(error, "ลบ Rate ไม่สำเร็จ");
   } finally {
     state.farmSyncBusy = false;
     render();
