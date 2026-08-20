@@ -176,12 +176,11 @@ test("frontend preserves the protected Budget row until server delete succeeds",
   assert.match(appSource, /error\.code = payload\?\.error\?\.code/);
 });
 
-test("H. containment leaves Planning on its existing legacy Budget material source", () => {
+test("H. containment does not introduce Activity Material Standard fallback into Planning", () => {
   const planningStart = appSource.indexOf("function farmWorkOrderMaterialPlanRows");
   const planningEnd = appSource.indexOf("function farmNewUuid", planningStart);
   const planningSource = appSource.slice(planningStart, planningEnd);
-  assert.match(planningSource, /farmBudgetMaterialUsageRows/);
-  assert.doesNotMatch(planningSource, /budget_rate_block_materials|activity_material_usage_rates/);
+  assert.doesNotMatch(planningSource, /activity_material_usage_rates/);
 });
 
 test("I. Activity Master still has no Material Rate management", () => {

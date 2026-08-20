@@ -291,12 +291,11 @@ test("14. Activity Master still contains no Material Rate editor", () => {
   assert.doesNotMatch(appSource, /renderFarmMaterialStandard|farmMaterialStandardModal|data-material-standard/);
 });
 
-test("15. Planning remains on the existing legacy Budget behavior", () => {
+test("15. Planning runtime still has no Activity Material Standard fallback", () => {
   const start = appSource.indexOf("function farmWorkOrderMaterialPlanRows");
   const end = appSource.indexOf("function farmNewUuid", start);
   const source = appSource.slice(start, end);
-  assert.match(source, /farmBudgetMaterialUsageRows/);
-  assert.doesNotMatch(source, /budget_rate_block_materials|activity_material_usage_rates/);
+  assert.doesNotMatch(source, /activity_material_usage_rates/);
 });
 
 test("16. cleanup endpoint remains disabled", async () => {

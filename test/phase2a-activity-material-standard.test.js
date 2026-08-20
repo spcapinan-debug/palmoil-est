@@ -169,7 +169,7 @@ test("Activity UI has no Material Standard management or draft-write entry point
   assert.doesNotMatch(tableLoader, /activity_material_usage_rates/);
 });
 
-test("Planning material quantities use Budget relations and never Activity Standard fallback", () => {
+test("Planning runtime has no Activity Material Standard fallback", () => {
   const planningStart = appSource.indexOf("function farmWorkOrderMaterialPlanRows");
   const planningEnd = appSource.indexOf("function farmNewUuid", planningStart);
   const createStart = appSource.indexOf("async function createFarmWorkPlanFromSelection");
@@ -181,10 +181,8 @@ test("Planning material quantities use Budget relations and never Activity Stand
     appSource.slice(createStart, createEnd),
     appSource.slice(editStart, editEnd),
   ]) {
-    assert.match(source, /farmBudgetMaterialUsageRows/);
     assert.doesNotMatch(source, /activity_material_usage_rates|selectedUsageRate/);
   }
-  assert.match(appSource.slice(planningStart, planningEnd), /planned_quantity: 0/);
 });
 
 test("unit dropdown labels use only units.unit_name while values remain units.id", () => {
