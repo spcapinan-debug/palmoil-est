@@ -17636,3 +17636,53 @@ details.farm-survey-score-section[open] > summary::after {
   .auth-card { padding-inline: 20px; }
   .auth-card h1 { font-size: 1.42rem; }
 }
+/* Canonical Planning runtime */
+.farm-canonical-planning { display: grid; gap: 16px; min-width: 0; }
+.farm-planning-no-work-order,
+.farm-planning-historical-note,
+.farm-planning-permission-note,
+.farm-planning-empty-snapshot { border: 1px solid #d8e5de; border-radius: 12px; background: #f6faf8; color: #385047; padding: 12px 14px; }
+.farm-planning-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.farm-planning-list-title { margin: 18px 0 10px; }
+.farm-planning-plan-card { border: 1px solid #dce5e0; border-radius: 14px; padding: 14px; background: #fff; min-width: 0; }
+.farm-planning-plan-card.is-selected { border-color: #247a52; box-shadow: 0 0 0 2px rgba(36, 122, 82, .12); }
+.farm-planning-plan-card header,
+.farm-planning-plan-card header > div,
+.farm-planning-lineage,
+.farm-planning-frozen { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.farm-planning-plan-card header { justify-content: space-between; }
+.farm-planning-plan-card h4 { margin: 12px 0; }
+.farm-planning-plan-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.farm-planning-plan-card dl div { min-width: 0; }
+.farm-planning-plan-card dt { color: #718078; font-size: 12px; }
+.farm-planning-plan-card dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.farm-planning-origin { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; font-size: 12px; font-weight: 700; }
+.farm-planning-origin.is-canonical { color: #12633f; background: #e4f5eb; }
+.farm-planning-origin.is-historical { color: #6b5b32; background: #f5f0df; }
+.farm-planning-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.farm-planning-form-grid label { display: grid; align-content: start; gap: 6px; min-width: 0; }
+.farm-planning-form-grid input,
+.farm-planning-form-grid select,
+.farm-planning-form-grid textarea { width: 100%; min-width: 0; }
+.farm-planning-wide { grid-column: 1 / -1; }
+.farm-planning-frozen { justify-content: space-between; border: 1px solid #b7d8c6; border-radius: 12px; background: #edf8f1; color: #165b3a; padding: 12px 14px; margin-bottom: 14px; }
+.farm-planning-lineage { padding: 10px 0; color: #5b6b63; font-size: 12px; }
+.farm-planning-lineage code,
+.farm-planning-material-table code { display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.farm-planning-budget-preview,
+.farm-planning-material-table { min-width: 0; margin: 12px 0; }
+.farm-planning-material-table { overflow-x: auto; }
+.farm-planning-material-table table { min-width: 1120px; }
+.farm-canonical-planning .farm-plan-actions { flex-wrap: wrap; }
+
+@media (max-width: 900px) {
+  .farm-planning-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+  .farm-planning-form-grid,
+  .farm-planning-plan-card dl { grid-template-columns: 1fr; }
+  .farm-planning-plan-card header,
+  .farm-planning-frozen { align-items: stretch; flex-direction: column; }
+  .farm-canonical-planning .farm-plan-actions { display: grid; grid-template-columns: 1fr; }
+}

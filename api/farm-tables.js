@@ -285,11 +285,28 @@ async function uatReadContext(actor) {
   const blockKeys = new Set(blocks.flatMap((row) => [row.id, row.block_code, row.block_name]).filter(Boolean));
   const workOrderIds = setOf(orders, "id");
   const plannedItemIds = setOf(orders, "planned_work_item_id");
-  const items = plannedItemIds.size
+  const workOrderItems = plannedItemIds.size
     ? await rest(`planned_work_items?id=in.(${[...plannedItemIds].join(",")})&select=id,annual_plan_id`)
       .then(({ data }) => data || [])
     : [];
-  const annualPlanIds = setOf(items, "annual_plan_id");
+  const canonicalItems = blockIds.size
+    ? await rest(`planned_work_items?source_type=eq.canonical_budget&block_id=in.(${[...blockIds].join(",")})&select=id,annual_plan_id`)
+      .then(({ data }) => data || [])
+    : [];
+  const ownCanonicalPlans = await rest(
+    `annual_work_plans?source_type=eq.canonical_budget&created_by=eq.${encodeURIComponent(actor.profile.id)}&select=id`,
+  ).then(({ data }) => data || []);
+  const ownCanonicalPlanIds = setOf(ownCanonicalPlans, "id");
+  const ownCanonicalItems = ownCanonicalPlanIds.size
+    ? await rest(`planned_work_items?annual_plan_id=in.(${[...ownCanonicalPlanIds].join(",")})&source_type=eq.canonical_budget&select=id,annual_plan_id`)
+      .then(({ data }) => data || [])
+    : [];
+  const items = [...workOrderItems, ...canonicalItems, ...ownCanonicalItems];
+  [...canonicalItems, ...ownCanonicalItems].forEach((item) => plannedItemIds.add(item.id));
+  const annualPlanIds = new Set([
+    ...setOf(items, "annual_plan_id"),
+    ...setOf(ownCanonicalPlans, "id"),
+  ]);
   const results = workOrderIds.size
     ? await rest(`work_results?work_order_id=in.(${[...workOrderIds].join(",")})&select=id,work_order_id,result_status`)
       .then(({ data }) => data || [])

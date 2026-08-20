@@ -114,6 +114,26 @@ const state = {
     endDate: "",
     calcMode: "rate",
   },
+  farmCanonicalPlanning: {
+    selectedPlanId: "",
+    selectedItemId: "",
+    budgetYearId: "",
+    budgetActivityRateId: "",
+    budgetRateBlockId: "",
+    planName: "",
+    estateId: "",
+    planNote: "",
+    plannedStartDate: "",
+    plannedEndDate: "",
+    recurrenceType: "",
+    recurrenceInterval: "",
+    repeatAfterLastDoneDays: "",
+    targetQuantity: "",
+    targetUnit: "",
+    plannedBudget: "",
+    suggestedTeamId: "",
+    itemNote: "",
+  },
   farmWorkFilters: { activityGroup: "all", team: "all", zone: "all", plotGroup: "all", status: "all", query: "", startDate: "", endDate: "" },
   farmWorkGroupMode: "activity",
   farmWorkGroupChecks: { activity: true, zone: true, plotGroup: true },
@@ -349,6 +369,22 @@ const FARM_USERS_API = window.__FARM_USERS_API__ || "/api/farm-users";
 const FARM_ACTIONS_API = window.__FARM_ACTIONS_API__ || "/api/farm-actions";
 const FARM_BUDGET_SYNC_API = window.__FARM_BUDGET_SYNC_API__ || "/api/farm-budget-sync";
 const FARM_CANONICAL_BUDGET_PROTECTION_CODE = "CANONICAL_BUDGET_BLOCK_MATERIAL_PROTECTED";
+const FARM_PLANNING_ERROR_MESSAGES = Object.freeze({
+  PLANNING_PLAN_FROZEN: "แผนได้รับการอนุมัติแล้วและไม่สามารถแก้ไขได้",
+  PLANNING_REQUEST_KEY_REUSED: "คำขอนี้ถูกใช้กับข้อมูลอื่นแล้ว กรุณาลองใหม่",
+  PLANNING_BUDGET_YEAR_PLAN_MISMATCH: "ปีของแผนไม่ตรงกับปีงบประมาณ",
+  PLANNING_BASIS_NOT_SUPPORTED: "รูปแบบการคำนวณวัสดุนี้ยังไม่รองรับในระบบวางแผน",
+  PLANNING_MATERIAL_SNAPSHOT_EMPTY: "ไม่พบวัสดุที่พร้อมใช้จากงบประมาณสำหรับงานและแปลงนี้",
+  PLANNING_PLAN_NOT_EMPTY: "ต้องลบรายการงานในแผนก่อนลบแผนประจำปี",
+  PLANNING_ITEM_HAS_WORK_ORDER: "รายการนี้มีการเชื่อมโยงใบสั่งงานแล้ว ไม่สามารถลบได้",
+  PLANNING_PLAN_EMPTY: "ต้องเพิ่มรายการงานและข้อมูลวัสดุให้ครบก่อนอนุมัติแผน",
+  PLANNING_MATERIAL_SNAPSHOT_INCOMPLETE: "ข้อมูลวัสดุของรายการงานยังไม่ครบ กรุณาตรวจสอบหรือรีเฟรชข้อมูลวัสดุ",
+  PLANNING_BUDGET_YEAR_NOT_ELIGIBLE: "ปีงบประมาณนี้ยังไม่พร้อมใช้สร้างแผน",
+  PLANNING_BUDGET_ACTIVITY_RATE_NOT_ELIGIBLE: "กิจกรรมงบประมาณนี้ยังไม่พร้อมใช้สร้างแผน",
+  PLANNING_BUDGET_RATE_BLOCK_NOT_ELIGIBLE: "แปลงงบประมาณนี้ยังไม่พร้อมใช้สร้างแผน",
+  MATERIAL_INACTIVE: "มีวัสดุที่ไม่ได้ใช้งานในชุดงบประมาณ",
+  UNIT_INACTIVE: "มีหน่วยวัสดุที่ไม่ได้ใช้งานในชุดงบประมาณ",
+});
 const FARM_DB_TABLE_CACHE_MS = 30 * 1000;
 const farmDbTableLoadedAt = new Map();
 const farmDbTableInflight = new Map();
@@ -377,6 +413,13 @@ function farmBudgetLegacyMutationErrorMessage(error, fallback) {
     return error.message || "รายการนี้มีอัตราวัสดุราย Block แบบใหม่แล้ว ไม่สามารถแก้ไขด้วยขั้นตอนเดิมได้";
   }
   return `${fallback}: ${error?.message || "ไม่สามารถบันทึกข้อมูลได้"}`;
+}
+
+function farmPlanningActionErrorMessage(error) {
+  const code = [error?.code, error?.message].filter(Boolean).join(" ").trim();
+  return FARM_PLANNING_ERROR_MESSAGES[code]
+    || Object.entries(FARM_PLANNING_ERROR_MESSAGES).find(([key]) => code.includes(key))?.[1]
+    || "ไม่สามารถดำเนินการกับแผนได้ กรุณาตรวจสอบข้อมูลและลองใหม่";
 }
 
 function farmConnectionStateFromResponse(response, payload = {}) {
@@ -4807,7 +4850,7 @@ function farmDatabaseTablesForView(view = state.view) {
       "work_order_machines",
     ];
     if (view === "farm-work" || view === "farm-performance") {
-      workflowTables.push("survey_templates", "survey_questions", "budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_roles");
+      workflowTables.push("survey_templates", "survey_questions", "budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_block_materials", "budget_rate_roles");
     }
     if (["farm-work", "farm-dispatch", "farm-result", "farm-performance"].includes(view)) {
       workflowTables.push("work_results");
@@ -4968,7 +5011,9 @@ async function runFarmAction(action, args = {}, { confirmed = false, reason = ""
     return payload.result;
   } catch (error) {
     state.farmSyncStatus = "error";
-    state.farmSyncMessage = error.message || "Server Action ไม่สำเร็จ";
+    state.farmSyncMessage = action.includes("canonical_")
+      ? farmPlanningActionErrorMessage(error)
+      : error.message || "Server Action ไม่สำเร็จ";
     throw error;
   } finally {
     state.farmSyncBusy = false;
@@ -12197,8 +12242,11 @@ function farmCanManageBudget() {
 }
 
 function farmCanCreatePlanning() {
-  return farmHasWorkspacePermission("farm.plan.create")
-    && farmHasWorkspacePermission("farm.work_order.create");
+  return farmHasWorkspacePermission("farm.plan.create");
+}
+
+function farmCanApprovePlanning() {
+  return farmHasWorkspacePermission("farm.plan.approve");
 }
 
 function farmFieldKey(field) {
@@ -25776,6 +25824,402 @@ async function uploadFarmDailySurveyEvidence() {
   }, { reason: "บันทึก metadata Survey evidence" }).catch(() => null);
 }
 
+function farmCanonicalPlanningState() {
+  const draft = state.farmCanonicalPlanning || (state.farmCanonicalPlanning = {});
+  for (const key of [
+    "selectedPlanId", "selectedItemId", "budgetYearId", "budgetActivityRateId", "budgetRateBlockId",
+    "planName", "estateId", "planNote", "plannedStartDate", "plannedEndDate", "recurrenceType",
+    "recurrenceInterval", "repeatAfterLastDoneDays", "targetQuantity", "targetUnit", "plannedBudget",
+    "suggestedTeamId", "itemNote",
+  ]) if (draft[key] == null) draft[key] = "";
+  return draft;
+}
+
+function farmPlanningIsActive(row = {}) {
+  return String(row.status || "active").toLowerCase() === "active";
+}
+
+function farmPlanningIsTrue(value) {
+  return value === true || value === 1 || String(value).toLowerCase() === "true";
+}
+
+function farmCanonicalAnnualPlans() {
+  return farmRowsByKey("annual_work_plans")
+    .filter((row) => row.source_type === "canonical_budget")
+    .sort((a, b) => String(b.plan_year || "").localeCompare(String(a.plan_year || "")) || farmDateMs(b.created_at) - farmDateMs(a.created_at));
+}
+
+function farmHistoricalAnnualPlans() {
+  return farmRowsByKey("annual_work_plans")
+    .filter((row) => row.source_type !== "canonical_budget")
+    .sort((a, b) => String(b.plan_year || "").localeCompare(String(a.plan_year || "")));
+}
+
+function farmEligiblePlanningBudgetYears() {
+  return farmRowsByKey("budget_years")
+    .filter((row) => farmPlanningIsActive(row) && farmPlanningIsTrue(row.snapshot_required))
+    .sort((a, b) => String(b.fiscal_year || "").localeCompare(String(a.fiscal_year || "")));
+}
+
+function farmEligiblePlanningActivityRates(budgetYearId = "") {
+  return farmRowsByKey("budget_activity_rates")
+    .filter((row) => row.budget_year_id === budgetYearId
+      && farmPlanningIsActive(row)
+      && String(row.approval_status || "").toLowerCase() === "approved"
+      && farmPlanningIsTrue(row.is_current))
+    .sort((a, b) => String(farmLookupLabel("activities", a.activity_id)).localeCompare(String(farmLookupLabel("activities", b.activity_id)), "th"));
+}
+
+function farmEligiblePlanningRateBlocks(budgetActivityRateId = "") {
+  return farmRowsByKey("budget_rate_blocks")
+    .filter((row) => row.budget_rate_id === budgetActivityRateId && farmPlanningIsActive(row))
+    .filter((row) => {
+      const block = farmLookup("blocks", row.block_id);
+      return Boolean(block?.id) && farmPlanningIsActive(block);
+    })
+    .sort((a, b) => String(farmLookupLabel("blocks", a.block_id)).localeCompare(String(farmLookupLabel("blocks", b.block_id)), "th"));
+}
+
+function farmPlanningBudgetMaterialRows(budgetRateBlockId = "") {
+  return farmRowsByKey("budget_rate_block_materials")
+    .filter((row) => row.budget_rate_block_id === budgetRateBlockId && farmPlanningIsActive(row))
+    .map((row) => ({
+      ...row,
+      material: farmLookup("materials", row.material_id) || {},
+      unit: farmLookup("units", row.unit_id) || {},
+    }))
+    .filter((row) => Boolean(row.material.id) && Boolean(row.unit.id)
+      && farmPlanningIsActive(row.material) && farmPlanningIsActive(row.unit));
+}
+
+function farmPlanningBasisLabel(value = "") {
+  return ({ tree_count: "จำนวนต้น", area_rai: "พื้นที่ (ไร่)", manual_qty: "กำหนดจำนวนเอง", bag_count: "จำนวนกระสอบ" })[value] || value || "-";
+}
+
+function farmPlanningNullableCost(value) {
+  return value === null || value === undefined || value === "" ? "-" : moneyNf.format(n(value));
+}
+
+function farmPlanningOptionalNumber(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function farmPlanningOptionalInteger(value) {
+  const parsed = farmPlanningOptionalNumber(value);
+  return parsed == null ? null : Math.trunc(parsed);
+}
+
+function farmPlanningPlanItems(planId = "") {
+  return farmRowsByKey("planned_work_items")
+    .filter((row) => row.annual_plan_id === planId)
+    .sort((a, b) => farmDateMs(b.created_at) - farmDateMs(a.created_at));
+}
+
+function farmPlanningItemMaterials(itemId = "") {
+  return farmRowsByKey("planned_work_materials")
+    .filter((row) => row.planned_work_item_id === itemId)
+    .sort((a, b) => String(farmLookupLabel("materials", a.material_id)).localeCompare(String(farmLookupLabel("materials", b.material_id)), "th"));
+}
+
+function farmPlanningHydratePlanDraft(plan = {}) {
+  const draft = farmCanonicalPlanningState();
+  draft.selectedPlanId = plan.id || "";
+  draft.selectedItemId = "";
+  draft.planName = plan.plan_name || "";
+  draft.estateId = plan.estate_id || "";
+  draft.planNote = plan.note || "";
+  const year = farmEligiblePlanningBudgetYears().find((row) => String(row.fiscal_year) === String(plan.plan_year));
+  draft.budgetYearId = year?.id || "";
+  draft.budgetActivityRateId = "";
+  draft.budgetRateBlockId = "";
+}
+
+function farmPlanningHydrateItemDraft(item = {}) {
+  const draft = farmCanonicalPlanningState();
+  draft.selectedItemId = item.id || "";
+  draft.budgetYearId = item.source_budget_year_id || draft.budgetYearId || "";
+  draft.budgetActivityRateId = item.source_budget_activity_rate_id || "";
+  draft.budgetRateBlockId = item.source_budget_rate_block_id || "";
+  draft.plannedStartDate = item.planned_start_date || "";
+  draft.plannedEndDate = item.planned_end_date || "";
+  draft.recurrenceType = item.recurrence_type || "";
+  draft.recurrenceInterval = item.recurrence_interval ?? "";
+  draft.repeatAfterLastDoneDays = item.repeat_after_last_done_days ?? "";
+  draft.targetQuantity = item.target_quantity ?? "";
+  draft.targetUnit = item.target_unit || "";
+  draft.plannedBudget = item.planned_budget ?? "";
+  draft.suggestedTeamId = item.suggested_team_id || "";
+  draft.itemNote = item.note || "";
+}
+
+function farmPlanningPlanStatusBadge(plan = {}) {
+  const canonical = plan.source_type === "canonical_budget";
+  const approved = plan.status === "approved";
+  return `<span class="status-pill ${approved ? "is-approved" : ""}">${esc(approved ? "อนุมัติแล้ว" : farmTranslateValue(plan.status || "draft"))}</span>
+    <span class="farm-planning-origin ${canonical ? "is-canonical" : "is-historical"}">${canonical ? "แผนมาตรฐาน" : "ข้อมูลแผนเดิม"}</span>`;
+}
+
+function renderFarmPlanningMaterialSnapshot(item = {}) {
+  const rows = farmPlanningItemMaterials(item.id);
+  if (!rows.length) {
+    return `<div class="farm-planning-empty-snapshot">${item.source_type === "canonical_budget" ? "ยังไม่พบข้อมูลวัสดุที่บันทึกไว้" : "ข้อมูลแผนเดิมนี้ไม่มี Material Snapshot และยังคงเปิดอ่านได้ตามปกติ"}</div>`;
+  }
+  return `<div class="table-wrap farm-planning-material-table"><table class="mini-table farm-responsive-table">
+    <thead><tr><th>วัสดุ</th><th>ฐานคำนวณ</th><th>อัตราที่บันทึก</th><th>ปริมาณฐาน</th><th>ปริมาณแผน</th><th>หน่วย</th><th>ต้นทุน/หน่วย</th><th>ต้นทุน/ฐาน</th><th>วันที่ Snapshot</th><th>แหล่งอ้างอิง</th></tr></thead>
+    <tbody>${rows.map((row) => {
+      const material = farmLookup("materials", row.material_id) || {};
+      const unit = farmLookup("units", row.unit_id) || {};
+      return `<tr><td><strong>${esc(material.material_code || "-")}</strong><small>${esc(material.material_name || farmLookupLabel("materials", row.material_id) || "-")}</small></td>
+        <td>${esc(farmPlanningBasisLabel(row.snapshot_usage_basis))}</td><td class="num">${moneyNf.format(n(row.snapshot_usage_rate))}</td>
+        <td class="num">${moneyNf.format(n(row.snapshot_basis_quantity))}</td><td class="num">${moneyNf.format(n(row.planned_quantity))}</td>
+        <td>${esc(unit.unit_name || unit.unit_code || farmLookupLabel("units", row.unit_id) || "-")}</td>
+        <td class="num">${farmPlanningNullableCost(row.snapshot_unit_cost)}</td><td class="num">${farmPlanningNullableCost(row.snapshot_amount_per_basis)}</td>
+        <td>${esc(row.snapshot_at ? new Date(row.snapshot_at).toLocaleString("th-TH") : "-")}</td>
+        <td><code title="source_budget_rate_block_material_id">${esc(row.source_budget_rate_block_material_id || "-")}</code></td></tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+function renderFarmPlanningBudgetPreview(rows = []) {
+  if (!rows.length) return `<div class="farm-planning-empty-snapshot">ยังไม่พบวัสดุที่พร้อมใช้จากงบประมาณสำหรับกิจกรรมและ Block นี้</div>`;
+  return `<div class="farm-planning-budget-preview"><strong>วัสดุจาก Block ที่เลือก ${fmt(rows.length)} รายการ</strong>
+    <div class="table-wrap"><table class="mini-table"><thead><tr><th>วัสดุ</th><th>Block</th><th>ฐาน</th><th>อัตราเฉพาะ Block</th><th>หน่วย</th></tr></thead>
+    <tbody>${rows.map((row) => `<tr><td>${esc(row.material.material_code || "-")} · ${esc(row.material.material_name || "-")}</td>
+      <td><code>${esc(row.budget_rate_block_id)}</code></td><td>${esc(farmPlanningBasisLabel(row.usage_basis))}</td>
+      <td class="num"><strong>${moneyNf.format(n(row.usage_rate))}</strong></td><td>${esc(row.unit.unit_name || row.unit.unit_code || "-")}</td></tr>`).join("")}</tbody></table></div></div>`;
+}
+
+function renderFarmCanonicalPlanCards() {
+  const canonical = farmCanonicalAnnualPlans();
+  const historical = farmHistoricalAnnualPlans();
+  const draft = farmCanonicalPlanningState();
+  const renderCard = (plan) => {
+    const items = farmPlanningPlanItems(plan.id);
+    const estate = farmLookup("estates", plan.estate_id) || {};
+    return `<article class="farm-planning-plan-card ${draft.selectedPlanId === plan.id ? "is-selected" : ""}">
+      <header><div>${farmPlanningPlanStatusBadge(plan)}</div><button type="button" class="secondary" data-canonical-plan-select="${esc(plan.id)}">ดูรายละเอียด</button></header>
+      <h4>${esc(plan.plan_name || `แผนปี ${plan.plan_year || "-"}`)}</h4>
+      <dl><div><dt>ปีแผน</dt><dd>${esc(plan.plan_year || "-")}</dd></div><div><dt>Estate</dt><dd>${esc(estate.estate_name || estate.estate_code || "-")}</dd></div>
+        <div><dt>สถานะ</dt><dd>${esc(plan.status === "approved" ? "อนุมัติแล้ว" : "ร่าง")}</dd></div><div><dt>รายการงาน</dt><dd>${fmt(items.length)}</dd></div>
+        <div><dt>สร้างเมื่อ</dt><dd>${esc(plan.created_at ? displayDate(plan.created_at) : "-")}</dd></div><div><dt>อนุมัติเมื่อ</dt><dd>${esc(plan.approved_at ? displayDate(plan.approved_at) : "-")}</dd></div></dl>
+    </article>`;
+  };
+  return `<section class="farm-panel"><div class="section-head"><h3>แผนประจำปี</h3><span>แผนมาตรฐานจัดการผ่านขั้นตอน Budget → Plan → Material Snapshot</span></div>
+    <h4 class="farm-planning-list-title">แผนมาตรฐาน</h4><div class="farm-planning-plan-grid">${canonical.map(renderCard).join("") || `<div class="farm-workspace-empty">ยังไม่มีแผนมาตรฐาน</div>`}</div>
+    <h4 class="farm-planning-list-title">ข้อมูลแผนเดิม (อ่านอย่างเดียว)</h4><div class="farm-planning-plan-grid">${historical.map(renderCard).join("") || `<div class="farm-workspace-empty">ไม่มีข้อมูลแผนเดิม</div>`}</div>
+  </section>`;
+}
+
+function renderFarmCanonicalPlanCreate() {
+  const draft = farmCanonicalPlanningState();
+  const years = farmEligiblePlanningBudgetYears();
+  const estates = farmRowsByKey("estates").filter(farmPlanningIsActive);
+  const canCreate = farmCanCreatePlanning() && years.length && draft.budgetYearId && draft.planName.trim() && !state.farmSyncBusy;
+  return `<section class="farm-panel farm-planning-create"><div class="section-head"><h3>สร้างแผนประจำปี</h3><span>ปีแผนมาจากปีงบประมาณที่พร้อมสร้าง Material Snapshot</span></div>
+    <div class="farm-planning-form-grid">
+      <label>ปีงบประมาณ<select data-canonical-planning-field="budgetYearId"><option value="">เลือกปีงบประมาณ</option>${years.map((row) => `<option value="${esc(row.id)}"${draft.budgetYearId === row.id ? " selected" : ""}>${esc(row.fiscal_year)} · ${esc(row.budget_name || row.id)}</option>`).join("")}</select></label>
+      <label>ชื่อแผน<input data-canonical-planning-field="planName" value="${esc(draft.planName)}" placeholder="ชื่อแผนประจำปี"></label>
+      <label>Estate (ไม่บังคับ)<select data-canonical-planning-field="estateId"><option value="">ไม่ระบุ</option>${estates.map((row) => `<option value="${esc(row.id)}"${draft.estateId === row.id ? " selected" : ""}>${esc(row.estate_name || row.estate_code || row.id)}</option>`).join("")}</select></label>
+      <label class="farm-planning-wide">หมายเหตุ<textarea data-canonical-planning-field="planNote" rows="2">${esc(draft.planNote)}</textarea></label>
+    </div>
+    ${!farmCanCreatePlanning() ? `<p class="farm-planning-permission-note">บัญชีนี้เปิดอ่านแผนได้ แต่ไม่มีสิทธิ์สร้างหรือแก้ไขแผน</p>` : ""}
+    <button type="button" data-canonical-plan-create ${canCreate ? "" : "disabled"}>สร้างแผนประจำปี</button>
+  </section>`;
+}
+
+function renderFarmCanonicalItemForm(plan = {}) {
+  const draft = farmCanonicalPlanningState();
+  const frozen = plan.status === "approved";
+  const years = farmEligiblePlanningBudgetYears().filter((row) => String(row.fiscal_year) === String(plan.plan_year));
+  if (!years.some((row) => row.id === draft.budgetYearId)) {
+    draft.budgetYearId = years[0]?.id || "";
+    draft.budgetActivityRateId = "";
+    draft.budgetRateBlockId = "";
+  }
+  const rates = farmEligiblePlanningActivityRates(draft.budgetYearId);
+  const blocks = farmEligiblePlanningRateBlocks(draft.budgetActivityRateId);
+  const selectedRate = rates.find((row) => row.id === draft.budgetActivityRateId) || {};
+  const selectedBlockRate = blocks.find((row) => row.id === draft.budgetRateBlockId) || {};
+  const materials = farmPlanningBudgetMaterialRows(draft.budgetRateBlockId);
+  const unsupported = materials.filter((row) => !["tree_count", "area_rai"].includes(row.usage_basis));
+  const canMutate = farmCanCreatePlanning() && !frozen && !state.farmSyncBusy;
+  const canCreate = canMutate && draft.budgetYearId && selectedRate.id && selectedBlockRate.id && materials.length && !unsupported.length;
+  return `<section class="farm-panel farm-planning-item-form"><div class="section-head"><h3>เพิ่มงานในแผน</h3><span>เลือก Budget Year → Activity → Block ระบบจะบันทึกวัสดุครบชุดจาก Block</span></div>
+    ${frozen ? `<div class="farm-planning-frozen"><strong>อนุมัติแล้ว</strong><span>ค่าปริมาณและอัตราวัสดุถูกเก็บตามข้อมูล ณ วันที่จัดทำแผน</span></div>` : ""}
+    <div class="farm-planning-form-grid">
+      <label>ปีงบประมาณ<select data-canonical-planning-field="budgetYearId" ${frozen ? "disabled" : ""}><option value="">เลือกปี</option>${years.map((row) => `<option value="${esc(row.id)}"${draft.budgetYearId === row.id ? " selected" : ""}>${esc(row.fiscal_year)} · ${esc(row.budget_name || row.id)}</option>`).join("")}</select></label>
+      <label>กิจกรรม<select data-canonical-planning-field="budgetActivityRateId" ${frozen ? "disabled" : ""}><option value="">เลือกกิจกรรม</option>${rates.map((row) => `<option value="${esc(row.id)}"${draft.budgetActivityRateId === row.id ? " selected" : ""}>${esc(farmLookupLabel("activities", row.activity_id) || row.rate_code || row.id)}</option>`).join("")}</select></label>
+      <label>Block<select data-canonical-planning-field="budgetRateBlockId" ${frozen ? "disabled" : ""}><option value="">เลือก Block</option>${blocks.map((row) => `<option value="${esc(row.id)}"${draft.budgetRateBlockId === row.id ? " selected" : ""}>${esc(farmLookupLabel("blocks", row.block_id) || row.terrain_code || row.id)}</option>`).join("")}</select></label>
+      <label>วันที่เริ่ม<input type="date" data-canonical-planning-field="plannedStartDate" value="${esc(draft.plannedStartDate)}" ${frozen ? "disabled" : ""}></label>
+      <label>วันที่สิ้นสุด<input type="date" data-canonical-planning-field="plannedEndDate" value="${esc(draft.plannedEndDate)}" ${frozen ? "disabled" : ""}></label>
+      <label>รูปแบบทำซ้ำ<input data-canonical-planning-field="recurrenceType" value="${esc(draft.recurrenceType)}" placeholder="ไม่บังคับ" ${frozen ? "disabled" : ""}></label>
+      <label>ช่วงทำซ้ำ<input type="number" min="1" data-canonical-planning-field="recurrenceInterval" value="${esc(draft.recurrenceInterval)}" ${frozen ? "disabled" : ""}></label>
+      <label>ทำซ้ำหลังเสร็จ (วัน)<input type="number" data-canonical-planning-field="repeatAfterLastDoneDays" value="${esc(draft.repeatAfterLastDoneDays)}" ${frozen ? "disabled" : ""}></label>
+      <label>เป้าหมาย<input type="number" step="any" data-canonical-planning-field="targetQuantity" value="${esc(draft.targetQuantity)}" ${frozen ? "disabled" : ""}></label>
+      <label>หน่วยเป้าหมาย<input data-canonical-planning-field="targetUnit" value="${esc(draft.targetUnit)}" ${frozen ? "disabled" : ""}></label>
+      <label>งบประมาณ<input type="number" step="any" data-canonical-planning-field="plannedBudget" value="${esc(draft.plannedBudget)}" ${frozen ? "disabled" : ""}></label>
+      <label>ทีมที่แนะนำ<select data-canonical-planning-field="suggestedTeamId" ${frozen ? "disabled" : ""}><option value="">ไม่ระบุ</option>${farmRowsByKey("teams").filter(farmPlanningIsActive).map((row) => `<option value="${esc(row.id)}"${draft.suggestedTeamId === row.id ? " selected" : ""}>${esc(row.team_name || row.team_code || row.id)}</option>`).join("")}</select></label>
+      <label class="farm-planning-wide">หมายเหตุ<textarea rows="2" data-canonical-planning-field="itemNote" ${frozen ? "disabled" : ""}>${esc(draft.itemNote)}</textarea></label>
+    </div>
+    ${unsupported.length ? `<div class="farm-plan-resource-note is-warning"><strong>ยังสร้างรายการนี้ไม่ได้</strong><span>พบฐานคำนวณที่ยังไม่รองรับ: ${esc([...new Set(unsupported.map((row) => farmPlanningBasisLabel(row.usage_basis)))].join(", "))}</span></div>` : ""}
+    ${renderFarmPlanningBudgetPreview(materials)}
+    <button type="button" data-canonical-item-create ${canCreate ? "" : "disabled"}>เพิ่มงานและบันทึก Material Snapshot</button>
+  </section>`;
+}
+
+function renderFarmCanonicalItemDetail(plan = {}, item = {}) {
+  if (!item.id) return "";
+  const frozen = plan.status === "approved";
+  const canMutate = farmCanCreatePlanning() && !frozen && !state.farmSyncBusy;
+  return `<section class="farm-panel farm-planning-item-detail"><div class="section-head"><h3>รายละเอียดรายการงาน</h3><span>${frozen ? "อ่านอย่างเดียวหลังอนุมัติ" : "การแก้ metadata จะไม่รีเฟรช Material Snapshot"}</span></div>
+    <div class="farm-planning-lineage"><span>Budget Year <code>${esc(item.source_budget_year_id || "-")}</code></span><span>Activity Rate <code>${esc(item.source_budget_activity_rate_id || "-")}</code></span><span>Rate Block <code>${esc(item.source_budget_rate_block_id || "-")}</code></span></div>
+    ${renderFarmPlanningMaterialSnapshot(item)}
+    ${!frozen ? `<div class="farm-plan-actions"><button type="button" class="secondary" data-canonical-item-update ${canMutate ? "" : "disabled"}>บันทึกเฉพาะข้อมูลแผน</button>
+      <button type="button" class="secondary" data-canonical-item-refresh ${canMutate ? "" : "disabled"}>รีเฟรชข้อมูลวัสดุจากงบประมาณ</button>
+      <button type="button" class="danger ghost" data-canonical-item-delete ${canMutate ? "" : "disabled"}>ลบรายการงานและ Material Snapshot</button></div>` : ""}
+  </section>`;
+}
+
+function renderFarmCanonicalSelectedPlan() {
+  const draft = farmCanonicalPlanningState();
+  const plan = farmRowsByKey("annual_work_plans").find((row) => row.id === draft.selectedPlanId);
+  if (!plan) return "";
+  const items = farmPlanningPlanItems(plan.id);
+  if (plan.source_type !== "canonical_budget") {
+    return `<section class="farm-panel"><div class="section-head"><h3>${esc(plan.plan_name || `แผนปี ${plan.plan_year}`)}</h3><span>ข้อมูลแผนเดิม · อ่านอย่างเดียว</span></div>
+      <div class="farm-planning-historical-note">ข้อมูลเดิมไม่จำเป็นต้องมี Material Snapshot และไม่มีคำสั่งแก้ไขหรือสร้างใบสั่งงานในหน้านี้</div>
+      <div class="table-wrap"><table class="mini-table farm-responsive-table"><thead><tr><th>วันที่</th><th>Block</th><th>กิจกรรม</th><th>เป้าหมาย</th><th>สถานะ</th></tr></thead><tbody>${items.map((item) => `<tr><td>${esc(item.planned_start_date || item.planned_month || "-")}</td><td>${esc(farmLookupLabel("blocks", item.block_id) || item.ap_code || "-")}</td><td>${esc(farmLookupLabel("activities", item.activity_id) || "-")}</td><td>${fmt(item.target_quantity ?? item.planned_quantity)} ${esc(item.target_unit || item.unit || "")}</td><td>${esc(farmTranslateValue(item.status || "-"))}</td></tr>`).join("") || `<tr><td colspan="5">ไม่มีรายการงาน</td></tr>`}</tbody></table></div>
+    </section>`;
+  }
+  const selectedItem = items.find((row) => row.id === draft.selectedItemId) || {};
+  const frozen = plan.status === "approved";
+  const estateOptions = farmRowsByKey("estates").filter(farmPlanningIsActive);
+  const snapshotComplete = items.filter((item) => farmPlanningItemMaterials(item.id).length > 0).length;
+  const canEdit = farmCanCreatePlanning() && !frozen && !state.farmSyncBusy;
+  const canApprove = farmCanApprovePlanning() && !frozen && items.length > 0 && snapshotComplete === items.length && !state.farmSyncBusy;
+  return `<section class="farm-panel farm-planning-selected-plan"><div class="section-head"><h3>${esc(plan.plan_name || `แผนปี ${plan.plan_year}`)}</h3><span>ปี ${esc(plan.plan_year)} · รายการงาน ${fmt(items.length)} · Snapshot ครบ ${fmt(snapshotComplete)}</span></div>
+    ${frozen ? `<div class="farm-planning-frozen"><strong>อนุมัติแล้ว</strong><span>ค่าปริมาณและอัตราวัสดุถูกเก็บตามข้อมูล ณ วันที่จัดทำแผน</span></div>` : ""}
+    <div class="farm-planning-form-grid">
+      <label>ปีแผน<input value="${esc(plan.plan_year || "-")}" disabled></label>
+      <label>ชื่อแผน<input data-canonical-plan-header-field="planName" value="${esc(draft.planName)}" ${frozen ? "disabled" : ""}></label>
+      <label>Estate<select data-canonical-plan-header-field="estateId" ${frozen ? "disabled" : ""}><option value="">ไม่ระบุ</option>${estateOptions.map((row) => `<option value="${esc(row.id)}"${draft.estateId === row.id ? " selected" : ""}>${esc(row.estate_name || row.estate_code || row.id)}</option>`).join("")}</select></label>
+      <label class="farm-planning-wide">หมายเหตุ<textarea rows="2" data-canonical-plan-header-field="planNote" ${frozen ? "disabled" : ""}>${esc(draft.planNote)}</textarea></label>
+    </div>
+    ${!frozen ? `<div class="farm-plan-actions"><button type="button" class="secondary" data-canonical-plan-update ${canEdit && draft.planName.trim() ? "" : "disabled"}>บันทึกหัวแผน</button>
+      <button type="button" class="danger ghost" data-canonical-plan-delete ${canEdit && items.length === 0 ? "" : "disabled"}>ลบแผนว่าง</button>
+      ${farmCanApprovePlanning() ? `<button type="button" data-canonical-plan-approve ${canApprove ? "" : "disabled"}>อนุมัติแผน</button>` : ""}</div>` : ""}
+    <div class="table-wrap"><table class="mini-table farm-responsive-table"><thead><tr><th>Block</th><th>กิจกรรม</th><th>ช่วงวันที่</th><th>เป้าหมาย</th><th>Material Snapshot</th><th></th></tr></thead><tbody>${items.map((item) => {
+      const materialCount = farmPlanningItemMaterials(item.id).length;
+      return `<tr><td>${esc(farmLookupLabel("blocks", item.block_id) || item.ap_code || "-")}</td><td>${esc(farmLookupLabel("activities", item.activity_id) || "-")}</td><td>${esc(item.planned_start_date || "-")} – ${esc(item.planned_end_date || "-")}</td><td>${fmt(item.target_quantity)} ${esc(item.target_unit || "")}</td><td>${fmt(materialCount)} รายการ</td><td><button type="button" class="secondary" data-canonical-item-select="${esc(item.id)}">ดู Snapshot</button></td></tr>`;
+    }).join("") || `<tr><td colspan="6">ยังไม่มีรายการงานในแผน</td></tr>`}</tbody></table></div>
+  </section>${!frozen ? renderFarmCanonicalItemForm(plan) : ""}${renderFarmCanonicalItemDetail(plan, selectedItem)}`;
+}
+
+function renderFarmCanonicalPlanner() {
+  return `<section class="farm-planner-console farm-canonical-planning"><div class="section-head"><h2>วางแผนงานจากงบประมาณ</h2><span>Budget → แผนประจำปี → รายการงาน → Material Snapshot → อนุมัติ</span></div>
+    <div class="farm-planning-no-work-order">หน้านี้จัดทำและอนุมัติแผนเท่านั้น การสร้างใบสั่งงานจะดำเนินการในขั้นตอนถัดไป</div>
+    ${renderFarmCanonicalPlanCreate()}${renderFarmCanonicalPlanCards()}${renderFarmCanonicalSelectedPlan()}
+  </section>`;
+}
+
+function farmPlanningItemArgs() {
+  const draft = farmCanonicalPlanningState();
+  return {
+    planned_start_date: draft.plannedStartDate || null,
+    planned_end_date: draft.plannedEndDate || null,
+    recurrence_type: draft.recurrenceType || null,
+    recurrence_interval: farmPlanningOptionalInteger(draft.recurrenceInterval),
+    repeat_after_last_done_days: farmPlanningOptionalInteger(draft.repeatAfterLastDoneDays),
+    target_quantity: farmPlanningOptionalNumber(draft.targetQuantity),
+    target_unit: draft.targetUnit || null,
+    planned_budget: farmPlanningOptionalNumber(draft.plannedBudget),
+    suggested_team_id: draft.suggestedTeamId || null,
+    note: draft.itemNote || null,
+  };
+}
+
+async function createFarmCanonicalAnnualPlan() {
+  const draft = farmCanonicalPlanningState();
+  const year = farmEligiblePlanningBudgetYears().find((row) => row.id === draft.budgetYearId);
+  if (!year || !draft.planName.trim() || !farmCanCreatePlanning()) return;
+  const result = await runFarmAction("create_canonical_annual_work_plan", {
+    plan_year: Number(year.fiscal_year), plan_name: draft.planName.trim(), estate_id: draft.estateId || null, note: draft.planNote || null,
+  }, { reason: "สร้างแผนประจำปีจาก Planning Workspace" }).catch(() => null);
+  const plan = result?.annual_work_plan;
+  if (plan?.id) { farmPlanningHydratePlanDraft(plan); render(); }
+}
+
+async function updateFarmCanonicalAnnualPlan() {
+  const draft = farmCanonicalPlanningState();
+  if (!draft.selectedPlanId || !farmCanCreatePlanning()) return;
+  await runFarmAction("update_canonical_annual_work_plan", {
+    annual_plan_id: draft.selectedPlanId, plan_name: draft.planName.trim(), estate_id: draft.estateId || null, note: draft.planNote || null,
+  }, { reason: "แก้ไขหัวแผนประจำปีจาก Planning Workspace" }).catch(() => null);
+}
+
+async function deleteFarmCanonicalAnnualPlan() {
+  const draft = farmCanonicalPlanningState();
+  if (!draft.selectedPlanId || !farmCanCreatePlanning() || !window.confirm("ยืนยันลบแผนประจำปีที่ยังไม่มีรายการงาน?")) return;
+  const result = await runFarmAction("delete_canonical_annual_work_plan", { annual_plan_id: draft.selectedPlanId }, { confirmed: true, reason: "ลบแผนประจำปีว่างจาก Planning Workspace" }).catch(() => null);
+  if (result?.deleted) { farmPlanningHydratePlanDraft({}); render(); }
+}
+
+async function approveFarmCanonicalAnnualPlan() {
+  const draft = farmCanonicalPlanningState();
+  if (!draft.selectedPlanId || !farmCanApprovePlanning() || !window.confirm("ยืนยันอนุมัติแผน? หลังอนุมัติจะไม่สามารถแก้ไขหรือรีเฟรชข้อมูลวัสดุได้")) return;
+  await runFarmAction("approve_canonical_annual_work_plan", { annual_plan_id: draft.selectedPlanId }, { confirmed: true, reason: "อนุมัติแผนประจำปีจาก Planning Workspace" }).catch(() => null);
+}
+
+async function createFarmCanonicalPlannedItem() {
+  const draft = farmCanonicalPlanningState();
+  const plan = farmCanonicalAnnualPlans().find((row) => row.id === draft.selectedPlanId);
+  const rate = farmEligiblePlanningActivityRates(draft.budgetYearId).find((row) => row.id === draft.budgetActivityRateId);
+  const rateBlock = farmEligiblePlanningRateBlocks(draft.budgetActivityRateId).find((row) => row.id === draft.budgetRateBlockId);
+  const materials = farmPlanningBudgetMaterialRows(draft.budgetRateBlockId);
+  if (!plan || plan.status !== "draft" || !rate || !rateBlock || !materials.length || materials.some((row) => !["tree_count", "area_rai"].includes(row.usage_basis)) || !farmCanCreatePlanning()) return;
+  const block = farmLookup("blocks", rateBlock.block_id) || {};
+  const result = await runFarmAction("create_canonical_planned_work_item_snapshot", {
+    annual_plan_id: plan.id,
+    budget_year_id: draft.budgetYearId,
+    budget_activity_rate_id: rate.id,
+    budget_rate_block_id: rateBlock.id,
+    block_id: rateBlock.block_id,
+    activity_id: rate.activity_id,
+    plot_id: block.plot_id || null,
+    ap_code: block.ap_code || block.AP_code || rateBlock.ap_code || null,
+    ...farmPlanningItemArgs(),
+  }, { reason: "เพิ่มรายการงานและ Material Snapshot จาก Planning Workspace" }).catch(() => null);
+  const item = result?.planned_work_item;
+  if (item?.id) { farmPlanningHydrateItemDraft(item); render(); }
+}
+
+async function updateFarmCanonicalPlannedItem() {
+  const draft = farmCanonicalPlanningState();
+  if (!draft.selectedItemId || !farmCanCreatePlanning()) return;
+  await runFarmAction("update_canonical_planned_work_item", {
+    planned_work_item_id: draft.selectedItemId, ...farmPlanningItemArgs(),
+  }, { reason: "แก้ไข metadata รายการงานจาก Planning Workspace โดยไม่รีเฟรชวัสดุ" }).catch(() => null);
+}
+
+async function refreshFarmCanonicalPlannedItem() {
+  const draft = farmCanonicalPlanningState();
+  if (!draft.selectedItemId || !farmCanCreatePlanning() || !window.confirm("ยืนยันรีเฟรช Material Snapshot จากงบประมาณล่าสุดสำหรับ Block นี้?")) return;
+  await runFarmAction("refresh_canonical_planned_work_item_snapshot", {
+    planned_work_item_id: draft.selectedItemId,
+  }, { confirmed: true, reason: "รีเฟรช Material Snapshot แบบ explicit จาก Planning Workspace" }).catch(() => null);
+}
+
+async function deleteFarmCanonicalPlannedItem() {
+  const draft = farmCanonicalPlanningState();
+  if (!draft.selectedItemId || !farmCanCreatePlanning() || !window.confirm("ยืนยันลบรายการงานและ Material Snapshot? การลบนี้ไม่ลบใบสั่งงาน")) return;
+  const result = await runFarmAction("delete_canonical_planned_work_item", {
+    planned_work_item_id: draft.selectedItemId,
+  }, { confirmed: true, reason: "ลบรายการงานร่างและ Material Snapshot จาก Planning Workspace" }).catch(() => null);
+  if (result?.deleted) { draft.selectedItemId = ""; render(); }
+}
+
 function renderFarmWorkflowModeBar({ workspaceLabel, entryLabel }) {
   const workspaceMode = farmWorkflowModeFromUrl() === "workspace";
   return `<nav class="farm-entry-mode-bar" aria-label="สลับแบบฟอร์มและพื้นที่ติดตามงาน">
@@ -25793,11 +26237,7 @@ function renderFarmWorkEntry() {
     workspaceLabel: "ดู Workspace และติดตามงาน",
     entryLabel: "กลับหน้าวางแผน",
   })}
-    ${renderFarmWorkBoard({
-      title: "Planner",
-      subtitle: "ตารางแผนงานแบบย่อ แสดง Activity, Block, ทีม และสถานะในแถวเดียว",
-    })}
-    ${renderFarmWorkPlanner()}`;
+    ${renderFarmCanonicalPlanner()}`;
 }
 
 function renderFarmDispatchEntry() {
@@ -25979,6 +26419,8 @@ function renderFarmWorkFilters() {
 }
 
 function renderFarmAnnualPlans() {
+  return renderFarmCanonicalPlanner();
+  /* Historical renderer retained below only for rollback comparison; the canonical return above is authoritative. */
   const plans = farmFilteredAnnualPlans();
   const items = farmRowsByKey("planned_work_items");
   const workflow = farmWorkflowWorkspaceRows();
@@ -26002,6 +26444,8 @@ function renderFarmAnnualPlans() {
 }
 
 function renderFarmPlanItems() {
+  return renderFarmCanonicalPlanner();
+  /* Historical renderer retained below only for rollback comparison; it is not reachable. */
   const filters = state.farmWorkWorkspaceFilters;
   const plans = new Map(farmRowsByKey("annual_work_plans").map((row) => [row.id, row]));
   const workflow = farmWorkflowWorkspaceRows();
@@ -26019,7 +26463,7 @@ function renderFarmPlanItems() {
         <td>${esc(farmLookupLabel("blocks", item.block_id) || item.ap_code || "-")}</td><td>${esc(farmLookupLabel("activities", item.activity_id))}</td>
         <td class="num">${fmt(item.target_quantity)} ${esc(item.target_unit || "")}</td><td class="num">${moneyNf.format(n(item.planned_budget))}</td>
         <td>${orders.length ? orders.map((row) => `<button type="button" data-farm-open-work-order="${esc(row.work_order_id)}">${esc(row.work_order_no)}</button>`).join(" ") : "ยังไม่มี"}</td>
-        <td><button type="button" data-farm-create-order-from-plan="${esc(item.id)}" ${orders.length || state.farmSyncBusy ? "disabled" : ""}>สร้างใบงาน</button></td></tr>`;
+        <td><span class="status-pill">อ่านอย่างเดียว</span></td></tr>`;
     }).join("") || `<tr><td colspan="8">ไม่พบรายการแผน</td></tr>`}</tbody></table></div>
   </section>`;
 }
@@ -27379,6 +27823,18 @@ async function startAuthenticatedApplication() {
   document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.matches("[data-canonical-planning-field], [data-canonical-plan-header-field]")) {
+      const draft = farmCanonicalPlanningState();
+      const key = e.target.dataset.canonicalPlanningField || e.target.dataset.canonicalPlanHeaderField;
+      draft[key] = e.target.value;
+      if (key === "budgetYearId") {
+        draft.budgetActivityRateId = "";
+        draft.budgetRateBlockId = "";
+      }
+      if (key === "budgetActivityRateId") draft.budgetRateBlockId = "";
+      render();
+      return;
+    }
     if (e.target.matches("[data-budget-canonical-filter]")) {
       state.farmBudgetMaterialFilters[e.target.dataset.budgetCanonicalFilter] = e.target.value || "all";
       render();
@@ -28246,12 +28702,50 @@ async function startAuthenticatedApplication() {
       openWorkspaceRoute(workspaceOpen.dataset.workspaceOpen);
       return;
     }
-    const planOrder = e.target.closest("[data-farm-create-order-from-plan]");
-    if (planOrder) {
-      if (!window.confirm("ยืนยันสร้างใบสั่งงานจากรายการแผนนี้?")) return;
-      await runFarmAction("create_work_order_from_plan_item", {
-        planned_work_item_id: planOrder.dataset.farmCreateOrderFromPlan,
-      }, { confirmed: true, reason: "สร้างจาก Phase 3 Work Planning Workspace" }).catch(() => {});
+    const selectCanonicalPlan = e.target.closest("[data-canonical-plan-select]");
+    if (selectCanonicalPlan) {
+      const plan = farmRowsByKey("annual_work_plans").find((row) => row.id === selectCanonicalPlan.dataset.canonicalPlanSelect);
+      if (plan) farmPlanningHydratePlanDraft(plan);
+      render();
+      return;
+    }
+    const selectCanonicalItem = e.target.closest("[data-canonical-item-select]");
+    if (selectCanonicalItem) {
+      const item = farmRowsByKey("planned_work_items").find((row) => row.id === selectCanonicalItem.dataset.canonicalItemSelect);
+      if (item) farmPlanningHydrateItemDraft(item);
+      render();
+      return;
+    }
+    if (e.target.closest("[data-canonical-plan-create]")) {
+      await createFarmCanonicalAnnualPlan();
+      return;
+    }
+    if (e.target.closest("[data-canonical-plan-update]")) {
+      await updateFarmCanonicalAnnualPlan();
+      return;
+    }
+    if (e.target.closest("[data-canonical-plan-delete]")) {
+      await deleteFarmCanonicalAnnualPlan();
+      return;
+    }
+    if (e.target.closest("[data-canonical-plan-approve]")) {
+      await approveFarmCanonicalAnnualPlan();
+      return;
+    }
+    if (e.target.closest("[data-canonical-item-create]")) {
+      await createFarmCanonicalPlannedItem();
+      return;
+    }
+    if (e.target.closest("[data-canonical-item-update]")) {
+      await updateFarmCanonicalPlannedItem();
+      return;
+    }
+    if (e.target.closest("[data-canonical-item-refresh]")) {
+      await refreshFarmCanonicalPlannedItem();
+      return;
+    }
+    if (e.target.closest("[data-canonical-item-delete]")) {
+      await deleteFarmCanonicalPlannedItem();
       return;
     }
     const openOrder = e.target.closest("[data-farm-open-work-order]");
@@ -28678,14 +29172,6 @@ async function startAuthenticatedApplication() {
       const picks = farmBudgetContractState();
       picks.extraRates = (picks.extraRates || []).filter((row) => row.id !== extraDelete.dataset.budgetExtraDelete);
       render();
-      return;
-    }
-    if (e.target.closest("[data-farm-create-work-plan]")) {
-      createFarmWorkPlanFromSelection();
-      return;
-    }
-    if (e.target.closest("[data-farm-save-work-plan-edit]")) {
-      saveFarmWorkPlanEditFromSelection();
       return;
     }
     if (e.target.closest("[data-farm-dispatch-save]")) {
