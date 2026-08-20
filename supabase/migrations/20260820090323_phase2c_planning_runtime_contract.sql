@@ -679,6 +679,7 @@ declare
   v_request_key text := nullif(btrim(p_planning_request_key), '');
   v_snapshot_at timestamptz := transaction_timestamp();
   v_normalized_note text := nullif(btrim(p_note), '');
+  v_normalized_status text := lower(nullif(btrim(p_status), ''));
   v_plan_year integer;
   v_plan_source_type text;
   v_plan_status text;
@@ -689,6 +690,9 @@ begin
   end if;
   if char_length(v_request_key) > 200 then
     raise exception using errcode = 'P0001', message = 'PLANNING_REQUEST_KEY_INVALID';
+  end if;
+  if v_normalized_status is distinct from 'planned' then
+    raise exception using errcode = 'P0001', message = 'PLANNING_ITEM_STATUS_INVALID';
   end if;
 
   if p_actor_profile_id is null or not exists (
@@ -724,7 +728,7 @@ begin
       or v_item.target_unit is distinct from p_target_unit
       or v_item.planned_budget is distinct from p_planned_budget
       or v_item.suggested_team_id is distinct from p_suggested_team_id
-      or v_item.status is distinct from p_status
+      or v_item.status is distinct from 'planned'
       or v_item.note is distinct from v_normalized_note
       or v_item.ap_code is distinct from p_ap_code
     then
@@ -815,7 +819,7 @@ begin
     p_target_unit,
     p_planned_budget,
     p_suggested_team_id,
-    p_status,
+    'planned',
     v_normalized_note,
     p_block_id,
     p_ap_code,
@@ -857,7 +861,7 @@ begin
       or v_item.target_unit is distinct from p_target_unit
       or v_item.planned_budget is distinct from p_planned_budget
       or v_item.suggested_team_id is distinct from p_suggested_team_id
-      or v_item.status is distinct from p_status
+      or v_item.status is distinct from 'planned'
       or v_item.note is distinct from v_normalized_note
       or v_item.ap_code is distinct from p_ap_code
     then

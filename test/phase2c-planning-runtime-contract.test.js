@@ -37,7 +37,7 @@ const deletePlan = sqlFunction("delete_canonical_annual_work_plan");
 const createItem = sqlFunction("create_canonical_planned_work_item_snapshot");
 const updateItem = sqlFunction("update_canonical_planned_work_item");
 const deleteItem = sqlFunction("delete_canonical_planned_work_item");
-const { ACTIONS } = farmActions._test;
+const { ACTIONS, createWorkOrderFromPlanItem } = farmActions._test;
 
 test("1. canonical Annual Plan create is draft only", () => {
   assert.match(createPlan, /'draft'/);
@@ -147,6 +147,32 @@ test("17. snapshot create requires a draft canonical parent Annual Plan", () => 
   assert.match(createItem, /v_plan_source_type is distinct from 'canonical_budget'/);
   assert.match(createItem, /PLANNING_CANONICAL_PLAN_REQUIRED/);
   assert.match(createItem, /v_plan_status is distinct from 'draft'/);
+});
+
+test("17a. canonical Planned Item create action makes status server-controlled", () => {
+  const params = ACTIONS.create_canonical_planned_work_item_snapshot.params({
+    annual_plan_id: "11111111-1111-4111-8111-111111111111",
+    budget_year_id: "budget-year",
+    budget_activity_rate_id: "budget-activity-rate",
+    budget_rate_block_id: "budget-rate-block",
+    block_id: "22222222-2222-4222-8222-222222222222",
+    activity_id: "33333333-3333-4333-8333-333333333333",
+    status: "completed",
+  }, { profile: { id: "44444444-4444-4444-8444-444444444444" } }, {
+    idempotencyKey: "server-request-key",
+  });
+  assert.equal(params.p_status, "planned");
+});
+
+test("17b. canonical Planned Item RPC accepts and persists only planned status", () => {
+  assert.match(createItem, /v_normalized_status text := lower\(nullif\(btrim\(p_status\), ''\)\)/);
+  assert.match(createItem, /if v_normalized_status is distinct from 'planned' then[\s\S]*PLANNING_ITEM_STATUS_INVALID/);
+  for (const status of ["draft", "approved", "completed", "foo"]) {
+    assert.notEqual(status.trim().toLowerCase(), "planned");
+  }
+  assert.match(createItem, /or v_item\.status is distinct from 'planned'/);
+  assert.doesNotMatch(createItem, /v_item\.status is distinct from p_status/);
+  assert.match(createItem, /p_suggested_team_id,[\s\S]*'planned',[\s\S]*v_normalized_note,/);
 });
 
 test("18. draft canonical Planned Item metadata can be updated", () => {
@@ -284,6 +310,84 @@ test("Phase 2C stable database errors map without leaking SQL internals", () => 
     assert.equal(error.status, status);
     assert.equal(error.code, code);
     assert.equal(error.details.postgresCode, "P0001");
+  }
+  const statusError = databaseDomainError({ code: "P0001", message: "PLANNING_ITEM_STATUS_INVALID" });
+  assert.equal(statusError.status, 400);
+  assert.equal(statusError.code, "PLANNING_ITEM_STATUS_INVALID");
+  assert.doesNotMatch(statusError.message, /sql|postgres/i);
+});
+
+function workOrderHarness({ itemSource = "legacy_work_order", planSource = "legacy_work_order", planStatus = "approved" } = {}) {
+  const calls = [];
+  const itemId = "55555555-5555-4555-8555-555555555555";
+  const planId = "66666666-6666-4666-8666-666666666666";
+  const blockId = "77777777-7777-4777-8777-777777777777";
+  const rest = async (requestPath, options = {}) => {
+    const method = options.method || "GET";
+    calls.push({ path: requestPath, method });
+    if (requestPath.startsWith("planned_work_items?")) {
+      return { data: [{
+        id: itemId, annual_plan_id: planId, source_type: itemSource, block_id: blockId,
+        plot_id: null, ap_code: null, activity_id: null, planned_start_date: null,
+        suggested_team_id: null, target_quantity: null, target_unit: null,
+        planned_budget: 0, note: null,
+      }] };
+    }
+    if (requestPath.startsWith("annual_work_plans?")) {
+      return { data: [{
+        id: planId, plan_year: 2027, estate_id: null, status: planStatus, source_type: planSource,
+      }] };
+    }
+    if (requestPath.startsWith("work_orders?")) return { data: [] };
+    if (requestPath.startsWith("blocks?")) return { data: [{ id: blockId }] };
+    if (requestPath === "work_orders" && method === "POST") {
+      return { data: [{ id: "88888888-8888-4888-8888-888888888888", status: "draft" }] };
+    }
+    throw new Error(`Unexpected request: ${method} ${requestPath}`);
+  };
+  return { calls, itemId, rest };
+}
+
+test("canonical Planned Items are rejected before every Work Order mutation", async () => {
+  const harness = workOrderHarness({ itemSource: "canonical_budget", planSource: "legacy_work_order" });
+  await assert.rejects(
+    createWorkOrderFromPlanItem({
+      args: { planned_work_item_id: harness.itemId },
+      actor: { profile: { id: "99999999-9999-4999-8999-999999999999" } },
+    }, { rest: harness.rest }),
+    (error) => error.status === 409
+      && error.code === "PLANNING_CANONICAL_WORK_ORDER_NOT_READY"
+      && /Phase 2D/.test(error.message),
+  );
+  assert.deepEqual(harness.calls.map(({ method }) => method), ["GET", "GET"]);
+  for (const table of ["work_orders", "work_order_workers", "work_order_materials", "planned_work_items"]) {
+    assert.equal(harness.calls.some((call) => call.path === table && call.method !== "GET"), false, table);
+  }
+});
+
+test("a canonical parent Annual Plan blocks Work Order creation regardless of status", async () => {
+  for (const planStatus of ["draft", "approved"]) {
+    const harness = workOrderHarness({ itemSource: "manual", planSource: "canonical_budget", planStatus });
+    await assert.rejects(
+      createWorkOrderFromPlanItem({
+        args: { planned_work_item_id: harness.itemId },
+        actor: { profile: { id: "99999999-9999-4999-8999-999999999999" } },
+      }, { rest: harness.rest }),
+      (error) => error.status === 409 && error.code === "PLANNING_CANONICAL_WORK_ORDER_NOT_READY",
+    );
+    assert.deepEqual(harness.calls.map(({ method }) => method), ["GET", "GET"]);
+  }
+});
+
+test("legacy and noncanonical Planned Items retain Work Order creation", async () => {
+  for (const itemSource of ["legacy_work_order", "web_test", "manual"]) {
+    const harness = workOrderHarness({ itemSource, planSource: itemSource });
+    const result = await createWorkOrderFromPlanItem({
+      args: { planned_work_item_id: harness.itemId },
+      actor: { profile: { id: "99999999-9999-4999-8999-999999999999" }, roles: new Set() },
+    }, { rest: harness.rest });
+    assert.equal(result.already_exists, false);
+    assert.equal(harness.calls.some((call) => call.path === "work_orders" && call.method === "POST"), true);
   }
 });
 

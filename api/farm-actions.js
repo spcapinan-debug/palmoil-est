@@ -88,7 +88,7 @@ const ACTIONS = {
       p_target_unit: optionalText(args.target_unit, 120),
       p_planned_budget: optionalNumber(args.planned_budget, "planned_budget"),
       p_suggested_team_id: optionalUuid(args.suggested_team_id, "suggested_team_id"),
-      p_status: requireText(args.status || "planned", "status", 80),
+      p_status: "planned",
       p_note: optionalText(args.note, 2000),
       p_ap_code: optionalText(args.ap_code, 200),
     }),
@@ -1082,25 +1082,41 @@ async function prepareGoodsIssueFromWorkOrder({ args, actor }) {
   return issue;
 }
 
-async function createWorkOrderFromPlanItem({ args, actor }) {
+async function createWorkOrderFromPlanItem({ args, actor }, dependencies = {}) {
+  const restClient = dependencies.rest || rest;
+  const loadOne = dependencies.one || (async (path, label) => {
+    const row = await restClient(path).then(({ data }) => data?.[0]);
+    if (!row) throw new ApiError(404, "NOT_FOUND", `${label} was not found`);
+    return row;
+  });
   const plannedWorkItemId = requireUuid(args.planned_work_item_id, "planned_work_item_id");
-  const existing = await rest(
-    `work_orders?planned_work_item_id=eq.${plannedWorkItemId}&select=*&order=created_at.asc&limit=1`,
-  ).then(({ data }) => data?.[0]);
-  if (existing) return { ...existing, already_exists: true };
-  const item = await one(
+  const item = await loadOne(
     `planned_work_items?id=eq.${plannedWorkItemId}&select=*&limit=1`,
     "Planned work item",
   );
-  await one(
+  const annual = item.annual_plan_id
+    ? await loadOne(
+      `annual_work_plans?id=eq.${item.annual_plan_id}&select=id,plan_year,estate_id,status,source_type&limit=1`,
+      "Annual work plan",
+    )
+    : null;
+  if (item.source_type === "canonical_budget" || annual?.source_type === "canonical_budget") {
+    throw new ApiError(
+      409,
+      "PLANNING_CANONICAL_WORK_ORDER_NOT_READY",
+      "Canonical Planning must be converted to a Work Order through the Phase 2D flow",
+    );
+  }
+  const existing = await restClient(
+    `work_orders?planned_work_item_id=eq.${plannedWorkItemId}&select=*&order=created_at.asc&limit=1`,
+  ).then(({ data }) => data?.[0]);
+  if (existing) return { ...existing, already_exists: true };
+  await loadOne(
     `blocks?id=eq.${requireUuid(item.block_id, "block_id")}&status=eq.active&select=id&limit=1`,
     "Active Block",
   );
-  const annual = item.annual_plan_id
-    ? await one(`annual_work_plans?id=eq.${item.annual_plan_id}&select=id,plan_year,estate_id,status&limit=1`, "Annual work plan")
-    : null;
   const team = item.suggested_team_id
-    ? await one(`teams?id=eq.${item.suggested_team_id}&select=id,supervisor_employee_id,contractor_id,status&limit=1`, "Suggested team")
+    ? await loadOne(`teams?id=eq.${item.suggested_team_id}&select=id,supervisor_employee_id,contractor_id,status&limit=1`, "Suggested team")
     : null;
   const row = {
     work_order_no: actorIsUat(actor)
@@ -1126,12 +1142,12 @@ async function createWorkOrderFromPlanItem({ args, actor }) {
   };
   let created;
   try {
-    created = await rest("work_orders", {
+    created = await restClient("work_orders", {
       method: "POST", body: JSON.stringify([row]), headers: { Prefer: "return=representation" },
     }).then(({ data }) => data?.[0]);
   } catch (error) {
     if (error?.details?.postgresCode !== "23505") throw error;
-    const winner = await rest(
+    const winner = await restClient(
       `work_orders?planned_work_item_id=eq.${plannedWorkItemId}&select=*&order=created_at.asc&limit=1`,
     ).then(({ data }) => data?.[0]);
     if (winner) return { ...winner, already_exists: true };
@@ -1139,12 +1155,12 @@ async function createWorkOrderFromPlanItem({ args, actor }) {
   }
   if (!created) throw new ApiError(500, "WRITE_FAILED", "Work order could not be created");
   const members = team?.id
-    ? await rest(`team_members?team_id=eq.${team.id}&is_active=eq.true&select=employee_id,member_role`)
+    ? await restClient(`team_members?team_id=eq.${team.id}&is_active=eq.true&select=employee_id,member_role`)
       .then(({ data }) => data || [])
     : [];
   const uniqueMembers = [...new Map(members.map((member) => [member.employee_id, member])).values()];
   if (uniqueMembers.length) {
-    await rest("work_order_workers?on_conflict=work_order_id,employee_id", {
+    await restClient("work_order_workers?on_conflict=work_order_id,employee_id", {
       method: "POST",
       body: JSON.stringify(uniqueMembers.map((member) => ({
         work_order_id: created.id,
@@ -2433,6 +2449,7 @@ async function handler(req, res) {
 module.exports = handler;
 module.exports._test = {
   ACTIONS, INVENTORY_UAT_ACTIONS, UAT_MUTATION_ACTIONS, enforceActionScope, enforceUatMutation,
+  createWorkOrderFromPlanItem,
   requireInventoryUatIssue, requireUatWorkOrder, requireWebTestCode, requestHash,
   activityMaterialStandardInput, budgetBlockMaterialActionParams, calculateConsumedFuel, ensureSurveyFailureFindings,
   nextActivityMaterialStandardVersion, notificationContext, resolveSurveyTemplateForOrder,
