@@ -25,21 +25,28 @@ alter table public.planned_work_items
   add constraint planned_work_items_canonical_lineage_complete
     check (
       (
-        source_budget_year_id is null
+        source_type is distinct from 'canonical_budget'
+        and source_budget_year_id is null
         and source_budget_activity_rate_id is null
         and source_budget_rate_block_id is null
         and planning_request_key is null
       )
       or
       (
-        source_budget_year_id is not null
+        source_type = 'canonical_budget'
+        and source_budget_year_id is not null
         and source_budget_activity_rate_id is not null
         and source_budget_rate_block_id is not null
         and nullif(btrim(planning_request_key), '') is not null
       )
     ),
   add constraint planned_work_items_planning_request_key_not_blank
-    check (planning_request_key is null or nullif(btrim(planning_request_key), '') is not null);
+    check (
+      planning_request_key is null
+      or (
+        char_length(btrim(planning_request_key)) between 1 and 200
+      )
+    );
 
 create index planned_work_items_source_budget_year_idx
   on public.planned_work_items (source_budget_year_id);
@@ -58,7 +65,36 @@ comment on column public.planned_work_items.source_budget_activity_rate_id is
 comment on column public.planned_work_items.source_budget_rate_block_id is
   'Canonical Budget Rate Block selected for a new Planning item. Nullable for historical compatibility.';
 comment on column public.planned_work_items.planning_request_key is
-  'Caller-supplied stable idempotency key for canonical Planning creation; never derived from timestamps.';
+  'Caller-supplied stable idempotency key (maximum 200 characters) for canonical Planning creation.';
+
+create table public.planning_material_snapshot_requests (
+  request_key text primary key,
+  planned_work_item_id uuid not null
+    references public.planned_work_items(id)
+    on delete restrict,
+  actor_profile_id uuid not null
+    references public.profiles(id)
+    on delete restrict,
+  snapshot_at timestamptz not null,
+  material_count integer not null,
+  completed_at timestamptz not null,
+  constraint planning_material_snapshot_requests_key_valid
+    check (char_length(btrim(request_key)) between 1 and 200),
+  constraint planning_material_snapshot_requests_material_count_nonnegative
+    check (material_count >= 0)
+);
+
+create index planning_material_snapshot_requests_item_idx
+  on public.planning_material_snapshot_requests (planned_work_item_id);
+create index planning_material_snapshot_requests_actor_idx
+  on public.planning_material_snapshot_requests (actor_profile_id);
+
+alter table public.planning_material_snapshot_requests enable row level security;
+
+comment on table public.planning_material_snapshot_requests is
+  'Durable transaction-coupled idempotency results for explicit canonical Planning Material refresh requests.';
+comment on column public.planning_material_snapshot_requests.request_key is
+  'Caller-supplied stable refresh request key, globally unique and limited to 200 characters.';
 
 alter table public.planned_work_materials
   add column source_budget_rate_block_material_id uuid,
@@ -92,6 +128,20 @@ alter table public.planned_work_materials
     check (snapshot_unit_cost is null or snapshot_unit_cost >= 0),
   add constraint planned_work_materials_snapshot_amount_nonnegative
     check (snapshot_amount_per_basis is null or snapshot_amount_per_basis >= 0),
+  add constraint planned_work_materials_snapshot_source_consistent
+    check (
+      (
+        snapshot_source_type is null
+        and source_budget_rate_block_material_id is null
+        and snapshot_usage_basis is null
+        and snapshot_usage_rate is null
+        and snapshot_basis_quantity is null
+        and snapshot_unit_cost is null
+        and snapshot_amount_per_basis is null
+        and snapshot_at is null
+      )
+      or snapshot_source_type = 'canonical_budget_block_material'
+    ),
   add constraint planned_work_materials_canonical_snapshot_complete
     check (
       snapshot_source_type is distinct from 'canonical_budget_block_material'
@@ -148,19 +198,23 @@ declare
 begin
   if tg_op = 'INSERT' then
     v_is_canonical :=
-      new.planning_request_key is not null
+      coalesce(new.source_type = 'canonical_budget', false)
+      or new.planning_request_key is not null
       or new.source_budget_year_id is not null
       or new.source_budget_activity_rate_id is not null
       or new.source_budget_rate_block_id is not null;
   elsif tg_op = 'DELETE' then
     v_is_canonical :=
-      old.planning_request_key is not null
+      coalesce(old.source_type = 'canonical_budget', false)
+      or old.planning_request_key is not null
       or old.source_budget_year_id is not null
       or old.source_budget_activity_rate_id is not null
       or old.source_budget_rate_block_id is not null;
   else
     v_is_canonical :=
-      new.planning_request_key is not null
+      coalesce(new.source_type = 'canonical_budget', false)
+      or coalesce(old.source_type = 'canonical_budget', false)
+      or new.planning_request_key is not null
       or new.source_budget_year_id is not null
       or new.source_budget_activity_rate_id is not null
       or new.source_budget_rate_block_id is not null
@@ -224,26 +278,21 @@ create trigger guard_canonical_planning_item_insert
 before insert on public.planned_work_items
 for each row
 when (
-  new.planning_request_key is not null
+  new.source_type = 'canonical_budget'
+  or new.planning_request_key is not null
   or new.source_budget_year_id is not null
   or new.source_budget_activity_rate_id is not null
   or new.source_budget_rate_block_id is not null
 )
 execute function public.guard_canonical_planning_item_mutation();
 
-create trigger guard_canonical_planning_item_lineage_update
-before update of
-  annual_plan_id,
-  activity_id,
-  block_id,
-  source_budget_year_id,
-  source_budget_activity_rate_id,
-  source_budget_rate_block_id,
-  planning_request_key
-on public.planned_work_items
+create trigger guard_canonical_planning_item_update
+before update on public.planned_work_items
 for each row
 when (
-  old.planning_request_key is not null
+  old.source_type = 'canonical_budget'
+  or new.source_type = 'canonical_budget'
+  or old.planning_request_key is not null
   or old.source_budget_year_id is not null
   or old.source_budget_activity_rate_id is not null
   or old.source_budget_rate_block_id is not null
@@ -258,7 +307,8 @@ create trigger guard_canonical_planning_item_delete
 before delete on public.planned_work_items
 for each row
 when (
-  old.planning_request_key is not null
+  old.source_type = 'canonical_budget'
+  or old.planning_request_key is not null
   or old.source_budget_year_id is not null
   or old.source_budget_activity_rate_id is not null
   or old.source_budget_rate_block_id is not null
@@ -272,19 +322,108 @@ security invoker
 set search_path = ''
 as $phase2c_material_guard$
 declare
-  v_item_id uuid;
-  v_plan_status text;
+  v_expected_item_count integer := 0;
+  v_locked_item_count integer := 0;
+  v_child_is_canonical boolean := false;
   v_is_canonical boolean;
+  v_parent record;
 begin
-  v_item_id := case when tg_op = 'DELETE' then old.planned_work_item_id else new.planned_work_item_id end;
   if tg_op = 'INSERT' then
-    v_is_canonical := new.snapshot_source_type = 'canonical_budget_block_material';
+    v_child_is_canonical :=
+      coalesce(new.snapshot_source_type = 'canonical_budget_block_material', false)
+      or new.source_budget_rate_block_material_id is not null
+      or new.snapshot_usage_basis is not null
+      or new.snapshot_usage_rate is not null
+      or new.snapshot_basis_quantity is not null
+      or new.snapshot_unit_cost is not null
+      or new.snapshot_amount_per_basis is not null
+      or new.snapshot_at is not null;
   elsif tg_op = 'DELETE' then
-    v_is_canonical := old.snapshot_source_type = 'canonical_budget_block_material';
+    v_child_is_canonical :=
+      coalesce(old.snapshot_source_type = 'canonical_budget_block_material', false)
+      or old.source_budget_rate_block_material_id is not null
+      or old.snapshot_usage_basis is not null
+      or old.snapshot_usage_rate is not null
+      or old.snapshot_basis_quantity is not null
+      or old.snapshot_unit_cost is not null
+      or old.snapshot_amount_per_basis is not null
+      or old.snapshot_at is not null;
   else
-    v_is_canonical :=
-      new.snapshot_source_type = 'canonical_budget_block_material'
-      or old.snapshot_source_type = 'canonical_budget_block_material';
+    v_child_is_canonical :=
+      coalesce(new.snapshot_source_type = 'canonical_budget_block_material', false)
+      or coalesce(old.snapshot_source_type = 'canonical_budget_block_material', false)
+      or new.source_budget_rate_block_material_id is not null
+      or old.source_budget_rate_block_material_id is not null
+      or new.snapshot_usage_basis is not null
+      or old.snapshot_usage_basis is not null
+      or new.snapshot_usage_rate is not null
+      or old.snapshot_usage_rate is not null
+      or new.snapshot_basis_quantity is not null
+      or old.snapshot_basis_quantity is not null
+      or new.snapshot_unit_cost is not null
+      or old.snapshot_unit_cost is not null
+      or new.snapshot_amount_per_basis is not null
+      or old.snapshot_amount_per_basis is not null
+      or new.snapshot_at is not null
+      or old.snapshot_at is not null;
+  end if;
+
+  v_is_canonical := v_child_is_canonical;
+
+  select count(distinct item_id)::integer
+  into v_expected_item_count
+  from unnest(array[
+    case when tg_op <> 'INSERT' then old.planned_work_item_id else null end,
+    case when tg_op <> 'DELETE' then new.planned_work_item_id else null end
+  ]::uuid[]) as selected(item_id)
+  where selected.item_id is not null;
+
+  for v_parent in
+    select
+      planned_item.id as item_id,
+      annual_plan.id as annual_plan_id,
+      annual_plan.status as annual_plan_status,
+      (
+        coalesce(planned_item.source_type = 'canonical_budget', false)
+        or planned_item.planning_request_key is not null
+        or planned_item.source_budget_year_id is not null
+        or planned_item.source_budget_activity_rate_id is not null
+        or planned_item.source_budget_rate_block_id is not null
+      ) as is_canonical
+    from public.planned_work_items planned_item
+    join public.annual_work_plans annual_plan
+      on annual_plan.id = planned_item.annual_plan_id
+    where planned_item.id in (
+      select distinct selected.item_id
+      from unnest(array[
+        case when tg_op <> 'INSERT' then old.planned_work_item_id else null end,
+        case when tg_op <> 'DELETE' then new.planned_work_item_id else null end
+      ]::uuid[]) as selected(item_id)
+      where selected.item_id is not null
+    )
+    order by annual_plan.id, planned_item.id
+    for update of annual_plan
+  loop
+    v_locked_item_count := v_locked_item_count + 1;
+    v_is_canonical := v_is_canonical or v_parent.is_canonical;
+
+    if tg_op <> 'DELETE'
+      and v_parent.item_id = new.planned_work_item_id
+      and v_parent.is_canonical
+      and new.snapshot_source_type is distinct from 'canonical_budget_block_material'
+    then
+      raise exception using errcode = 'P0001', message = 'PLANNING_CANONICAL_MATERIAL_REQUIRED';
+    end if;
+
+    if (v_child_is_canonical or v_parent.is_canonical)
+      and v_parent.annual_plan_status <> 'draft'
+    then
+      raise exception using errcode = 'P0001', message = 'PLANNING_PLAN_FROZEN';
+    end if;
+  end loop;
+
+  if v_expected_item_count = 0 or v_locked_item_count <> v_expected_item_count then
+    raise exception using errcode = 'P0001', message = 'PLANNING_PLANNED_ITEM_NOT_FOUND';
   end if;
 
   if not v_is_canonical then
@@ -294,20 +433,6 @@ begin
     return new;
   end if;
 
-  select annual_plan.status
-  into v_plan_status
-  from public.planned_work_items planned_item
-  join public.annual_work_plans annual_plan
-    on annual_plan.id = planned_item.annual_plan_id
-  where planned_item.id = v_item_id
-  for update of annual_plan;
-
-  if not found then
-    raise exception using errcode = 'P0001', message = 'PLANNING_PLANNED_ITEM_NOT_FOUND';
-  end if;
-  if v_plan_status <> 'draft' then
-    raise exception using errcode = 'P0001', message = 'PLANNING_PLAN_FROZEN';
-  end if;
   if current_setting('app.phase2c_snapshot_rpc', true) is distinct from 'on' then
     raise exception using errcode = 'P0001', message = 'PLANNING_CANONICAL_ACTION_REQUIRED';
   end if;
@@ -322,22 +447,16 @@ $phase2c_material_guard$;
 create trigger guard_canonical_planning_material_insert
 before insert on public.planned_work_materials
 for each row
-when (new.snapshot_source_type = 'canonical_budget_block_material')
 execute function public.guard_canonical_planning_material_mutation();
 
 create trigger guard_canonical_planning_material_update
 before update on public.planned_work_materials
 for each row
-when (
-  old.snapshot_source_type = 'canonical_budget_block_material'
-  or new.snapshot_source_type = 'canonical_budget_block_material'
-)
 execute function public.guard_canonical_planning_material_mutation();
 
 create trigger guard_canonical_planning_material_delete
 before delete on public.planned_work_materials
 for each row
-when (old.snapshot_source_type = 'canonical_budget_block_material')
 execute function public.guard_canonical_planning_material_mutation();
 
 create or replace function public.populate_canonical_planning_material_snapshot(
@@ -417,6 +536,9 @@ begin
   for share;
   if not found then
     raise exception using errcode = 'P0001', message = 'PLANNING_BLOCK_NOT_FOUND';
+  end if;
+  if v_block.status <> 'active' then
+    raise exception using errcode = 'P0001', message = 'PLANNING_BLOCK_INACTIVE';
   end if;
 
   perform 1
@@ -607,9 +729,14 @@ declare
   v_request_key text := nullif(btrim(p_planning_request_key), '');
   v_snapshot_at timestamptz := transaction_timestamp();
   v_normalized_note text := nullif(btrim(p_note), '');
+  v_plan_year integer;
+  v_budget_fiscal_year text;
 begin
   if v_request_key is null then
     raise exception using errcode = 'P0001', message = 'PLANNING_REQUEST_KEY_REQUIRED';
+  end if;
+  if char_length(v_request_key) > 200 then
+    raise exception using errcode = 'P0001', message = 'PLANNING_REQUEST_KEY_INVALID';
   end if;
 
   if p_actor_profile_id is null or not exists (
@@ -628,7 +755,7 @@ begin
   for key share;
 
   if found then
-    if v_item.source_type <> 'canonical_budget'
+    if v_item.source_type is distinct from 'canonical_budget'
       or v_item.annual_plan_id is distinct from p_annual_plan_id
       or v_item.source_budget_year_id is distinct from p_budget_year_id
       or v_item.source_budget_activity_rate_id is distinct from p_budget_activity_rate_id
@@ -665,7 +792,8 @@ begin
     );
   end if;
 
-  perform 1
+  select annual_plan.plan_year
+  into v_plan_year
   from public.annual_work_plans annual_plan
   where annual_plan.id = p_annual_plan_id
   for update;
@@ -679,6 +807,21 @@ begin
       and annual_plan.status = 'draft'
   ) then
     raise exception using errcode = 'P0001', message = 'PLANNING_PLAN_FROZEN';
+  end if;
+
+  select budget_year.fiscal_year
+  into v_budget_fiscal_year
+  from public.budget_years budget_year
+  where budget_year.id = p_budget_year_id
+  for share;
+  if not found then
+    raise exception using errcode = 'P0001', message = 'PLANNING_BUDGET_YEAR_NOT_ELIGIBLE';
+  end if;
+  if nullif(btrim(v_budget_fiscal_year), '') is null
+    or btrim(v_budget_fiscal_year) !~ '^[0-9]+$'
+    or v_plan_year::text <> btrim(v_budget_fiscal_year)
+  then
+    raise exception using errcode = 'P0001', message = 'PLANNING_BUDGET_YEAR_PLAN_MISMATCH';
   end if;
 
   perform set_config('app.phase2c_snapshot_rpc', 'on', true);
@@ -746,7 +889,7 @@ begin
     for key share;
 
     if not found
-      or v_item.source_type <> 'canonical_budget'
+      or v_item.source_type is distinct from 'canonical_budget'
       or v_item.annual_plan_id is distinct from p_annual_plan_id
       or v_item.source_budget_year_id is distinct from p_budget_year_id
       or v_item.source_budget_activity_rate_id is distinct from p_budget_activity_rate_id
@@ -809,7 +952,8 @@ comment on function public.create_canonical_planned_work_item_snapshot(
 
 create or replace function public.refresh_canonical_planned_work_item_snapshot(
   p_planned_work_item_id uuid,
-  p_actor_profile_id uuid
+  p_actor_profile_id uuid,
+  p_refresh_request_key text
 )
 returns jsonb
 language plpgsql
@@ -818,10 +962,18 @@ set search_path = ''
 as $phase2c_refresh_rpc$
 declare
   v_item public.planned_work_items%rowtype;
+  v_request public.planning_material_snapshot_requests%rowtype;
   v_annual_plan_id uuid;
   v_material_count integer := 0;
   v_snapshot_at timestamptz := transaction_timestamp();
+  v_request_key text := nullif(btrim(p_refresh_request_key), '');
+  v_plan_year integer;
+  v_budget_fiscal_year text;
 begin
+  if v_request_key is null or char_length(v_request_key) > 200 then
+    raise exception using errcode = 'P0001', message = 'PLANNING_REQUEST_KEY_INVALID';
+  end if;
+
   if p_actor_profile_id is null or not exists (
     select 1
     from public.profiles profile
@@ -839,7 +991,54 @@ begin
     raise exception using errcode = 'P0001', message = 'PLANNING_PLANNED_ITEM_NOT_FOUND';
   end if;
 
-  perform 1
+  insert into public.planning_material_snapshot_requests (
+    request_key,
+    planned_work_item_id,
+    actor_profile_id,
+    snapshot_at,
+    material_count,
+    completed_at
+  )
+  values (
+    v_request_key,
+    p_planned_work_item_id,
+    p_actor_profile_id,
+    v_snapshot_at,
+    0,
+    v_snapshot_at
+  )
+  on conflict (request_key) do nothing
+  returning * into v_request;
+
+  if not found then
+    select request_row.*
+    into v_request
+    from public.planning_material_snapshot_requests request_row
+    where request_row.request_key = v_request_key
+    for key share;
+
+    if not found
+      or v_request.planned_work_item_id is distinct from p_planned_work_item_id
+      or v_request.actor_profile_id is distinct from p_actor_profile_id
+    then
+      raise exception using errcode = 'P0001', message = 'PLANNING_REQUEST_KEY_REUSED';
+    end if;
+
+    select planned_item.*
+    into v_item
+    from public.planned_work_items planned_item
+    where planned_item.id = p_planned_work_item_id;
+
+    return jsonb_build_object(
+      'planned_work_item', to_jsonb(v_item),
+      'material_count', v_request.material_count,
+      'snapshot_at', v_request.snapshot_at,
+      'already_exists', true
+    );
+  end if;
+
+  select annual_plan.plan_year
+  into v_plan_year
   from public.annual_work_plans annual_plan
   where annual_plan.id = v_annual_plan_id
   for update;
@@ -865,7 +1064,7 @@ begin
     raise exception using errcode = 'P0001', message = 'PLANNING_PLANNED_ITEM_NOT_FOUND';
   end if;
 
-  if v_item.source_type <> 'canonical_budget'
+  if v_item.source_type is distinct from 'canonical_budget'
     or v_item.source_budget_year_id is null
     or v_item.source_budget_activity_rate_id is null
     or v_item.source_budget_rate_block_id is null
@@ -874,6 +1073,21 @@ begin
     or v_item.planning_request_key is null
   then
     raise exception using errcode = 'P0001', message = 'PLANNING_CANONICAL_LINEAGE_REQUIRED';
+  end if;
+
+  select budget_year.fiscal_year
+  into v_budget_fiscal_year
+  from public.budget_years budget_year
+  where budget_year.id = v_item.source_budget_year_id
+  for share;
+  if not found then
+    raise exception using errcode = 'P0001', message = 'PLANNING_BUDGET_YEAR_NOT_ELIGIBLE';
+  end if;
+  if nullif(btrim(v_budget_fiscal_year), '') is null
+    or btrim(v_budget_fiscal_year) !~ '^[0-9]+$'
+    or v_plan_year::text <> btrim(v_budget_fiscal_year)
+  then
+    raise exception using errcode = 'P0001', message = 'PLANNING_BUDGET_YEAR_PLAN_MISMATCH';
   end if;
 
   perform set_config('app.phase2c_snapshot_rpc', 'on', true);
@@ -897,16 +1111,22 @@ begin
   where id = v_item.id
   returning * into v_item;
 
+  update public.planning_material_snapshot_requests request_row
+  set material_count = v_material_count
+  where request_row.request_key = v_request_key
+  returning * into v_request;
+
   return jsonb_build_object(
     'planned_work_item', to_jsonb(v_item),
     'material_count', v_material_count,
-    'snapshot_at', v_snapshot_at
+    'snapshot_at', v_snapshot_at,
+    'already_exists', false
   );
 end
 $phase2c_refresh_rpc$;
 
-comment on function public.refresh_canonical_planned_work_item_snapshot(uuid, uuid) is
-  'Atomic service-only replacement of a draft canonical Planned Work Item Material snapshot using stored parent lineage.';
+comment on function public.refresh_canonical_planned_work_item_snapshot(uuid, uuid, text) is
+  'Atomic service-only replacement of a draft canonical Planning Material snapshot with durable request-key idempotency.';
 
 revoke all on function public.guard_canonical_planning_item_mutation()
   from public, anon, authenticated;
@@ -919,7 +1139,7 @@ revoke all on function public.create_canonical_planned_work_item_snapshot(
   uuid, text, text, text, uuid, uuid, text, uuid, uuid, date, date,
   text, integer, integer, numeric, text, numeric, uuid, text, text, text
 ) from public, anon, authenticated;
-revoke all on function public.refresh_canonical_planned_work_item_snapshot(uuid, uuid)
+revoke all on function public.refresh_canonical_planned_work_item_snapshot(uuid, uuid, text)
   from public, anon, authenticated;
 
 grant execute on function public.populate_canonical_planning_material_snapshot(
@@ -929,7 +1149,7 @@ grant execute on function public.create_canonical_planned_work_item_snapshot(
   uuid, text, text, text, uuid, uuid, text, uuid, uuid, date, date,
   text, integer, integer, numeric, text, numeric, uuid, text, text, text
 ) to service_role;
-grant execute on function public.refresh_canonical_planned_work_item_snapshot(uuid, uuid)
+grant execute on function public.refresh_canonical_planned_work_item_snapshot(uuid, uuid, text)
   to service_role;
 
 drop policy if exists "authenticated write planned_work_items"
@@ -939,10 +1159,12 @@ drop policy if exists "authenticated write planned_work_materials"
 
 revoke all on table public.planned_work_items from anon, authenticated;
 revoke all on table public.planned_work_materials from anon, authenticated;
+revoke all on table public.planning_material_snapshot_requests from public, anon, authenticated;
 grant select on table public.planned_work_items to authenticated;
 grant select on table public.planned_work_materials to authenticated;
 grant all on table public.planned_work_items to service_role;
 grant all on table public.planned_work_materials to service_role;
+grant all on table public.planning_material_snapshot_requests to service_role;
 
 comment on table public.planned_work_materials is
   'Planning Material snapshots. Canonical rows are action-only, Budget-lineaged, refreshable only while the annual plan is draft, and frozen after approval.';

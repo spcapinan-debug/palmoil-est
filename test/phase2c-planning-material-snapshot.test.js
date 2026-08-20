@@ -11,6 +11,7 @@ const migrationPath = path.join(
   "20260820061813_phase2c_planning_material_snapshot.sql",
 );
 const migration = fs.readFileSync(migrationPath, "utf8");
+const farmTablesSource = fs.readFileSync(path.join(root, "api", "farm-tables.js"), "utf8");
 
 function sqlFunction(name, nextMarker = "comment on function") {
   const start = migration.indexOf(`create or replace function public.${name}`);
@@ -23,6 +24,8 @@ function sqlFunction(name, nextMarker = "comment on function") {
 const populateRpc = sqlFunction("populate_canonical_planning_material_snapshot");
 const createRpc = sqlFunction("create_canonical_planned_work_item_snapshot");
 const refreshRpc = sqlFunction("refresh_canonical_planned_work_item_snapshot");
+const itemGuard = sqlFunction("guard_canonical_planning_item_mutation");
+const materialGuard = sqlFunction("guard_canonical_planning_material_mutation");
 
 test("1. migration is one additive local Phase 2C transaction", () => {
   assert.match(migration, /^-- Phase 2C:/);
@@ -205,10 +208,9 @@ test("25. Budget changes cannot silently rewrite persisted Planning snapshots", 
 });
 
 test("26. canonical snapshot guards enforce frozen-plan immutability", () => {
-  const guard = sqlFunction("guard_canonical_planning_material_mutation");
-  assert.match(guard, /for update of annual_plan/);
-  assert.match(guard, /v_plan_status <> 'draft'/);
-  assert.match(guard, /PLANNING_PLAN_FROZEN/);
+  assert.match(materialGuard, /for update of annual_plan/);
+  assert.match(materialGuard, /annual_plan_status <> 'draft'/);
+  assert.match(materialGuard, /PLANNING_PLAN_FROZEN/);
 });
 
 test("27. create retry is idempotent and rejects materially different key reuse", () => {
@@ -219,7 +221,10 @@ test("27. create retry is idempotent and rejects materially different key reuse"
   assert.doesNotMatch(createRpc, /planning_request_key[^\n]+now\(\)|planning_request_key[^\n]+transaction_timestamp/);
 });
 
-test("28. refresh is idempotent as a duplicate-free complete replacement", () => {
+test("28. refresh uses a durable transaction-coupled request ledger", () => {
+  assert.match(migration, /create table public\.planning_material_snapshot_requests/);
+  assert.match(refreshRpc, /on conflict \(request_key\) do nothing/);
+  assert.match(refreshRpc, /'already_exists', true/);
   assert.match(refreshRpc, /delete from public\.planned_work_materials/);
   assert.match(migration, /unique \(planned_work_item_id, material_id\)/);
   assert.match(migration, /planned_work_materials_item_source_budget_material_uidx/);
@@ -278,11 +283,115 @@ test("canonical costs preserve NULL versus zero while precedence remains undecid
   assert.doesNotMatch(populateRpc, /coalesce\(source_row\.unit_cost|coalesce\(source_row\.amount_per_basis/);
 });
 
-test("canonical direct-mutation guard is narrow and leaves unrelated parent fields alone", () => {
+test("canonical item UPDATE guard covers every mutable column", () => {
   const trigger = migration.slice(
-    migration.indexOf("create trigger guard_canonical_planning_item_lineage_update"),
+    migration.indexOf("create trigger guard_canonical_planning_item_update"),
     migration.indexOf("create trigger guard_canonical_planning_item_delete"),
   );
-  assert.doesNotMatch(trigger, /source_work_order_id/);
+  assert.match(trigger, /before update on public\.planned_work_items/);
+  assert.doesNotMatch(trigger, /before update of/);
   assert.match(migration, /PLANNING_CANONICAL_ACTION_REQUIRED/);
+});
+
+test("A-B. frozen canonical note, status, date, and generic privileged updates cannot bypass the guard", () => {
+  assert.match(itemGuard, /old\.source_type = 'canonical_budget'/);
+  assert.match(itemGuard, /new\.source_type = 'canonical_budget'/);
+  assert.match(itemGuard, /order by annual_plan\.id[\s\S]*for update/);
+  assert.match(itemGuard, /message = 'PLANNING_PLAN_FROZEN'/);
+  assert.match(itemGuard, /current_setting\('app\.phase2c_snapshot_rpc', true\) is distinct from 'on'/);
+  assert.match(farmTablesSource, /planned_work_items: "farm\.plan\.create"/);
+  assert.doesNotMatch(farmTablesSource, /set_config\('app\.phase2c_snapshot_rpc'/);
+});
+
+test("C. a canonical parent rejects every noncanonical child representation", () => {
+  assert.match(materialGuard, /v_parent\.is_canonical/);
+  assert.match(materialGuard, /new\.snapshot_source_type is distinct from 'canonical_budget_block_material'/);
+  assert.match(materialGuard, /message = 'PLANNING_CANONICAL_MATERIAL_REQUIRED'/);
+});
+
+test("D. child moves lock and validate old and new parent plans deterministically", () => {
+  assert.match(materialGuard, /old\.planned_work_item_id/);
+  assert.match(materialGuard, /new\.planned_work_item_id/);
+  assert.match(materialGuard, /order by annual_plan\.id, planned_item\.id/);
+  assert.match(materialGuard, /for update of annual_plan/);
+  assert.match(materialGuard, /v_child_is_canonical or v_parent\.is_canonical/);
+});
+
+test("E-F. Area Master Block must exist and remain active", () => {
+  assert.match(populateRpc, /where block_row\.id = p_block_id[\s\S]*for share/);
+  assert.match(populateRpc, /message = 'PLANNING_BLOCK_NOT_FOUND'/);
+  assert.match(populateRpc, /v_block\.status <> 'active'/);
+  assert.match(populateRpc, /message = 'PLANNING_BLOCK_INACTIVE'/);
+});
+
+test("G-H. retrying the same refresh key returns the completed result without changing snapshot rows or time", () => {
+  const retryAt = refreshRpc.indexOf("if not found then");
+  const deleteAt = refreshRpc.indexOf("delete from public.planned_work_materials");
+  assert.ok(retryAt >= 0 && deleteAt > retryAt);
+  assert.match(refreshRpc, /'snapshot_at', v_request\.snapshot_at/);
+  assert.match(refreshRpc, /'material_count', v_request\.material_count/);
+  assert.match(refreshRpc, /'already_exists', true/);
+});
+
+test("I. a new explicit refresh key performs one replacement with a new transaction snapshot", () => {
+  assert.match(refreshRpc, /v_snapshot_at timestamptz := transaction_timestamp\(\)/);
+  assert.match(refreshRpc, /values \([\s\S]*v_request_key,[\s\S]*v_snapshot_at/);
+  assert.match(refreshRpc, /delete from public\.planned_work_materials[\s\S]*populate_canonical_planning_material_snapshot/);
+  assert.match(refreshRpc, /'already_exists', false/);
+});
+
+test("J. refresh-key reuse for another item or actor fails closed", () => {
+  assert.match(refreshRpc, /v_request\.planned_work_item_id is distinct from p_planned_work_item_id/);
+  assert.match(refreshRpc, /v_request\.actor_profile_id is distinct from p_actor_profile_id/);
+  assert.match(refreshRpc, /message = 'PLANNING_REQUEST_KEY_REUSED'/);
+});
+
+test("K. create and refresh require unambiguous Annual Plan and Budget Year alignment", () => {
+  for (const rpc of [createRpc, refreshRpc]) {
+    assert.match(rpc, /btrim\(v_budget_fiscal_year\) !~ '\^\[0-9\]\+\$'/);
+    assert.match(rpc, /v_plan_year::text <> btrim\(v_budget_fiscal_year\)/);
+    assert.match(rpc, /message = 'PLANNING_BUDGET_YEAR_PLAN_MISMATCH'/);
+  }
+});
+
+test("L. canonical parent lineage cannot be disguised with a noncanonical source_type", () => {
+  const constraint = migration.slice(
+    migration.indexOf("planned_work_items_canonical_lineage_complete"),
+    migration.indexOf("create index planned_work_items_source_budget_year_idx"),
+  );
+  assert.match(constraint, /source_type is distinct from 'canonical_budget'[\s\S]*source_budget_year_id is null/);
+  assert.match(constraint, /source_type = 'canonical_budget'[\s\S]*source_budget_year_id is not null/);
+});
+
+test("M-N. child source type is canonical when snapshot fields exist while all-NULL historical rows remain valid", () => {
+  const constraint = migration.slice(
+    migration.indexOf("planned_work_materials_snapshot_source_consistent"),
+    migration.indexOf("planned_work_materials_canonical_snapshot_complete"),
+  );
+  assert.match(constraint, /snapshot_source_type is null[\s\S]*source_budget_rate_block_material_id is null/);
+  assert.match(constraint, /or snapshot_source_type = 'canonical_budget_block_material'/);
+});
+
+test("request keys are trimmed, nonblank, and limited to 200 characters before indexed writes", () => {
+  assert.match(migration, /char_length\(btrim\(planning_request_key\)\) between 1 and 200/);
+  assert.match(migration, /char_length\(btrim\(request_key\)\) between 1 and 200/);
+  assert.match(createRpc, /char_length\(v_request_key\) > 200[\s\S]*PLANNING_REQUEST_KEY_INVALID/);
+  assert.match(refreshRpc, /v_request_key is null or char_length\(v_request_key\) > 200/);
+});
+
+test("refresh idempotency storage is private, RLS-enabled, indexed, and committed with the snapshot transaction", () => {
+  assert.match(migration, /alter table public\.planning_material_snapshot_requests enable row level security/);
+  assert.match(migration, /planning_material_snapshot_requests_item_idx/);
+  assert.match(migration, /planning_material_snapshot_requests_actor_idx/);
+  assert.match(migration, /revoke all on table public\.planning_material_snapshot_requests from public, anon, authenticated/);
+  assert.match(migration, /grant all on table public\.planning_material_snapshot_requests to service_role/);
+  assert.match(refreshRpc, /insert into public\.planning_material_snapshot_requests[\s\S]*delete from public\.planned_work_materials[\s\S]*update public\.planning_material_snapshot_requests/);
+});
+
+test("O-P. historical Planning and all Work Order records remain outside migration DML", () => {
+  const schemaSection = migration.slice(0, migration.indexOf("create or replace function"));
+  assert.doesNotMatch(schemaSection, /update public\.planned_work_items|insert into public\.planned_work_materials/);
+  for (const rpc of [populateRpc, createRpc, refreshRpc, itemGuard, materialGuard]) {
+    assert.doesNotMatch(rpc, /work_orders|work_order_materials/);
+  }
 });
