@@ -18,6 +18,125 @@ const {
 } = require("../lib/server/farm-api");
 
 const ACTIONS = {
+  create_canonical_annual_work_plan: {
+    permission: "farm.plan.create",
+    rpc: "create_canonical_annual_work_plan",
+    params: (args, actor, context) => ({
+      p_plan_year: requiredInteger(args.plan_year, "plan_year", { minimum: 1 }),
+      p_plan_name: requireText(args.plan_name, "plan_name", 500),
+      p_actor_profile_id: actor.profile.id,
+      p_request_key: context.idempotencyKey,
+      p_estate_id: optionalUuid(args.estate_id, "estate_id"),
+      p_note: optionalText(args.note, 2000),
+    }),
+    entity: "annual_work_plans",
+  },
+  update_canonical_annual_work_plan: {
+    permission: "farm.plan.create",
+    rpc: "update_canonical_annual_work_plan",
+    params: (args, actor) => ({
+      p_annual_plan_id: requireUuid(args.annual_plan_id, "annual_plan_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_plan_name: requireText(args.plan_name, "plan_name", 500),
+      p_estate_id: optionalUuid(args.estate_id, "estate_id"),
+      p_note: optionalText(args.note, 2000),
+    }),
+    entity: "annual_work_plans", entityId: (args) => args.annual_plan_id,
+  },
+  approve_canonical_annual_work_plan: {
+    permission: "farm.plan.approve",
+    confirmation: true,
+    rpc: "approve_canonical_annual_work_plan",
+    params: (args, actor) => ({
+      p_annual_plan_id: requireUuid(args.annual_plan_id, "annual_plan_id"),
+      p_actor_profile_id: actor.profile.id,
+    }),
+    entity: "annual_work_plans", entityId: (args) => args.annual_plan_id,
+  },
+  delete_canonical_annual_work_plan: {
+    permission: "farm.plan.create",
+    confirmation: true,
+    rpc: "delete_canonical_annual_work_plan",
+    params: (args, actor) => ({
+      p_annual_plan_id: requireUuid(args.annual_plan_id, "annual_plan_id"),
+      p_actor_profile_id: actor.profile.id,
+    }),
+    entity: "annual_work_plans", entityId: (args) => args.annual_plan_id,
+  },
+  create_canonical_planned_work_item_snapshot: {
+    permission: "farm.plan.create",
+    rpc: "create_canonical_planned_work_item_snapshot",
+    params: (args, actor, context) => ({
+      p_annual_plan_id: requireUuid(args.annual_plan_id, "annual_plan_id"),
+      p_budget_year_id: requireText(args.budget_year_id, "budget_year_id", 200),
+      p_budget_activity_rate_id: requireText(args.budget_activity_rate_id, "budget_activity_rate_id", 200),
+      p_budget_rate_block_id: requireText(args.budget_rate_block_id, "budget_rate_block_id", 200),
+      p_block_id: requireUuid(args.block_id, "block_id"),
+      p_activity_id: requireUuid(args.activity_id, "activity_id"),
+      p_planning_request_key: context.idempotencyKey,
+      p_actor_profile_id: actor.profile.id,
+      p_plot_id: optionalUuid(args.plot_id, "plot_id"),
+      p_planned_start_date: optionalDate(args.planned_start_date, "planned_start_date"),
+      p_planned_end_date: optionalDate(args.planned_end_date, "planned_end_date"),
+      p_recurrence_type: optionalText(args.recurrence_type, 80),
+      p_recurrence_interval: optionalInteger(args.recurrence_interval, "recurrence_interval", { minimum: 1 }),
+      p_repeat_after_last_done_days: optionalInteger(
+        args.repeat_after_last_done_days,
+        "repeat_after_last_done_days",
+      ),
+      p_target_quantity: optionalNumber(args.target_quantity, "target_quantity"),
+      p_target_unit: optionalText(args.target_unit, 120),
+      p_planned_budget: optionalNumber(args.planned_budget, "planned_budget"),
+      p_suggested_team_id: optionalUuid(args.suggested_team_id, "suggested_team_id"),
+      p_status: requireText(args.status || "planned", "status", 80),
+      p_note: optionalText(args.note, 2000),
+      p_ap_code: optionalText(args.ap_code, 200),
+    }),
+    entity: "planned_work_items",
+  },
+  update_canonical_planned_work_item: {
+    permission: "farm.plan.create",
+    rpc: "update_canonical_planned_work_item",
+    params: (args, actor) => ({
+      p_planned_work_item_id: requireUuid(args.planned_work_item_id, "planned_work_item_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_planned_start_date: optionalDate(args.planned_start_date, "planned_start_date"),
+      p_planned_end_date: optionalDate(args.planned_end_date, "planned_end_date"),
+      p_recurrence_type: optionalText(args.recurrence_type, 80),
+      p_recurrence_interval: optionalInteger(args.recurrence_interval, "recurrence_interval", { minimum: 1 }),
+      p_repeat_after_last_done_days: optionalInteger(
+        args.repeat_after_last_done_days,
+        "repeat_after_last_done_days",
+      ),
+      p_target_quantity: optionalNumber(args.target_quantity, "target_quantity"),
+      p_target_unit: optionalText(args.target_unit, 120),
+      p_planned_budget: optionalNumber(args.planned_budget, "planned_budget"),
+      p_suggested_team_id: optionalUuid(args.suggested_team_id, "suggested_team_id"),
+      p_note: optionalText(args.note, 2000),
+      p_ap_code: optionalText(args.ap_code, 200),
+    }),
+    entity: "planned_work_items", entityId: (args) => args.planned_work_item_id,
+  },
+  refresh_canonical_planned_work_item_snapshot: {
+    permission: "farm.plan.create",
+    rpc: "refresh_canonical_planned_work_item_snapshot",
+    params: (args, actor, context) => ({
+      p_planned_work_item_id: requireUuid(args.planned_work_item_id, "planned_work_item_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_refresh_request_key: context.idempotencyKey,
+    }),
+    entity: "planned_work_items", entityId: (args) => args.planned_work_item_id,
+  },
+  delete_canonical_planned_work_item: {
+    permission: "farm.plan.create",
+    confirmation: true,
+    rpc: "delete_canonical_planned_work_item",
+    params: (args, actor) => ({
+      p_planned_work_item_id: requireUuid(args.planned_work_item_id, "planned_work_item_id"),
+      p_actor_profile_id: actor.profile.id,
+    }),
+    entity: "planned_work_items", entityId: (args) => args.planned_work_item_id,
+  },
   create_activity_material_standard_draft: {
     permission: "performance.standard.manage", execute: createActivityMaterialStandardDraft,
     params: (args, actor) => ({ args, actor }),
@@ -516,6 +635,25 @@ function requiredDate(value, field) {
     throw new ApiError(400, "VALIDATION_ERROR", `${field} must be YYYY-MM-DD`, { field });
   }
   return date;
+}
+
+function optionalDate(value, field) {
+  return value == null || value === "" ? null : requiredDate(value, field);
+}
+
+function optionalInteger(value, field, { minimum = 0 } = {}) {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < minimum) {
+    throw new ApiError(400, "VALIDATION_ERROR", `${field} must be an integer greater than or equal to ${minimum}`, { field });
+  }
+  return number;
+}
+
+function requiredInteger(value, field, options = {}) {
+  const number = optionalInteger(value, field, options);
+  if (number == null) throw new ApiError(400, "VALIDATION_ERROR", `${field} is required`, { field });
+  return number;
 }
 
 function requiredNumber(value, field, options = {}) {

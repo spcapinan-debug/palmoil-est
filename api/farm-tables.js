@@ -174,6 +174,7 @@ const CACHE_MS = 30_000;
 const cache = new Map();
 const AREA_REFERENCE_TABLES = new Set(["blocks", "estates", "zones", "plots", "plot_groups"]);
 const ACTION_ONLY_TABLES = new Set([
+  "annual_work_plans", "planned_work_items", "planned_work_materials",
   "goods_issue_daily_usage", "goods_issues", "goods_issue_lines",
   "goods_returns", "goods_return_lines", "sku_conversions", "unit_conversions",
   "stock_balances", "stock_transactions",
