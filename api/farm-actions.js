@@ -561,7 +561,20 @@ const ACTIONS = {
   },
 };
 
+const PLANNING_UAT_PLAN_PREFIX = "WEBTEST-UAT-P2C-";
+
+const PLANNING_UAT_ACTIONS = new Set([
+  "create_canonical_annual_work_plan",
+  "update_canonical_annual_work_plan",
+  "delete_canonical_annual_work_plan",
+  "create_canonical_planned_work_item_snapshot",
+  "update_canonical_planned_work_item",
+  "refresh_canonical_planned_work_item_snapshot",
+  "delete_canonical_planned_work_item",
+]);
+
 const UAT_MUTATION_ACTIONS = new Set([
+  ...PLANNING_UAT_ACTIONS,
   "create_work_order_from_plan_item",
   "submit_work_order",
   "approve_work_order",
@@ -889,6 +902,66 @@ function requireUatWorkOrder(order) {
   return order;
 }
 
+function requirePlanningUatPlanName(planName) {
+  if (!String(planName || "").startsWith(PLANNING_UAT_PLAN_PREFIX)) {
+    throw new ApiError(
+      403,
+      "UAT_WRITE_FORBIDDEN",
+      `Planning UAT writes are restricted to ${PLANNING_UAT_PLAN_PREFIX} Plans`,
+    );
+  }
+}
+
+function requirePlanningUatPlan(actor, plan) {
+  if (
+    plan?.source_type !== "canonical_budget"
+    || plan?.created_by !== actor.profile.id
+    || !String(plan?.plan_name || "").startsWith(PLANNING_UAT_PLAN_PREFIX)
+  ) {
+    throw new ApiError(
+      403,
+      "UAT_WRITE_FORBIDDEN",
+      `Planning UAT writes are restricted to owned ${PLANNING_UAT_PLAN_PREFIX} canonical Plans`,
+    );
+  }
+  return plan;
+}
+
+async function planningUatPlanById(actor, annualPlanId, dependencies = {}) {
+  const loadOne = dependencies.one || one;
+  const plan = await loadOne(
+    `annual_work_plans?id=eq.${requireUuid(annualPlanId, "annual_plan_id")}`
+      + "&select=id,source_type,created_by,plan_name&limit=1",
+    "Annual work plan",
+  );
+  return requirePlanningUatPlan(actor, plan);
+}
+
+async function enforcePlanningUatMutation(actor, action, args, dependencies = {}) {
+  const loadOne = dependencies.one || one;
+  if (action === "create_canonical_annual_work_plan") {
+    requirePlanningUatPlanName(args.plan_name);
+    return;
+  }
+  if (action === "update_canonical_annual_work_plan") {
+    requirePlanningUatPlanName(args.plan_name);
+  }
+  if (["update_canonical_annual_work_plan", "delete_canonical_annual_work_plan"].includes(action)) {
+    await planningUatPlanById(actor, args.annual_plan_id, dependencies);
+    return;
+  }
+  if (action === "create_canonical_planned_work_item_snapshot") {
+    await planningUatPlanById(actor, args.annual_plan_id, dependencies);
+    return;
+  }
+  const item = await loadOne(
+    `planned_work_items?id=eq.${requireUuid(args.planned_work_item_id, "planned_work_item_id")}`
+      + "&select=id,annual_plan_id&limit=1",
+    "Planned work item",
+  );
+  await planningUatPlanById(actor, item.annual_plan_id, dependencies);
+}
+
 function requireInventoryUatIssue(issue) {
   if (!String(issue?.issue_no || "").startsWith("WEBTEST-UAT-INV-")) {
     throw new ApiError(
@@ -1020,10 +1093,14 @@ async function uatOrderFromArgs(action, args) {
   return null;
 }
 
-async function enforceUatMutation(actor, action, args) {
+async function enforceUatMutation(actor, action, args, dependencies = {}) {
   if (!actorIsUat(actor)) return;
   if (!UAT_MUTATION_ACTIONS.has(action)) {
     throw new ApiError(403, "UAT_ACTION_FORBIDDEN", "This action is disabled for UAT identities");
+  }
+  if (PLANNING_UAT_ACTIONS.has(action)) {
+    await enforcePlanningUatMutation(actor, action, args, dependencies);
+    return;
   }
   const order = INVENTORY_UAT_ACTIONS.has(action)
     ? await inventoryIssueFromArgs(action, args)
@@ -2448,9 +2525,11 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports._test = {
-  ACTIONS, INVENTORY_UAT_ACTIONS, UAT_MUTATION_ACTIONS, enforceActionScope, enforceUatMutation,
+  ACTIONS, INVENTORY_UAT_ACTIONS, PLANNING_UAT_ACTIONS, PLANNING_UAT_PLAN_PREFIX,
+  UAT_MUTATION_ACTIONS, enforceActionScope, enforcePlanningUatMutation, enforceUatMutation,
   createWorkOrderFromPlanItem,
-  requireInventoryUatIssue, requireUatWorkOrder, requireWebTestCode, requestHash,
+  requireInventoryUatIssue, requirePlanningUatPlan, requirePlanningUatPlanName,
+  requireUatWorkOrder, requireWebTestCode, requestHash,
   activityMaterialStandardInput, budgetBlockMaterialActionParams, calculateConsumedFuel, ensureSurveyFailureFindings,
   nextActivityMaterialStandardVersion, notificationContext, resolveSurveyTemplateForOrder,
   standardPeriodsOverlap,
