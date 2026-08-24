@@ -23629,6 +23629,29 @@ async function addClear() {
   }
 }
 
+function wireSidebarNavigationClick() {
+  els.tabs.addEventListener("click", (e) => {
+    const summary = e.target.closest(".menu-dropdown > summary");
+    if (summary && state.sidebarCollapsed) {
+      e.preventDefault();
+      openSidebarFlyout(summary.closest(".menu-dropdown"));
+      return;
+    }
+    const jumpBtn = e.target.closest("button[data-view-jump]");
+    if (jumpBtn) {
+      setView(jumpBtn.dataset.viewJump);
+      return;
+    }
+    const btn = e.target.closest("button[data-view]");
+    if (btn) {
+      state.workspaceRoute = btn.dataset.workspaceRoute || "";
+      state.workspaceTab = btn.dataset.workspaceTab || "";
+      setView(btn.dataset.view);
+      closeSidebarFlyouts();
+    }
+  });
+}
+
 function downloadCsv() {
   const rows = state.currentRows;
   const headers = rows[0] ? Object.keys(rows[0]).filter((h) => typeof rows[0][h] !== "object") : [];
@@ -23652,6 +23675,8 @@ async function init() {
   state.view = initialViewFromUrl();
   const initialWorkspaceRoute = requestedWorkspaceRouteFromUrl();
   if (initialWorkspaceRoute) applyWorkspaceFallbackRoute(initialWorkspaceRoute);
+  // Navigation must be interactive while the dashboard payloads are still loading.
+  wireSidebarNavigationClick();
   if (isFarmView(state.view) || initialWorkspaceRoute) await loadWorkspaceShell();
   window.addEventListener("popstate", () => {
     const requestedRoute = requestedWorkspaceRouteFromUrl();
@@ -23747,26 +23772,6 @@ async function init() {
     normalizeDateInput(els.startDate);
     normalizeDateInput(els.endDate);
     render();
-  });
-  els.tabs.addEventListener("click", (e) => {
-    const summary = e.target.closest(".menu-dropdown > summary");
-    if (summary && state.sidebarCollapsed) {
-      e.preventDefault();
-      openSidebarFlyout(summary.closest(".menu-dropdown"));
-      return;
-    }
-    const jumpBtn = e.target.closest("button[data-view-jump]");
-    if (jumpBtn) {
-      setView(jumpBtn.dataset.viewJump);
-      return;
-    }
-    const btn = e.target.closest("button[data-view]");
-    if (btn) {
-      state.workspaceRoute = btn.dataset.workspaceRoute || "";
-      state.workspaceTab = btn.dataset.workspaceTab || "";
-      setView(btn.dataset.view);
-      closeSidebarFlyouts();
-    }
   });
   els.tabs.addEventListener("pointerenter", (e) => {
     const summary = e.target.closest?.(".menu-dropdown > summary");

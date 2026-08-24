@@ -4,6 +4,7 @@
   "scripts": {
     "build": "node webapp/scripts/build_online_export.mjs --check",
     "lint": "node scripts/check-syntax.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "test:browser": "node scripts/planning-navigation-browser-regression.cjs"
   }
 }

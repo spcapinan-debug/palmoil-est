@@ -48,6 +48,10 @@
       const badge = card.querySelector("[data-planning-selected-count]");
       if (badge) badge.textContent = "เลือกแล้ว " + count;
       setSelectedHighlights(card);
+      const selectAll = card.querySelector("[data-planning-select-all]");
+      if (selectAll) selectAll.disabled = !leafInputs(card).some((input) => isVisible(input) && !input.checked);
+      const clearAll = card.querySelector("[data-planning-clear-all]");
+      if (clearAll) clearAll.disabled = count === 0;
     });
     const strip = root.previousElementSibling?.matches(".farm-plan-selected-summary-strip")
       ? root.previousElementSibling : null;
