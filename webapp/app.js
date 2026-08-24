@@ -3643,9 +3643,10 @@ function farmViewTableKeys(view = state.view, extraTables = []) {
 }
 
 async function loadFarmCurrentViewTables({ silent = false, force = false, extraTables = [] } = {}) {
-  const tableKeys = farmViewTableKeys(state.view, extraTables);
+  const requestedView = state.view;
+  const tableKeys = farmViewTableKeys(requestedView, extraTables);
   if (!tableKeys.length) return false;
-  return loadFarmTablesFromDatabase({ silent, force, tables: tableKeys });
+  return loadFarmTablesFromDatabase({ silent, force, tables: tableKeys, renderIfView: requestedView });
 }
 
 function farmFilterFreshTableKeys(tableKeys = [], force = false) {
@@ -3658,7 +3659,7 @@ function farmFilterFreshTableKeys(tableKeys = [], force = false) {
   });
 }
 
-async function loadFarmTablesFromDatabase({ silent = false, tables = null, force = false } = {}) {
+async function loadFarmTablesFromDatabase({ silent = false, tables = null, force = false, renderIfView = "" } = {}) {
   const allTableKeys = Object.keys(FARM_TABLE_SCHEMAS);
   const scopedTables = Array.isArray(tables) && tables.length ? tables : farmDatabaseTablesForView(state.view);
   const requestedKeys = [...new Set(scopedTables)]
@@ -3683,7 +3684,7 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
     state.farmDbErrors = replacesAll ? (payload.errors || {}) : { ...(state.farmDbErrors || {}), ...(payload.errors || {}) };
     state.farmDbWarnings = replacesAll ? (payload.warnings || {}) : { ...(state.farmDbWarnings || {}), ...(payload.warnings || {}) };
     farmMarkTablesLoaded(Object.keys(nextRows));
-    if (silent) render();
+    if (silent && (!renderIfView || state.view === renderIfView)) render();
     return true;
   })();
 
@@ -10448,7 +10449,9 @@ function mergeFarmBudgetSourceRows(tableId, seedRows = [], databaseRows = []) {
 function farmRows(table = selectedFarmTable()) {
   const tableId = table.key;
   if (farmDerivedCache.rowsByKey.has(tableId)) return farmDerivedCache.rowsByKey.get(tableId);
-  const databaseRows = Array.isArray(state.farmDbRows?.[tableId]) ? state.farmDbRows[tableId] : [];
+  const tableLoaded = Array.isArray(state.farmDbRows?.[tableId]);
+  if (!tableLoaded) return [];
+  const databaseRows = state.farmDbRows[tableId];
   const rows = databaseRows.map((row) => ({ ...row, readonly: false }));
   const cleanRows = farmCleanRows(tableId, rows);
   const finalRows = cleanRows || rows;
@@ -12196,6 +12199,7 @@ function farmTableByKey(tableKey) {
 function farmLookupMap(tableKey) {
   if (!FARM_TABLE_SCHEMAS[tableKey]) return null;
   if (farmDerivedCache.lookupByTable.has(tableKey)) return farmDerivedCache.lookupByTable.get(tableKey);
+  if (!Array.isArray(state.farmDbRows?.[tableKey])) return new Map();
   const map = new Map();
   for (const row of farmRowsByKey(tableKey)) {
     if (row?.id !== undefined && row.id !== null && row.id !== "") {

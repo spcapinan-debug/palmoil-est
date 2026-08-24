@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const webRoot = path.join(root, "webapp");
-const fixture = fs.readFileSync(path.join(root, "test", "fixtures", "phase3-browser.json"));
+const fixture = JSON.parse(fs.readFileSync(path.join(root, "test", "fixtures", "phase3-browser.json"), "utf8"));
 const session = JSON.stringify({
   ok: true,
   user: { id: "browser-regression", email: "browser-regression@example.invalid" },
@@ -40,8 +40,11 @@ function createServer() {
       return;
     }
     if (url.pathname === "/api/farm-tables") {
+      const requested = String(url.searchParams.get("tables") || "").split(",").filter(Boolean);
+      const tables = Object.fromEntries(requested
+        .map((table) => [table, fixture.tables[table] || []]));
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-      response.end(fixture);
+      response.end(JSON.stringify({ ...fixture, tables }));
       return;
     }
     if (url.pathname.startsWith("/api/")) {
@@ -75,6 +78,17 @@ function closeServer(server) {
 }
 
 async function run() {
+  const fixtureCounts = {
+    block: fixture.tables.blocks?.length || 0,
+    activity: fixture.tables.activities?.length || 0,
+    material: fixture.tables.materials?.length || 0,
+    vehicle: fixture.tables.vehicles?.length || 0,
+    worker: ["teams", "team_members", "employees", "contractors"]
+      .reduce((sum, table) => sum + (fixture.tables[table]?.length || 0), 0),
+  };
+  Object.entries(fixtureCounts).forEach(([selector, count]) => {
+    assert.ok(count > 0, `browser fixture must contain ${selector} rows`);
+  });
   const { chromium } = loadPlaywright();
   const server = createServer();
   const port = await listen(server);
@@ -91,11 +105,26 @@ async function run() {
     page.on("console", (message) => {
       if (message.type() === "error") consoleErrors.push(message.text());
     });
+    let releaseFarmTables;
+    let farmTablesRequestCount = 0;
+    let farmTablesGate = new Promise((resolve) => { releaseFarmTables = resolve; });
+    await page.route("**/api/farm-tables*", async (route) => {
+      farmTablesRequestCount += 1;
+      await farmTablesGate;
+      await route.continue();
+    });
 
     // Keep dashboard bootstrap in flight so this test covers the original click race.
     await page.route("**/data/data.json*", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       await route.continue();
+    });
+    await page.route("**/data/summary_palmoil_terrain.json*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ source: null, records: [] }),
+      });
     });
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded" });
 
@@ -107,7 +136,29 @@ async function run() {
 
     await page.locator(".farm-work-page").waitFor({ state: "visible" });
     await page.locator(".farm-work-budget-selector").waitFor({ state: "visible" });
+    assert.ok(farmTablesRequestCount > 0, "Planning must request farm tables without Refresh DB");
+    const preHydrationCache = await page.evaluate(() => Object.fromEntries(
+      ["blocks", "activities", "materials", "vehicles", "teams", "team_members", "employees", "contractors"]
+        .map((table) => [table, {
+          rows: eval("farmDerivedCache.rowsByKey").has(table),
+          lookup: eval("farmDerivedCache.lookupByTable").has(table),
+        }])
+    ));
+    Object.entries(preHydrationCache).forEach(([table, cached]) => {
+      assert.deepEqual(cached, { rows: false, lookup: false }, `${table} must not cache pre-hydration empties`);
+    });
+    releaseFarmTables();
     await page.locator("[data-planning-search]").first().waitFor({ state: "visible" });
+    await page.waitForFunction(() => {
+      const counts = ["block", "activity", "material", "vehicle", "worker"].map((type) => {
+        const card = document.querySelector(`[data-planning-ux-type="${type}"]`);
+        return [...(card?.querySelectorAll("input[data-budget-pick]") || [])].filter((input) => {
+          if (input.dataset.budgetBlockGroup) return false;
+          return !(input.dataset.budgetPick === "worker" && String(input.value).startsWith("team:"));
+        }).length;
+      });
+      return counts.every((count) => count > 0);
+    });
     const shell = await page.evaluate(() => ({
       view: eval("state.view"),
       datePanelHidden: document.querySelector(".date-panel")?.classList.contains("hidden"),
@@ -119,19 +170,33 @@ async function run() {
       selectAllCount: document.querySelectorAll("[data-planning-select-all]").length,
       clearAllCount: document.querySelectorAll("[data-planning-clear-all]").length,
       summaryCount: document.querySelectorAll(".farm-plan-selected-summary-strip").length,
+      populatedCounts: Object.fromEntries(["block", "activity", "material", "vehicle", "worker"].map((type) => {
+        const card = document.querySelector(`[data-planning-ux-type="${type}"]`);
+        const count = [...(card?.querySelectorAll("input[data-budget-pick]") || [])].filter((input) => {
+          if (input.dataset.budgetBlockGroup) return false;
+          return !(input.dataset.budgetPick === "worker" && String(input.value).startsWith("team:"));
+        }).length;
+        return [type, count];
+      })),
+      emptyMessageCount: [...document.querySelectorAll(".farm-work-budget-selector .budget-tree-empty")]
+        .filter((node) => node.textContent.includes("ยังไม่มีข้อมูล")).length,
+      dbCounts: Object.fromEntries(["blocks", "activities", "materials", "vehicles", "teams", "team_members", "employees", "contractors"]
+        .map((table) => [table, eval("state.farmDbRows")[table]?.length || 0])),
     }));
-    assert.deepEqual(shell, {
-      view: "farm-work",
-      datePanelHidden: true,
-      globalFilterHidden: true,
-      dashboardHidden: true,
-      farmPageCount: 1,
-      selectorCount: 5,
-      searchCount: 5,
-      selectAllCount: 5,
-      clearAllCount: 5,
-      summaryCount: 1,
-    });
+    assert.equal(shell.view, "farm-work");
+    assert.equal(shell.datePanelHidden, true);
+    assert.equal(shell.globalFilterHidden, true);
+    assert.equal(shell.dashboardHidden, true);
+    assert.equal(shell.farmPageCount, 1);
+    assert.equal(shell.selectorCount, 5);
+    assert.equal(shell.searchCount, 5);
+    assert.equal(shell.selectAllCount, 5);
+    assert.equal(shell.clearAllCount, 5);
+    assert.equal(shell.summaryCount, 1);
+    assert.equal(shell.emptyMessageCount, 0);
+    Object.entries(shell.populatedCounts).forEach(([selector, count]) => assert.ok(count > 0, `${selector} selector must hydrate`));
+    Object.entries(shell.dbCounts).forEach(([table, count]) => assert.ok(count > 0, `${table} DB rows must be assigned`));
+    console.log("planning selector populated counts", shell.populatedCounts);
 
     const activityCard = page.locator('[data-planning-ux-type="activity"]');
     await activityCard.locator('input[data-budget-pick="activity"]').first().waitFor({ state: "attached" });
@@ -158,6 +223,36 @@ async function run() {
     await page.waitForTimeout(1700);
     assert.equal(await page.evaluate(() => eval("state.view")), "farm-work");
     assert.equal(await page.locator(".farm-work-page").count(), 1);
+    if (process.env.PLANNING_QA_SCREENSHOT) {
+      await page.screenshot({ path: process.env.PLANNING_QA_SCREENSHOT, fullPage: false });
+    }
+
+    // A completed Farm request may update data caches, but must not render over a newer view.
+    farmTablesGate = new Promise((resolve) => { releaseFarmTables = resolve; });
+    const requestCountBeforeStaleLoad = farmTablesRequestCount;
+    await page.evaluate(() => {
+      window.__farmStaleLoadDone = false;
+      eval("loadFarmTablesFromDatabase")({
+        silent: true,
+        force: true,
+        tables: ["activities"],
+        renderIfView: "farm-work",
+      }).finally(() => { window.__farmStaleLoadDone = true; });
+    });
+    for (let guard = 0; farmTablesRequestCount === requestCountBeforeStaleLoad && guard < 100; guard += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(farmTablesRequestCount > requestCountBeforeStaleLoad, "stale-load scenario must reach /api/farm-tables");
+    await page.evaluate(() => {
+      eval("setView")("dashboard");
+      const marker = document.createElement("i");
+      marker.id = "farm-render-guard-marker";
+      document.querySelector("#dashboard")?.append(marker);
+    });
+    releaseFarmTables();
+    await page.waitForFunction(() => window.__farmStaleLoadDone === true);
+    assert.equal(await page.evaluate(() => eval("state.view")), "dashboard");
+    assert.equal(await page.locator("#farm-render-guard-marker").count(), 1);
     assert.deepEqual(pageErrors, []);
     assert.deepEqual(consoleErrors, []);
     await context.close();

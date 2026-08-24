@@ -59,11 +59,23 @@
       { "id": "40000000-0000-4000-8000-000000000001", "activity_code": "FERT", "activity_name": "ใส่ปุ๋ย", "default_unit": "กระสอบ" },
       { "id": "40000000-0000-4000-8000-000000000002", "activity_code": "HARV", "activity_name": "เก็บเกี่ยว", "default_unit": "กก.", "requires_weigh_ticket": true }
     ],
+    "materials": [
+      { "id": "41000000-0000-4000-8000-000000000001", "material_code": "MAT-FERT", "material_name": "ปุ๋ยทดสอบ", "status": "active" }
+    ],
+    "vehicles": [
+      { "id": "42000000-0000-4000-8000-000000000001", "vehicle_code": "VEH-001", "vehicle_name": "รถแทรกเตอร์ทดสอบ", "vehicle_type": "tractor", "status": "active" }
+    ],
     "teams": [
       { "id": "50000000-0000-4000-8000-000000000001", "team_code": "TEAM-A", "team_name": "ทีม WEBTEST", "supervisor_employee_id": "60000000-0000-4000-8000-000000000001", "status": "active" }
     ],
+    "team_members": [
+      { "id": "51000000-0000-4000-8000-000000000001", "team_id": "50000000-0000-4000-8000-000000000001", "employee_id": "60000000-0000-4000-8000-000000000001", "member_role": "หัวหน้าทีม", "is_active": true }
+    ],
     "employees": [
       { "id": "60000000-0000-4000-8000-000000000001", "employee_code": "EMP-001", "full_name": "หัวหน้าทีมทดสอบ", "status": "active" }
+    ],
+    "contractors": [
+      { "id": "61000000-0000-4000-8000-000000000001", "contractor_code": "CON-001", "contractor_name": "ผู้รับเหมาทดสอบ", "status": "active" }
     ],
     "work_orders": [
       { "id": "70000000-0000-4000-8000-000000000001", "work_order_no": "WEBTEST-2569-WO-FERT-001", "planned_work_item_id": "20000000-0000-4000-8000-000000000001", "block_id": "30000000-0000-4000-8000-000000000001", "activity_id": "40000000-0000-4000-8000-000000000001", "team_id": "50000000-0000-4000-8000-000000000001", "scheduled_date": "2026-07-01", "planned_quantity": 20, "planned_unit": "กระสอบ", "status": "closed" },
