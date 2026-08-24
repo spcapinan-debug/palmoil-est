@@ -9,6 +9,7 @@ if (!checkOnly) fs.mkdirSync(outDir, { recursive: true });
 let html = fs.readFileSync(path.join(root, "webapp", "index.html"), "utf8");
 const css = fs.readFileSync(path.join(root, "webapp", "styles.css"), "utf8");
 let app = fs.readFileSync(path.join(root, "webapp", "app.js"), "utf8");
+const planningSelectorUx = fs.readFileSync(path.join(root, "webapp", "planning-selector-ux.js"), "utf8");
 const data = fs.readFileSync(path.join(root, "webapp", "data", "data.json"), "utf8");
 
 app = app.replace(
@@ -24,6 +25,11 @@ html = html.replace(
 html = html.replace(
   /<script src="(?:\.\/|\/)app\.js\?v=[^"]+"><\/script>/,
   `<script>window.__PALM_DATA__ = ${data.replace(/<\//g, "<\\/")};</script>\n<script>\n${app.replace(/<\//g, "<\\/")}\n</script>`
+);
+
+html = html.replace(
+  /<script src="\/planning-selector-ux[.]js[?]v=[^"]+"><\/script>/,
+  "<script>\n" + planningSelectorUx.replace(/<\//g, "<\\/") + "\n</script>"
 );
 
 const output = path.join(outDir, "index.html");

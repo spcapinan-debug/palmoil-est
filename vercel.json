@@ -16,6 +16,10 @@
       "dest": "/api/$1.js"
     },
     {
+      "src": "/planning-selector-ux\\.js",
+      "dest": "/webapp/planning-selector-ux.js"
+    },
+    {
       "src": "/(app\\.js|styles\\.css)",
       "dest": "/webapp/$1"
     },

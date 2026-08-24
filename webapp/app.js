@@ -22657,6 +22657,10 @@ function renderFarmWorkWorkspace() {
   const active = FARM_WORK_WORKSPACE_TABS.some(([key]) => key === state.farmWorkWorkspaceTab)
     ? state.farmWorkWorkspaceTab : "overview";
   state.farmWorkWorkspaceTab = active;
+  const planningBaseline = active === "overview" ? `${renderFarmWorkBoard({
+    title: "Planner",
+    subtitle: "ตารางแผนงานแบบย่อ แสดง Activity, Block, ทีม และสถานะในแถวเดียว",
+  })}${renderFarmWorkPlanner()}` : "";
   const content = active === "overview" ? renderFarmWorkOverview()
     : active === "annual-plans" ? renderFarmAnnualPlans()
       : active === "plan-items" ? renderFarmPlanItems()
@@ -22664,7 +22668,7 @@ function renderFarmWorkWorkspace() {
           : active === "dispatch" ? renderFarmDispatchPanel()
             : active === "calendar" ? renderFarmWorkBoard({ title: "ปฏิทินงาน", subtitle: "แผนและผลงานจริงใน timeline เดียว" })
               : renderFarmWorkspaceWorkOrders({ pendingOnly: true });
-  return `${renderFarmWorkspaceTabs(FARM_WORK_WORKSPACE_TABS, active, "farm-work")}<div class="farm-workspace-content">${content}</div>`;
+  return `${planningBaseline}${renderFarmWorkspaceTabs(FARM_WORK_WORKSPACE_TABS, active, "farm-work")}<div class="farm-workspace-content">${content}</div>`;
 }
 
 function farmDailyCurrentResult(order = farmResultSelectedOrder()) {
