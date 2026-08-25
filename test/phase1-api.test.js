@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const farmTables = require("../api/farm-tables");
+const farmSession = require("../api/farm-session");
 const farmActions = require("../api/farm-actions");
 const farmApi = require("../lib/server/farm-api");
 
@@ -81,6 +82,93 @@ async function withAuthenticatedFarmApi(run) {
     farmTables._test.clearCache();
   }
 }
+
+test("Farm cookie is canonical while Bearer remains a non-browser fallback", async () => {
+  const previousFetch = global.fetch;
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const authUserTokens = [];
+  try {
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-test-key";
+    global.fetch = async (url, options = {}) => {
+      const text = String(url);
+      if (text.endsWith("/auth/v1/user")) {
+        const authorization = options.headers?.Authorization || options.headers?.authorization || "";
+        authUserTokens.push(authorization);
+        if (!["Bearer cookie-access-token", "Bearer bearer-only-token"].includes(authorization)) {
+          return new Response(JSON.stringify({ message: "invalid token" }), { status: 401 });
+        }
+        return new Response(JSON.stringify({ id: "user-1" }), { status: 200 });
+      }
+      const resource = text.split("/rest/v1/")[1]?.split("?")[0] || "";
+      let rows = [];
+      if (resource === "profiles") {
+        rows = [{ id: "profile-1", full_name: "Cookie User", status: "active", role: "super_admin" }];
+      } else if (resource === "activities") {
+        rows = [{ id: "activity-1", activity_code: "AUTH", activity_name: "Auth precedence" }];
+      }
+      return new Response(JSON.stringify(rows), {
+        status: 200,
+        headers: { "content-range": `0-${Math.max(rows.length - 1, 0)}/${rows.length}` },
+      });
+    };
+    farmTables._test.clearCache();
+
+    const cookieAndStaleBearer = {
+      cookie: "farm-access-token=cookie-access-token",
+      authorization: "Bearer deliberately-stale-token",
+    };
+    const cookieSession = responseRecorder();
+    await farmSession({ method: "GET", headers: cookieAndStaleBearer }, cookieSession);
+    assert.equal(cookieSession.statusCode, 200);
+    assert.equal(cookieSession.body.profile.displayName, "Cookie User");
+
+    const cookieTables = responseRecorder();
+    await farmTables({
+      method: "GET",
+      url: "/api/farm-tables?tables=activities&refresh=1",
+      headers: cookieAndStaleBearer,
+    }, cookieTables);
+    assert.equal(cookieTables.statusCode, 200);
+    assert.equal(cookieTables.body.tables.activities[0].activity_code, "AUTH");
+    assert.deepEqual(authUserTokens, ["Bearer cookie-access-token", "Bearer cookie-access-token"]);
+    assert.equal(authUserTokens.includes("Bearer deliberately-stale-token"), false);
+
+    const bearerOnlyHeaders = { authorization: "Bearer bearer-only-token" };
+    const bearerSession = responseRecorder();
+    await farmSession({ method: "GET", headers: bearerOnlyHeaders }, bearerSession);
+    assert.equal(bearerSession.statusCode, 200);
+    const bearerTables = responseRecorder();
+    await farmTables({
+      method: "GET",
+      url: "/api/farm-tables?tables=activities&refresh=1",
+      headers: bearerOnlyHeaders,
+    }, bearerTables);
+    assert.equal(bearerTables.statusCode, 200);
+    assert.deepEqual(authUserTokens.slice(-2), ["Bearer bearer-only-token", "Bearer bearer-only-token"]);
+
+    const missingSession = responseRecorder();
+    await farmSession({ method: "GET", headers: {} }, missingSession);
+    assert.equal(missingSession.statusCode, 401);
+    assert.equal(missingSession.body.error.code, "AUTH_REQUIRED");
+    const missingTables = responseRecorder();
+    await farmTables({
+      method: "GET",
+      url: "/api/farm-tables?tables=activities&refresh=1",
+      headers: {},
+    }, missingTables);
+    assert.equal(missingTables.statusCode, 401);
+    assert.equal(missingTables.body.error.code, "AUTH_REQUIRED");
+  } finally {
+    global.fetch = previousFetch;
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+    farmTables._test.clearCache();
+  }
+});
 
 test("farm table allowlist covers the handoff schema", () => {
   for (const table of EXPECTED_TABLES) assert.equal(farmTables._test.TABLES.has(table), true, table);
