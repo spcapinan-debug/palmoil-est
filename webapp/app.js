@@ -241,9 +241,16 @@ function farmApiHeaders(extra = {}) {
   return token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
 }
 
+function farmAuthenticatedFetch(input, options = {}) {
+  const authClient = window.farmAuthSession;
+  if (authClient?.fetch) return authClient.fetch(input, options);
+  return fetch(input, { ...options, credentials: "same-origin" });
+}
+
 function farmApiErrorMessage(payload, fallback) {
   return payload?.error?.message || payload?.message || payload?.error || fallback;
 }
+
 const DAILY_HEADERS = [
   "วันที่",
   "เวลา",
@@ -3290,8 +3297,8 @@ async function loadWorkspaceShell() {
       "v_management_action_center", "v_system_module_readiness",
     ].join(",");
     const [session, payload] = await Promise.all([
-      fetch(FARM_SESSION_API, { cache: "no-store", headers: farmApiHeaders() }).then((res) => res.json()),
-      fetch(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000`, {
+      farmAuthenticatedFetch(FARM_SESSION_API, { cache: "no-store", headers: farmApiHeaders() }).then((res) => res.json()),
+      farmAuthenticatedFetch(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000`, {
         cache: "no-store", headers: farmApiHeaders(),
       }).then((res) => res.json()),
     ]);
@@ -3673,7 +3680,7 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
 
   const request = (async () => {
     const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(tableKeys.join(","))}&t=${Date.now()}`;
-    const payload = await fetch(url, { cache: "no-store", headers: farmApiHeaders() }).then((res) => res.json());
+    const payload = await farmAuthenticatedFetch(url, { cache: "no-store", headers: farmApiHeaders() }).then((res) => res.json());
     if (!payload || !payload.tables) throw new Error(farmApiErrorMessage(payload, "No farm table payload"));
     const nextRows = Object.fromEntries(
       Object.entries(payload.tables).map(([tableKey, rows]) => [tableKey, normalizeFarmDbRows(tableKey, Array.isArray(rows) ? rows : [])])
@@ -3713,7 +3720,7 @@ async function runFarmAction(action, args = {}, { confirmed = false, reason = ""
   render();
   try {
     const idempotencyKey = `${action}:${crypto.randomUUID()}`;
-    const response = await fetch(FARM_ACTIONS_API, {
+    const response = await farmAuthenticatedFetch(FARM_ACTIONS_API, {
       method: "POST",
       cache: "no-store",
       headers: {
@@ -3753,7 +3760,7 @@ function mergeFarmDbRow(tableKey, row) {
 }
 
 async function persistFarmRowToDatabase(table, row) {
-  const res = await fetch(FARM_TABLES_API, {
+  const res = await farmAuthenticatedFetch(FARM_TABLES_API, {
     method: "POST",
     headers: farmApiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ table: table.key, row }),
@@ -3779,7 +3786,7 @@ function farmDbTableAvailable(tableKey) {
 }
 
 async function deleteFarmRowFromDatabase(table, id) {
-  const res = await fetch(FARM_TABLES_API, {
+  const res = await farmAuthenticatedFetch(FARM_TABLES_API, {
     method: "DELETE",
     headers: farmApiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ table: table.key, id }),
@@ -3796,7 +3803,7 @@ async function syncFarmBudgetRatesToDatabase() {
   state.farmSyncMessage = "กำลังบันทึกชุดงบประมาณและเรทตั้งต้นเข้า DB...";
   render();
   try {
-    const res = await fetch(FARM_BUDGET_SYNC_API, {
+    const res = await farmAuthenticatedFetch(FARM_BUDGET_SYNC_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fiscalYear: "2569" }),

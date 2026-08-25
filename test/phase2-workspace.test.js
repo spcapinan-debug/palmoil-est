@@ -25,7 +25,7 @@ test("workspace session endpoint rejects non-GET requests before authentication"
 });
 
 test("workspace session returns roles, permissions, and scopes through shared authentication", () => {
-  assert.match(appSource, /fetch\(FARM_SESSION_API/);
+  assert.match(appSource, /farmAuthenticatedFetch\(FARM_SESSION_API/);
   const source = fs.readFileSync(path.join(__dirname, "..", "api", "farm-session.js"), "utf8");
   assert.match(source, /authenticate\(req\)/);
   assert.match(source, /permissions:\s*\[\.\.\.actor\.permissions\]/);

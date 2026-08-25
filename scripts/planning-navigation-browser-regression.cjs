@@ -30,27 +30,84 @@ function loadPlaywright() {
   }
 }
 
-function createServer() {
-  return http.createServer((request, response) => {
+const authEmail = "browser-regression@example.invalid";
+const authPassword = "browser-regression-password";
+
+function requestJson(request) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (error) {
+        reject(error);
+      }
+    });
+    request.on("error", reject);
+  });
+}
+
+function sendJson(response, status, payload) {
+  response.statusCode = status;
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  response.end(JSON.stringify(payload));
+}
+
+function hasFarmCookie(request, name) {
+  return String(request.headers.cookie || "").split(";")
+    .some((part) => part.trim().startsWith(`${name}=`));
+}
+
+function createServer(authRuntime) {
+  return http.createServer(async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
     response.setHeader("Cache-Control", "no-store");
     if (url.pathname === "/api/farm-session") {
+      if (!hasFarmCookie(request, "farm-access-token")) {
+        sendJson(response, 401, { ok: false, error: { code: "AUTH_REQUIRED", message: "Farm sign-in required" } });
+        return;
+      }
       response.setHeader("Content-Type", "application/json; charset=utf-8");
       response.end(session);
       return;
     }
+    if (url.pathname === "/api/farm-auth") {
+      const body = await requestJson(request);
+      authRuntime.actions.push(body.action || "");
+      if (body.action === "bootstrap") {
+        sendJson(response, 200, { ok: true, authenticated: false });
+        return;
+      }
+      if (body.action === "refresh" && !hasFarmCookie(request, "farm-refresh-token")) {
+        sendJson(response, 401, { ok: false, error: { code: "REFRESH_REQUIRED", message: "Farm refresh token required" } });
+        return;
+      }
+      if (body.action !== "sign_in" || body.email !== authEmail || body.password !== authPassword) {
+        sendJson(response, 401, { ok: false, error: { code: "INVALID_CREDENTIALS", message: "Invalid credentials" } });
+        return;
+      }
+      response.setHeader("Set-Cookie", [
+        "farm-access-token=browser-access; Path=/; HttpOnly; SameSite=Lax",
+        "farm-refresh-token=browser-refresh; Path=/; HttpOnly; SameSite=Lax",
+      ]);
+      sendJson(response, 200, { ok: true, user: { id: "browser-regression" }, expiresIn: 3600 });
+      return;
+    }
     if (url.pathname === "/api/farm-tables") {
+      if (!hasFarmCookie(request, "farm-access-token")) {
+        authRuntime.unauthorizedFarmTables += 1;
+        sendJson(response, 401, { ok: false, error: { code: "AUTH_REQUIRED", message: "Farm sign-in required" } });
+        return;
+      }
       const requested = String(url.searchParams.get("tables") || "").split(",").filter(Boolean);
       const tables = Object.fromEntries(requested
         .map((table) => [table, fixture.tables[table] || []]));
-      response.setHeader("Content-Type", "application/json; charset=utf-8");
-      response.end(JSON.stringify({ ...fixture, tables }));
+      sendJson(response, 200, { ...fixture, tables });
       return;
     }
     if (url.pathname.startsWith("/api/")) {
-      response.statusCode = 404;
-      response.setHeader("Content-Type", "application/json; charset=utf-8");
-      response.end(JSON.stringify({ ok: false, error: "Unavailable in browser fixture" }));
+      sendJson(response, 404, { ok: false, error: "Unavailable in browser fixture" });
       return;
     }
     const relative = path.normalize(decodeURIComponent(url.pathname)).replace(/^[\\/]+/, "");
@@ -90,7 +147,8 @@ async function run() {
     assert.ok(count > 0, `browser fixture must contain ${selector} rows`);
   });
   const { chromium } = loadPlaywright();
-  const server = createServer();
+  const authRuntime = { actions: [], unauthorizedFarmTables: 0 };
+  const server = createServer(authRuntime);
   const port = await listen(server);
   const launchOptions = { headless: true };
   if (process.env.PLAYWRIGHT_CHROME_PATH) launchOptions.executablePath = process.env.PLAYWRIGHT_CHROME_PATH;
@@ -134,9 +192,32 @@ async function run() {
     await planningButton.waitFor({ state: "visible" });
     await planningButton.click();
 
+    const authDialog = page.locator("[data-farm-auth-dialog]");
+    await authDialog.waitFor({ state: "visible" });
+    if (process.env.FARM_AUTH_QA_SCREENSHOT) {
+      await page.screenshot({ path: process.env.FARM_AUTH_QA_SCREENSHOT, fullPage: false });
+    }
+    assert.equal(farmTablesRequestCount, 0, "farm-tables must wait until the exact host has a Farm session");
+    assert.equal(authRuntime.unauthorizedFarmTables, 0, "anonymous farm-tables requests are forbidden");
+    assert.deepEqual(authRuntime.actions, ["bootstrap"], "client must bootstrap the exact-host Farm session before asking for credentials");
+
+    await authDialog.locator("[data-farm-auth-email]").fill(authEmail);
+    await authDialog.locator("[data-farm-auth-password]").fill(authPassword);
+    await authDialog.locator("[data-farm-auth-submit]").click();
+    await authDialog.waitFor({ state: "hidden" });
+    for (let guard = 0; farmTablesRequestCount === 0 && guard < 100; guard += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(farmTablesRequestCount > 0, "Planning must request farm tables automatically after Farm sign-in");
+    assert.deepEqual(authRuntime.actions, ["bootstrap", "sign_in"]);
+    const farmCookieNames = (await context.cookies(`http://127.0.0.1:${port}/`))
+      .map((cookie) => cookie.name)
+      .filter((name) => name.startsWith("farm-"))
+      .sort();
+    assert.deepEqual(farmCookieNames, ["farm-access-token", "farm-refresh-token"]);
+
     await page.locator(".farm-work-page").waitFor({ state: "visible" });
     await page.locator(".farm-work-budget-selector").waitFor({ state: "visible" });
-    assert.ok(farmTablesRequestCount > 0, "Planning must request farm tables without Refresh DB");
     const preHydrationCache = await page.evaluate(() => Object.fromEntries(
       ["blocks", "activities", "materials", "vehicles", "teams", "team_members", "employees", "contractors"]
         .map((table) => [table, {

@@ -20,7 +20,7 @@
       "dest": "/webapp/planning-selector-ux.js"
     },
     {
-      "src": "/(app\\.js|styles\\.css)",
+      "src": "/(app\\.js|farm-auth-session\\.js|styles\\.css)",
       "dest": "/webapp/$1"
     },
     {

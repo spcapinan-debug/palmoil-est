@@ -91,6 +91,83 @@ test("UAT auth cookies are server-readable only and bearer auth accepts them", (
   );
 });
 
+test("Farm refresh requires its HttpOnly cookie and rotates the exact-host session", async () => {
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const previousFetch = global.fetch;
+  process.env.SUPABASE_URL = "https://example.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-test-key";
+  const createResponse = () => ({
+    headers: {},
+    body: null,
+    setHeader(name, value) { this.headers[name] = value; },
+    end(value) { this.body = JSON.parse(value); },
+  });
+  try {
+    let upstreamCalls = 0;
+    global.fetch = async () => {
+      upstreamCalls += 1;
+      return {
+        ok: true,
+        json: async () => ({
+          access_token: "rotated-access",
+          refresh_token: "rotated-refresh",
+          expires_in: 1800,
+          user: { id: "user-1" },
+        }),
+      };
+    };
+
+
+    const bootstrapResponse = createResponse();
+    await farmAuth({
+      method: "POST",
+      body: { action: "bootstrap" },
+      headers: {},
+    }, bootstrapResponse);
+    assert.equal(bootstrapResponse.statusCode, 200);
+    assert.equal(bootstrapResponse.body.ok, true);
+    assert.equal(bootstrapResponse.body.authenticated, false);
+    assert.equal(upstreamCalls, 0, "cookie-free bootstrap must not reach Supabase or a protected API");
+    const missingCookieResponse = createResponse();
+    await farmAuth({
+      method: "POST",
+      body: { action: "refresh" },
+      headers: {},
+    }, missingCookieResponse);
+    assert.equal(missingCookieResponse.statusCode, 401);
+    assert.equal(missingCookieResponse.body.error.code, "REFRESH_REQUIRED");
+    assert.equal(upstreamCalls, 0, "missing cookies must never reach Supabase");
+
+    const refreshResponse = createResponse();
+    await farmAuth({
+      method: "POST",
+      body: { action: "refresh" },
+      headers: { cookie: "farm-refresh-token=valid-refresh" },
+    }, refreshResponse);
+    assert.equal(refreshResponse.statusCode, 200);
+    assert.equal(refreshResponse.body.ok, true);
+    assert.equal(upstreamCalls, 1);
+    const cookies = refreshResponse.headers["Set-Cookie"];
+    assert.equal(cookies.length, 2);
+    assert.match(cookies[0], /^farm-access-token=rotated-access;/);
+    assert.match(cookies[1], /^farm-refresh-token=rotated-refresh;/);
+    for (const cookie of cookies) {
+      assert.match(cookie, /Path=\//);
+      assert.match(cookie, /HttpOnly/);
+      assert.match(cookie, /Secure/);
+      assert.match(cookie, /SameSite=Lax/);
+      assert.doesNotMatch(cookie, /Domain=/i, "Farm cookies must stay host-only on the exact Preview hostname");
+    }
+  } finally {
+    global.fetch = previousFetch;
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+  }
+});
+
 test("shared body parser accepts Vercel pre-parsed JSON without rereading the stream", async () => {
   const parsed = { action: "submit_work_order", confirmed: true };
   assert.equal(await farmApi.readBody({ body: parsed }), parsed);
@@ -99,12 +176,13 @@ test("shared body parser accepts Vercel pre-parsed JSON without rereading the st
 
 test("Preview routing serves the SPA entry point for direct workspace routes", () => {
   assert.deepEqual(vercelConfig.routes.slice(-2), [
-    { src: "/(app\\.js|styles\\.css)", dest: "/webapp/$1" },
+    { src: "/(app\\.js|farm-auth-session\\.js|styles\\.css)", dest: "/webapp/$1" },
     { src: "/(.*)", dest: "/webapp/index.html" },
   ]);
   assert.match(indexHtml, /href="\/styles\.css/);
   assert.match(indexHtml, /src="\/app\.js/);
 });
+  assert.match(indexHtml, /src="\/farm-auth-session\.js/);
 
 test("current farm hierarchy remains usable when the legacy areas table is absent", () => {
   for (const table of [

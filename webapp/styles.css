@@ -15730,3 +15730,131 @@ tfoot td,
     grid-column: auto;
   }
 }
+
+.farm-auth-open {
+  overflow: hidden;
+}
+
+.farm-auth-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(3px);
+}
+
+.farm-auth-dialog.hidden {
+  display: none;
+}
+
+.farm-auth-card {
+  width: min(420px, 100%);
+  padding: 30px;
+  border: 1px solid #dbe4ee;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+}
+
+.farm-auth-mark {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  margin-bottom: 18px;
+  border-radius: 13px;
+  background: #0b3158;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.farm-auth-heading {
+  margin-bottom: 22px;
+}
+
+.farm-auth-heading p {
+  margin: 0 0 5px;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.farm-auth-heading h2 {
+  margin: 0 0 7px;
+  color: #0f172a;
+  font-size: 23px;
+}
+
+.farm-auth-heading span,
+.farm-auth-card > small {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.farm-auth-card label {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.farm-auth-card input {
+  width: 100%;
+  min-height: 43px;
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.farm-auth-card input:focus {
+  border-color: #0f766e;
+  outline: 3px solid rgba(15, 118, 110, 0.14);
+}
+
+.farm-auth-card button {
+  width: 100%;
+  min-height: 43px;
+  margin: 18px 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #0f766e;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.farm-auth-card button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.farm-auth-error {
+  margin: 12px 0 0;
+  padding: 9px 10px;
+  border-radius: 7px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .farm-auth-dialog {
+    padding: 14px;
+  }
+
+  .farm-auth-card {
+    padding: 24px 20px;
+  }
+}
