@@ -17674,6 +17674,24 @@ details.farm-survey-score-section[open] > summary::after {
 .farm-planning-material-table { overflow-x: auto; }
 .farm-planning-material-table table { min-width: 1120px; }
 .farm-canonical-planning .farm-plan-actions { flex-wrap: wrap; }
+.farm-planning-resource-section { border: 1px solid #dce5e0; border-radius: 12px; background: #fff; margin: 10px 0; overflow: hidden; }
+.farm-planning-resource-section > summary { display: flex; justify-content: space-between; gap: 12px; padding: 11px 13px; cursor: pointer; background: #f7faf8; color: #30483d; }
+.farm-planning-resource-section > summary span { color: #66786f; font-size: 12px; }
+.farm-planning-resource-section > .table-wrap,
+.farm-planning-resource-section > .farm-planning-empty-snapshot,
+.farm-planning-resource-section > .farm-planning-fuel-summary,
+.farm-planning-resource-section > .farm-planning-cost-strip { margin: 10px; }
+.farm-planning-requirement-table { min-width: 1060px; }
+.farm-planning-requirement-table tr.is-selected { background: #eef8f2; }
+.farm-planning-requirement-table tr.is-warning { background: #fff8eb; }
+.farm-planning-requirement-table td input[type="number"] { width: 92px; min-width: 72px; }
+.farm-planning-requirement-table td small,
+.farm-planning-requirement-table td code { display: block; margin-top: 3px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.farm-planning-basis-inputs { display: grid; grid-template-columns: repeat(2, minmax(64px, 1fr)); gap: 5px; }
+.farm-planning-fuel-summary,
+.farm-planning-cost-strip { display: flex; gap: 8px; flex-wrap: wrap; }
+.farm-planning-fuel-summary span,
+.farm-planning-cost-strip span { border: 1px solid #dce5e0; border-radius: 999px; padding: 7px 10px; background: #f7faf8; }
 
 @media (max-width: 900px) {
   .farm-planning-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

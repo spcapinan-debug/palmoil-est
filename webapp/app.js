@@ -377,6 +377,12 @@ const FARM_PLANNING_ERROR_MESSAGES = Object.freeze({
   PLANNING_MATERIAL_SNAPSHOT_EMPTY: "ไม่พบวัสดุที่พร้อมใช้จากงบประมาณสำหรับงานและแปลงนี้",
   PLANNING_BUDGET_BLOCK_RESOLUTION_REQUIRED: "ไม่สามารถจับคู่ Budget Rate กับ Block ที่เลือกได้",
   PLANNING_RATE_RECONCILIATION_REQUIRED: "ยังมีอัตราหรือหน่วยที่จับคู่ไม่สมบูรณ์ กรุณาแก้ Budget Rate แล้วรีเฟรช Snapshot",
+  PLANNING_WORKER_REQUIREMENT_REQUIRED: "กิจกรรมนี้ต้องเลือกคนและอัตรา พร้อมระบุจำนวนคนและปริมาณฐาน",
+  PLANNING_LABOR_RATE_MAPPING_REQUIRED: "อัตราแรงงานที่เลือกยังจับคู่หน่วยคำนวณไม่สมบูรณ์",
+  PLANNING_EQUIPMENT_REQUIREMENT_REQUIRED: "กิจกรรมนี้ต้องเลือกอุปกรณ์ก่อนอนุมัติ",
+  PLANNING_MACHINE_REQUIREMENT_REQUIRED: "กิจกรรมนี้ต้องเลือกเครื่องจักรหรือรถก่อนอนุมัติ",
+  PLANNING_FUEL_REQUIREMENT_REQUIRED: "กิจกรรมนี้ต้องมีฐานน้ำมัน อัตรามาตรฐาน และลิตรตามแผน",
+  PLANNING_RESOURCE_RATE_REQUIRED: "ทรัพยากรที่เลือกยังไม่มีอัตราหรือหน่วยต้นทุนครบ",
   PLANNING_PLAN_NOT_EMPTY: "ต้องลบรายการงานในแผนก่อนลบแผนประจำปี",
   PLANNING_ITEM_HAS_WORK_ORDER: "รายการนี้มีการเชื่อมโยงใบสั่งงานแล้ว ไม่สามารถลบได้",
   PLANNING_PLAN_EMPTY: "ต้องเพิ่มรายการงานและข้อมูลวัสดุให้ครบก่อนอนุมัติแผน",
@@ -1430,7 +1436,8 @@ const FARM_MODULES = [
     group: "Operation",
     accent: "Plan → Work Order",
     description: "สร้างแผนงานและ Work Order จากพื้นที่ กิจกรรม ทีม และอัตรางบประมาณ ก่อนส่งต่อให้ผู้จัดการสั่งงาน",
-    tables: ["annual_work_plans", "planned_work_items", "planned_work_materials", "work_orders",
+    tables: ["annual_work_plans", "planned_work_items", "planned_work_materials", "planned_work_labor_requirements",
+      "planned_work_resource_requirements", "work_orders",
       "work_order_workers", "work_order_materials", "work_order_machines", "work_results",
       "v_farm_workflow_workspace", "v_management_action_center"],
     fields: [
@@ -1540,7 +1547,7 @@ const FARM_MODULES = [
     group: "งานจัดการสวนปาล์ม",
     accent: "Budget → Activity Rate → Block → Payroll",
     description: "จัดเก็บงบประมาณและเรทงานตามปี กิจกรรม และ Block เพื่อใช้วางแผน Work Order และคำนวณค่าแรงจากฐานเทียบที่กำหนด",
-    tables: ["budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_block_materials", "budget_rate_roles"],
+    tables: ["budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_block_materials", "budget_rate_roles", "budget_rate_resource_requirements"],
     fields: [
       ["code", "รหัสอัตรา", "BUD-001"],
       ["name", "ชื่ออัตรา", "ค่าแรงใส่ปุ๋ย"],
@@ -2712,7 +2719,11 @@ const FARM_TABLE_SCHEMAS = {
       F("activity_name", "ชื่อกิจกรรม", { required: true }),
       F("default_unit", "หน่วยงาน"),
       F("work_type", "ประเภทงาน"),
+      F("require_worker", "ใช้แรงงาน", { type: "boolean" }),
       F("require_material", "ใช้วัสดุ", { type: "boolean" }),
+      F("require_equipment", "ใช้อุปกรณ์", { type: "boolean" }),
+      F("require_machine", "ใช้เครื่องจักร/รถ", { type: "boolean" }),
+      F("require_fuel", "ใช้น้ำมัน", { type: "boolean" }),
       F("allow_mobile_record", "บันทึกผ่านมือถือ", { type: "boolean" }),
       F("status", "สถานะ", { type: "status" }),
     ],
@@ -2965,6 +2976,18 @@ const FARM_TABLE_SCHEMAS = {
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [],
+  },
+  planned_work_labor_requirements: {
+    moduleId: "farm-work", title: "คนและอัตราตามแผน", primaryKey: "id",
+    codeField: "role_position", labelField: "worker_group_name", readonly: true, fields: [], seed: [],
+  },
+  planned_work_resource_requirements: {
+    moduleId: "farm-work", title: "ทรัพยากรตามแผน", primaryKey: "id",
+    codeField: "resource_code", labelField: "resource_name", readonly: true, fields: [], seed: [],
+  },
+  budget_rate_resource_requirements: {
+    moduleId: "farm-budget", title: "ข้อกำหนดทรัพยากรจาก Budget Rate", primaryKey: "id",
+    codeField: "resource_code", labelField: "resource_name", readonly: true, fields: [], seed: [],
   },
   work_orders: {
     moduleId: "farm-work",
@@ -4806,6 +4829,7 @@ function farmDatabaseTablesForView(view = state.view) {
       "budget_rate_materials",
       "budget_rate_block_materials",
       "budget_rate_roles",
+      "budget_rate_resource_requirements",
       "blocks",
       "areas",
       "estates",
@@ -4852,7 +4876,7 @@ function farmDatabaseTablesForView(view = state.view) {
       "work_order_machines",
     ];
     if (view === "farm-work" || view === "farm-performance") {
-      workflowTables.push("survey_templates", "survey_questions", "budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_block_materials", "budget_rate_roles");
+      workflowTables.push("survey_templates", "survey_questions", "budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_block_materials", "budget_rate_roles", "planned_work_labor_requirements", "planned_work_resource_requirements");
     }
     if (["farm-work", "farm-dispatch", "farm-result", "farm-performance"].includes(view)) {
       workflowTables.push("work_results");
@@ -25926,6 +25950,41 @@ function farmPlanningItemMaterials(itemId = "") {
     .sort((a, b) => String(farmLookupLabel("materials", a.material_id)).localeCompare(String(farmLookupLabel("materials", b.material_id)), "th"));
 }
 
+function farmPlanningItemLaborRequirements(itemId = "") {
+  return farmRowsByKey("planned_work_labor_requirements")
+    .filter((row) => row.planned_work_item_id === itemId)
+    .sort((a, b) => `${a.source_budget_activity_rate_id}:${a.source_budget_rate_role_id}`
+      .localeCompare(`${b.source_budget_activity_rate_id}:${b.source_budget_rate_role_id}`, "th"));
+}
+
+function farmPlanningItemResourceRequirements(itemId = "") {
+  return farmRowsByKey("planned_work_resource_requirements")
+    .filter((row) => row.planned_work_item_id === itemId)
+    .sort((a, b) => `${a.resource_type}:${a.resource_name}`.localeCompare(`${b.resource_type}:${b.resource_name}`, "th"));
+}
+
+function farmPlanningResourceTypeLabel(value = "") {
+  return ({ equipment: "อุปกรณ์", machine: "เครื่องจักร", vehicle: "รถ", fuel: "น้ำมัน" })[value] || value || "-";
+}
+
+function farmPlanningItemApprovalReady(item = {}) {
+  if (!item.full_resource_snapshot_at || item.resource_snapshot_reconciliation_status !== "matched" || !item.budget_block_resolution_snapshot) return false;
+  const activity = farmLookup("activities", item.activity_id) || {};
+  const labor = farmPlanningItemLaborRequirements(item.id);
+  const resources = farmPlanningItemResourceRequirements(item.id);
+  const materials = farmPlanningItemMaterials(item.id);
+  if (activity.require_worker && !labor.some((row) => row.selected_for_plan && n(row.planned_headcount) > 0
+    && n(row.planned_basis_quantity) > 0 && row.rate_basis)) return false;
+  if (activity.require_material && !materials.length) return false;
+  if (activity.require_equipment && !resources.some((row) => row.selected_for_plan && row.resource_type === "equipment")) return false;
+  if (activity.require_machine && !resources.some((row) => row.selected_for_plan && ["machine", "vehicle"].includes(row.resource_type))) return false;
+  if (activity.require_fuel && !resources.some((row) => row.selected_for_plan && (row.resource_type === "fuel" || row.fuel_required)
+    && ["L/hour", "km/L", "L/rai", "L/ton"].includes(row.fuel_metric_basis)
+    && n(row.fuel_standard_rate) > 0 && n(row.planned_fuel_liters) > 0)) return false;
+  return !resources.some((row) => row.selected_for_plan
+    && (n(row.planned_quantity) <= 0 || row.resource_rate_amount == null || !String(row.resource_rate_uom || "").trim()));
+}
+
 function farmPlanningHydratePlanDraft(plan = {}) {
   const draft = farmCanonicalPlanningState();
   draft.selectedPlanId = plan.id || "";
@@ -26071,14 +26130,65 @@ function renderFarmCanonicalItemForm(plan = {}) {
   </section>`;
 }
 
+function renderFarmPlanningLaborRequirements(item = {}, frozen = false) {
+  const rows = farmPlanningItemLaborRequirements(item.id);
+  const selected = rows.filter((row) => row.selected_for_plan);
+  return `<details class="farm-planning-resource-section" open><summary><strong>คนและอัตรา</strong><span>เลือกแล้ว ${fmt(selected.length)} / ${fmt(rows.length)} Rate lines</span></summary>
+    ${rows.length ? `<div class="table-wrap"><table class="mini-table farm-planning-requirement-table"><thead><tr><th>เลือก</th><th>ตำแหน่ง / กลุ่ม</th><th>Rate</th><th>หน่วย / วิธี</th><th>จำนวนคน</th><th>ปริมาณฐาน</th><th>ประมาณการ</th></tr></thead><tbody>
+      ${rows.map((row) => {
+        const invalid = !row.rate_basis;
+        return `<tr data-planned-labor-row="${esc(row.id)}" class="${row.selected_for_plan ? "is-selected" : ""} ${invalid ? "is-warning" : ""}">
+          <td><input type="checkbox" data-requirement-selected ${row.selected_for_plan ? "checked" : ""} ${frozen || invalid ? "disabled" : ""}></td>
+          <td><strong>${esc(row.role_position || "-")}</strong><small>${esc(row.worker_group_name || "-")}</small><code>${esc(row.source_budget_rate_role_id)}</code></td>
+          <td class="num"><strong>${moneyNf.format(n(row.rate_amount))}</strong><small>${esc(row.rate_category || "-")} · ${esc(row.payee_type || "-")}</small></td>
+          <td>${esc(row.uom || "-")}<small>${esc(row.calculation_method || "-")} · ${esc(row.rate_basis || "mapping ไม่ตรง")}</small></td>
+          <td><input type="number" min="0" step="1" data-requirement-headcount value="${esc(row.planned_headcount)}" ${frozen || invalid ? "disabled" : ""}></td>
+          <td><input type="number" min="0" step="any" data-requirement-basis value="${esc(row.planned_basis_quantity)}" ${frozen || invalid ? "disabled" : ""}></td>
+          <td class="num">${moneyNf.format(n(row.estimated_amount))}</td></tr>`;
+      }).join("")}</tbody></table></div>` : `<div class="farm-planning-empty-snapshot">ยังไม่มี Labor Rate lines ที่ resolve ถึง Block นี้</div>`}
+  </details>`;
+}
+
+function renderFarmPlanningResourceRows(rows = [], frozen = false) {
+  if (!rows.length) return `<div class="farm-planning-empty-snapshot">กิจกรรมนี้ยังไม่มี Source Requirement ประเภทนี้</div>`;
+  return `<div class="table-wrap"><table class="mini-table farm-planning-requirement-table"><thead><tr><th>เลือก</th><th>ทรัพยากร</th><th>จำนวน / ฐาน</th><th>Rate</th><th>ชั่วโมง / กม. / ไร่ / ตัน</th><th>น้ำมัน</th><th>ประมาณการ</th></tr></thead><tbody>${rows.map((row) => `<tr data-planned-resource-row="${esc(row.id)}" class="${row.selected_for_plan ? "is-selected" : ""}">
+    <td><input type="checkbox" data-resource-selected ${row.selected_for_plan ? "checked" : ""} ${frozen ? "disabled" : ""}></td>
+    <td><strong>${esc(row.resource_name || "-")}</strong><small>${esc(farmPlanningResourceTypeLabel(row.resource_type))} · ${esc(row.preferred_vehicle_type || farmLookupLabel("vehicles", row.preferred_vehicle_id) || "-")}</small></td>
+    <td><input type="number" min="0" step="any" data-resource-quantity value="${esc(row.planned_quantity)}" ${frozen ? "disabled" : ""}><small>${esc(row.quantity_basis || "-")}</small></td>
+    <td class="num">${farmPlanningNullableCost(row.resource_rate_amount)}<small>${esc(row.resource_rate_uom || "-")}</small></td>
+    <td class="farm-planning-basis-inputs"><input type="number" min="0" step="any" data-resource-hours value="${esc(row.planned_hours)}" title="ชั่วโมง" ${frozen ? "disabled" : ""}><input type="number" min="0" step="any" data-resource-km value="${esc(row.planned_km)}" title="กม." ${frozen ? "disabled" : ""}><input type="number" min="0" step="any" data-resource-rai value="${esc(row.planned_rai)}" title="ไร่" ${frozen ? "disabled" : ""}><input type="number" min="0" step="any" data-resource-ton value="${esc(row.planned_ton)}" title="ตัน" ${frozen ? "disabled" : ""}></td>
+    <td>${row.fuel_required || row.resource_type === "fuel" ? `<span>${esc(row.fuel_metric_basis || "-")} · ${moneyNf.format(n(row.fuel_standard_rate))}</span><input type="number" min="0" step="any" data-resource-fuel-liters value="${esc(row.planned_fuel_liters)}" title="ลิตรตามแผน" ${frozen ? "disabled" : ""}><input type="number" min="0" step="any" data-resource-fuel-cost value="${esc(row.fuel_unit_cost ?? "")}" title="ต้นทุนต่อลิตร" ${frozen ? "disabled" : ""}>` : "-"}</td>
+    <td class="num">${moneyNf.format(n(row.estimated_resource_cost) + n(row.fuel_estimated_cost))}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+function renderFarmPlanningFullResourceSnapshot(item = {}, frozen = false) {
+  const resources = farmPlanningItemResourceRequirements(item.id);
+  const equipment = resources.filter((row) => row.resource_type === "equipment");
+  const machines = resources.filter((row) => ["machine", "vehicle"].includes(row.resource_type));
+  const fuelOnly = resources.filter((row) => row.resource_type === "fuel");
+  const fuelLinked = resources.filter((row) => row.resource_type !== "fuel" && row.fuel_required);
+  const fuel = [...fuelOnly, ...fuelLinked];
+  const laborCost = farmPlanningItemLaborRequirements(item.id).filter((row) => row.selected_for_plan).reduce((sum, row) => sum + n(row.estimated_amount), 0);
+  const materialCost = farmPlanningItemMaterials(item.id).reduce((sum, row) => sum + n(row.estimated_amount), 0);
+  const resourceCost = resources.filter((row) => row.selected_for_plan).reduce((sum, row) => sum + n(row.estimated_resource_cost), 0);
+  const fuelCost = resources.filter((row) => row.selected_for_plan).reduce((sum, row) => sum + n(row.fuel_estimated_cost), 0);
+  return `${renderFarmPlanningLaborRequirements(item, frozen)}
+    <details class="farm-planning-resource-section"><summary><strong>วัสดุ</strong><span>${fmt(farmPlanningItemMaterials(item.id).length)} รายการ · source of truth</span></summary>${renderFarmPlanningMaterialSnapshot(item)}</details>
+    <details class="farm-planning-resource-section"><summary><strong>อุปกรณ์</strong><span>เลือก ${fmt(equipment.filter((row) => row.selected_for_plan).length)} / ${fmt(equipment.length)}</span></summary>${renderFarmPlanningResourceRows(equipment, frozen)}</details>
+    <details class="farm-planning-resource-section"><summary><strong>เครื่องจักร / รถ</strong><span>เลือก ${fmt(machines.filter((row) => row.selected_for_plan).length)} / ${fmt(machines.length)}</span></summary>${renderFarmPlanningResourceRows(machines, frozen)}</details>
+    <details class="farm-planning-resource-section"><summary><strong>น้ำมัน</strong><span>${fmt(fuel.length)} requirement</span></summary>${fuelOnly.length ? renderFarmPlanningResourceRows(fuelOnly, frozen) : ""}${fuelLinked.length ? `<div class="farm-planning-fuel-summary">${fuelLinked.map((row) => `<span><strong>${esc(row.resource_name)}</strong> ${esc(row.fuel_metric_basis || "-")} · ${moneyNf.format(n(row.planned_fuel_liters))} L · ${moneyNf.format(n(row.fuel_estimated_cost))} บาท</span>`).join("")}</div>` : ""}${!fuel.length ? `<div class="farm-planning-empty-snapshot">กิจกรรมนี้ยังไม่มี Fuel Requirement</div>` : ""}</details>
+    <details class="farm-planning-resource-section" open><summary><strong>Planned Cost</strong><span>${moneyNf.format(laborCost + materialCost + resourceCost + fuelCost)} บาท</span></summary><div class="farm-planning-cost-strip"><span>แรงงาน <strong>${moneyNf.format(laborCost)}</strong></span><span>วัสดุ <strong>${moneyNf.format(materialCost)}</strong></span><span>อุปกรณ์/รถ <strong>${moneyNf.format(resourceCost)}</strong></span><span>น้ำมัน <strong>${moneyNf.format(fuelCost)}</strong></span></div></details>`;
+}
+
 function renderFarmCanonicalItemDetail(plan = {}, item = {}) {
   if (!item.id) return "";
   const frozen = plan.status === "approved";
   const canMutate = farmCanCreatePlanning() && !frozen && !state.farmSyncBusy;
   return `<section class="farm-panel farm-planning-item-detail"><div class="section-head"><h3>รายละเอียดรายการงาน</h3><span>${frozen ? "อ่านอย่างเดียวหลังอนุมัติ" : "การแก้ metadata จะไม่รีเฟรช Material Snapshot"}</span></div>
     <div class="farm-planning-lineage"><span>Budget Year <code>${esc(item.source_budget_year_id || "-")}</code></span><span>Activity Rate <code>${esc(item.source_budget_activity_rate_id || "-")}</code></span><span>Rate Block <code>${esc(item.source_budget_rate_block_id || "-")}</code></span></div>
-    ${renderFarmPlanningMaterialSnapshot(item)}
+    ${renderFarmPlanningFullResourceSnapshot(item, frozen)}
     ${!frozen ? `<div class="farm-plan-actions"><button type="button" class="secondary" data-canonical-item-update ${canMutate ? "" : "disabled"}>บันทึกเฉพาะข้อมูลแผน</button>
+      <button type="button" data-canonical-requirements-save ${canMutate ? "" : "disabled"}>บันทึกทรัพยากรตามแผน</button>
       <button type="button" class="secondary" data-canonical-item-refresh ${canMutate ? "" : "disabled"}>รีเฟรชข้อมูลวัสดุจากงบประมาณ</button>
       <button type="button" class="danger ghost" data-canonical-item-delete ${canMutate ? "" : "disabled"}>ลบรายการงานและ Material Snapshot</button></div>` : ""}
   </section>`;
@@ -26098,11 +26208,7 @@ function renderFarmCanonicalSelectedPlan() {
   const selectedItem = items.find((row) => row.id === draft.selectedItemId) || {};
   const frozen = plan.status === "approved";
   const estateOptions = farmRowsByKey("estates").filter(farmPlanningIsActive);
-  const snapshotComplete = items.filter((item) => item.full_resource_snapshot_at
-    && item.resource_snapshot_reconciliation_status === "matched"
-    && Array.isArray(item.planned_labor_rate_snapshot) && item.planned_labor_rate_snapshot.length > 0
-    && Array.isArray(item.planned_resource_rate_snapshot) && item.planned_resource_rate_snapshot.length > 0
-    && item.budget_block_resolution_snapshot).length;
+  const snapshotComplete = items.filter(farmPlanningItemApprovalReady).length;
   const canEdit = farmCanCreatePlanning() && !frozen && !state.farmSyncBusy;
   const canApprove = farmCanApprovePlanning() && !frozen && items.length > 0 && snapshotComplete === items.length && !state.farmSyncBusy;
   return `<section class="farm-panel farm-planning-selected-plan"><div class="section-head"><h3>${esc(plan.plan_name || `แผนปี ${plan.plan_year}`)}</h3><span>ปี ${esc(plan.plan_year)} · รายการงาน ${fmt(items.length)} · Snapshot ครบ ${fmt(snapshotComplete)}</span></div>
@@ -26207,6 +26313,35 @@ async function updateFarmCanonicalPlannedItem() {
   await runFarmAction("update_canonical_planned_work_item", {
     planned_work_item_id: draft.selectedItemId, ...farmPlanningItemArgs(),
   }, { reason: "แก้ไข metadata รายการงานจาก Planning Workspace โดยไม่รีเฟรชวัสดุ" }).catch(() => null);
+}
+
+async function saveFarmCanonicalPlannedRequirements() {
+  const draft = farmCanonicalPlanningState();
+  const panel = document.querySelector(".farm-planning-item-detail");
+  if (!draft.selectedItemId || !panel || !farmCanCreatePlanning()) return;
+  const value = (row, selector) => farmPlanningOptionalNumber(row.querySelector(selector)?.value) ?? 0;
+  const laborRequirements = [...panel.querySelectorAll("[data-planned-labor-row]")].map((row) => ({
+    id: row.dataset.plannedLaborRow,
+    selected_for_plan: Boolean(row.querySelector("[data-requirement-selected]")?.checked),
+    planned_headcount: value(row, "[data-requirement-headcount]"),
+    planned_basis_quantity: value(row, "[data-requirement-basis]"),
+  }));
+  const resourceRequirements = [...panel.querySelectorAll("[data-planned-resource-row]")].map((row) => ({
+    id: row.dataset.plannedResourceRow,
+    selected_for_plan: Boolean(row.querySelector("[data-resource-selected]")?.checked),
+    planned_quantity: value(row, "[data-resource-quantity]"),
+    planned_hours: value(row, "[data-resource-hours]"),
+    planned_km: value(row, "[data-resource-km]"),
+    planned_rai: value(row, "[data-resource-rai]"),
+    planned_ton: value(row, "[data-resource-ton]"),
+    planned_fuel_liters: value(row, "[data-resource-fuel-liters]"),
+    fuel_unit_cost: farmPlanningOptionalNumber(row.querySelector("[data-resource-fuel-cost]")?.value),
+  }));
+  await runFarmAction("update_canonical_planned_resource_requirements", {
+    planned_work_item_id: draft.selectedItemId,
+    labor_requirements: laborRequirements,
+    resource_requirements: resourceRequirements,
+  }, { reason: "เลือกคน อัตรา และทรัพยากรสำหรับ Planned Work Item" }).catch(() => null);
 }
 
 async function refreshFarmCanonicalPlannedItem() {
@@ -28744,6 +28879,10 @@ async function startAuthenticatedApplication() {
     }
     if (e.target.closest("[data-canonical-item-update]")) {
       await updateFarmCanonicalPlannedItem();
+      return;
+    }
+    if (e.target.closest("[data-canonical-requirements-save]")) {
+      await saveFarmCanonicalPlannedRequirements();
       return;
     }
     if (e.target.closest("[data-canonical-item-refresh]")) {

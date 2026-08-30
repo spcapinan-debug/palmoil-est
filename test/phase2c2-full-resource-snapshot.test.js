@@ -47,9 +47,10 @@ test("a plan without Material rows is allowed but existing Material rows remain 
   assert.match(create, /materials\.some/);
   const selectedPlan = app.slice(app.indexOf("function renderFarmCanonicalSelectedPlan"), app.indexOf("function renderFarmCanonicalPlanner"));
   assert.doesNotMatch(selectedPlan, /snapshotComplete = items\.filter\(\(item\) => farmPlanningItemMaterials/);
-  assert.match(selectedPlan, /item\.resource_snapshot_reconciliation_status === "matched"/);
-  assert.match(selectedPlan, /item\.planned_labor_rate_snapshot\.length > 0/);
-  assert.match(selectedPlan, /item\.planned_resource_rate_snapshot\.length > 0/);
+  assert.match(selectedPlan, /items\.filter\(farmPlanningItemApprovalReady\)/);
+  const readiness = app.slice(app.indexOf("function farmPlanningItemApprovalReady"), app.indexOf("function farmPlanningHydratePlanDraft"));
+  assert.match(readiness, /item\.resource_snapshot_reconciliation_status !== "matched"/);
+  assert.match(readiness, /activity\.require_material && !materials\.length/);
 });
 
 test("approved snapshots cannot be changed by later Budget Rate edits", () => {

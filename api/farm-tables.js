@@ -25,7 +25,8 @@ const TABLES = new Set([
   "activity_groups", "wage_codes", "activities", "activity_wage_code_mappings",
   "material_categories", "units", "unit_conversions", "sku_conversions", "materials",
   "material_lots", "activity_material_usage_rates", "vehicles", "annual_work_plans",
-  "planned_work_items", "planned_work_materials", "work_orders", "work_order_workers",
+  "planned_work_items", "planned_work_materials", "planned_work_labor_requirements",
+  "planned_work_resource_requirements", "budget_rate_resource_requirements", "work_orders", "work_order_workers",
   "work_order_materials", "work_order_machines", "work_order_approvals", "work_order_qr_codes",
   "work_order_locations", "work_order_status_logs", "work_attendance", "work_results",
   "work_result_workers", "work_result_weight_tickets", "work_result_vehicle_usage",
@@ -138,6 +139,7 @@ const WRITE_PERMISSIONS = {
   budget_rate_blocks: "budget.rate_rule.manage",
   budget_rate_materials: "budget.rate_rule.manage",
   budget_rate_roles: "budget.rate_rule.manage",
+  budget_rate_resource_requirements: "budget.rate_rule.manage",
   budget_rate_rule_sets: "budget.rate_rule.manage",
   budget_rate_rules: "budget.rate_rule.manage",
   budget_rate_rule_conditions: "budget.rate_rule.manage",
@@ -168,6 +170,9 @@ const OPTIONAL_TABLES = new Set([...TABLES].filter((name) => name.startsWith("v_
   "payroll_rules",
   "people",
   "person_housing_assignments",
+  "budget_rate_resource_requirements",
+  "planned_work_labor_requirements",
+  "planned_work_resource_requirements",
   "worker_documents",
 ));
 const CACHE_MS = 30_000;
@@ -175,6 +180,7 @@ const cache = new Map();
 const AREA_REFERENCE_TABLES = new Set(["blocks", "estates", "zones", "plots", "plot_groups"]);
 const ACTION_ONLY_TABLES = new Set([
   "annual_work_plans", "planned_work_items", "planned_work_materials",
+  "planned_work_labor_requirements", "planned_work_resource_requirements",
   "goods_issue_daily_usage", "goods_issues", "goods_issue_lines",
   "goods_returns", "goods_return_lines", "sku_conversions", "unit_conversions",
   "stock_balances", "stock_transactions",
@@ -255,6 +261,7 @@ function clearCache() {
 
 const UAT_OPERATIONAL_TABLES = new Set([
   "annual_work_plans", "planned_work_items", "planned_work_materials",
+  "planned_work_labor_requirements", "planned_work_resource_requirements",
   "work_orders", "work_order_workers", "work_order_materials", "work_order_machines",
   "work_order_approvals", "work_order_qr_codes", "work_order_locations", "work_order_status_logs",
   "work_attendance", "work_results", "work_result_workers", "work_result_weight_tickets",
@@ -409,6 +416,9 @@ function uatRowAllowed(table, row, context) {
   if (table === "annual_work_plans") return context.annualPlanIds.has(row.id);
   if (table === "planned_work_items") return context.plannedItemIds.has(row.id);
   if (table === "planned_work_materials") return context.plannedItemIds.has(row.planned_work_item_id);
+  if (table === "planned_work_labor_requirements" || table === "planned_work_resource_requirements") {
+    return context.plannedItemIds.has(row.planned_work_item_id);
+  }
   if (table === "work_orders") return context.workOrderIds.has(row.id);
   if (table === "app_notifications" || table === "app_notification_preferences") return true;
   if (table === "goods_issues") return context.goodsIssueIds.has(row.id);

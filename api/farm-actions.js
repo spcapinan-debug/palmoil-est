@@ -117,6 +117,17 @@ const ACTIONS = {
     }),
     entity: "planned_work_items", entityId: (args) => args.planned_work_item_id,
   },
+  update_canonical_planned_resource_requirements: {
+    permission: "farm.plan.create",
+    rpc: "update_canonical_planned_resource_requirements",
+    params: (args, actor) => ({
+      p_planned_work_item_id: requireUuid(args.planned_work_item_id, "planned_work_item_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_labor_requirements: Array.isArray(args.labor_requirements) ? args.labor_requirements : [],
+      p_resource_requirements: Array.isArray(args.resource_requirements) ? args.resource_requirements : [],
+    }),
+    entity: "planned_work_items", entityId: (args) => args.planned_work_item_id,
+  },
   refresh_canonical_planned_work_item_snapshot: {
     permission: "farm.plan.create",
     rpc: "refresh_canonical_planned_work_item_snapshot",
@@ -569,6 +580,7 @@ const PLANNING_UAT_ACTIONS = new Set([
   "delete_canonical_annual_work_plan",
   "create_canonical_planned_work_item_snapshot",
   "update_canonical_planned_work_item",
+  "update_canonical_planned_resource_requirements",
   "refresh_canonical_planned_work_item_snapshot",
   "delete_canonical_planned_work_item",
 ]);

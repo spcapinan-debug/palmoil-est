@@ -129,7 +129,7 @@ test("13-15. approval and Budget mutations remain forbidden to UAT identities", 
   }
 });
 
-test("Planning UAT allowlist contains exactly the seven reversible actions", () => {
+test("Planning UAT allowlist contains exactly the eight reversible draft actions", () => {
   assert.deepEqual([...PLANNING_UAT_ACTIONS].sort(), [
     "create_canonical_annual_work_plan",
     "create_canonical_planned_work_item_snapshot",
@@ -137,6 +137,7 @@ test("Planning UAT allowlist contains exactly the seven reversible actions", () 
     "delete_canonical_planned_work_item",
     "refresh_canonical_planned_work_item_snapshot",
     "update_canonical_annual_work_plan",
+    "update_canonical_planned_resource_requirements",
     "update_canonical_planned_work_item",
   ].sort());
 });
