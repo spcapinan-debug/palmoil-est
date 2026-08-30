@@ -375,6 +375,8 @@ const FARM_PLANNING_ERROR_MESSAGES = Object.freeze({
   PLANNING_BUDGET_YEAR_PLAN_MISMATCH: "ปีของแผนไม่ตรงกับปีงบประมาณ",
   PLANNING_BASIS_NOT_SUPPORTED: "รูปแบบการคำนวณวัสดุนี้ยังไม่รองรับในระบบวางแผน",
   PLANNING_MATERIAL_SNAPSHOT_EMPTY: "ไม่พบวัสดุที่พร้อมใช้จากงบประมาณสำหรับงานและแปลงนี้",
+  PLANNING_BUDGET_BLOCK_RESOLUTION_REQUIRED: "ไม่สามารถจับคู่ Budget Rate กับ Block ที่เลือกได้",
+  PLANNING_RATE_RECONCILIATION_REQUIRED: "ยังมีอัตราหรือหน่วยที่จับคู่ไม่สมบูรณ์ กรุณาแก้ Budget Rate แล้วรีเฟรช Snapshot",
   PLANNING_PLAN_NOT_EMPTY: "ต้องลบรายการงานในแผนก่อนลบแผนประจำปี",
   PLANNING_ITEM_HAS_WORK_ORDER: "รายการนี้มีการเชื่อมโยงใบสั่งงานแล้ว ไม่สามารถลบได้",
   PLANNING_PLAN_EMPTY: "ต้องเพิ่มรายการงานและข้อมูลวัสดุให้ครบก่อนอนุมัติแผน",
@@ -26045,7 +26047,7 @@ function renderFarmCanonicalItemForm(plan = {}) {
   const materials = farmPlanningBudgetMaterialRows(draft.budgetRateBlockId);
   const unsupported = materials.filter((row) => !["tree_count", "area_rai"].includes(row.usage_basis));
   const canMutate = farmCanCreatePlanning() && !frozen && !state.farmSyncBusy;
-  const canCreate = canMutate && draft.budgetYearId && selectedRate.id && selectedBlockRate.id && materials.length && !unsupported.length;
+  const canCreate = canMutate && draft.budgetYearId && selectedRate.id && selectedBlockRate.id && !unsupported.length;
   return `<section class="farm-panel farm-planning-item-form"><div class="section-head"><h3>เพิ่มงานในแผน</h3><span>เลือก Budget Year → Activity → Block ระบบจะบันทึกวัสดุครบชุดจาก Block</span></div>
     ${frozen ? `<div class="farm-planning-frozen"><strong>อนุมัติแล้ว</strong><span>ค่าปริมาณและอัตราวัสดุถูกเก็บตามข้อมูล ณ วันที่จัดทำแผน</span></div>` : ""}
     <div class="farm-planning-form-grid">
@@ -26096,7 +26098,11 @@ function renderFarmCanonicalSelectedPlan() {
   const selectedItem = items.find((row) => row.id === draft.selectedItemId) || {};
   const frozen = plan.status === "approved";
   const estateOptions = farmRowsByKey("estates").filter(farmPlanningIsActive);
-  const snapshotComplete = items.filter((item) => farmPlanningItemMaterials(item.id).length > 0).length;
+  const snapshotComplete = items.filter((item) => item.full_resource_snapshot_at
+    && item.resource_snapshot_reconciliation_status === "matched"
+    && Array.isArray(item.planned_labor_rate_snapshot) && item.planned_labor_rate_snapshot.length > 0
+    && Array.isArray(item.planned_resource_rate_snapshot) && item.planned_resource_rate_snapshot.length > 0
+    && item.budget_block_resolution_snapshot).length;
   const canEdit = farmCanCreatePlanning() && !frozen && !state.farmSyncBusy;
   const canApprove = farmCanApprovePlanning() && !frozen && items.length > 0 && snapshotComplete === items.length && !state.farmSyncBusy;
   return `<section class="farm-panel farm-planning-selected-plan"><div class="section-head"><h3>${esc(plan.plan_name || `แผนปี ${plan.plan_year}`)}</h3><span>ปี ${esc(plan.plan_year)} · รายการงาน ${fmt(items.length)} · Snapshot ครบ ${fmt(snapshotComplete)}</span></div>
@@ -26178,7 +26184,7 @@ async function createFarmCanonicalPlannedItem() {
   const rate = farmEligiblePlanningActivityRates(draft.budgetYearId).find((row) => row.id === draft.budgetActivityRateId);
   const rateBlock = farmEligiblePlanningRateBlocks(draft.budgetActivityRateId).find((row) => row.id === draft.budgetRateBlockId);
   const materials = farmPlanningBudgetMaterialRows(draft.budgetRateBlockId);
-  if (!plan || plan.status !== "draft" || !rate || !rateBlock || !materials.length || materials.some((row) => !["tree_count", "area_rai"].includes(row.usage_basis)) || !farmCanCreatePlanning()) return;
+  if (!plan || plan.status !== "draft" || !rate || !rateBlock || materials.some((row) => !["tree_count", "area_rai"].includes(row.usage_basis)) || !farmCanCreatePlanning()) return;
   const block = farmLookup("blocks", rateBlock.block_id) || {};
   const result = await runFarmAction("create_canonical_planned_work_item_snapshot", {
     annual_plan_id: plan.id,
