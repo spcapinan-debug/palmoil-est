@@ -1496,6 +1496,9 @@ const FARM_MODULES = [
       "v_inventory_work_order_workspace", "v_work_result_vehicle_fuel_detail",
       "v_canonical_daily_material_actual", "v_canonical_daily_resource_actual",
       "v_canonical_daily_performance_input",
+      "v_canonical_result_material_variance", "v_canonical_result_labor_variance",
+      "v_canonical_result_resource_variance", "v_canonical_result_fuel_variance",
+      "v_canonical_result_variance_summary", "v_canonical_work_order_variance_summary",
       "fuel_requisitions", "fuel_issues", "fuel_tanks", "v_vehicle_fuel_status",
       "vehicle_fuel_efficiency_standards"],
     fields: [],
@@ -17054,6 +17057,129 @@ function farmCanonicalActiveRows(tableKey) {
   return farmRowsByKey(tableKey).filter((row) => !row.status || row.status === "active");
 }
 
+function farmCanonicalVarianceStatusMeta(status = "incomplete") {
+  const key = String(status || "incomplete").toLowerCase();
+  return {
+    on_plan: { label: "On Plan", className: "status-verified" },
+    under: { label: "Under", className: "status-submitted" },
+    over: { label: "Over", className: "status-needs_fix" },
+    incomplete: { label: "Incomplete", className: "status-pending" },
+  }[key] || { label: "Incomplete", className: "status-pending" };
+}
+
+function farmCanonicalVarianceContext(order = {}, scope = "result") {
+  const workOrderId = farmWorkOrderDbId(order) || order.id || "";
+  const result = farmDailyCurrentResult(order);
+  const summaryKey = scope === "work-order"
+    ? "v_canonical_work_order_variance_summary"
+    : "v_canonical_result_variance_summary";
+  const summaries = farmRowsByKey(summaryKey).filter((row) =>
+    row.work_order_id === workOrderId
+      && (scope === "work-order" || !result?.id || row.work_result_id === result.id)
+  );
+  const resultId = result?.id
+    || summaries.find((row) => row.latest_work_result_id)?.latest_work_result_id
+    || "";
+  const resultRows = (key) => farmRowsByKey(key).filter((row) =>
+    row.work_order_id === workOrderId && (!resultId || row.work_result_id === resultId)
+  );
+  return {
+    workOrderId,
+    resultId,
+    summaries,
+    materials: resultRows("v_canonical_result_material_variance"),
+    labor: resultRows("v_canonical_result_labor_variance"),
+    resources: resultRows("v_canonical_result_resource_variance"),
+    fuel: resultRows("v_canonical_result_fuel_variance"),
+  };
+}
+
+function renderFarmCanonicalVarianceSummary(order = {}, { scope = "result" } = {}) {
+  if (!farmCanonicalDailyOrder(order)) return "";
+  const context = farmCanonicalVarianceContext(order, scope);
+  const labels = { labor: "Labor", material: "Material", equipment: "Equipment", fuel: "Fuel" };
+  const summaryCards = ["labor", "material", "equipment", "fuel"].map((category) => {
+    const row = context.summaries.find((item) => item.category === category);
+    const meta = farmCanonicalVarianceStatusMeta(row?.variance_status);
+    return `<article data-variance-category="${esc(category)}">
+      <span>${esc(labels[category])}</span>
+      <strong class="${esc(meta.className)}">${esc(meta.label)}</strong>
+      <small>${row ? `${moneyNf.format(n(row.planned_value))} → ${moneyNf.format(n(row.actual_value))} บาท · ${fmt(row.line_count)} line` : "รอ Actual ที่บันทึกจาก Server"}</small>
+    </article>`;
+  }).join("");
+  const materialRows = context.materials.map((row) => {
+    const issueUnits = Array.isArray(row.issue_units)
+      ? row.issue_units.join(", ") : (row.issue_units || "-");
+    const conversionSnapshots = Array.isArray(row.conversion_snapshots)
+      ? row.conversion_snapshots : [];
+    const conversionLabel = conversionSnapshots.map((item) =>
+      `${item.issue_unit_id || "-"} x ${fmt(item.conversion_rate_snapshot)}`
+    ).join(", ") || "-";
+    const lineage = [
+      row.source_budget_rate_block_material_id,
+      row.source_planned_work_material_id,
+      row.work_order_material_id,
+      row.work_result_id,
+    ].filter(Boolean).join(" -> ");
+    return `<tr>
+    <td><strong>${esc(farmLookupLabel("materials", row.material_id) || row.material_id)}</strong>
+      <small>Base ${esc(row.base_unit_name || "-")} | Issue ${esc(issueUnits)}</small>
+      <small>Conversion snapshot ${esc(conversionLabel)}</small>
+      <small>Budget -> Plan -> WO -> Result: ${esc(lineage || "-")}</small></td>
+    <td class="num">${fmt(row.budget_quantity_snapshot)}</td>
+    <td class="num">${fmt(row.planned_quantity)}</td>
+    <td class="num">${fmt(row.issued_quantity)}</td>
+    <td class="num">${fmt(row.cumulative_actual_quantity)}</td>
+    <td class="num">${fmt(row.returned_quantity)}</td>
+    <td class="num">${fmt(row.outstanding_quantity)}</td>
+    <td class="num">${fmt(row.difference_quantity)}</td>
+    <td>${esc(farmCanonicalVarianceStatusMeta(row.variance_status).label)}</td>
+  </tr>`;
+  }).join("");
+  const laborRows = context.labor.map((row) => `<tr>
+    <td>${esc(row.role_position || row.worker_group_name || row.work_order_labor_requirement_id)}</td>
+    <td class="num">${fmt(row.planned_headcount)} / ${fmt(row.actual_headcount)}</td>
+    <td class="num">${fmt(row.planned_quantity)} / ${fmt(row.actual_quantity)}</td>
+    <td class="num">${fmt(row.planned_hours)} / ${fmt(row.actual_hours)}</td>
+    <td class="num">${moneyNf.format(n(row.frozen_rate_amount))} ${esc(row.frozen_rate_uom || "")}</td>
+    <td class="num">${moneyNf.format(n(row.cost_variance))}</td>
+    <td>${esc(farmCanonicalVarianceStatusMeta(row.variance_status).label)}</td>
+  </tr>`).join("");
+  const resourceRows = context.resources.filter((row) => row.resource_type !== "fuel").map((row) => `<tr>
+    <td>${esc(row.resource_name || row.resource_code || row.resource_type)}</td>
+    <td>${esc(farmLookupLabel("vehicles", row.assigned_vehicle_id) || row.assigned_vehicle_id || "-")}</td>
+    <td>${esc(farmLookupLabel("vehicles", row.actual_vehicle_id) || row.actual_vehicle_id || "-")}</td>
+    <td class="num">${fmt(row.planned_basis_quantity)} / ${fmt(row.actual_basis_quantity)}</td>
+    <td class="num">${fmt(row.actual_hours)} ชม. · ${fmt(row.actual_km)} กม.</td>
+    <td>${esc(farmCanonicalVarianceStatusMeta(row.variance_status).label)}</td>
+  </tr>`).join("");
+  const fuelRows = context.fuel.map((row) => `<tr>
+    <td>${esc(farmLookupLabel("vehicles", row.vehicle_id) || row.vehicle_id || "-")}</td>
+    <td class="num">${fmt(row.issued_fuel_liter)}</td>
+    <td class="num">${fmt(row.actual_fuel_liters)}</td>
+    <td class="num">${row.expected_fuel_liters == null ? "Actual only" : fmt(row.expected_fuel_liters)}</td>
+    <td class="num">${row.actual_liter_per_hour == null ? "-" : `${fmt(row.actual_liter_per_hour)} L/h`}</td>
+    <td class="num">${row.actual_liter_per_km == null ? "-" : `${fmt(row.actual_liter_per_km)} L/km`}</td>
+    <td>${esc(farmCanonicalVarianceStatusMeta(row.variance_status).label)}</td>
+  </tr>`).join("");
+  return `<section class="farm-dispatch-card farm-canonical-variance" data-canonical-variance-scope="${esc(scope)}">
+    <div class="section-head"><h3>Actual / Variance</h3><span>${scope === "work-order" ? "สรุปจาก Daily Result ล่าสุด" : "Server-derived · drill-down ถึง Budget / Plan / WO / Result"}</span></div>
+    <div class="farm-result-summary-strip">${summaryCards}</div>
+    <details open><summary><strong>Material · Planned / Issued / Used / Returned / Difference</strong></summary>
+      <div class="table-wrap"><table class="mini-table"><thead><tr><th>วัสดุ</th><th>Budget</th><th>Planned</th><th>Issued</th><th>Used</th><th>Returned</th><th>Outstanding</th><th>Difference</th><th>Status</th></tr></thead><tbody>${materialRows || `<tr><td colspan="9">ไม่มี Material variance line</td></tr>`}</tbody></table></div>
+    </details>
+    <details><summary><strong>Labor · Frozen Rate และ Actual Allocation</strong></summary>
+      <div class="table-wrap"><table class="mini-table"><thead><tr><th>ตำแหน่ง/Rate line</th><th>Headcount แผน/จริง</th><th>Output แผน/จริง</th><th>ชั่วโมง แผน/จริง</th><th>Frozen Rate</th><th>Cost Δ</th><th>Status</th></tr></thead><tbody>${laborRows || `<tr><td colspan="7">ไม่มี Labor variance line</td></tr>`}</tbody></table></div>
+    </details>
+    <details><summary><strong>Equipment / Vehicle · Assignment → Actual</strong></summary>
+      <div class="table-wrap"><table class="mini-table"><thead><tr><th>ทรัพยากร</th><th>Assigned</th><th>Actual</th><th>Basis แผน/จริง</th><th>ชั่วโมง/ระยะทาง</th><th>Status</th></tr></thead><tbody>${resourceRows || `<tr><td colspan="6">ไม่มี Equipment variance line</td></tr>`}</tbody></table></div>
+    </details>
+    <details><summary><strong>Fuel · Issued ไม่ใช่ Actual</strong></summary>
+      <div class="table-wrap"><table class="mini-table"><thead><tr><th>รถ</th><th>Issued</th><th>Actual</th><th>Expected</th><th>L/hour</th><th>L/km</th><th>Status</th></tr></thead><tbody>${fuelRows || `<tr><td colspan="7">ไม่มี Fuel variance line</td></tr>`}</tbody></table></div>
+    </details>
+  </section>`;
+}
+
 function renderFarmCanonicalWorkOrderDraft(order) {
   const labor = farmCanonicalWorkOrderRows("work_order_labor_requirements", order.id);
   const materials = farmCanonicalWorkOrderRows("work_order_materials", order.id);
@@ -17116,6 +17242,7 @@ function renderFarmCanonicalWorkOrderDraft(order) {
         </article>`;
       }).join("") || `<p>กิจกรรมนี้ไม่มี Equipment / Machine / Vehicle / Fuel requirement</p>`}</div>
     </details>
+    ${renderFarmCanonicalVarianceSummary(order, { scope: "work-order" })}
     <article class="farm-dispatch-card farm-dispatch-actions"><h4>ตรวจและส่งอนุมัติ</h4>
       <label>เหตุผลกรณีจำนวนคนจริงต่างจากแผน<input id="farmCanonicalHeadcountVariance" value="${esc(order.headcount_variance_reason || "")}" ${editable ? "" : "disabled"}></label>
       ${editable ? `<button type="button" data-canonical-work-order-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึก Draft</button> <button type="button" data-canonical-work-order-submit ${state.farmSyncBusy ? "disabled" : ""}>ส่งอนุมัติ</button>` : ""}
@@ -19965,7 +20092,7 @@ function farmResultMaterialLines(order) {
   if (farmCanonicalDailyOrder(order)) {
     const workOrderId = farmWorkOrderDbId(order) || order?.id || "";
     const currentResult = farmDailyCurrentResult(order);
-    const actualRows = currentResult ? farmRowsByKey("v_canonical_daily_material_actual")
+    const actualRows = currentResult ? farmRowsByKey("v_canonical_result_material_variance")
       .filter((row) => row.work_result_id === currentResult.id) : [];
     const baselineRows = farmRowsByKey("work_order_materials")
       .filter((row) => row.work_order_id === workOrderId);
@@ -19974,7 +20101,8 @@ function farmResultMaterialLines(order) {
       const material = farmLookup("materials", row.material_id) || {};
       const planned = n(row.planned_quantity);
       const issued = n(row.issued_quantity);
-      const used = n(row.used_quantity);
+      const used = n(row.actual_quantity ?? row.used_quantity);
+      const cumulativeUsed = n(row.cumulative_actual_quantity ?? row.used_quantity);
       const returned = n(row.returned_quantity);
       return {
         ...row,
@@ -19984,13 +20112,22 @@ function farmResultMaterialLines(order) {
         planned_quantity: planned,
         issued_quantity: issued,
         actualQuantity: used,
-        cumulativeActualQuantity: used,
+        cumulativeActualQuantity: cumulativeUsed,
         wasteQuantity: returned,
         returnedQuantity: returned,
-        varianceQuantity: row.variance_quantity == null ? used - planned : n(row.variance_quantity),
-        pendingIssueQuantity: Math.max(0, planned - issued),
+        varianceQuantity: row.difference_quantity == null
+          ? cumulativeUsed - planned : n(row.difference_quantity),
+        pendingIssueQuantity: row.outstanding_quantity == null
+          ? Math.max(0, issued - cumulativeUsed - returned)
+          : n(row.outstanding_quantity),
+        varianceStatus: row.variance_status || "incomplete",
+        variancePct: row.variance_pct,
+        baseUnitName: row.base_unit_name || "",
+        issueUnits: row.issue_units || [],
+        conversionSnapshots: row.conversion_snapshots || [],
         unit_name: farmCleanUnitDisplay(
-          farmLookupLabel("units", row.unit_id) || row.unit_name || row.unit_id || "",
+          farmLookupLabel("units", row.planned_unit_id || row.unit_id)
+            || row.planned_unit_name || row.unit_name || row.planned_unit_id || row.unit_id || "",
         ),
         inventoryActual: true,
         note: farmResultCleanResourceNote(row.note || ""),
@@ -21039,6 +21176,7 @@ function renderFarmResultPanel() {
         <article><span>วัสดุ / รถ</span><strong>${fmt(calc.materialLines.length)} / ${fmt(calc.machineLines.length)}</strong><small>น้ำมันใช้จริง ${moneyNf.format(calc.fuelUsedTotal)} ลิตร</small></article>
         <article><span>แบบตรวจงาน</span><strong>${esc(survey?.template_code || "-")}</strong><small>${esc(surveyAttachment?.file_name || survey?.template_name || "ไม่พบแบบตรวจ")}</small></article>
       </div>
+      ${renderFarmCanonicalVarianceSummary(order, { scope: "result" })}
       <div class="farm-result-entry-grid" data-daily-section="result" id="farm-daily-step-result">
         <article class="farm-result-card farm-result-main-entry">
           <div class="section-head"><h3>ผลงานรวม</h3><span>ใช้ใบชั่งหรือกรอกจำนวนเอง</span></div>
@@ -21176,19 +21314,34 @@ function renderFarmResultPanel() {
           </div>
           <div class="table-wrap farm-result-resource-wrap">
             <table class="mini-table farm-table farm-result-resource-table" data-no-export="true">
-              <thead><tr><th>วัสดุ</th><th>แผน/จ่าย</th><th>ใช้จริง</th><th>${calc.canonical ? "คืน" : "สูญเสีย/คืน"}</th><th>หน่วย</th><th>${calc.canonical ? "Variance" : "วัสดุรอเบิก"}</th></tr></thead>
+              <thead>${calc.canonical
+                ? `<tr><th>วัสดุ</th><th>Planned</th><th>Issued</th><th>Used</th><th>Returned</th><th>Outstanding</th><th>Difference</th><th>หน่วย</th><th>Status</th></tr>`
+                : `<tr><th>วัสดุ</th><th>แผน/จ่าย</th><th>ใช้จริง</th><th>สูญเสีย/คืน</th><th>หน่วย</th><th>วัสดุรอเบิก</th></tr>`}</thead>
               <tbody>
-                ${calc.materialLines.map((row) => `
+                ${calc.materialLines.map((row) => calc.canonical ? `
+                  <tr data-farm-result-material="${esc(row.key)}">
+                    <td><strong>${esc(row.material_name || row.material_id)}</strong><small>${esc(row.baseUnitName ? `Base: ${row.baseUnitName}` : "Inventory actual")}</small></td>
+                    <td class="num">${moneyNf.format(n(row.planned_quantity))}</td>
+                    <td class="num">${moneyNf.format(n(row.issued_quantity))}</td>
+                    <td class="num"><strong>${moneyNf.format(row.cumulativeActualQuantity)}</strong></td>
+                    <td class="num">${moneyNf.format(row.returnedQuantity)}</td>
+                    <td class="num">${moneyNf.format(row.pendingIssueQuantity)}</td>
+                    <td class="num"><strong>${moneyNf.format(row.varianceQuantity)}</strong></td>
+                    <td>${esc(farmCleanUnitDisplay(row.unit_name || row.unit_id || "-"))}</td>
+                    <td>${esc(farmCanonicalVarianceStatusMeta(row.varianceStatus).label)}</td>
+                  </tr>` : `
                   <tr data-farm-result-material="${esc(row.key)}">
                     <td><strong>${esc(row.material_name || row.material_id)}</strong></td>
                     <td class="num">${moneyNf.format(n(row.planned_quantity))} / ${moneyNf.format(n(row.issued_quantity))}</td>
-                    <td>${calc.canonical ? `<strong>${moneyNf.format(row.actualQuantity)}</strong>` : `<input type="number" min="0" step="0.01" class="farm-result-required-input" value="${esc(row.actualQuantity || "")}" placeholder="กรอกใช้จริง" data-farm-result-material-field="actualQuantity">`}</td>
-                    <td>${calc.canonical ? `<strong>${moneyNf.format(row.returnedQuantity)}</strong>` : `<input type="number" min="0" step="0.01" value="${esc(row.wasteQuantity || "")}" data-farm-result-material-field="wasteQuantity">`}</td>
+                    <td><input type="number" min="0" step="0.01" class="farm-result-required-input" value="${esc(row.actualQuantity || "")}" placeholder="กรอกใช้จริง" data-farm-result-material-field="actualQuantity"></td>
+                    <td><input type="number" min="0" step="0.01" value="${esc(row.wasteQuantity || "")}" data-farm-result-material-field="wasteQuantity"></td>
                     <td>${esc(farmCleanUnitDisplay(row.unit_name || row.unit_id || "-"))}</td>
-                    <td class="num"><strong>${moneyNf.format(n(calc.canonical ? row.varianceQuantity : row.pendingIssueQuantity))}</strong></td>
-                  </tr>`).join("") || `<tr><td colspan="6">ยังไม่มีวัสดุในใบงาน</td></tr>`}
+                    <td class="num"><strong>${moneyNf.format(n(row.pendingIssueQuantity))}</strong></td>
+                  </tr>`).join("") || `<tr><td colspan="${calc.canonical ? 9 : 6}">ยังไม่มีวัสดุในใบงาน</td></tr>`}
               </tbody>
-              <tfoot><tr><td>รวม</td><td></td><td class="num">${moneyNf.format(calc.materialActualTotal)}</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.wasteQuantity), 0))}</td><td></td><td class="num">${moneyNf.format(calc.materialPendingTotal)}</td></tr></tfoot>
+              <tfoot>${calc.canonical
+                ? `<tr><td>รวม</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.planned_quantity), 0))}</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.issued_quantity), 0))}</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.cumulativeActualQuantity), 0))}</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.returnedQuantity), 0))}</td><td class="num">${moneyNf.format(calc.materialPendingTotal)}</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.varianceQuantity), 0))}</td><td></td><td></td></tr>`
+                : `<tr><td>รวม</td><td></td><td class="num">${moneyNf.format(calc.materialActualTotal)}</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.wasteQuantity), 0))}</td><td></td><td class="num">${moneyNf.format(calc.materialPendingTotal)}</td></tr>`}</tfoot>
             </table>
           </div>
         </article>
