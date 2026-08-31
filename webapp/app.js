@@ -392,6 +392,21 @@ const FARM_PLANNING_ERROR_MESSAGES = Object.freeze({
   PLANNING_BUDGET_RATE_BLOCK_NOT_ELIGIBLE: "แปลงงบประมาณนี้ยังไม่พร้อมใช้สร้างแผน",
   MATERIAL_INACTIVE: "มีวัสดุที่ไม่ได้ใช้งานในชุดงบประมาณ",
   UNIT_INACTIVE: "มีหน่วยวัสดุที่ไม่ได้ใช้งานในชุดงบประมาณ",
+  PLANNING_CANONICAL_WORK_ORDER_NOT_READY: "รายการแผนนี้ยังไม่ผ่าน readiness/reconciliation สำหรับสร้าง Work Order",
+  WORK_ORDER_ALREADY_CREATED: "รายการแผนนี้มี Work Order แล้ว ระบบจะเปิดฉบับเดิมแทนการสร้างซ้ำ",
+  CANONICAL_WORK_ORDER_NOT_DRAFT: "แก้กำหนดการหรือผู้ปฏิบัติงานได้เฉพาะ Canonical Work Order สถานะ Draft",
+  WORK_ORDER_SCHEDULE_INVALID: "ช่วงวันที่สั่งงานไม่ถูกต้อง",
+  WORK_ORDER_ASSIGNEE_IDENTITY_REQUIRED: "แต่ละรายการต้องเลือกพนักงานหรือผู้รับเหมาอย่างใดอย่างหนึ่ง",
+  WORK_ORDER_LABOR_ASSIGNMENT_DUPLICATE: "พบการมอบหมายคนซ้ำใน Labor Rate เดียวกัน",
+  WORK_ORDER_VEHICLE_ASSIGNMENT_DUPLICATE: "รถหนึ่งคันไม่สามารถถูกมอบหมายซ้ำใน Work Order เดียวกัน",
+  WORK_ORDER_VEHICLE_VARIANCE_REASON_REQUIRED: "กรุณาระบุเหตุผลเมื่อเลือกรถจริงต่างจากรถที่ Planning แนะนำ",
+  WORK_ORDER_DRIVER_LABOR_ASSIGNMENT_REQUIRED: "คนขับต้องถูกเลือกใน Labor Rate line ก่อนผูกกับรถ",
+  WORK_ORDER_WORKER_ASSIGNMENT_REQUIRED: "กิจกรรมนี้ต้องจัดคนจริงให้ครบก่อนส่งอนุมัติ",
+  WORK_ORDER_HEADCOUNT_VARIANCE_REASON_REQUIRED: "จำนวนคนจริงต่างจากแผน กรุณาระบุเหตุผลก่อนส่งอนุมัติ",
+  WORK_ORDER_MATERIAL_SNAPSHOT_REQUIRED: "Material Snapshot ใน Work Order ไม่ครบตาม Planning",
+  WORK_ORDER_EQUIPMENT_ASSIGNMENT_REQUIRED: "กิจกรรมนี้ต้องจัดอุปกรณ์จริงก่อนส่งอนุมัติ",
+  WORK_ORDER_MACHINE_ASSIGNMENT_REQUIRED: "กิจกรรมนี้ต้องจัดเครื่องจักร รถ หรือผู้รับเหมาก่อนส่งอนุมัติ",
+  WORK_ORDER_FUEL_PLAN_REQUIRED: "กิจกรรมนี้ต้องมีแผนน้ำมันครบก่อนส่งอนุมัติ",
 });
 const FARM_DB_TABLE_CACHE_MS = 30 * 1000;
 const farmDbTableLoadedAt = new Map();
@@ -2985,6 +3000,22 @@ const FARM_TABLE_SCHEMAS = {
     moduleId: "farm-work", title: "ทรัพยากรตามแผน", primaryKey: "id",
     codeField: "resource_code", labelField: "resource_name", readonly: true, fields: [], seed: [],
   },
+  work_order_labor_requirements: {
+    moduleId: "farm-work", title: "คนและอัตราที่ตรึงในใบสั่งงาน", primaryKey: "id",
+    codeField: "role_position", labelField: "worker_group_name", readonly: true, fields: [], seed: [],
+  },
+  work_order_resource_requirements: {
+    moduleId: "farm-work", title: "ทรัพยากรที่ตรึงในใบสั่งงาน", primaryKey: "id",
+    codeField: "resource_code", labelField: "resource_name", readonly: true, fields: [], seed: [],
+  },
+  work_order_resource_assignments: {
+    moduleId: "farm-work", title: "การจัดทรัพยากรจริงในใบสั่งงาน", primaryKey: "id",
+    codeField: "resource_type", labelField: "selected_vehicle_id", readonly: true, fields: [], seed: [],
+  },
+  v_canonical_work_order_scheduler_queue: {
+    moduleId: "farm-dispatch", title: "แผนที่พร้อมเตรียมสั่งงาน", primaryKey: "planned_work_item_id",
+    codeField: "plan_year", labelField: "plan_name", readonly: true, fields: [], seed: [],
+  },
   budget_rate_resource_requirements: {
     moduleId: "farm-budget", title: "ข้อกำหนดทรัพยากรจาก Budget Rate", primaryKey: "id",
     codeField: "resource_code", labelField: "resource_name", readonly: true, fields: [], seed: [],
@@ -4874,6 +4905,9 @@ function farmDatabaseTablesForView(view = state.view) {
       "work_order_workers",
       "work_order_materials",
       "work_order_machines",
+      "work_order_labor_requirements",
+      "work_order_resource_requirements",
+      "work_order_resource_assignments",
     ];
     if (view === "farm-work" || view === "farm-performance") {
       workflowTables.push("survey_templates", "survey_questions", "budget_years", "budget_activity_rates", "budget_rate_blocks", "budget_rate_materials", "budget_rate_block_materials", "budget_rate_roles", "planned_work_labor_requirements", "planned_work_resource_requirements");
@@ -4891,6 +4925,11 @@ function farmDatabaseTablesForView(view = state.view) {
       "inventory_documents",
       "inventory_document_lines",
       "planned_work_materials",
+      "planned_work_labor_requirements",
+      "planned_work_resource_requirements",
+      "v_canonical_work_order_scheduler_queue",
+      "survey_templates",
+      "survey_template_assignments",
     ].forEach((key) => tableSet.add(key));
   }
   if (["farm-result", "farm-performance"].includes(view)) {
@@ -16958,14 +16997,145 @@ function farmDispatchMachineCandidates(order) {
   })));
 }
 
+function farmCanonicalSchedulerRequestedItemId() {
+  return String(state.farmSchedulerPlannedItemId || new URL(window.location.href).searchParams.get("planned_work_item_id") || "").trim();
+}
+
+function farmCanonicalSchedulerQueue() {
+  return farmRowsByKey("v_canonical_work_order_scheduler_queue");
+}
+
+function renderFarmCanonicalSchedulerQueue() {
+  const rows = farmCanonicalSchedulerQueue();
+  const requestedId = farmCanonicalSchedulerRequestedItemId();
+  const selected = rows.find((row) => row.planned_work_item_id === requestedId) || rows[0] || null;
+  if (selected && state.farmSchedulerPlannedItemId !== selected.planned_work_item_id) {
+    state.farmSchedulerPlannedItemId = selected.planned_work_item_id;
+  }
+  const totalCost = selected ? ["planned_labor_cost", "planned_material_cost", "planned_equipment_cost", "planned_machine_cost", "planned_fuel_cost"]
+    .reduce((sum, key) => sum + n(selected[key]), 0) : 0;
+  const selectedSurvey = selected ? farmSurveyForOrder(selected) : null;
+  return `<section class="farm-dispatch-panel farm-canonical-scheduler" data-canonical-scheduler>
+    <div class="section-head"><h3>Scheduler · แผนที่อนุมัติแล้ว</h3><span>เลือก Planned Work Item ที่ผ่าน reconciliation เพื่อสร้าง Canonical Work Order draft</span></div>
+    <div class="farm-mobile-candidate-list">
+      ${rows.map((row) => `<article class="farm-mobile-candidate-card${row.planned_work_item_id === selected?.planned_work_item_id ? " is-active" : ""}">
+        <div class="farm-mobile-candidate-top"><span class="status-chip ${row.eligibility_status === "READY" ? "status-good" : "status-warning"}">${esc(row.eligibility_status || "REVIEW_REQUIRED")}</span><small>${esc(row.plan_year || "-")}</small></div>
+        <strong>${esc(farmLookupLabel("activities", row.activity_id) || "-")}</strong>
+        <p>${esc(farmLookupLabel("blocks", row.block_id) || row.ap_code || "-")} · ${esc(row.planned_start_date || "-")} – ${esc(row.planned_end_date || "-")}</p>
+        <button type="button" class="secondary" data-canonical-scheduler-select="${esc(row.planned_work_item_id)}">${row.planned_work_item_id === selected?.planned_work_item_id ? "กำลังตรวจรายการนี้" : "เปิดรายการ"}</button>
+      </article>`).join("") || `<div class="farm-mobile-empty">ยังไม่มีแผนอนุมัติที่รอสร้าง Work Order</div>`}
+    </div>
+    ${selected ? `<article class="farm-dispatch-card farm-canonical-scheduler-summary">
+      <h4>${esc(selected.plan_name || `แผนปี ${selected.plan_year || "-"}`)}</h4>
+      <dl class="farm-dispatch-summary">
+        <dt>กิจกรรม</dt><dd>${esc(farmLookupLabel("activities", selected.activity_id) || "-")}</dd>
+        <dt>Block</dt><dd>${esc(farmLookupLabel("blocks", selected.block_id) || selected.ap_code || "-")}</dd>
+        <dt>ช่วงแผน</dt><dd>${esc(selected.planned_start_date || "-")} – ${esc(selected.planned_end_date || "-")}</dd>
+        <dt>เป้าหมาย</dt><dd>${fmt(selected.target_quantity)} ${esc(selected.target_unit || "")}</dd>
+        <dt>Planned Cost</dt><dd>${moneyNf.format(totalCost)} บาท</dd>
+        <dt>Survey</dt><dd>${esc(selectedSurvey?.template_name || selectedSurvey?.template_code || "ไม่บังคับ/ไม่มีแบบตรวจที่ตรงเงื่อนไข")}</dd>
+      </dl>
+      <div class="farm-planning-no-work-order">การสร้าง draft จะ Copy Labor, Material, Equipment, Machine/Vehicle, Fuel, Rate และ Cost Snapshot จาก Planning ครั้งเดียว โดยไม่อ่าน Rate Master ใหม่</div>
+      <button type="button" data-canonical-work-order-create="${esc(selected.planned_work_item_id)}" ${selected.eligibility_status === "READY" && !state.farmSyncBusy ? "" : "disabled"}>สร้าง Work Order Draft</button>
+    </article>` : ""}
+  </section>`;
+}
+
+function farmCanonicalWorkOrderRows(tableKey, orderId) {
+  return farmRowsByKey(tableKey).filter((row) => String(row.work_order_id || "") === String(orderId || ""));
+}
+
+function farmCanonicalActiveRows(tableKey) {
+  return farmRowsByKey(tableKey).filter((row) => !row.status || row.status === "active");
+}
+
+function renderFarmCanonicalWorkOrderDraft(order) {
+  const labor = farmCanonicalWorkOrderRows("work_order_labor_requirements", order.id);
+  const materials = farmCanonicalWorkOrderRows("work_order_materials", order.id);
+  const resources = farmCanonicalWorkOrderRows("work_order_resource_requirements", order.id);
+  const workers = farmCanonicalWorkOrderRows("work_order_workers", order.id).filter((row) => row.status !== "cancelled");
+  const assignments = farmCanonicalWorkOrderRows("work_order_resource_assignments", order.id);
+  const employees = farmCanonicalActiveRows("employees");
+  const contractors = farmCanonicalActiveRows("contractors");
+  const vehicles = farmCanonicalActiveRows("vehicles");
+  const teams = farmCanonicalActiveRows("teams");
+  const editable = order.status === "draft";
+  const totalCost = ["planned_labor_cost", "planned_material_cost", "planned_equipment_cost", "planned_machine_cost", "planned_fuel_cost"]
+    .reduce((sum, key) => sum + n(order[key]), 0);
+  const survey = farmSurveyForOrder(order);
+  const optionLabel = (tableKey, row) => farmRecordLabel(farmTableByKey(tableKey), row) || row.name || row.id;
+  const personOptions = (selectedIds = new Set()) => employees.map((row) => `<option value="${esc(row.id)}"${selectedIds.has(row.id) ? " selected" : ""}>${esc(optionLabel("employees", row))}</option>`).join("");
+  const contractorOptions = (selectedId = "") => `<option value="">ไม่ใช้ผู้รับเหมา</option>${contractors.map((row) => `<option value="${esc(row.id)}"${row.id === selectedId ? " selected" : ""}>${esc(optionLabel("contractors", row))}</option>`).join("")}`;
+  const vehicleOptions = (selectedId = "") => `<option value="">ไม่ระบุรถจริง</option>${vehicles.map((row) => `<option value="${esc(row.id)}"${row.id === selectedId ? " selected" : ""}>${esc(optionLabel("vehicles", row))}</option>`).join("")}`;
+  return `<section class="farm-dispatch-panel farm-canonical-work-order" data-canonical-work-order="${esc(order.id)}">
+    <div class="section-head"><h3>Canonical Work Order · ${esc(order.work_order_no || order.id)}</h3><span>Snapshot จาก Planning ถูกตรึงแล้ว · แก้ได้เฉพาะกำหนดการและผู้ปฏิบัติงานในสถานะ Draft</span></div>
+    <div class="farm-planning-frozen"><strong>${esc(farmTranslateValue(order.status || "draft"))}</strong><span>Planning snapshot ${esc(displayDate(order.planning_snapshot_at) || "-")}</span></div>
+    <article class="farm-dispatch-card">
+      <h4>กำหนดการและผู้รับผิดชอบ</h4>
+      <div class="farm-dispatch-fields">
+        <label>วันที่เริ่ม${renderDateInputControl({ id: "farmDispatchDate", value: order.scheduled_date || order.planned_start_date, ariaLabel: "วันที่เริ่ม Work Order" })}</label>
+        <label>วันที่สิ้นสุด${renderDateInputControl({ id: "farmDispatchEndDate", value: order.scheduled_end_date || order.scheduled_date || order.planned_end_date, ariaLabel: "วันที่สิ้นสุด Work Order" })}</label>
+        <label>ทีม<select id="farmDispatchTeam" ${editable ? "" : "disabled"}><option value="">ไม่ระบุ</option>${teams.map((row) => `<option value="${esc(row.id)}"${row.id === order.team_id ? " selected" : ""}>${esc(optionLabel("teams", row))}</option>`).join("")}</select></label>
+        <label>หัวหน้างาน<select id="farmCanonicalSupervisor" ${editable ? "" : "disabled"}><option value="">ไม่ระบุ</option>${employees.map((row) => `<option value="${esc(row.id)}"${row.id === order.supervisor_employee_id ? " selected" : ""}>${esc(optionLabel("employees", row))}</option>`).join("")}</select></label>
+        <label>ผู้รับเหมาหลัก<select id="farmCanonicalContractor" ${editable ? "" : "disabled"}>${contractorOptions(order.contractor_id)}</select></label>
+      </div>
+      <dl class="farm-dispatch-summary"><dt>กิจกรรม</dt><dd>${esc(farmLookupLabel("activities", order.activity_id) || "-")}</dd><dt>Block</dt><dd>${esc(farmLookupLabel("blocks", order.block_id) || order.ap_code || "-")}</dd><dt>เป้าหมาย</dt><dd>${fmt(order.planned_quantity)} ${esc(order.planned_unit || "")}</dd><dt>Planned Cost</dt><dd>${moneyNf.format(totalCost)} บาท</dd><dt>Survey</dt><dd>${esc(survey?.template_name || survey?.template_code || "ไม่บังคับ/ไม่มีแบบตรวจที่ตรงเงื่อนไข")}</dd></dl>
+    </article>
+    <details class="farm-dispatch-card" open><summary><strong>คนและอัตรา · ${fmt(labor.length)} Rate</strong></summary>
+      <div class="farm-canonical-requirement-list">${labor.map((requirement) => {
+        const assigned = workers.filter((row) => row.work_order_labor_requirement_id === requirement.id);
+        const selectedEmployees = new Set(assigned.map((row) => row.employee_id).filter(Boolean));
+        const contractor = assigned.find((row) => row.contractor_id);
+        return `<article data-canonical-labor-requirement="${esc(requirement.id)}"><h5>${esc(requirement.role_position || requirement.worker_group_name || "ตำแหน่ง")}</h5>
+          <p>${moneyNf.format(n(requirement.rate_amount))} ${esc(requirement.uom || requirement.rate_basis || "")} · แผน ${fmt(requirement.planned_headcount)} คน · ${moneyNf.format(n(requirement.estimated_amount))} บาท</p>
+          <label>พนักงานจริง (เลือกได้หลายคน)<select multiple size="${Math.min(5, Math.max(2, employees.length))}" data-canonical-labor-employees ${editable ? "" : "disabled"}>${personOptions(selectedEmployees)}</select></label>
+          <label>หรือผู้รับเหมา<select data-canonical-labor-contractor ${editable ? "" : "disabled"}>${contractorOptions(contractor?.contractor_id)}</select></label>
+          <label>จำนวนคนผู้รับเหมา<input type="number" min="1" step="1" value="${esc(contractor?.assigned_headcount || requirement.planned_headcount || 1)}" data-canonical-labor-contractor-headcount ${editable ? "" : "disabled"}></label>
+        </article>`;
+      }).join("") || `<p>ไม่มี Labor Snapshot</p>`}</div>
+    </details>
+    <details class="farm-dispatch-card"><summary><strong>วัสดุ · ${fmt(materials.length)} รายการ (อ่านอย่างเดียว)</strong></summary>
+      <div class="table-wrap"><table class="mini-table"><thead><tr><th>วัสดุ</th><th>ปริมาณ</th><th>ต้นทุนแผน</th></tr></thead><tbody>${materials.map((row) => `<tr><td>${esc(farmLookupLabel("materials", row.material_id) || row.material_id)}</td><td>${fmt(row.planned_quantity)} ${esc(farmLookupLabel("units", row.unit_id) || "")}</td><td>${moneyNf.format(n(row.planned_amount))}</td></tr>`).join("") || `<tr><td colspan="3">กิจกรรมนี้ไม่มีวัสดุ</td></tr>`}</tbody></table></div>
+    </details>
+    <details class="farm-dispatch-card" open><summary><strong>อุปกรณ์ / เครื่องจักร / รถ / น้ำมัน · ${fmt(resources.length)} รายการ</strong></summary>
+      <div class="farm-canonical-requirement-list">${resources.map((requirement) => {
+        const actual = assignments.find((row) => row.work_order_resource_requirement_id === requirement.id) || {};
+        const driverWorker = workers.find((row) => row.id === actual.driver_work_order_worker_id) || {};
+        return `<article data-canonical-resource-requirement="${esc(requirement.id)}"><h5>${esc(requirement.resource_name || requirement.resource_code || requirement.resource_type)}</h5>
+          <p>${esc(requirement.resource_type)} · ${fmt(requirement.planned_quantity)} ${esc(requirement.resource_rate_uom || "")} · น้ำมัน ${fmt(requirement.planned_fuel_liters)} L</p>
+          <label>รถ/เครื่องจักรจริง<select data-canonical-resource-vehicle ${editable ? "" : "disabled"}>${vehicleOptions(actual.selected_vehicle_id || requirement.preferred_vehicle_id)}</select></label>
+          <label>ผู้รับเหมาทรัพยากร<select data-canonical-resource-contractor ${editable ? "" : "disabled"}>${contractorOptions(actual.contractor_id)}</select></label>
+          <label>คนขับ<select data-canonical-resource-driver ${editable ? "" : "disabled"}><option value="">ไม่ระบุ</option>${employees.map((row) => `<option value="${esc(row.id)}"${row.id === driverWorker.employee_id ? " selected" : ""}>${esc(optionLabel("employees", row))}</option>`).join("")}</select></label>
+          <label>Labor Rate ของคนขับ<select data-canonical-resource-driver-requirement ${editable ? "" : "disabled"}><option value="">ไม่ผูก Labor line</option>${labor.map((row) => `<option value="${esc(row.id)}"${row.id === driverWorker.work_order_labor_requirement_id ? " selected" : ""}>${esc(row.role_position || row.worker_group_name || row.id)}</option>`).join("")}</select></label>
+          <label>เหตุผลเปลี่ยนจากรถแนะนำ<input value="${esc(actual.vehicle_variance_reason || "")}" data-canonical-resource-variance ${editable ? "" : "disabled"}></label>
+        </article>`;
+      }).join("") || `<p>กิจกรรมนี้ไม่มี Equipment / Machine / Vehicle / Fuel requirement</p>`}</div>
+    </details>
+    <article class="farm-dispatch-card farm-dispatch-actions"><h4>ตรวจและส่งอนุมัติ</h4>
+      <label>เหตุผลกรณีจำนวนคนจริงต่างจากแผน<input id="farmCanonicalHeadcountVariance" value="${esc(order.headcount_variance_reason || "")}" ${editable ? "" : "disabled"}></label>
+      ${editable ? `<button type="button" data-canonical-work-order-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึก Draft</button> <button type="button" data-canonical-work-order-submit ${state.farmSyncBusy ? "disabled" : ""}>ส่งอนุมัติ</button>` : ""}
+      ${order.status === "submitted" ? `<button type="button" data-farm-work-order-action="approve_work_order" data-work-order-id="${esc(order.id)}">อนุมัติ Work Order</button>` : ""}
+      ${order.status === "approved" ? `<button type="button" data-farm-work-order-action="dispatch_work_order" data-work-order-id="${esc(order.id)}">ส่งเข้าปฏิบัติงาน</button>` : ""}
+      <button type="button" class="ghost" data-farm-dispatch-print>พิมพ์ใบสั่งงาน</button>
+    </article>
+  </section>`;
+}
+
 function renderFarmDispatchPanel() {
+  const requestedItemId = farmCanonicalSchedulerRequestedItemId();
+  const requestedOrder = requestedItemId
+    ? farmWorkOrders().find((row) => String(row.planned_work_item_id || "") === requestedItemId)
+    : null;
+  if (requestedOrder && state.farmDispatchWorkOrderId !== requestedOrder.id) state.farmDispatchWorkOrderId = requestedOrder.id;
+  if (requestedItemId && !requestedOrder) return renderFarmCanonicalSchedulerQueue();
   const orders = farmDispatchCandidateOrders();
   const order = farmDispatchSelectedOrder(orders);
   if (!order) {
-    return `<section class="farm-dispatch-panel"><div class="section-head"><h3>สั่งงานจากแผน</h3>
+    return `${renderFarmCanonicalSchedulerQueue()}<section class="farm-dispatch-panel"><div class="section-head"><h3>สั่งงานจากแผน</h3>
       <span>เลือกใบงานที่อนุมัติแล้วเพื่อจัดทีม คนงาน พัสดุ และรถ</span></div>
       ${farmWorkflowEmptyState("dispatch", { candidateCount: orders.length })}</section>`;
   }
+  if (order.workflow_source === "canonical_planning") return renderFarmCanonicalWorkOrderDraft(order);
   const teams = farmRowsByKey("teams");
   const activeTeamId = state.farmDispatchTeamId || order?.team_id || "";
   const workers = farmDispatchWorkerCandidates(order, activeTeamId);
@@ -17115,6 +17285,93 @@ function renderFarmDispatchPanel() {
       </div>
       ${renderFarmDispatchPrintPreview(order, { team, supervisor, workers, materials, machines, dispatchDate, dispatchEndDate, orderArea })}
     </section>`;
+}
+
+async function createFarmCanonicalWorkOrder(plannedWorkItemId) {
+  const itemId = String(plannedWorkItemId || "").trim();
+  if (!itemId || !window.confirm("ยืนยันสร้าง Work Order Draft จาก Snapshot ของแผนที่อนุมัติแล้ว?")) return;
+  const queueItem = farmCanonicalSchedulerQueue().find((row) => row.planned_work_item_id === itemId) || {};
+  const result = await runFarmAction("create_canonical_work_order_from_planned_item", {
+    planned_work_item_id: itemId,
+    scheduled_date: queueItem.planned_start_date || null,
+    note: "สร้างจาก Approved Planning ผ่าน Scheduler",
+  }, { confirmed: true, reason: "สร้าง Canonical Work Order Draft จาก Approved Planning" }).catch(() => null);
+  const order = result?.work_order;
+  if (order?.id) {
+    state.farmDispatchWorkOrderId = order.id;
+    state.farmWorkDetailId = order.id;
+    state.farmSchedulerPlannedItemId = itemId;
+    render();
+  }
+}
+
+function collectFarmCanonicalDraftAssignments() {
+  const laborAssignments = [...document.querySelectorAll("[data-canonical-labor-requirement]")].flatMap((row) => {
+    const laborRequirementId = row.dataset.canonicalLaborRequirement;
+    const employees = [...(row.querySelector("[data-canonical-labor-employees]")?.selectedOptions || [])].map((option) => ({
+      labor_requirement_id: laborRequirementId,
+      employee_id: option.value,
+      assigned_headcount: 1,
+      planned_hours: 0,
+    }));
+    const contractorId = row.querySelector("[data-canonical-labor-contractor]")?.value || "";
+    if (contractorId) employees.push({
+      labor_requirement_id: laborRequirementId,
+      contractor_id: contractorId,
+      assigned_headcount: Math.max(1, n(row.querySelector("[data-canonical-labor-contractor-headcount]")?.value || 1)),
+      planned_hours: 0,
+    });
+    return employees;
+  });
+  const resourceAssignments = [...document.querySelectorAll("[data-canonical-resource-requirement]")].map((row) => ({
+    resource_requirement_id: row.dataset.canonicalResourceRequirement,
+    selected_vehicle_id: row.querySelector("[data-canonical-resource-vehicle]")?.value || null,
+    contractor_id: row.querySelector("[data-canonical-resource-contractor]")?.value || null,
+    driver_employee_id: row.querySelector("[data-canonical-resource-driver]")?.value || null,
+    driver_labor_requirement_id: row.querySelector("[data-canonical-resource-driver-requirement]")?.value || null,
+    vehicle_variance_reason: row.querySelector("[data-canonical-resource-variance]")?.value.trim() || null,
+  }));
+  return { laborAssignments, resourceAssignments };
+}
+
+async function saveFarmCanonicalWorkOrderDraft() {
+  const order = farmDispatchSelectedOrder();
+  if (!order || order.workflow_source !== "canonical_planning" || order.status !== "draft") return null;
+  const scheduledDate = dateValue(document.querySelector("#farmDispatchDate"));
+  const scheduledEndDate = dateValue(document.querySelector("#farmDispatchEndDate")) || scheduledDate;
+  const { laborAssignments, resourceAssignments } = collectFarmCanonicalDraftAssignments();
+  if (!scheduledDate || !scheduledEndDate || scheduledEndDate < scheduledDate) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาตรวจวันที่เริ่มและสิ้นสุด Work Order";
+    render();
+    return null;
+  }
+  const result = await runFarmAction("update_canonical_work_order_draft", {
+    work_order_id: order.id,
+    scheduled_date: scheduledDate,
+    scheduled_end_date: scheduledEndDate,
+    team_id: document.querySelector("#farmDispatchTeam")?.value || null,
+    supervisor_employee_id: document.querySelector("#farmCanonicalSupervisor")?.value || null,
+    contractor_id: document.querySelector("#farmCanonicalContractor")?.value || null,
+    labor_assignments: laborAssignments,
+    resource_assignments: resourceAssignments,
+  }, { reason: "บันทึกผู้ปฏิบัติงานและทรัพยากรจริงของ Canonical Work Order Draft" }).catch(() => null);
+  if (result?.work_order?.id) state.farmDispatchWorkOrderId = result.work_order.id;
+  return result;
+}
+
+async function submitFarmCanonicalWorkOrder() {
+  const order = farmDispatchSelectedOrder();
+  if (!order || order.workflow_source !== "canonical_planning" || order.status !== "draft") return;
+  const varianceReason = document.querySelector("#farmCanonicalHeadcountVariance")?.value.trim() || null;
+  if (!window.confirm("ยืนยันบันทึก Draft และส่ง Work Order เข้าสู่การอนุมัติ?")) return;
+  const saved = await saveFarmCanonicalWorkOrderDraft();
+  if (!saved) return;
+  await runFarmAction("submit_work_order", {
+    work_order_id: order.id,
+    headcount_variance_reason: varianceReason,
+    note: "ส่งอนุมัติจาก Phase 2D Scheduler",
+  }, { confirmed: true, reason: "ส่ง Canonical Work Order เข้าสู่การอนุมัติ" }).catch(() => null);
 }
 
 function farmDispatchPrintDates(startDate = "", endDate = "") {
@@ -26224,14 +26481,14 @@ function renderFarmCanonicalSelectedPlan() {
       ${farmCanApprovePlanning() ? `<button type="button" data-canonical-plan-approve ${canApprove ? "" : "disabled"}>อนุมัติแผน</button>` : ""}</div>` : ""}
     <div class="table-wrap"><table class="mini-table farm-responsive-table"><thead><tr><th>Block</th><th>กิจกรรม</th><th>ช่วงวันที่</th><th>เป้าหมาย</th><th>Material Snapshot</th><th></th></tr></thead><tbody>${items.map((item) => {
       const materialCount = farmPlanningItemMaterials(item.id).length;
-      return `<tr><td>${esc(farmLookupLabel("blocks", item.block_id) || item.ap_code || "-")}</td><td>${esc(farmLookupLabel("activities", item.activity_id) || "-")}</td><td>${esc(item.planned_start_date || "-")} – ${esc(item.planned_end_date || "-")}</td><td>${fmt(item.target_quantity)} ${esc(item.target_unit || "")}</td><td>${fmt(materialCount)} รายการ</td><td><button type="button" class="secondary" data-canonical-item-select="${esc(item.id)}">ดู Snapshot</button></td></tr>`;
+      return `<tr><td>${esc(farmLookupLabel("blocks", item.block_id) || item.ap_code || "-")}</td><td>${esc(farmLookupLabel("activities", item.activity_id) || "-")}</td><td>${esc(item.planned_start_date || "-")} – ${esc(item.planned_end_date || "-")}</td><td>${fmt(item.target_quantity)} ${esc(item.target_unit || "")}</td><td>${fmt(materialCount)} รายการ</td><td><button type="button" class="secondary" data-canonical-item-select="${esc(item.id)}">ดู Snapshot</button>${frozen ? ` <button type="button" data-canonical-item-schedule="${esc(item.id)}">เตรียมสั่งงาน</button>` : ""}</td></tr>`;
     }).join("") || `<tr><td colspan="6">ยังไม่มีรายการงานในแผน</td></tr>`}</tbody></table></div>
   </section>${!frozen ? renderFarmCanonicalItemForm(plan) : ""}${renderFarmCanonicalItemDetail(plan, selectedItem)}`;
 }
 
 function renderFarmCanonicalPlanner() {
   return `<section class="farm-planner-console farm-canonical-planning"><div class="section-head"><h2>วางแผนงานจากงบประมาณ</h2><span>Budget → แผนประจำปี → รายการงาน → Material Snapshot → อนุมัติ</span></div>
-    <div class="farm-planning-no-work-order">หน้านี้จัดทำและอนุมัติแผนเท่านั้น การสร้างใบสั่งงานจะดำเนินการในขั้นตอนถัดไป</div>
+    <div class="farm-planning-no-work-order">หน้านี้จัดทำและอนุมัติแผนเท่านั้น เมื่อแผนอนุมัติแล้วจึงส่งรายการไป Scheduler เพื่อเตรียมสั่งงาน</div>
     ${renderFarmCanonicalPlanCreate()}${renderFarmCanonicalPlanCards()}${renderFarmCanonicalSelectedPlan()}
   </section>`;
 }
@@ -26359,6 +26616,20 @@ async function deleteFarmCanonicalPlannedItem() {
     planned_work_item_id: draft.selectedItemId,
   }, { confirmed: true, reason: "ลบรายการงานร่างและ Material Snapshot จาก Planning Workspace" }).catch(() => null);
   if (result?.deleted) { draft.selectedItemId = ""; render(); }
+}
+
+function openFarmCanonicalScheduler(plannedWorkItemId) {
+  const itemId = String(plannedWorkItemId || "").trim();
+  if (!itemId) return;
+  state.farmSchedulerPlannedItemId = itemId;
+  state.farmDispatchWorkOrderId = "";
+  const url = new URL(window.location.href);
+  url.pathname = "/farm/dispatch";
+  url.search = "";
+  url.searchParams.set("planned_work_item_id", itemId);
+  window.history.pushState({}, "", url);
+  state.workspaceRoute = "/farm/dispatch";
+  setView("farm-dispatch");
 }
 
 function renderFarmWorkflowModeBar({ workspaceLabel, entryLabel }) {
@@ -28881,6 +29152,11 @@ async function startAuthenticatedApplication() {
       await updateFarmCanonicalPlannedItem();
       return;
     }
+    const scheduleCanonicalItem = e.target.closest("[data-canonical-item-schedule]");
+    if (scheduleCanonicalItem) {
+      openFarmCanonicalScheduler(scheduleCanonicalItem.dataset.canonicalItemSchedule);
+      return;
+    }
     if (e.target.closest("[data-canonical-requirements-save]")) {
       await saveFarmCanonicalPlannedRequirements();
       return;
@@ -29317,6 +29593,28 @@ async function startAuthenticatedApplication() {
       const picks = farmBudgetContractState();
       picks.extraRates = (picks.extraRates || []).filter((row) => row.id !== extraDelete.dataset.budgetExtraDelete);
       render();
+      return;
+    }
+    const schedulerSelect = e.target.closest("[data-canonical-scheduler-select]");
+    if (schedulerSelect) {
+      state.farmSchedulerPlannedItemId = schedulerSelect.dataset.canonicalSchedulerSelect;
+      const url = new URL(window.location.href);
+      url.searchParams.set("planned_work_item_id", state.farmSchedulerPlannedItemId);
+      window.history.replaceState({}, "", url);
+      render();
+      return;
+    }
+    const createCanonicalOrder = e.target.closest("[data-canonical-work-order-create]");
+    if (createCanonicalOrder) {
+      createFarmCanonicalWorkOrder(createCanonicalOrder.dataset.canonicalWorkOrderCreate);
+      return;
+    }
+    if (e.target.closest("[data-canonical-work-order-save]")) {
+      saveFarmCanonicalWorkOrderDraft();
+      return;
+    }
+    if (e.target.closest("[data-canonical-work-order-submit]")) {
+      submitFarmCanonicalWorkOrder();
       return;
     }
     if (e.target.closest("[data-farm-dispatch-save]")) {

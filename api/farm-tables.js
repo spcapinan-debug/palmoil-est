@@ -26,7 +26,9 @@ const TABLES = new Set([
   "material_categories", "units", "unit_conversions", "sku_conversions", "materials",
   "material_lots", "activity_material_usage_rates", "vehicles", "annual_work_plans",
   "planned_work_items", "planned_work_materials", "planned_work_labor_requirements",
-  "planned_work_resource_requirements", "budget_rate_resource_requirements", "work_orders", "work_order_workers",
+  "planned_work_resource_requirements", "budget_rate_resource_requirements", "work_orders",
+  "work_order_labor_requirements", "work_order_resource_requirements", "work_order_resource_assignments",
+  "work_order_workers",
   "work_order_materials", "work_order_machines", "work_order_approvals", "work_order_qr_codes",
   "work_order_locations", "work_order_status_logs", "work_attendance", "work_results",
   "work_result_workers", "work_result_weight_tickets", "work_result_vehicle_usage",
@@ -59,6 +61,7 @@ const TABLES = new Set([
   "v_budget_rate_rule_editor", "v_budget_rate_announcement_matrix",
   "v_survey_response_summary", "v_survey_question_analysis", "v_survey_finding_followup",
   "v_survey_action_center", "v_available_inbound_weight_tickets",
+  "v_canonical_work_order_scheduler_queue",
   "v_goods_issue_multi_day_status", "v_goods_return_readiness",
   "v_material_unit_conversion_options",
 ]);
@@ -173,6 +176,9 @@ const OPTIONAL_TABLES = new Set([...TABLES].filter((name) => name.startsWith("v_
   "budget_rate_resource_requirements",
   "planned_work_labor_requirements",
   "planned_work_resource_requirements",
+  "work_order_labor_requirements",
+  "work_order_resource_requirements",
+  "work_order_resource_assignments",
   "worker_documents",
 ));
 const CACHE_MS = 30_000;
@@ -181,6 +187,7 @@ const AREA_REFERENCE_TABLES = new Set(["blocks", "estates", "zones", "plots", "p
 const ACTION_ONLY_TABLES = new Set([
   "annual_work_plans", "planned_work_items", "planned_work_materials",
   "planned_work_labor_requirements", "planned_work_resource_requirements",
+  "work_order_labor_requirements", "work_order_resource_requirements", "work_order_resource_assignments",
   "goods_issue_daily_usage", "goods_issues", "goods_issue_lines",
   "goods_returns", "goods_return_lines", "sku_conversions", "unit_conversions",
   "stock_balances", "stock_transactions",
@@ -262,6 +269,7 @@ function clearCache() {
 const UAT_OPERATIONAL_TABLES = new Set([
   "annual_work_plans", "planned_work_items", "planned_work_materials",
   "planned_work_labor_requirements", "planned_work_resource_requirements",
+  "work_order_labor_requirements", "work_order_resource_requirements", "work_order_resource_assignments",
   "work_orders", "work_order_workers", "work_order_materials", "work_order_machines",
   "work_order_approvals", "work_order_qr_codes", "work_order_locations", "work_order_status_logs",
   "work_attendance", "work_results", "work_result_workers", "work_result_weight_tickets",
@@ -419,6 +427,9 @@ function uatRowAllowed(table, row, context) {
   if (table === "planned_work_labor_requirements" || table === "planned_work_resource_requirements") {
     return context.plannedItemIds.has(row.planned_work_item_id);
   }
+  if (["work_order_labor_requirements", "work_order_resource_requirements", "work_order_resource_assignments"].includes(table)) {
+    return context.workOrderIds.has(row.work_order_id);
+  }
   if (table === "work_orders") return context.workOrderIds.has(row.id);
   if (table === "app_notifications" || table === "app_notification_preferences") return true;
   if (table === "goods_issues") return context.goodsIssueIds.has(row.id);
@@ -566,6 +577,37 @@ async function assertLegacyBudgetMutationSafe(table, rowIds = []) {
       CANONICAL_BUDGET_PROTECTION_CODE,
       CANONICAL_BUDGET_PROTECTION_MESSAGE,
     );
+  }
+}
+
+const CANONICAL_WORK_ORDER_MUTATION_TABLES = new Set([
+  "work_orders", "work_order_workers", "work_order_materials", "work_order_machines",
+]);
+
+async function assertCanonicalWorkOrderMutationSafe(table, rows = [], rowIds = []) {
+  if (!CANONICAL_WORK_ORDER_MUTATION_TABLES.has(table)) return;
+  let workOrderIds = [];
+  if (table === "work_orders") {
+    if (rows.some((row) => row.workflow_source === "canonical_planning")) {
+      throw new ApiError(403, "ACTION_REQUIRED", "Canonical Work Orders must be changed through /api/farm-actions");
+    }
+    workOrderIds.push(...rows.map((row) => row.id), ...rowIds);
+  } else {
+    workOrderIds.push(...rows.map((row) => row.work_order_id).filter(Boolean));
+    const ids = [...new Set([...rows.map((row) => row.id), ...rowIds].filter(Boolean))];
+    if (ids.length) {
+      const existing = await rest(`${table}?id=in.(${ids.map(encodeURIComponent).join(",")})&select=work_order_id`)
+        .then(({ data }) => data || []);
+      workOrderIds.push(...existing.map((row) => row.work_order_id));
+    }
+  }
+  workOrderIds = [...new Set(workOrderIds.filter(Boolean).map((id) => requireUuid(id, "work_order_id")))];
+  if (!workOrderIds.length) return;
+  const canonical = await rest(
+    `work_orders?id=in.(${workOrderIds.join(",")})&workflow_source=eq.canonical_planning&select=id&limit=1`,
+  ).then(({ data }) => data?.[0]);
+  if (canonical) {
+    throw new ApiError(403, "ACTION_REQUIRED", "Canonical Work Orders must be changed through /api/farm-actions");
   }
 }
 
@@ -758,6 +800,7 @@ async function handlePost(req, res, actor) {
   }
   if (rows.length > 500) throw new ApiError(400, "VALIDATION_ERROR", "A request may write at most 500 rows");
   await assertLegacyBudgetMutationSafe(table, rows.map((row) => row.id));
+  await assertCanonicalWorkOrderMutationSafe(table, rows, []);
   if (table === "budget_rate_blocks") {
     await validateBudgetRateBlockRows(actor, rows, body.selectedPlantingYears, body.selectedBlockIds);
   }
@@ -798,6 +841,7 @@ async function handleDelete(req, res, url, actor) {
   if (body.all === true) throw new ApiError(403, "DELETE_ALL_DISABLED", "Bulk table deletion is disabled");
   const rawId = body.id || url.searchParams.get("id");
   await assertLegacyBudgetMutationSafe(table, [rawId]);
+  await assertCanonicalWorkOrderMutationSafe(table, [], [rawId]);
   const id = requireUuid(rawId, "id");
   const { data } = await rest(`${table}?id=eq.${encodeURIComponent(id)}`, {
     method: "DELETE",
@@ -839,7 +883,8 @@ async function handler(req, res) {
 module.exports = handler;
 module.exports._test = {
   ACTION_ONLY_TABLES, AREA_REFERENCE_TABLES, OPTIONAL_TABLES, SYSTEM_USER_TABLES, TABLES, UAT_OPERATIONAL_TABLES, WRITE_PERMISSIONS,
-  CANONICAL_BUDGET_PROTECTION_CODE, areaReferenceRows, assertLegacyBudgetMutationSafe, cache, clearCache, parallelMap,
+  CANONICAL_BUDGET_PROTECTION_CODE, CANONICAL_WORK_ORDER_MUTATION_TABLES,
+  areaReferenceRows, assertCanonicalWorkOrderMutationSafe, assertLegacyBudgetMutationSafe, cache, clearCache, parallelMap,
   actorCanAccessBlock, databaseBlockPlantingYear, enforceUatTableWrite, normalizePlantingYear,
   requestedTables, requireActiveCatalogBlock, safeTableError, tableName, uatActionCenterRows, uatRowAllowed,
   validateActiveBlockRows, validateBudgetRateBlockRows, writePermission,

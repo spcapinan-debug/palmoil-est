@@ -17692,6 +17692,18 @@ details.farm-survey-score-section[open] > summary::after {
 .farm-planning-cost-strip { display: flex; gap: 8px; flex-wrap: wrap; }
 .farm-planning-fuel-summary span,
 .farm-planning-cost-strip span { border: 1px solid #dce5e0; border-radius: 999px; padding: 7px 10px; background: #f7faf8; }
+.farm-canonical-scheduler,
+.farm-canonical-work-order { display: grid; gap: 14px; }
+.farm-canonical-scheduler-summary { max-width: 820px; }
+.farm-canonical-work-order details > summary { cursor: pointer; padding: 4px 0 12px; color: #30483d; }
+.farm-canonical-requirement-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-top: 10px; }
+.farm-canonical-requirement-list > article { display: grid; gap: 8px; align-content: start; border: 1px solid #dce5e0; border-radius: 12px; background: #f9fbfa; padding: 12px; min-width: 0; }
+.farm-canonical-requirement-list h5,
+.farm-canonical-requirement-list p { margin: 0; }
+.farm-canonical-requirement-list label { display: grid; gap: 5px; font-size: 12px; color: #53665d; }
+.farm-canonical-requirement-list select,
+.farm-canonical-requirement-list input { width: 100%; min-width: 0; }
+.farm-canonical-requirement-list select[multiple] { min-height: 84px; }
 
 @media (max-width: 900px) {
   .farm-planning-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

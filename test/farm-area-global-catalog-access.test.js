@@ -83,7 +83,7 @@ test("Planning mutation requires permissions while Area selection ignores Block 
 
 test("Work Order creation uses action permission and active Block validation, not assignment scope", () => {
   const start = actionSource.indexOf("async function createWorkOrderFromPlanItem");
-  const end = actionSource.indexOf("async function validateWorkOrderStart", start);
+  const end = actionSource.indexOf("async function submitWorkOrder", start);
   const create = actionSource.slice(start, end);
   assert.match(actionSource, /create_work_order_from_plan_item:[\s\S]*?permission:\s*"farm\.work_order\.create"/);
   assert.match(create, /blocks\?id=eq\.\$\{requireUuid\(item\.block_id/);

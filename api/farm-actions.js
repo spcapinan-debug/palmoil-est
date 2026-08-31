@@ -173,9 +173,37 @@ const ACTIONS = {
     params: (args, actor) => ({ args, actor }),
     entity: "work_orders", entityId: (args) => args.planned_work_item_id,
   },
+  create_canonical_work_order_from_planned_item: {
+    permission: "farm.work_order.create", confirmation: true,
+    rpc: "create_canonical_work_order_from_planned_item",
+    params: (args, actor, context) => ({
+      p_planned_work_item_id: requireUuid(args.planned_work_item_id, "planned_work_item_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_request_key: context.idempotencyKey,
+      p_scheduled_date: optionalDate(args.scheduled_date, "scheduled_date"),
+      p_note: optionalText(args.note, 2000),
+    }),
+    entity: "work_orders", entityId: (args) => args.planned_work_item_id,
+  },
+  update_canonical_work_order_draft: {
+    permission: "farm.work_order.create",
+    rpc: "update_canonical_work_order_draft",
+    params: (args, actor) => ({
+      p_work_order_id: requireUuid(args.work_order_id, "work_order_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_scheduled_date: requiredDate(args.scheduled_date, "scheduled_date"),
+      p_scheduled_end_date: requiredDate(args.scheduled_end_date || args.scheduled_date, "scheduled_end_date"),
+      p_team_id: optionalUuid(args.team_id, "team_id"),
+      p_supervisor_employee_id: optionalUuid(args.supervisor_employee_id, "supervisor_employee_id"),
+      p_contractor_id: optionalUuid(args.contractor_id, "contractor_id"),
+      p_labor_assignments: Array.isArray(args.labor_assignments) ? args.labor_assignments : [],
+      p_resource_assignments: Array.isArray(args.resource_assignments) ? args.resource_assignments : [],
+    }),
+    entity: "work_orders", entityId: (args) => args.work_order_id,
+  },
   submit_work_order: {
     permission: "farm.work_order.create", confirmation: true,
-    execute: ({ args, actor }) => changeWorkOrderStatus(args, actor, ["draft"], "submitted"),
+    execute: submitWorkOrder,
     params: (args, actor) => ({ args, actor }),
     entity: "work_orders", entityId: (args) => args.work_order_id,
   },
@@ -588,6 +616,8 @@ const PLANNING_UAT_ACTIONS = new Set([
 const UAT_MUTATION_ACTIONS = new Set([
   ...PLANNING_UAT_ACTIONS,
   "create_work_order_from_plan_item",
+  "create_canonical_work_order_from_planned_item",
+  "update_canonical_work_order_draft",
   "submit_work_order",
   "approve_work_order",
   "reject_work_order",
@@ -1055,13 +1085,36 @@ async function inventoryIssueFromArgs(action, args, { requireUatPrefix = true } 
 }
 
 async function enforceActionScope(actor, action, args) {
-  if (!INVENTORY_UAT_ACTIONS.has(action)) return;
-  const order = await inventoryIssueFromArgs(action, args, { requireUatPrefix: false });
-  if (order) await authorizeWorkOrderScope(actor, order);
+  if (action === "create_canonical_work_order_from_planned_item") {
+    const item = await one(
+      `planned_work_items?id=eq.${requireUuid(args.planned_work_item_id, "planned_work_item_id")}`
+        + "&select=id,annual_plan_id,plot_id,block_id&limit=1",
+      "Planned work item",
+    );
+    const plan = await one(
+      `annual_work_plans?id=eq.${item.annual_plan_id}&select=id,estate_id&limit=1`,
+      "Annual work plan",
+    );
+    await authorizeWorkOrderScope(actor, { estate_id: plan.estate_id, plot_id: item.plot_id, block_id: item.block_id });
+    return;
+  }
+  if (["update_canonical_work_order_draft", "submit_work_order"].includes(action)) {
+    const order = await one(
+      `work_orders?id=eq.${requireUuid(args.work_order_id, "work_order_id")}`
+        + "&select=id,estate_id,plot_id,block_id&limit=1",
+      "Work order",
+    );
+    await authorizeWorkOrderScope(actor, order);
+    return;
+  }
+  if (INVENTORY_UAT_ACTIONS.has(action)) {
+    const order = await inventoryIssueFromArgs(action, args, { requireUatPrefix: false });
+    if (order) await authorizeWorkOrderScope(actor, order);
+  }
 }
 
 async function uatOrderFromArgs(action, args) {
-  if (action === "create_work_order_from_plan_item") {
+  if (["create_work_order_from_plan_item", "create_canonical_work_order_from_planned_item"].includes(action)) {
     const itemId = requireUuid(args.planned_work_item_id, "planned_work_item_id");
     const item = await one(`planned_work_items?id=eq.${itemId}&select=id,annual_plan_id&limit=1`, "Planned work item");
     const plan = await one(`annual_work_plans?id=eq.${item.annual_plan_id}&select=id,plan_name,note&limit=1`, "Annual work plan");
@@ -1261,6 +1314,24 @@ async function createWorkOrderFromPlanItem({ args, actor }, dependencies = {}) {
     });
   }
   return { ...created, copied_worker_count: uniqueMembers.length, already_exists: false };
+}
+
+async function submitWorkOrder({ args, actor }) {
+  const workOrderId = requireUuid(args.work_order_id, "work_order_id");
+  const order = await one(
+    `work_orders?id=eq.${workOrderId}&select=id,workflow_source,status,estate_id,plot_id,block_id&limit=1`,
+    "Work order",
+  );
+  await authorizeWorkOrderScope(actor, order);
+  if (order.workflow_source === "canonical_planning") {
+    return rpc("submit_canonical_work_order", {
+      p_work_order_id: workOrderId,
+      p_actor_profile_id: actor.profile.id,
+      p_headcount_variance_reason: optionalText(args.headcount_variance_reason, 2000),
+      p_note: optionalText(args.reason, 2000),
+    });
+  }
+  return changeWorkOrderStatus(args, actor, ["draft"], "submitted");
 }
 
 async function validateWorkOrderStart(order) {
@@ -2539,7 +2610,7 @@ module.exports = handler;
 module.exports._test = {
   ACTIONS, INVENTORY_UAT_ACTIONS, PLANNING_UAT_ACTIONS, PLANNING_UAT_PLAN_PREFIX,
   UAT_MUTATION_ACTIONS, enforceActionScope, enforcePlanningUatMutation, enforceUatMutation,
-  createWorkOrderFromPlanItem,
+  createWorkOrderFromPlanItem, submitWorkOrder,
   requireInventoryUatIssue, requirePlanningUatPlan, requirePlanningUatPlanName,
   requireUatWorkOrder, requireWebTestCode, requestHash,
   activityMaterialStandardInput, budgetBlockMaterialActionParams, calculateConsumedFuel, ensureSurveyFailureFindings,
