@@ -3,6 +3,208 @@
 -- Inventory, Survey, Performance, Payroll, and transport workflows are not mutated.
 begin;
 
+-- Vehicle Master owns the operational meter contract. These columns already
+-- exist in some environments; IF NOT EXISTS keeps this branch replay-safe.
+alter table public.vehicles
+  add column if not exists fuel_measurement_basis text not null default 'engine_hours',
+  add column if not exists requires_hour_meter boolean not null default false,
+  add column if not exists requires_odometer boolean not null default false,
+  add column if not exists standard_liter_per_hour numeric,
+  add column if not exists standard_km_per_liter numeric,
+  add column if not exists standard_liter_per_rai numeric,
+  add column if not exists standard_liter_per_ton numeric;
+
+alter table public.work_result_vehicle_usage
+  add column if not exists fuel_measurement_basis_snapshot text,
+  add column if not exists requires_hour_meter_snapshot boolean not null default false,
+  add column if not exists requires_odometer_snapshot boolean not null default false,
+  add column if not exists actual_weight_ton numeric not null default 0;
+
+do $phase2f_constraints$
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_constraint
+    where conname = 'vehicles_phase2f_fuel_measurement_basis'
+      and conrelid = 'public.vehicles'::regclass
+  ) then
+    alter table public.vehicles add constraint vehicles_phase2f_fuel_measurement_basis
+      check (fuel_measurement_basis in ('engine_hours', 'distance_km')) not valid;
+  end if;
+  if not exists (
+    select 1 from pg_catalog.pg_constraint
+    where conname = 'work_result_vehicle_usage_phase2f_measurement_basis'
+      and conrelid = 'public.work_result_vehicle_usage'::regclass
+  ) then
+    alter table public.work_result_vehicle_usage
+      add constraint work_result_vehicle_usage_phase2f_measurement_basis
+      check (
+        fuel_measurement_basis_snapshot is null
+        or fuel_measurement_basis_snapshot in ('engine_hours', 'distance_km')
+      ) not valid;
+  end if;
+  if not exists (
+    select 1 from pg_catalog.pg_constraint
+    where conname = 'work_result_vehicle_usage_phase2f_actual_weight_nonnegative'
+      and conrelid = 'public.work_result_vehicle_usage'::regclass
+  ) then
+    alter table public.work_result_vehicle_usage
+      add constraint work_result_vehicle_usage_phase2f_actual_weight_nonnegative
+      check (actual_weight_ton >= 0) not valid;
+  end if;
+end
+$phase2f_constraints$;
+
+create or replace function public.guard_phase2f_vehicle_measurement_snapshot()
+returns trigger
+language plpgsql security invoker set search_path = ''
+as $phase2f_vehicle_measurement_guard$
+declare
+  v_canonical boolean;
+  v_basis text;
+  v_requires_hour boolean;
+  v_requires_odometer boolean;
+begin
+  select wo.workflow_source = 'canonical_planning' into v_canonical
+  from public.work_orders wo where wo.id = new.work_order_id;
+  if not coalesce(v_canonical, false) then return new; end if;
+
+  if tg_op = 'INSERT' then
+    select vehicle.fuel_measurement_basis,
+      vehicle.requires_hour_meter,
+      vehicle.requires_odometer
+    into v_basis, v_requires_hour, v_requires_odometer
+    from public.vehicles vehicle where vehicle.id = new.vehicle_id;
+    if not found then
+      raise exception using errcode = 'P0001', message = 'WORK_RESULT_VEHICLE_NOT_ASSIGNED';
+    end if;
+    new.fuel_measurement_basis_snapshot := v_basis;
+    new.requires_hour_meter_snapshot := coalesce(v_requires_hour, false);
+    new.requires_odometer_snapshot := coalesce(v_requires_odometer, false);
+  elsif new.fuel_measurement_basis_snapshot is distinct from old.fuel_measurement_basis_snapshot
+    or new.requires_hour_meter_snapshot is distinct from old.requires_hour_meter_snapshot
+    or new.requires_odometer_snapshot is distinct from old.requires_odometer_snapshot
+  then
+    raise exception using errcode = 'P0001',
+      message = 'WORK_RESULT_VEHICLE_MEASUREMENT_SNAPSHOT_FROZEN';
+  end if;
+
+  if (new.start_hour_meter is null) <> (new.end_hour_meter is null)
+    or (new.start_odometer is null) <> (new.end_odometer is null)
+    or (new.start_hour_meter is not null and new.end_hour_meter < new.start_hour_meter)
+    or (new.start_odometer is not null and new.end_odometer < new.start_odometer)
+  then
+    raise exception using errcode = 'P0001', message = 'WORK_RESULT_RESOURCE_METER_INVALID';
+  end if;
+  if new.start_hour_meter is not null then
+    new.engine_hours := round(new.end_hour_meter - new.start_hour_meter, 3);
+  end if;
+  if new.start_odometer is not null then
+    new.distance_km := round(new.end_odometer - new.start_odometer, 3);
+  end if;
+  if coalesce(new.actual_weight_ton, 0) < 0 then
+    raise exception using errcode = 'P0001', message = 'WORK_RESULT_RESOURCE_ACTUAL_NEGATIVE';
+  end if;
+  return new;
+end
+$phase2f_vehicle_measurement_guard$;
+
+drop trigger if exists guard_phase2f_vehicle_measurement_snapshot
+  on public.work_result_vehicle_usage;
+create trigger guard_phase2f_vehicle_measurement_snapshot
+before insert or update on public.work_result_vehicle_usage for each row
+execute function public.guard_phase2f_vehicle_measurement_snapshot();
+
+create or replace function public.phase2f_validate_vehicle_measurements(p_result_id uuid)
+returns void
+language plpgsql security invoker set search_path = ''
+as $phase2f_validate_vehicle_measurements$
+begin
+  if exists (
+    select 1 from public.work_result_vehicle_usage usage
+    where usage.work_result_id = p_result_id
+      and usage.requires_hour_meter_snapshot
+      and (usage.start_hour_meter is null or usage.end_hour_meter is null)
+  ) then
+    raise exception using errcode = 'P0001', message = 'WORK_RESULT_HOUR_METER_REQUIRED';
+  end if;
+  if exists (
+    select 1 from public.work_result_vehicle_usage usage
+    where usage.work_result_id = p_result_id
+      and usage.requires_odometer_snapshot
+      and (usage.start_odometer is null or usage.end_odometer is null)
+  ) then
+    raise exception using errcode = 'P0001', message = 'WORK_RESULT_ODOMETER_REQUIRED';
+  end if;
+end
+$phase2f_validate_vehicle_measurements$;
+
+create or replace function public.guard_phase2f_result_vehicle_measurements()
+returns trigger
+language plpgsql security invoker set search_path = ''
+as $phase2f_result_vehicle_measurements$
+begin
+  if new.workflow_source = 'canonical_work_order'
+    and new.result_status is distinct from old.result_status
+    and new.result_status in ('submitted', 'verified', 'closed')
+  then
+    perform public.phase2f_validate_vehicle_measurements(new.id);
+  end if;
+  return new;
+end
+$phase2f_result_vehicle_measurements$;
+
+drop trigger if exists guard_phase2f_result_vehicle_measurements on public.work_results;
+create trigger guard_phase2f_result_vehicle_measurements
+before update on public.work_results for each row
+execute function public.guard_phase2f_result_vehicle_measurements();
+
+create or replace function public.save_canonical_work_result_draft_phase2f(
+  p_result_id uuid,
+  p_actor_profile_id uuid,
+  p_header jsonb default '{}'::jsonb,
+  p_workers jsonb default '[]'::jsonb,
+  p_vehicles jsonb default '[]'::jsonb
+) returns jsonb
+language plpgsql security invoker set search_path = ''
+as $phase2f_save_result$
+declare
+  v_saved jsonb;
+  v_row jsonb;
+begin
+  v_saved := public.save_canonical_work_result_draft(
+    p_result_id, p_actor_profile_id, p_header, p_workers, p_vehicles
+  );
+  perform set_config('app.phase2e_daily_action', 'on', true);
+  for v_row in select value from jsonb_array_elements(coalesce(p_vehicles, '[]'::jsonb))
+  loop
+    update public.work_result_vehicle_usage
+    set actual_weight_ton = greatest(
+          coalesce(nullif(v_row->>'actual_weight_ton', '')::numeric, 0), 0
+        ),
+        fuel_variance_pct = public.phase2e_fuel_variance_pct(
+          fuel_metric_basis_snapshot, fuel_standard_rate_snapshot,
+          allocated_fuel_liter, engine_hours, distance_km, actual_area_rai,
+          greatest(coalesce(nullif(v_row->>'actual_weight_ton', '')::numeric, 0), 0)
+        ),
+        updated_at = transaction_timestamp()
+    where work_result_id = p_result_id
+      and work_order_resource_requirement_id =
+        nullif(v_row->>'work_order_resource_requirement_id', '')::uuid;
+  end loop;
+  update public.work_results result
+  set fuel_efficiency_pct = (
+        select round(avg(100 - usage.fuel_variance_pct), 2)
+        from public.work_result_vehicle_usage usage
+        where usage.work_result_id = result.id
+          and usage.fuel_variance_pct is not null
+      ),
+      updated_at = transaction_timestamp()
+  where result.id = p_result_id;
+  perform set_config('app.phase2e_daily_action', 'off', true);
+  return v_saved;
+end
+$phase2f_save_result$;
+
 create or replace function public.phase2f_variance_pct(
   p_planned numeric,
   p_actual numeric
@@ -373,6 +575,9 @@ with raw as (
     usage.vehicle_id,
     usage.driver_work_result_worker_id,
     requirement.fuel_required,
+    usage.fuel_measurement_basis_snapshot,
+    usage.requires_hour_meter_snapshot,
+    usage.requires_odometer_snapshot,
     usage.fuel_metric_basis_snapshot,
     usage.fuel_standard_rate_snapshot,
     usage.planned_fuel_liters_snapshot as planned_fuel_liters,
@@ -384,14 +589,14 @@ with raw as (
     usage.working_hours,
     usage.distance_km,
     usage.actual_area_rai,
-    usage.actual_quantity as actual_ton_or_quantity,
+    usage.actual_weight_ton,
     coalesce(activity.require_fuel, false) as activity_requires_fuel,
     case usage.fuel_metric_basis_snapshot
       when 'L/hour' then usage.fuel_standard_rate_snapshot * usage.engine_hours
       when 'km/L' then case when usage.fuel_standard_rate_snapshot > 0
         then usage.distance_km / usage.fuel_standard_rate_snapshot end
       when 'L/rai' then usage.fuel_standard_rate_snapshot * usage.actual_area_rai
-      when 'L/ton' then usage.fuel_standard_rate_snapshot * usage.actual_quantity
+      when 'L/ton' then usage.fuel_standard_rate_snapshot * usage.actual_weight_ton
     end as standard_expected_fuel_liters
   from public.work_results result
   join public.work_orders work_order on work_order.id = result.work_order_id
@@ -408,25 +613,52 @@ with raw as (
       or requirement.resource_type = 'fuel'
       or requirement.planned_fuel_liters > 0
     )
-), expected as (
+), metrics as (
   select raw.*,
-    coalesce(standard_expected_fuel_liters, nullif(planned_fuel_liters, 0))
-      as expected_fuel_liters
+    case fuel_measurement_basis_snapshot
+      when 'engine_hours' then 'L/hour'
+      when 'distance_km' then 'km/L'
+    end as primary_kpi,
+    case when engine_hours > 0 then round(actual_fuel_liters / engine_hours, 4) end
+      as actual_liter_per_hour,
+    case when distance_km > 0 then round(actual_fuel_liters / distance_km, 4) end
+      as actual_liter_per_km,
+    case when actual_fuel_liters > 0 then round(distance_km / actual_fuel_liters, 4) end
+      as actual_km_per_liter,
+    case when actual_area_rai > 0 then round(actual_fuel_liters / actual_area_rai, 4) end
+      as actual_liter_per_rai,
+    case when actual_weight_ton > 0
+      then round(actual_fuel_liters / actual_weight_ton, 4) end
+      as actual_liter_per_ton
   from raw
+), expected as (
+  select metrics.*,
+    coalesce(standard_expected_fuel_liters, nullif(planned_fuel_liters, 0))
+      as expected_fuel_liters,
+    case
+      when primary_kpi = fuel_metric_basis_snapshot then fuel_standard_rate_snapshot
+    end as primary_standard_rate,
+    case primary_kpi
+      when 'L/hour' then actual_liter_per_hour
+      when 'km/L' then actual_km_per_liter
+    end as primary_actual_rate
+  from metrics
+), compared as (
+  select expected.*,
+    public.phase2e_fuel_variance_pct(
+      primary_kpi, primary_standard_rate, actual_fuel_liters,
+      engine_hours, distance_km, actual_area_rai, actual_weight_ton
+    ) as primary_variance_pct
+  from expected
 )
 select
-  expected.*,
-  case when engine_hours > 0 then round(actual_fuel_liters / engine_hours, 4) end
-    as actual_liter_per_hour,
-  case when distance_km > 0 then round(actual_fuel_liters / distance_km, 4) end
-    as actual_liter_per_km,
-  case when actual_fuel_liters > 0 then round(distance_km / actual_fuel_liters, 4) end
-    as actual_km_per_liter,
-  case when actual_area_rai > 0 then round(actual_fuel_liters / actual_area_rai, 4) end
-    as actual_liter_per_rai,
-  case when actual_ton_or_quantity > 0
-    then round(actual_fuel_liters / actual_ton_or_quantity, 4) end
-    as actual_liter_per_ton,
+  compared.*,
+  case
+    when primary_actual_rate is null or primary_standard_rate is null then 'incomplete'
+    when abs(primary_variance_pct) <= 0.000001 then 'on_plan'
+    when primary_variance_pct > 0 then 'over'
+    else 'under'
+  end as primary_variance_status,
   case when expected_fuel_liters is null then null
     else actual_fuel_liters - expected_fuel_liters end as fuel_difference_liters,
   public.phase2f_variance_pct(expected_fuel_liters, actual_fuel_liters)
@@ -441,7 +673,7 @@ select
   case when expected_fuel_liters is null then 'actual_only'
     when standard_expected_fuel_liters is not null then 'frozen_standard'
     else 'planned_fuel_snapshot' end as expected_source
-from expected;
+from compared;
 
 create or replace view public.v_canonical_result_variance_summary
 with (security_invoker = true)
@@ -532,8 +764,20 @@ revoke all on function public.phase2f_variance_pct(numeric, numeric)
   from public, anon, authenticated;
 revoke all on function public.phase2f_variance_status(numeric, numeric, boolean)
   from public, anon, authenticated;
+revoke all on function public.guard_phase2f_vehicle_measurement_snapshot()
+  from public, anon, authenticated;
+revoke all on function public.phase2f_validate_vehicle_measurements(uuid)
+  from public, anon, authenticated;
+revoke all on function public.guard_phase2f_result_vehicle_measurements()
+  from public, anon, authenticated;
+revoke all on function public.save_canonical_work_result_draft_phase2f(
+  uuid, uuid, jsonb, jsonb, jsonb
+) from public, anon, authenticated;
 grant execute on function public.phase2f_variance_pct(numeric, numeric) to service_role;
 grant execute on function public.phase2f_variance_status(numeric, numeric, boolean) to service_role;
+grant execute on function public.save_canonical_work_result_draft_phase2f(
+  uuid, uuid, jsonb, jsonb, jsonb
+) to service_role;
 
 revoke all on public.v_canonical_result_material_variance,
   public.v_canonical_result_labor_variance,
@@ -558,7 +802,7 @@ comment on view public.v_canonical_result_labor_variance is
 comment on view public.v_canonical_result_resource_variance is
   'Planned/assigned/actual equipment and vehicle variance retaining Work Order assignment lineage.';
 comment on view public.v_canonical_result_fuel_variance is
-  'Actual fuel consumption versus canonical frozen standard or planned snapshot; issue/refill is separate.';
+  'Actual fuel consumption and Vehicle Master primary KPI versus canonical frozen standard; issue/refill is separate.';
 comment on view public.v_canonical_result_variance_summary is
   'Read-only Daily Result Actual/Variance summary for Labor, Material, Equipment, and Fuel.';
 comment on view public.v_canonical_work_order_variance_summary is

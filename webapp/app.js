@@ -3546,10 +3546,13 @@ const FARM_TABLE_SCHEMAS = {
       F("vehicle_type", "ประเภท"),
       F("plate_no", "ทะเบียน"),
       F("default_driver_id", "คนขับประจำ", { references: "employees" }),
+      F("fuel_measurement_basis", "Primary Fuel KPI", { options: ["engine_hours", "distance_km"], required: true }),
+      F("requires_hour_meter", "ต้องบันทึก Hour Meter", { type: "boolean" }),
+      F("requires_odometer", "ต้องบันทึก Odometer", { type: "boolean" }),
       F("status", "สถานะ", { type: "status" }),
     ],
     seed: [
-      { id: "vehicle-tractor-1", vehicle_code: "VEH-001", vehicle_name: "รถแทรกเตอร์ 1", vehicle_type: "tractor", default_driver_id: "emp-001", status: "active" },
+      { id: "vehicle-tractor-1", vehicle_code: "VEH-001", vehicle_name: "รถแทรกเตอร์ 1", vehicle_type: "tractor", default_driver_id: "emp-001", fuel_measurement_basis: "engine_hours", requires_hour_meter: true, requires_odometer: false, status: "active" },
     ],
   },
   fuel_tanks: {
@@ -20187,10 +20190,16 @@ function farmResultMachineLines(order) {
     .filter((item) => item.work_order_id === workOrderId);
   const issues = farmRowsByKey("fuel_issues");
   const canonical = farmCanonicalDailyOrder(order);
-  const usages = farmRowsByKey(canonical
+  const usageRows = farmRowsByKey(canonical
     ? "v_canonical_daily_resource_actual"
-    : "v_work_result_vehicle_fuel_detail")
-    .filter((item) => !result?.id || item.work_result_id === result.id);
+    : "v_work_result_vehicle_fuel_detail");
+  const usages = canonical && !result?.id
+    ? []
+    : usageRows.filter((item) => !result?.id || item.work_result_id === result.id);
+  const fuelVarianceRows = canonical && result?.id
+    ? farmRowsByKey("v_canonical_result_fuel_variance")
+      .filter((item) => item.work_result_id === result.id)
+    : [];
   const fuelStatuses = farmRowsByKey("v_vehicle_fuel_status");
   const firstValue = (...values) => values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
   const canonicalRequirements = new Map(farmRowsByKey("work_order_resource_requirements")
@@ -20221,6 +20230,10 @@ function farmResultMachineLines(order) {
     const entry = draftEntries[key] || {};
     const vehicle = farmLookup("vehicles", row.vehicle_id) || {};
     const usage = usages.find((item) => item.vehicle_id === row.vehicle_id) || {};
+    const fuelVariance = fuelVarianceRows.find((item) =>
+      item.work_order_resource_requirement_id === row.work_order_resource_requirement_id
+        || item.vehicle_id === row.vehicle_id
+    ) || {};
     const vehicleRequisitions = requisitions
       .filter((item) => item.vehicle_id === row.vehicle_id)
       .sort((left, right) => String(right.created_at || "").localeCompare(String(left.created_at || "")));
@@ -20276,6 +20289,34 @@ function farmResultMachineLines(order) {
       ),
       fuel_unit_cost_snapshot: n(usage.fuel_unit_cost_snapshot || row.fuel_unit_cost),
       fuel_variance_pct: usage.fuel_variance_pct,
+      fuel_measurement_basis: firstValue(
+        fuelVariance.fuel_measurement_basis_snapshot,
+        usage.fuel_measurement_basis_snapshot,
+        vehicle.fuel_measurement_basis,
+        "engine_hours",
+      ),
+      requires_hour_meter: Boolean(firstValue(
+        fuelVariance.requires_hour_meter_snapshot,
+        usage.requires_hour_meter_snapshot,
+        vehicle.requires_hour_meter,
+        false,
+      )),
+      requires_odometer: Boolean(firstValue(
+        fuelVariance.requires_odometer_snapshot,
+        usage.requires_odometer_snapshot,
+        vehicle.requires_odometer,
+        false,
+      )),
+      primary_kpi: fuelVariance.primary_kpi || "",
+      primary_actual_rate: fuelVariance.primary_actual_rate,
+      primary_standard_rate: fuelVariance.primary_standard_rate,
+      primary_variance_pct: fuelVariance.primary_variance_pct,
+      primary_variance_status: fuelVariance.primary_variance_status || "incomplete",
+      actual_weight_ton: firstValue(
+        entry.actualWeightTon,
+        fuelVariance.actual_weight_ton,
+        usage.actual_weight_ton,
+      ),
       fuel_requisition: requisition,
       fuel_requested_liter: n(requisition?.requested_liter),
       fuel_issue_remaining_liter: Math.max(0, n(requisition?.requested_liter) - issuedLiter),
@@ -21358,6 +21399,14 @@ function renderFarmResultPanel() {
               const distance = row.start_km !== "" && row.end_km !== "" ? Math.max(0, n(row.end_km) - n(row.start_km)) : n(row.distance_km);
               const engineHours = row.start_hour_meter !== "" && row.end_hour_meter !== ""
                 ? Math.max(0, n(row.end_hour_meter) - n(row.start_hour_meter)) : n(row.engine_hours);
+              const requiresHourMeter = row.requires_hour_meter === true;
+              const requiresOdometer = row.requires_odometer === true;
+              const primaryKpi = row.primary_kpi || (row.fuel_measurement_basis === "distance_km" ? "km/L" : "L/hour");
+              const primaryActual = row.primary_actual_rate == null || row.primary_actual_rate === ""
+                ? "รอบันทึก" : moneyNf.format(n(row.primary_actual_rate));
+              const primaryStandard = row.primary_standard_rate == null || row.primary_standard_rate === ""
+                ? "ไม่มีค่ามาตรฐานเปรียบเทียบ — frozen standard ไม่ตรง basis"
+                : moneyNf.format(n(row.primary_standard_rate));
               return `<article class="farm-daily-vehicle-card" data-farm-result-machine="${esc(row.key)}">
                 <header>
                   <div><strong>${esc(row.vehicle_name || row.vehicle_id)}</strong><span>${esc(row.vehicle?.plate_no || row.vehicle_id || "")} · คนขับ ${esc(row.driver_name || "-")}</span></div>
@@ -21374,19 +21423,26 @@ function renderFarmResultPanel() {
                   <label>สิ้นสุดใช้รถ<input type="datetime-local" value="${esc(String(row.end_at || "").slice(0, 16))}" data-farm-result-machine-field="endAt"></label>
                   <label>ชั่วโมงทำงาน<input type="number" min="0" step="0.1" value="${esc(row.actual_hours || "")}" placeholder="${esc(row.planned_hours || "")}" data-farm-result-machine-field="actualHours"></label>
                 </div>
-                <div class="farm-daily-vehicle-fields">
-                  <label>เลขไมล์เริ่ม<input type="number" min="0" step="0.1" value="${esc(row.start_km || "")}" data-farm-result-machine-field="startKm"></label>
-                  <label>เลขไมล์จบ<input type="number" min="0" step="0.1" value="${esc(row.end_km || "")}" data-farm-result-machine-field="endKm"></label>
-                  <span class="farm-daily-computed"><b>${moneyNf.format(distance)}</b>ระยะทาง กม.</span>
-                  <label>มิเตอร์ ชม. เริ่ม<input type="number" min="0" step="0.1" value="${esc(row.start_hour_meter || "")}" data-farm-result-machine-field="startHourMeter"></label>
-                  <label>มิเตอร์ ชม. จบ<input type="number" min="0" step="0.1" value="${esc(row.end_hour_meter || "")}" data-farm-result-machine-field="endHourMeter"></label>
-                  <span class="farm-daily-computed"><b>${moneyNf.format(engineHours)}</b>ชั่วโมงเครื่อง</span>
+                <div class="farm-daily-vehicle-fields" data-vehicle-meter-basis="${esc(row.fuel_measurement_basis)}">
+                  ${requiresOdometer ? `
+                    <label>เลขไมล์เริ่ม<input type="number" min="0" step="0.1" value="${esc(row.start_km || "")}" data-farm-result-machine-field="startKm" required></label>
+                    <label>เลขไมล์สิ้นสุด<input type="number" min="0" step="0.1" value="${esc(row.end_km || "")}" data-farm-result-machine-field="endKm" required></label>
+                    <span class="farm-daily-computed"><b>${moneyNf.format(distance)}</b>ระยะทาง กม.</span>
+                  ` : ""}
+                  ${requiresHourMeter ? `
+                    <label>ชั่วโมงมิเตอร์เริ่ม<input type="number" min="0" step="0.1" value="${esc(row.start_hour_meter || "")}" data-farm-result-machine-field="startHourMeter" required></label>
+                    <label>ชั่วโมงมิเตอร์สิ้นสุด<input type="number" min="0" step="0.1" value="${esc(row.end_hour_meter || "")}" data-farm-result-machine-field="endHourMeter" required></label>
+                    <span class="farm-daily-computed"><b>${moneyNf.format(engineHours)}</b>ชั่วโมงใช้งาน</span>
+                  ` : ""}
+                  ${!requiresHourMeter && !requiresOdometer
+                    ? '<span class="farm-fuel-no-standard">Vehicle Master ไม่บังคับ Operational Meter สำหรับรถคันนี้</span>'
+                    : ""}
                 </div>
                 <section class="farm-daily-fuel-allocation">
                   <div>
                     <label>น้ำมันใช้จริงในงานนี้ (ลิตร)<input type="number" min="0" step="0.1" value="${esc(row.fuel_used_liter || "")}" data-farm-result-machine-field="fuelUsedLiter" readonly></label>
                     <small>Server คำนวณ: ยอดเปิด + ยอดจ่าย - ยอดปิด ${n(row.fuel_cost_amount) ? `· ต้นทุน ${moneyNf.format(row.fuel_cost_amount)} บาท` : ""}</small>
-                    ${row.efficiency_standard ? "" : "<small class=\"farm-fuel-no-standard\">ไม่มีค่ามาตรฐานเปรียบเทียบ — แสดงผลใช้จริงโดยไม่สร้าง Pass/Fail สมมติ</small>"}
+                    <small data-primary-fuel-kpi><b>${esc(primaryKpi)}</b> Actual ${esc(primaryActual)} · Standard ${esc(primaryStandard)}</small>
                   </div>
                   <button type="button" data-farm-fuel-request="${esc(row.vehicle_id)}" ${state.farmSyncBusy ? "disabled" : ""}>${request ? "คำนวณใบขอเบิกใหม่" : "สร้างใบขอเบิกน้ำมัน"}</button>
                 </section>
@@ -21396,6 +21452,7 @@ function renderFarmResultPanel() {
                   <button type="button" data-farm-fuel-issue="${esc(request.id)}" data-farm-fuel-vehicle="${esc(row.vehicle_id)}" ${!canIssue || state.farmSyncBusy ? "disabled" : ""}>บันทึกการจ่ายน้ำมัน</button>
                   <small>เหลือจ่ายตามใบขอเบิก ${moneyNf.format(row.fuel_issue_remaining_liter)} ลิตร</small>
                 </div>` : ""}
+                <label class="farm-daily-vehicle-note">น้ำหนักผลงานจริง (ตัน)<input type="number" min="0" step="0.001" value="${esc(row.actual_weight_ton || "")}" data-farm-result-machine-field="actualWeightTon"><small>ใช้คำนวณ L/ton เมื่อ Activity ต้องใช้ metric นี้</small></label>
                 <label class="farm-daily-vehicle-note">หมายเหตุ<input type="text" maxlength="1000" value="${esc(row.note || "")}" data-farm-result-machine-field="note" placeholder="สภาพรถ เหตุหยุด หรือรายละเอียดเพิ่มเติม"></label>
               </article>`;
             }).join("") || `<div class="farm-empty-state"><strong>ยังไม่มีรถ/เครื่องจักรในใบงาน</strong><span>ให้ผู้จัดการเพิ่มรถในหน้าสั่งงานก่อนบันทึกการใช้รถ</span></div>`}
@@ -26370,6 +26427,7 @@ async function saveFarmDailyEntry() {
         actual_area_rai: draft.actualAreaRai,
         actual_tree_count: draft.actualTreeCount,
         actual_quantity: draft.actualQuantity,
+        actual_weight_ton: row.actual_weight_ton,
         actual_unit: draft.actualUnit,
         allocation_basis_value: row.actual_hours || draft.actualQuantity,
         allocated_fuel_liter: row.fuel_used_liter,

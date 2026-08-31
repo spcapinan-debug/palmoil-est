@@ -11,7 +11,10 @@ do $phase2f_uat$
 declare
   v_order uuid; v_result uuid; v_actor uuid; v_material uuid; v_unit uuid;
   v_plan numeric; v_issue uuid; v_line uuid; v_warehouse uuid; v_bin uuid;
-  v_before_issue bigint; v_before_usage bigint; v_frozen numeric;
+  v_before_issue bigint; v_before_usage bigint; v_before_result bigint; v_frozen numeric;
+  v_vehicle uuid; v_requirement uuid;
+  v_result_q uuid; v_result_r uuid; v_result_s uuid; v_result_t uuid;
+  v_q_standard numeric; v_q_basis text; v_error text;
 begin
   select wo.id, wr.id, wo.created_by_profile_id
   into v_order, v_result, v_actor
@@ -24,6 +27,7 @@ begin
 
   select count(*) into v_before_issue from public.goods_issues;
   select count(*) into v_before_usage from public.goods_issue_daily_usage;
+  select count(*) into v_before_result from public.work_results;
 
   -- A/C: the Phase 2E fixture is 80 percent Used and 20 percent Returned.
   if not exists (
@@ -105,11 +109,11 @@ begin
   insert into phase2f_uat_results values
     ('H','PASS','Fuel 32 L over 8 engine hours reports 4 L/hour');
   if not exists (select 1 from public.v_canonical_result_fuel_variance
-    where work_result_id=v_result and issued_fuel_liter=40 and actual_fuel_liters=32
-      and issued_fuel_liter<>actual_fuel_liters)
+    where work_result_id=v_result and actual_fuel_liters=32
+      and actual_liter_per_hour=4)
   then raise exception 'P2F_I_REFILL_AS_ACTUAL_FAILED'; end if;
   insert into phase2f_uat_results values
-    ('I','PASS','Issued/refill 40 L remains distinct from Actual consumption 32 L');
+    ('I','PASS','Fuel view reads canonical Actual consumption; explicit issue separation is exercised in U');
 
   -- J-M reuse the exact Phase 2E runtime gates already exercised in this transaction.
   if not exists(select 1 from phase2e_uat_results where case_code='L' and result='PASS')
@@ -150,6 +154,170 @@ begin
   then raise exception 'P2F_P_TRANSACTION_DELTA_FAILED'; end if;
   insert into phase2f_uat_results values
     ('P','PASS','Phase 2F transaction delta is exact; final ROLLBACK restores counts');
+
+  select usage.vehicle_id, usage.work_order_resource_requirement_id
+  into v_vehicle, v_requirement
+  from public.work_result_vehicle_usage usage
+  where usage.work_result_id=v_result
+  order by usage.id limit 1;
+  if v_vehicle is null or v_requirement is null then
+    raise exception 'P2F_Q_V_CANONICAL_VEHICLE_FIXTURE_REQUIRED';
+  end if;
+
+  -- Q: Hour Meter is authoritative for an engine-hours vehicle.
+  update public.vehicles set fuel_measurement_basis='engine_hours',
+    requires_hour_meter=true,requires_odometer=false where id=v_vehicle;
+  perform set_config('app.phase2d_canonical_create','on',true);
+  update public.work_order_resource_requirements
+  set fuel_metric_basis='L/hour',fuel_standard_rate=4 where id=v_requirement;
+  perform set_config('app.phase2d_canonical_create','off',true);
+  update public.work_orders set status='in_progress' where id=v_order;
+  select id into v_result_q from public.get_or_create_canonical_work_result(
+    v_order,current_date+1,v_actor
+  );
+  perform public.save_canonical_work_result_draft_phase2f(
+    v_result_q,v_actor,jsonb_build_object('actual_quantity',100),
+    '[]'::jsonb,jsonb_build_array(jsonb_build_object(
+      'work_order_resource_requirement_id',v_requirement,
+      'vehicle_id',v_vehicle,
+      'start_hour_meter',100,
+      'end_hour_meter',108,
+      'actual_fuel_liter',32,
+      'issued_fuel_liter',40
+    ))
+  );
+  perform public.phase2f_validate_vehicle_measurements(v_result_q);
+  if not exists (
+    select 1 from public.v_canonical_result_fuel_variance
+    where work_result_id=v_result_q
+      and fuel_measurement_basis_snapshot='engine_hours'
+      and requires_hour_meter_snapshot and not requires_odometer_snapshot
+      and engine_hours=8 and actual_fuel_liters=32
+      and actual_liter_per_hour=4 and primary_kpi='L/hour'
+      and primary_actual_rate=4 and primary_standard_rate=4
+      and primary_variance_status='on_plan'
+  ) then raise exception 'P2F_Q_HOUR_METER_KPI_FAILED'; end if;
+  insert into phase2f_uat_results values
+    ('Q','PASS','32 L / 8 engine hours = 4 L/hour; Odometer is not required');
+
+  -- R: Odometer is authoritative for a distance vehicle.
+  update public.vehicles set fuel_measurement_basis='distance_km',
+    requires_hour_meter=false,requires_odometer=true where id=v_vehicle;
+  perform set_config('app.phase2d_canonical_create','on',true);
+  update public.work_order_resource_requirements
+  set fuel_metric_basis='km/L',fuel_standard_rate=4 where id=v_requirement;
+  perform set_config('app.phase2d_canonical_create','off',true);
+  select id into v_result_r from public.get_or_create_canonical_work_result(
+    v_order,current_date+2,v_actor
+  );
+  perform public.save_canonical_work_result_draft_phase2f(
+    v_result_r,v_actor,jsonb_build_object('actual_quantity',100),
+    '[]'::jsonb,jsonb_build_array(jsonb_build_object(
+      'work_order_resource_requirement_id',v_requirement,
+      'vehicle_id',v_vehicle,
+      'start_odometer',1000,
+      'end_odometer',1160,
+      'actual_fuel_liter',40
+    ))
+  );
+  perform public.phase2f_validate_vehicle_measurements(v_result_r);
+  if not exists (
+    select 1 from public.v_canonical_result_fuel_variance
+    where work_result_id=v_result_r
+      and fuel_measurement_basis_snapshot='distance_km'
+      and not requires_hour_meter_snapshot and requires_odometer_snapshot
+      and distance_km=160 and actual_fuel_liters=40
+      and actual_km_per_liter=4 and primary_kpi='km/L'
+      and primary_actual_rate=4 and primary_standard_rate=4
+      and primary_variance_status='on_plan'
+  ) then raise exception 'P2F_R_ODOMETER_KPI_FAILED'; end if;
+  insert into phase2f_uat_results values
+    ('R','PASS','160 km / 40 L = 4 km/L; Hour Meter is not required');
+
+  -- S: a dual-meter vehicle snapshots and validates both operational bases.
+  update public.vehicles set fuel_measurement_basis='engine_hours',
+    requires_hour_meter=true,requires_odometer=true where id=v_vehicle;
+  perform set_config('app.phase2d_canonical_create','on',true);
+  update public.work_order_resource_requirements
+  set fuel_metric_basis='L/hour',fuel_standard_rate=4 where id=v_requirement;
+  perform set_config('app.phase2d_canonical_create','off',true);
+  select id into v_result_s from public.get_or_create_canonical_work_result(
+    v_order,current_date+3,v_actor
+  );
+  perform public.save_canonical_work_result_draft_phase2f(
+    v_result_s,v_actor,jsonb_build_object('actual_quantity',100),
+    '[]'::jsonb,jsonb_build_array(jsonb_build_object(
+      'work_order_resource_requirement_id',v_requirement,
+      'vehicle_id',v_vehicle,
+      'start_hour_meter',200,
+      'end_hour_meter',208,
+      'start_odometer',2000,
+      'end_odometer',2160,
+      'actual_fuel_liter',32
+    ))
+  );
+  perform public.phase2f_validate_vehicle_measurements(v_result_s);
+  if not exists (
+    select 1 from public.work_result_vehicle_usage
+    where work_result_id=v_result_s and requires_hour_meter_snapshot
+      and requires_odometer_snapshot and engine_hours=8 and distance_km=160
+  ) then raise exception 'P2F_S_DUAL_METER_FAILED'; end if;
+  insert into phase2f_uat_results values
+    ('S','PASS','Vehicle requiring both meters retains and validates hour and km readings');
+
+  -- T: missing a required meter blocks the Result status transition.
+  update public.vehicles set fuel_measurement_basis='engine_hours',
+    requires_hour_meter=true,requires_odometer=false where id=v_vehicle;
+  select id into v_result_t from public.get_or_create_canonical_work_result(
+    v_order,current_date+4,v_actor
+  );
+  begin
+    perform set_config('app.phase2e_daily_action','on',true);
+    update public.work_results set result_status='submitted' where id=v_result_t;
+    raise exception 'P2F_T_REQUIRED_METER_SHOULD_BLOCK';
+  exception when sqlstate 'P0001' then
+    get stacked diagnostics v_error=message_text;
+    if v_error<>'WORK_RESULT_HOUR_METER_REQUIRED' then raise; end if;
+  end;
+  perform set_config('app.phase2e_daily_action','off',true);
+  if (select result_status from public.work_results where id=v_result_t)<>'draft'
+  then raise exception 'P2F_T_STATUS_CHANGED'; end if;
+  insert into phase2f_uat_results values
+    ('T','PASS','Missing required Hour Meter blocks submit and leaves Result draft');
+
+  -- U: issue/refill remains distinct from Actual consumption.
+  if not exists (
+    select 1 from public.v_canonical_result_fuel_variance
+    where work_result_id=v_result_q
+      and issued_fuel_liter=40 and actual_fuel_liters=32
+  ) then raise exception 'P2F_U_ISSUED_COUNTED_AS_ACTUAL'; end if;
+  insert into phase2f_uat_results values
+    ('U','PASS','Issued 40 L remains separate from Actual consumption 32 L');
+
+  -- V: later Vehicle Master edits cannot rewrite the Result/WO frozen standard.
+  select fuel_standard_rate_snapshot,fuel_metric_basis_snapshot
+  into v_q_standard,v_q_basis
+  from public.work_result_vehicle_usage where work_result_id=v_result_q;
+  update public.vehicles set fuel_measurement_basis='distance_km',
+    requires_hour_meter=false,requires_odometer=true,
+    standard_liter_per_hour=99,standard_km_per_liter=99
+  where id=v_vehicle;
+  if not exists (
+    select 1 from public.work_result_vehicle_usage
+    where work_result_id=v_result_q
+      and fuel_standard_rate_snapshot=v_q_standard
+      and fuel_metric_basis_snapshot=v_q_basis
+      and fuel_measurement_basis_snapshot='engine_hours'
+      and requires_hour_meter_snapshot and not requires_odometer_snapshot
+  ) then raise exception 'P2F_V_RESULT_SNAPSHOT_CHANGED'; end if;
+  if not exists (
+    select 1 from public.work_order_resource_requirements
+    where id=v_requirement and fuel_metric_basis='L/hour' and fuel_standard_rate=4
+  ) then raise exception 'P2F_V_WO_STANDARD_CHANGED'; end if;
+  if (select count(*) from public.work_results)<>v_before_result+4
+  then raise exception 'P2F_V_RESULT_DELTA_FAILED'; end if;
+  insert into phase2f_uat_results values
+    ('V','PASS','Vehicle Master change leaves frozen WO/Result fuel standard and meter snapshot unchanged');
 end
 $phase2f_uat$;
 

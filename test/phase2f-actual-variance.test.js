@@ -9,6 +9,8 @@ const migration = fs.readFileSync(path.join(
 ), "utf8");
 const uat = fs.readFileSync(path.join(root, "scripts", "phase2f-rollback-uat.sql"), "utf8");
 const app = fs.readFileSync(path.join(root, "webapp", "app.js"), "utf8");
+const actions = fs.readFileSync(path.join(root, "api", "farm-actions.js"), "utf8");
+const farmApi = fs.readFileSync(path.join(root, "lib", "server", "farm-api.js"), "utf8");
 const tableSource = fs.readFileSync(path.join(root, "api", "farm-tables.js"), "utf8");
 const tables = require("../api/farm-tables")._test;
 
@@ -87,6 +89,38 @@ test("Fuel keeps issue/refill separate from Actual consumption and uses only can
   assert.match(fuel, /when expected_fuel_liters is null then 'actual_only'/);
   assert.match(fuel, /'frozen_standard'/);
   assert.match(fuel, /'planned_fuel_snapshot'/);
+  assert.match(fuel, /usage\.actual_weight_ton/);
+  assert.match(fuel, /when actual_weight_ton > 0[\s\S]*actual_liter_per_ton/);
+  assert.doesNotMatch(fuel, /usage\.actual_quantity as actual_ton_or_quantity/);
+});
+
+test("Vehicle measurement basis is snapshotted and required meters are validated independently", () => {
+  for (const field of [
+    "fuel_measurement_basis", "requires_hour_meter", "requires_odometer",
+    "fuel_measurement_basis_snapshot", "requires_hour_meter_snapshot",
+    "requires_odometer_snapshot", "actual_weight_ton",
+  ]) assert.match(migration, new RegExp(field));
+  assert.match(migration, /new\.engine_hours := round\(new\.end_hour_meter - new\.start_hour_meter, 3\)/);
+  assert.match(migration, /new\.distance_km := round\(new\.end_odometer - new\.start_odometer, 3\)/);
+  assert.match(migration, /WORK_RESULT_HOUR_METER_REQUIRED/);
+  assert.match(migration, /WORK_RESULT_ODOMETER_REQUIRED/);
+  assert.match(migration, /WORK_RESULT_VEHICLE_MEASUREMENT_SNAPSHOT_FROZEN/);
+  assert.match(migration, /new\.result_status in \('submitted', 'verified', 'closed'\)/);
+});
+
+test("Primary fuel KPI follows frozen Vehicle basis and preserves zero-division guards", () => {
+  const fuel = migration.slice(
+    migration.indexOf("create or replace view public.v_canonical_result_fuel_variance"),
+    migration.indexOf("create or replace view public.v_canonical_result_variance_summary"),
+  );
+  assert.match(fuel, /when 'engine_hours' then 'L\/hour'/);
+  assert.match(fuel, /when 'distance_km' then 'km\/L'/);
+  assert.match(fuel, /case when engine_hours > 0 then round\(actual_fuel_liters \/ engine_hours, 4\)/);
+  assert.match(fuel, /case when actual_fuel_liters > 0 then round\(distance_km \/ actual_fuel_liters, 4\)/);
+  assert.match(fuel, /case when actual_area_rai > 0 then round\(actual_fuel_liters \/ actual_area_rai, 4\)/);
+  assert.match(fuel, /case when actual_weight_ton > 0[\s\S]*actual_fuel_liters \/ actual_weight_ton/);
+  assert.match(fuel, /primary_kpi = fuel_metric_basis_snapshot/);
+  assert.match(fuel, /primary_variance_status/);
 });
 
 test("variance status is deterministic and incomplete when required data is absent", () => {
@@ -112,6 +146,23 @@ test("Daily Result and Work Order UI render server-derived summary and drill-dow
   assert.match(app, /renderFarmCanonicalVarianceSummary\(order, \{ scope: "result" \}\)/);
 });
 
+test("Daily vehicle UI shows only meter sets required by Vehicle Master snapshot", () => {
+  assert.match(app, /fuel_measurement_basis[\s\S]*requires_hour_meter[\s\S]*requires_odometer/);
+  assert.match(app, /const requiresHourMeter = row\.requires_hour_meter === true/);
+  assert.match(app, /const requiresOdometer = row\.requires_odometer === true/);
+  assert.match(app, /requiresOdometer \? `[\s\S]*เลขไมล์เริ่ม[\s\S]*เลขไมล์สิ้นสุด/);
+  assert.match(app, /requiresHourMeter \? `[\s\S]*ชั่วโมงมิเตอร์เริ่ม[\s\S]*ชั่วโมงมิเตอร์สิ้นสุด/);
+  assert.match(app, /data-primary-fuel-kpi/);
+  assert.match(app, /actualWeightTon/);
+  assert.match(actions, /actual_weight_ton: optionalNumber/);
+  assert.match(actions, /rpc\("save_canonical_work_result_draft_phase2f"/);
+  for (const code of [
+    "WORK_RESULT_HOUR_METER_REQUIRED",
+    "WORK_RESULT_ODOMETER_REQUIRED",
+    "WORK_RESULT_VEHICLE_MEASUREMENT_SNAPSHOT_FROZEN",
+  ]) assert.match(farmApi, new RegExp(code));
+});
+
 test("canonical material UI uses Phase 2F read model while legacy branch remains", () => {
   assert.match(app, /v_canonical_result_material_variance/);
   assert.match(app, /row\.planned_unit_id \|\| row\.unit_id/);
@@ -123,7 +174,8 @@ test("canonical material UI uses Phase 2F read model while legacy branch remains
 
 test("Phase 2F is additive and creates no posting, Payroll, Survey, or transport writes", () => {
   assert.doesNotMatch(migration, /create table/i);
-  assert.doesNotMatch(migration, /(insert into|update|delete from) public\./i);
+  assert.doesNotMatch(migration, /(insert into|delete from) public\./i);
+  assert.doesNotMatch(migration, /update public\.(?!work_result_vehicle_usage\b|work_results\b)/i);
   assert.doesNotMatch(migration, /create or replace function public\.(?:submit|verify|close|post|payroll)/i);
   assert.doesNotMatch(migration, /create (?:or replace )?(?:table|view) public\.survey_/i);
   assert.doesNotMatch(migration, /public\.(?:transport|shipment|delivery)_/i);
@@ -139,11 +191,16 @@ test("existing Phase 2E verification gates remain authoritative", () => {
   assert.match(uat, /phase2e_uat_results where case_code='Q'/);
 });
 
-test("rollback UAT covers A through P with exact rollback and lineage checks", () => {
-  for (const code of "ABCDEFGHIJKLMNOP") {
+test("rollback UAT covers A through V with exact rollback, measurement, and lineage checks", () => {
+  for (const code of "ABCDEFGHIJKLMNOPQRSTUV") {
     assert.match(uat, new RegExp(`\\('${code}','PASS'`), `missing UAT ${code}`);
   }
   assert.match(uat, /issued_fuel_liter=40[\s\S]*actual_fuel_liters=32/);
+  assert.match(uat, /32 L \/ 8 engine hours = 4 L\/hour/);
+  assert.match(uat, /160 km \/ 40 L = 4 km\/L/);
+  assert.match(uat, /requires_hour_meter_snapshot[\s\S]*requires_odometer_snapshot/);
+  assert.match(uat, /WORK_RESULT_HOUR_METER_REQUIRED/);
+  assert.match(uat, /Vehicle Master change leaves frozen WO\/Result fuel standard/);
   assert.match(uat, /source_budget_rate_block_material_id is not null/);
   assert.match(uat, /source_budget_rate_role_id is not null/);
   assert.match(uat, /select case_code,result,detail[\s\S]*rollback;\s*$/i);

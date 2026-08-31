@@ -1779,6 +1779,7 @@ function canonicalWorkResultVehiclePayload(vehicle) {
     actual_area_rai: optionalNumber(vehicle.actual_area_rai, "actual_area_rai") || 0,
     actual_tree_count: optionalNumber(vehicle.actual_tree_count, "actual_tree_count") || 0,
     actual_quantity: optionalNumber(vehicle.actual_quantity, "actual_quantity") || 0,
+    actual_weight_ton: optionalNumber(vehicle.actual_weight_ton, "actual_weight_ton") || 0,
     actual_unit: vehicle.actual_unit == null ? null : String(vehicle.actual_unit).slice(0, 80),
     allocation_basis_value: optionalNumber(vehicle.allocation_basis_value, "allocation_basis_value") || 0,
     actual_fuel_liter: optionalNumber(vehicle.actual_fuel_liter ?? vehicle.allocated_fuel_liter, "actual_fuel_liter") || 0,
@@ -1792,7 +1793,7 @@ function canonicalWorkResultVehiclePayload(vehicle) {
 async function saveCanonicalWorkResultDraft(args, actor) {
   const workers = Array.isArray(args.workers) ? args.workers.map(canonicalWorkResultWorkerPayload) : [];
   const vehicles = Array.isArray(args.vehicles) ? args.vehicles.map(canonicalWorkResultVehiclePayload) : [];
-  return rpc("save_canonical_work_result_draft", {
+  return rpc("save_canonical_work_result_draft_phase2f", {
     p_result_id: requireUuid(args.result_id, "result_id"),
     p_actor_profile_id: actor.profile.id,
     p_header: {
