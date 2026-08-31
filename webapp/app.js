@@ -1487,10 +1487,15 @@ const FARM_MODULES = [
     description: "หน้าหัวหน้างานสำหรับบันทึกผลงานจริงจากใบสั่งงาน ดึงน้ำหนักจากเลขใบชั่งหรือคีย์จำนวนจริง แล้วเฉลี่ยค่าแรงตามทีมที่ได้รับคำสั่ง",
     tables: ["work_results", "work_result_workers", "work_result_weight_tickets",
       "work_result_vehicle_usage", "work_orders", "work_order_workers", "work_order_materials",
-      "work_order_machines", "survey_template_assignments", "survey_responses", "survey_answers",
+      "work_order_machines", "work_order_labor_requirements",
+      "work_order_resource_requirements", "work_order_resource_assignments",
+      "goods_issue_daily_usage", "goods_returns", "goods_return_lines",
+      "survey_template_assignments", "survey_responses", "survey_answers",
       "survey_response_attachments", "survey_answer_attachments", "survey_findings", "attachments",
       "v_daily_work_entry_context", "v_available_inbound_weight_tickets",
       "v_inventory_work_order_workspace", "v_work_result_vehicle_fuel_detail",
+      "v_canonical_daily_material_actual", "v_canonical_daily_resource_actual",
+      "v_canonical_daily_performance_input",
       "fuel_requisitions", "fuel_issues", "fuel_tanks", "v_vehicle_fuel_status",
       "vehicle_fuel_efficiency_standards"],
     fields: [],
@@ -19763,7 +19768,71 @@ function farmResultAppendExtraWorkers(workers = []) {
   return appended;
 }
 
+function farmCanonicalDailyOrder(order = {}) {
+  return String(order?.workflow_source || "") === "canonical_planning";
+}
+
 function farmResultWorkers(order) {
+  if (farmCanonicalDailyOrder(order)) {
+    const workOrderId = farmWorkOrderDbId(order) || order?.id || "";
+    const result = farmDailyCurrentResult(order);
+    const requirements = new Map(farmRowsByKey("work_order_labor_requirements")
+      .filter((row) => row.work_order_id === workOrderId)
+      .map((row) => [row.id, row]));
+    const resultRows = result ? farmRowsByKey("work_result_workers")
+      .filter((row) => row.work_result_id === result.id
+        && row.work_order_labor_requirement_id) : [];
+    const assignments = farmRowsByKey("work_order_workers")
+      .filter((row) => row.work_order_id === workOrderId
+        && row.work_order_labor_requirement_id
+        && row.status !== "cancelled");
+    const sourceRows = resultRows.length ? resultRows : assignments;
+    return sourceRows.map((row) => {
+      const requirementId = row.work_order_labor_requirement_id;
+      const requirement = requirements.get(requirementId) || {};
+      const assignmentId = row.work_order_worker_assignment_id
+        || (!row.work_result_id ? row.id : "");
+      const employee = row.employee_id ? (farmLookup("employees", row.employee_id) || {}) : {};
+      const contractor = row.contractor_id ? (farmLookup("contractors", row.contractor_id) || {}) : {};
+      const identity = row.employee_id || row.contractor_id || assignmentId || row.id;
+      return {
+        id: row.id || assignmentId,
+        workResultWorkerId: row.work_result_id ? row.id : "",
+        workOrderWorkerAssignmentId: assignmentId,
+        workOrderLaborRequirementId: requirementId,
+        employeeId: row.employee_id || "",
+        contractorId: row.contractor_id || "",
+        employee,
+        contractor,
+        name: row.employee_id
+          ? (farmRecordLabel(farmTableByKey("employees"), employee) || identity)
+          : (farmRecordLabel(farmTableByKey("contractors"), contractor)
+            || row.provider_name || identity),
+        role: row.worker_role || row.role || requirement.role_position || "",
+        rateAmount: n(row.rate_amount ?? requirement.rate_amount),
+        rateUom: row.rate_uom || requirement.uom || "",
+        calculationMethod: row.calculation_method || requirement.calculation_method || "",
+        rateBasis: row.rate_type || requirement.rate_basis || "",
+        rateCategory: row.rate_category || requirement.rate_category || "",
+        payeeType: row.payee_type || requirement.payee_type
+          || (row.contractor_id ? "contractor" : "employee"),
+        affectsPayroll: row.affects_payroll ?? requirement.affects_payroll ?? true,
+        rateSnapshotAt: row.rate_snapshot_at || requirement.snapshot_at || "",
+        plannedHours: n(row.planned_hours || 8),
+        attendanceStatus: row.attendance_status || "present",
+        actualHours: n(row.actual_hours),
+        actualQuantity: n(row.actual_quantity),
+        actualAreaRai: n(row.actual_area_rai),
+        actualTreeCount: n(row.actual_tree_count),
+        individualQualityPct: row.individual_quality_pct ?? "",
+        individualCompletionPct: row.individual_completion_pct ?? "",
+        quantityAllocationMethod: row.quantity_allocation_method || "individual",
+        note: row.note || "",
+        isDriver: row.is_driver === true,
+        frozenRate: true,
+      };
+    }).filter((row) => row.id);
+  }
   const orderKeys = farmWorkOrderAllIdentityKeys(order);
   const rows = farmRowsByKey("work_order_workers").filter((row) =>
     farmIdentityMatchesAny(farmWorkRowIdentityValues(row), orderKeys)
@@ -19795,6 +19864,8 @@ function farmResultWorkers(order) {
 }
 
 function farmResultWorkerRoleGroup(worker = {}) {
+  if (worker.isDriver) return "driver";
+  if (worker.contractorId || worker.contractor?.id || worker.payeeType === "contractor") return "contractor";
   const text = `${worker.role || ""} ${worker.employee?.worker_type || ""} ${worker.employee?.position || ""}`.toLowerCase();
   if (text.includes("driver") || text.includes("คนขับ") || text.includes("คนรถ") || text.includes("ขับ")) return "driver";
   if (text.includes("contractor") || text.includes("ผู้รับเหมา")) return "contractor";
@@ -19891,6 +19962,41 @@ function farmResultMaterialLines(order) {
   const draft = farmResultDraftState(order);
   const resultDate = draft.resultDate || farmResultDefaultDate(order);
   const currentResultId = farmResultIdForOrderDate(order?.id, resultDate);
+  if (farmCanonicalDailyOrder(order)) {
+    const workOrderId = farmWorkOrderDbId(order) || order?.id || "";
+    const currentResult = farmDailyCurrentResult(order);
+    const actualRows = currentResult ? farmRowsByKey("v_canonical_daily_material_actual")
+      .filter((row) => row.work_result_id === currentResult.id) : [];
+    const baselineRows = farmRowsByKey("work_order_materials")
+      .filter((row) => row.work_order_id === workOrderId);
+    const rows = actualRows.length ? actualRows : baselineRows;
+    return rows.map((row) => {
+      const material = farmLookup("materials", row.material_id) || {};
+      const planned = n(row.planned_quantity);
+      const issued = n(row.issued_quantity);
+      const used = n(row.used_quantity);
+      const returned = n(row.returned_quantity);
+      return {
+        ...row,
+        key: row.material_id,
+        material_name: farmRecordLabel(farmTableByKey("materials"), material)
+          || row.material_name || row.material_id,
+        planned_quantity: planned,
+        issued_quantity: issued,
+        actualQuantity: used,
+        cumulativeActualQuantity: used,
+        wasteQuantity: returned,
+        returnedQuantity: returned,
+        varianceQuantity: row.variance_quantity == null ? used - planned : n(row.variance_quantity),
+        pendingIssueQuantity: Math.max(0, planned - issued),
+        unit_name: farmCleanUnitDisplay(
+          farmLookupLabel("units", row.unit_id) || row.unit_name || row.unit_id || "",
+        ),
+        inventoryActual: true,
+        note: farmResultCleanResourceNote(row.note || ""),
+      };
+    });
+  }
   const candidates = farmDispatchMaterialCandidates(order);
   return candidates.map((row) => {
     const key = row.material_id;
@@ -19943,11 +20049,37 @@ function farmResultMachineLines(order) {
   const requisitions = farmRowsByKey("fuel_requisitions")
     .filter((item) => item.work_order_id === workOrderId);
   const issues = farmRowsByKey("fuel_issues");
-  const usages = farmRowsByKey("v_work_result_vehicle_fuel_detail")
+  const canonical = farmCanonicalDailyOrder(order);
+  const usages = farmRowsByKey(canonical
+    ? "v_canonical_daily_resource_actual"
+    : "v_work_result_vehicle_fuel_detail")
     .filter((item) => !result?.id || item.work_result_id === result.id);
   const fuelStatuses = farmRowsByKey("v_vehicle_fuel_status");
   const firstValue = (...values) => values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
-  return farmDispatchMachineCandidates(order).map((row) => {
+  const canonicalRequirements = new Map(farmRowsByKey("work_order_resource_requirements")
+    .filter((row) => row.work_order_id === workOrderId)
+    .map((row) => [row.id, row]));
+  const canonicalAssignments = farmRowsByKey("work_order_resource_assignments")
+    .filter((row) => row.work_order_id === workOrderId);
+  const sourceRows = canonical && canonicalAssignments.length
+    ? canonicalAssignments.map((assignment) => {
+      const requirement = canonicalRequirements.get(
+        assignment.work_order_resource_requirement_id,
+      ) || {};
+      return {
+        ...requirement,
+        ...assignment,
+        vehicle_id: assignment.selected_vehicle_id,
+        driver_employee_id: farmRowsByKey("work_order_workers")
+          .find((worker) => worker.id === assignment.driver_work_order_worker_id)?.employee_id || "",
+        planned_hours: assignment.planned_hours || requirement.planned_hours,
+        fuel_plan_liter: assignment.planned_fuel_liters || requirement.planned_fuel_liters,
+        work_order_resource_requirement_id: requirement.id,
+        work_order_resource_assignment_id: assignment.id,
+      };
+    }).filter((row) => row.vehicle_id)
+    : farmDispatchMachineCandidates(order);
+  return sourceRows.map((row) => {
     const key = row.vehicle_id;
     const entry = draftEntries[key] || {};
     const vehicle = farmLookup("vehicles", row.vehicle_id) || {};
@@ -19960,7 +20092,7 @@ function farmResultMachineLines(order) {
     const vehicleIssues = issues.filter((item) => requisitionIds.has(item.fuel_requisition_id)
       && !["cancelled", "void"].includes(item.status));
     const fuelStatus = fuelStatuses.find((item) => item.vehicle_id === row.vehicle_id) || {};
-    const efficiencyStandard = farmRowsByKey("vehicle_fuel_efficiency_standards").find((item) =>
+    const efficiencyStandard = canonical ? null : farmRowsByKey("vehicle_fuel_efficiency_standards").find((item) =>
       item.status !== "inactive" && (item.vehicle_id === row.vehicle_id
         || (!item.vehicle_id && item.vehicle_type === vehicle.vehicle_type))) || null;
     const issuedLiter = vehicleIssues.reduce((sum, item) => sum + n(item.issued_liter), 0);
@@ -19993,6 +20125,20 @@ function farmResultMachineLines(order) {
       fuel_issued_liter: issuedLiter,
       fuel_issue_liter: issuedLiter,
       fuel_cost_amount: n(usage.fuel_cost_amount),
+      work_order_resource_requirement_id: row.work_order_resource_requirement_id
+        || usage.work_order_resource_requirement_id || "",
+      work_order_resource_assignment_id: row.work_order_resource_assignment_id
+        || usage.work_order_resource_assignment_id || "",
+      planned_fuel_liters_snapshot: n(
+        usage.planned_fuel_liters_snapshot || row.fuel_plan_liter,
+      ),
+      fuel_metric_basis_snapshot: usage.fuel_metric_basis_snapshot
+        || row.fuel_metric_basis || "",
+      fuel_standard_rate_snapshot: n(
+        usage.fuel_standard_rate_snapshot || row.fuel_standard_rate,
+      ),
+      fuel_unit_cost_snapshot: n(usage.fuel_unit_cost_snapshot || row.fuel_unit_cost),
+      fuel_variance_pct: usage.fuel_variance_pct,
       fuel_requisition: requisition,
       fuel_requested_liter: n(requisition?.requested_liter),
       fuel_issue_remaining_liter: Math.max(0, n(requisition?.requested_liter) - issuedLiter),
@@ -20061,6 +20207,24 @@ function farmResultRateCodesFromOrder(order = {}) {
 }
 
 function farmResultRateForOrder(order) {
+  if (farmCanonicalDailyOrder(order)) {
+    const workOrderId = farmWorkOrderDbId(order) || order?.id || "";
+    const requirements = farmRowsByKey("work_order_labor_requirements")
+      .filter((row) => row.work_order_id === workOrderId);
+    const first = requirements[0] || {};
+    return {
+      id: requirements.length ? `wo-frozen-${workOrderId}` : "",
+      rate_code: "WO Snapshot",
+      rate_text: requirements.length
+        ? `${requirements.length} Labor Rate line(s)` : "",
+      rate_amount: n(first.rate_amount),
+      unit_name: first.uom || "",
+      calculation_method: first.calculation_method || "",
+      comparison_basis: first.rate_basis || "",
+      frozen_requirements: requirements,
+      source: "work_order_labor_requirements",
+    };
+  }
   const rates = farmRowsByKey("budget_activity_rates");
   for (const token of farmResultRateCodesFromOrder(order)) {
     const exact = farmResultFindBudgetRateByToken(token, rates);
@@ -20328,6 +20492,7 @@ function farmResultMatchedTickets(text) {
 }
 
 function farmResultCalculation(order = farmResultSelectedOrder()) {
+  const canonical = farmCanonicalDailyOrder(order);
   const draft = farmResultDraftState(order);
   const workers = farmResultWorkers(order);
   const materialLines = farmResultMaterialLines(order);
@@ -20352,48 +20517,99 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
   const entries = draft.workerEntries || {};
   const activeRoleCounts = workers.reduce((counts, worker) => {
     const entry = entries[worker.id] || {};
-    const status = entry.status || "present";
-    if (!farmResultIsWorkerPresent(status)) return counts;
+    const status = entry.status || worker.attendanceStatus || "present";
+    const present = canonical
+      ? ["present", "late", "half_day"].includes(status)
+      : farmResultIsWorkerPresent(status);
+    if (!present) return counts;
     const roleGroup = farmResultWorkerRoleGroup(worker);
     counts.total += 1;
     counts[roleGroup] = (counts[roleGroup] || 0) + 1;
+    if (worker.workOrderLaborRequirementId) {
+      counts.requirements[worker.workOrderLaborRequirementId] =
+        (counts.requirements[worker.workOrderLaborRequirementId] || 0) + 1;
+    }
     return counts;
-  }, { total: 0, driver: 0, worker: 0, contractor: 0 });
+  }, { total: 0, driver: 0, worker: 0, contractor: 0, requirements: {} });
   const shareQuantity = payrollOutputQuantity / (activeRoleCounts.total || workerCount || 1);
   const shareWage = totalWage / workerCount;
   const workerLines = workers.map((worker) => {
     const entry = entries[worker.id] || {};
-    const hasCustomQuantity = entry.actualQuantity !== undefined && entry.actualQuantity !== "";
-    const attendanceStatus = entry.status || "present";
+    const storedActualQuantity = worker.actualQuantity ?? "";
+    const enteredActualQuantity = entry.actualQuantity !== undefined
+      ? entry.actualQuantity : storedActualQuantity;
+    const hasCustomQuantity = enteredActualQuantity !== undefined
+      && enteredActualQuantity !== "" && (entry.actualQuantity !== undefined
+        || n(storedActualQuantity) > 0);
+    const attendanceStatus = entry.status || worker.attendanceStatus || "present";
     const roleGroup = farmResultWorkerRoleGroup(worker);
-    const rateInfo = farmResultResolvedRoleRateForGroup(rate, roleGroup, fallbackRate);
+    const workerMethod = worker.calculationMethod || method;
+    const workerBasis = farmResultBasisFromMethod(
+      workerMethod || worker.rateBasis,
+      worker.rateBasis || basis,
+    );
+    const rateInfo = canonical ? {
+      row: null,
+      group: roleGroup,
+      rateAmount: n(worker.rateAmount),
+      basis: workerBasis,
+      method: workerMethod,
+      unit: worker.rateUom || farmResultBasisLabel(workerBasis),
+      label: farmResultRateLabel(
+        n(worker.rateAmount),
+        worker.rateUom || "",
+        workerBasis,
+      ),
+      source: "work_order_labor_requirements",
+    } : farmResultResolvedRoleRateForGroup(rate, roleGroup, fallbackRate);
     const activeRoleCount = activeRoleCounts[roleGroup] || activeRoleCounts.total || 1;
+    const activeRequirementCount = activeRoleCounts.requirements[
+      worker.workOrderLaborRequirementId
+    ] || activeRoleCount;
     const roleDefaultQuantity = roleGroup === "driver"
       ? payrollOutputQuantity
-      : payrollOutputQuantity / activeRoleCount;
+      : payrollOutputQuantity / (canonical ? activeRequirementCount : activeRoleCount);
     const defaultQuantity = roleDefaultQuantity || shareQuantity || 0;
-    const customQuantity = n(entry.actualQuantity);
+    const customQuantity = n(enteredActualQuantity);
     const staleMaterialPlanQuantity = hasCustomQuantity
       && fullBagQuantity > 0
       && Math.abs(customQuantity - fullBagQuantity) < 0.001
       && Math.abs(defaultQuantity - fullBagQuantity) > 0.001;
     const useCustomQuantity = hasCustomQuantity && !staleMaterialPlanQuantity;
-    const isPresentForWage = farmResultIsWorkerPresent(attendanceStatus);
+    const isPresentForWage = canonical
+      ? ["present", "late", "half_day"].includes(attendanceStatus)
+      : farmResultIsWorkerPresent(attendanceStatus);
     const lineQuantity = !isPresentForWage ? 0 : useCustomQuantity ? customQuantity : defaultQuantity;
-    const workerHours = n(entry.workHours || worker.plannedHours || 8);
+    const workerHours = n(entry.workHours ?? worker.actualHours ?? worker.plannedHours ?? 8);
     const workerForBasis = { ...worker, attendanceStatus, workHours: workerHours };
-    const lineBasisQuantity = farmResultLineBasisQuantity({ rateInfo, basis, actualUnit, lineQuantity, worker: workerForBasis });
-    const dailyWage = farmResultWorkerDailyWage(worker);
-    const normalHours = farmResultWorkerNormalHours(worker);
-    const hourlyWage = farmResultWorkerHourlyWage(worker, dailyWage, normalHours);
+    const lineBasisQuantity = canonical
+      ? (!isPresentForWage ? 0
+        : rateInfo.basis === "hour_count" ? Math.max(0, workerHours)
+          : rateInfo.basis === "day_count"
+            ? (attendanceStatus === "half_day" ? 0.5 : 1)
+            : rateInfo.basis === "weight_ton"
+              ? (actualUnit === "ตัน" ? n(lineQuantity) : n(lineQuantity) / 1000)
+              : n(lineQuantity))
+      : farmResultLineBasisQuantity({
+        rateInfo, basis, actualUnit, lineQuantity, worker: workerForBasis,
+      });
+    const dailyWage = canonical
+      ? (rateInfo.basis === "day_count" ? n(rateInfo.rateAmount) : 0)
+      : farmResultWorkerDailyWage(worker);
+    const normalHours = canonical
+      ? (n(worker.plannedHours) || 8)
+      : farmResultWorkerNormalHours(worker);
+    const hourlyWage = canonical
+      ? (rateInfo.basis === "hour_count" ? n(rateInfo.rateAmount) : 0)
+      : farmResultWorkerHourlyWage(worker, dailyWage, normalHours);
     const rateWageUnits = !isPresentForWage ? 0 : lineBasisQuantity * n(rateInfo.rateAmount);
     const baseWageAmount = rateWageUnits;
-    const ot1Hours = !isPresentForWage ? 0 : n(entry.ot1Hours !== undefined ? entry.ot1Hours : entry.otHours);
-    const ot15Hours = !isPresentForWage ? 0 : n(entry.ot15Hours);
-    const ot2Hours = !isPresentForWage ? 0 : n(entry.ot2Hours);
+    const ot1Hours = canonical || !isPresentForWage ? 0 : n(entry.ot1Hours !== undefined ? entry.ot1Hours : entry.otHours);
+    const ot15Hours = canonical || !isPresentForWage ? 0 : n(entry.ot15Hours);
+    const ot2Hours = canonical || !isPresentForWage ? 0 : n(entry.ot2Hours);
     const otAmount = (hourlyWage * ot1Hours) + (hourlyWage * 1.5 * ot15Hours) + (hourlyWage * 2 * ot2Hours);
-    const allowance = n(entry.allowance);
-    const deduction = n(entry.deduction);
+    const allowance = canonical ? 0 : n(entry.allowance);
+    const deduction = canonical ? 0 : n(entry.deduction);
     const grossAmount = baseWageAmount + otAmount + allowance - deduction;
     return {
       ...worker,
@@ -20424,11 +20640,23 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
       grossAmount,
       wageAmount: baseWageAmount,
       baseWageAmount,
+      individualQualityPct: entry.individualQualityPct
+        ?? worker.individualQualityPct ?? "",
+      individualCompletionPct: entry.individualCompletionPct
+        ?? worker.individualCompletionPct ?? "",
+      quantityAllocationMethod: entry.quantityAllocationMethod
+        || worker.quantityAllocationMethod
+        || (roleGroup === "driver" ? "driver" : "individual"),
     };
   });
   const roleSummary = ["worker", "driver", "contractor"].map((group) => {
     const lines = workerLines.filter((row) => row.roleGroup === group);
-    const rateInfo = farmResultResolvedRoleRateForGroup(rate, group, fallbackRate);
+    const frozenLabels = [...new Set(lines.map((row) => row.rateInfo?.label).filter(Boolean))];
+    const rateInfo = canonical ? {
+      label: frozenLabels.join(" + ") || "-",
+      rateAmount: lines.length === 1 ? n(lines[0].rateAmount) : 0,
+      source: "work_order_labor_requirements",
+    } : farmResultResolvedRoleRateForGroup(rate, group, fallbackRate);
     return {
       group,
       label: farmResultRoleLabel(group),
@@ -20446,7 +20674,7 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
   const fuelIssuedTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_issued_liter), 0);
   const fuelUsedTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_used_liter), 0);
   const machineHoursTotal = machineLines.reduce((sum, row) => sum + n(row.actual_hours || row.planned_hours), 0);
-  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, wageTotal, payrollTotal, workerCount, shareQuantity, shareWage, fullBagQuantity, roleSummary, materialActualTotal, materialPendingTotal, fuelIssuedTotal, fuelUsedTotal, machineHoursTotal };
+  return { canonical, draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, wageTotal, payrollTotal, workerCount, shareQuantity, shareWage, fullBagQuantity, roleSummary, materialActualTotal, materialPendingTotal, fuelIssuedTotal, fuelUsedTotal, machineHoursTotal };
 }
 
 function farmResultPayrollPeriodForDate(date) {
@@ -20797,7 +21025,9 @@ function renderFarmResultPanel() {
     <section class="farm-result-page">
       <div class="section-head">
         <h3>บันทึกงานประจำวัน</h3>
-        <span>หัวหน้าทีมบันทึกผลงานจริง รายชื่อคนทำงาน และค่าแรงรายคนจากใบสั่งงานเดียว</span>
+        <span>${calc.canonical
+          ? "Canonical Daily Result · Planning/WO baseline เป็น read-only และใช้อัตราที่ freeze จาก WO"
+          : "หัวหน้าทีมบันทึกผลงานจริง รายชื่อคนทำงาน และค่าแรงรายคนจากใบสั่งงานเดียว"}</span>
       </div>
       ${renderFarmResultWorkSearch(order, orders)}
       ${renderFarmDailyMobileStepper(calc, survey)}
@@ -20805,7 +21035,7 @@ function renderFarmResultPanel() {
         <article><span>กิจกรรม</span><strong>${esc(farmLookupLabel("activities", order?.activity_id) || "-")}</strong><small>${esc(area)}</small></article>
         <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(effectiveOrderStatus?.label || "-")}</small></article>
         <article><span>เรทตามบทบาท</span><strong>${fmt(calc.roleSummary.filter((row) => row.count).length || 1)} ชุด</strong><small>${esc(roleRateSummary || rateLabel)}</small></article>
-        <article><span>ค่าแรงรวม</span><strong>${moneyNf.format(calc.payrollTotal || calc.totalWage)}</strong><small>ล็อก snapshot หลังบันทึก</small></article>
+        <article><span>รายได้ประมาณการ</span><strong>${moneyNf.format(calc.payrollTotal || calc.totalWage)}</strong><small>${calc.canonical ? "Frozen WO Rate · ยังไม่สร้าง Payroll" : "ล็อก snapshot หลังบันทึก"}</small></article>
         <article><span>วัสดุ / รถ</span><strong>${fmt(calc.materialLines.length)} / ${fmt(calc.machineLines.length)}</strong><small>น้ำมันใช้จริง ${moneyNf.format(calc.fuelUsedTotal)} ลิตร</small></article>
         <article><span>แบบตรวจงาน</span><strong>${esc(survey?.template_code || "-")}</strong><small>${esc(surveyAttachment?.file_name || survey?.template_name || "ไม่พบแบบตรวจ")}</small></article>
       </div>
@@ -20854,7 +21084,9 @@ function renderFarmResultPanel() {
       <article class="farm-result-card farm-result-worker-card" data-daily-section="workers" id="farm-daily-step-workers">
         <div class="section-head">
           <h3>บันทึกแรงงานตามบทบาท</h3>
-          <span>คนงานและคนขับใช้ rate แยกจากอัตรางบประมาณ แล้วล็อกค่าแรงเป็น snapshot หลังบันทึก</span>
+          <span>${calc.canonical
+            ? "แสดงทุก Labor Requirement/Rate line จาก WO และเก็บ lineage รายคน; ไม่อ่าน Rate Master ใหม่"
+            : "คนงานและคนขับใช้ rate แยกจากอัตรางบประมาณ แล้วล็อกค่าแรงเป็น snapshot หลังบันทึก"}</span>
         </div>
         <div class="farm-result-worker-tabs" role="tablist" aria-label="เลือกบทบาทเพื่อบันทึกแรงงาน">
           ${roleGroups.map((group) => {
@@ -20877,10 +21109,11 @@ function renderFarmResultPanel() {
         </div>
         <div class="farm-result-worker-tools">
           <span>กำลังบันทึก: ${esc(farmResultRoleLabel(activeRoleGroup))} ${fmt(activeWorkerLines.length)} คน · ${esc(activeRoleSummary?.rateInfo?.label || "-")}</span>
-          <div class="farm-result-add-worker-controls">
+          ${calc.canonical ? '<span class="status-pill">รายชื่อมาจาก Scheduler · read-only</span>' : '<div class="farm-result-add-worker-controls">'}
+          ${calc.canonical ? "" : `
             <select id="farmResultAddWorker" aria-label="เพิ่มคนงาน"><option value="">เพิ่มคนงาน</option>${addWorkerOptions}</select>
             <button type="button" data-farm-result-add-worker>เพิ่มคนงาน</button>
-          </div>
+          </div>`}
           <button type="button" data-farm-result-fill-share>ใส่ค่าเฉลี่ยแท็บนี้</button>
           <button type="button" data-farm-result-clear-worker>ล้างแก้ไขแท็บนี้</button>
         </div>
@@ -20898,6 +21131,9 @@ function renderFarmResultPanel() {
                 <th>OT 1.5x</th>
                 <th>OT 2x</th>
                 <th>ผลงาน</th>
+                <th>คุณภาพ %</th>
+                <th>สำเร็จ %</th>
+                <th>Allocation</th>
                 <th>ค่าแรง</th>
                 <th>เพิ่ม</th>
                 <th>หัก</th>
@@ -20907,24 +21143,27 @@ function renderFarmResultPanel() {
             <tbody>
               ${activeWorkerLines.map((row) => `
                 <tr data-farm-result-worker="${esc(row.id)}">
-                  <td><strong>${esc(row.name)}</strong><small>${esc(row.role || row.employee.payment_type || "-")} · รายวัน ${moneyNf.format(row.dailyWage || 0)}</small></td>
+                  <td><strong>${esc(row.name)}</strong><small>${esc(row.role || row.employee.payment_type || "-")} · ${calc.canonical ? "WO requirement" : `รายวัน ${moneyNf.format(row.dailyWage || 0)}`}</small></td>
                   <td><span class="farm-result-role-pill ${esc(row.roleGroup)}">${esc(farmResultRoleLabel(row.roleGroup))}</span><small class="farm-result-rate-tag">${esc(row.rateLabel)}</small></td>
                   <td><select data-farm-result-worker-field="status">${farmResultAttendanceOptions().map(([status, label]) => `<option value="${esc(status)}"${row.attendanceStatus === status ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></td>
                   <td><input type="time" value="${esc(row.checkIn)}" data-farm-result-worker-field="checkIn"></td>
                   <td><input type="time" value="${esc(row.checkOut)}" data-farm-result-worker-field="checkOut"></td>
                   <td><input type="number" min="0" step="0.5" value="${esc(row.workHours || "")}" data-farm-result-worker-field="workHours"></td>
-                  <td><input type="number" min="0" step="0.5" value="${esc(row.ot1Hours || "")}" data-farm-result-worker-field="ot1Hours"></td>
-                  <td><input type="number" min="0" step="0.5" value="${esc(row.ot15Hours || "")}" data-farm-result-worker-field="ot15Hours"></td>
-                  <td><input type="number" min="0" step="0.5" value="${esc(row.ot2Hours || "")}" data-farm-result-worker-field="ot2Hours"></td>
+                  <td><input type="number" min="0" step="0.5" value="${esc(row.ot1Hours || "")}" data-farm-result-worker-field="ot1Hours" ${calc.canonical ? "disabled" : ""}></td>
+                  <td><input type="number" min="0" step="0.5" value="${esc(row.ot15Hours || "")}" data-farm-result-worker-field="ot15Hours" ${calc.canonical ? "disabled" : ""}></td>
+                  <td><input type="number" min="0" step="0.5" value="${esc(row.ot2Hours || "")}" data-farm-result-worker-field="ot2Hours" ${calc.canonical ? "disabled" : ""}></td>
                   <td><input type="number" min="0" step="0.01" value="${row.hasCustomQuantity ? esc(row.actualQuantity) : ""}" placeholder="${moneyNf.format(row.actualQuantity)}" data-farm-result-worker-field="actualQuantity"></td>
+                  <td><input type="number" min="0" max="100" step="0.1" value="${esc(row.individualQualityPct)}" data-farm-result-worker-field="individualQualityPct"></td>
+                  <td><input type="number" min="0" max="100" step="0.1" value="${esc(row.individualCompletionPct)}" data-farm-result-worker-field="individualCompletionPct"></td>
+                  <td><select data-farm-result-worker-field="quantityAllocationMethod">${["individual", "team_pool", "piece_rate", "hourly", "daily", "driver", "contractor"].map((method) => `<option value="${method}"${row.quantityAllocationMethod === method ? " selected" : ""}>${esc(method)}</option>`).join("")}</select></td>
                   <td class="num">${moneyNf.format(row.wageAmount)}<small>${moneyNf.format(row.lineBasisQuantity || 0)} x ${moneyNf.format(row.rateAmount || 0)}</small></td>
-                  <td><input type="number" min="0" step="0.01" value="${esc(row.allowance || "")}" data-farm-result-worker-field="allowance"></td>
-                  <td><input type="number" min="0" step="0.01" value="${esc(row.deduction || "")}" data-farm-result-worker-field="deduction"></td>
+                  <td><input type="number" min="0" step="0.01" value="${esc(row.allowance || "")}" data-farm-result-worker-field="allowance" ${calc.canonical ? "disabled" : ""}></td>
+                  <td><input type="number" min="0" step="0.01" value="${esc(row.deduction || "")}" data-farm-result-worker-field="deduction" ${calc.canonical ? "disabled" : ""}></td>
                   <td class="num strong">${moneyNf.format(row.grossAmount)}</td>
-                </tr>`).join("") || `<tr><td colspan="14">ยังไม่มีคนงานในใบสั่งงาน ให้ผู้จัดการสั่งงานและเลือกทีมก่อน</td></tr>`}
+                </tr>`).join("") || `<tr><td colspan="17">ยังไม่มีคนงานในใบสั่งงาน ให้ผู้จัดการสั่งงานและเลือกทีมก่อน</td></tr>`}
             </tbody>
             <tfoot>
-              <tr><td colspan="9">รวม ${esc(farmResultRoleLabel(activeRoleGroup))}</td><td class="num">${moneyNf.format(activeWorkerTotals.quantity)}</td><td class="num">${moneyNf.format(activeWorkerTotals.wage)}<small>OT ${moneyNf.format(activeWorkerTotals.ot)}</small></td><td class="num">${moneyNf.format(activeWorkerTotals.allowance)}</td><td class="num">${moneyNf.format(activeWorkerTotals.deduction)}</td><td class="num strong">${moneyNf.format(activeWorkerTotals.gross)}</td></tr>
+              <tr><td colspan="9">รวม ${esc(farmResultRoleLabel(activeRoleGroup))}</td><td class="num">${moneyNf.format(activeWorkerTotals.quantity)}</td><td colspan="3"></td><td class="num">${moneyNf.format(activeWorkerTotals.wage)}<small>OT ${moneyNf.format(activeWorkerTotals.ot)}</small></td><td class="num">${moneyNf.format(activeWorkerTotals.allowance)}</td><td class="num">${moneyNf.format(activeWorkerTotals.deduction)}</td><td class="num strong">${moneyNf.format(activeWorkerTotals.gross)}</td></tr>
             </tfoot>
           </table>
         </div>
@@ -20933,20 +21172,20 @@ function renderFarmResultPanel() {
         <article class="farm-result-card farm-result-worker-card" data-daily-section="materials" id="farm-daily-step-materials">
           <div class="section-head">
             <h3>วัสดุที่ใช้จริง</h3>
-            <span>ใช้ผลงานจริงเป็นยอดใช้จริง และคำนวณวัสดุรอเบิกจากยอดจ่ายคงเหลือ</span>
+            <span>${calc.canonical ? "Planned Snapshot เป็น read-only · Actual มาจาก Inventory Issue → Use → Return" : "ใช้ผลงานจริงเป็นยอดใช้จริง และคำนวณวัสดุรอเบิกจากยอดจ่ายคงเหลือ"}</span>
           </div>
           <div class="table-wrap farm-result-resource-wrap">
             <table class="mini-table farm-table farm-result-resource-table" data-no-export="true">
-              <thead><tr><th>วัสดุ</th><th>แผน/จ่าย</th><th>ใช้จริง</th><th>สูญเสีย/คืน</th><th>หน่วย</th><th>วัสดุรอเบิก</th></tr></thead>
+              <thead><tr><th>วัสดุ</th><th>แผน/จ่าย</th><th>ใช้จริง</th><th>${calc.canonical ? "คืน" : "สูญเสีย/คืน"}</th><th>หน่วย</th><th>${calc.canonical ? "Variance" : "วัสดุรอเบิก"}</th></tr></thead>
               <tbody>
                 ${calc.materialLines.map((row) => `
                   <tr data-farm-result-material="${esc(row.key)}">
                     <td><strong>${esc(row.material_name || row.material_id)}</strong></td>
                     <td class="num">${moneyNf.format(n(row.planned_quantity))} / ${moneyNf.format(n(row.issued_quantity))}</td>
-                    <td><input type="number" min="0" step="0.01" class="farm-result-required-input" value="${esc(row.actualQuantity || "")}" placeholder="กรอกใช้จริง" data-farm-result-material-field="actualQuantity"></td>
-                    <td><input type="number" min="0" step="0.01" value="${esc(row.wasteQuantity || "")}" data-farm-result-material-field="wasteQuantity"></td>
+                    <td>${calc.canonical ? `<strong>${moneyNf.format(row.actualQuantity)}</strong>` : `<input type="number" min="0" step="0.01" class="farm-result-required-input" value="${esc(row.actualQuantity || "")}" placeholder="กรอกใช้จริง" data-farm-result-material-field="actualQuantity">`}</td>
+                    <td>${calc.canonical ? `<strong>${moneyNf.format(row.returnedQuantity)}</strong>` : `<input type="number" min="0" step="0.01" value="${esc(row.wasteQuantity || "")}" data-farm-result-material-field="wasteQuantity">`}</td>
                     <td>${esc(farmCleanUnitDisplay(row.unit_name || row.unit_id || "-"))}</td>
-                    <td class="num"><strong>${moneyNf.format(n(row.pendingIssueQuantity))}</strong></td>
+                    <td class="num"><strong>${moneyNf.format(n(calc.canonical ? row.varianceQuantity : row.pendingIssueQuantity))}</strong></td>
                   </tr>`).join("") || `<tr><td colspan="6">ยังไม่มีวัสดุในใบงาน</td></tr>`}
               </tbody>
               <tfoot><tr><td>รวม</td><td></td><td class="num">${moneyNf.format(calc.materialActualTotal)}</td><td class="num">${moneyNf.format(calc.materialLines.reduce((sum, row) => sum + n(row.wasteQuantity), 0))}</td><td></td><td class="num">${moneyNf.format(calc.materialPendingTotal)}</td></tr></tfoot>
@@ -21039,8 +21278,8 @@ function renderFarmResultPanel() {
           <div class="farm-result-review-list">
             <p><strong>ผลงานรวม</strong><span>${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)}</span></p>
             <p><strong>ฐานคำนวณ</strong><span>${moneyNf.format(calc.calculationQuantity)} · ${esc(calc.basis)}</span></p>
-            <p><strong>ค่าแรงตามเรทบทบาท</strong><span>${moneyNf.format(calc.wageTotal)} บาท</span></p>
-            <p><strong>สุทธิรายคนรวม</strong><span>${moneyNf.format(calc.payrollTotal)} บาท</span></p>
+            <p><strong>รายได้จาก Frozen Rate</strong><span>${moneyNf.format(calc.wageTotal)} บาท</span></p>
+            <p><strong>รวมรายคน</strong><span>${moneyNf.format(calc.payrollTotal)} บาท${calc.canonical ? " · Performance input เท่านั้น ยังไม่สร้าง Payroll" : ""}</span></p>
           </div>
           <button type="button" class="farm-result-primary-save" data-farm-result-save ${state.farmSyncBusy || !order ? "disabled" : ""}>บันทึกร่าง</button>
         </article>
@@ -25931,7 +26170,21 @@ async function saveFarmDailyEntry() {
       terrain_condition: draft.terrainCondition,
       survey_status: draft.surveyStatus,
       note: draft.note,
-      workers: calc.workerLines.map((row) => ({
+      workers: calc.workerLines.map((row) => calc.canonical ? ({
+        work_result_worker_id: row.workResultWorkerId || null,
+        work_order_worker_assignment_id: row.workOrderWorkerAssignmentId || null,
+        attendance_status: row.attendanceStatus,
+        actual_hours: row.workHours,
+        actual_quantity: row.actualQuantity,
+        actual_unit: draft.actualUnit,
+        actual_area_rai: draft.actualAreaRai,
+        actual_tree_count: draft.actualTreeCount,
+        individual_quality_pct: row.individualQualityPct,
+        individual_completion_pct: row.individualCompletionPct,
+        quantity_allocation_method: row.quantityAllocationMethod,
+        is_quantity_estimated: !row.hasCustomQuantity,
+        note: row.note || null,
+      }) : ({
         employee_id: row.id,
         team_id: order.team_id || null,
         worker_role: row.role || row.roleGroup,
@@ -25945,12 +26198,13 @@ async function saveFarmDailyEntry() {
         quantity_allocation_method: row.hasCustomQuantity ? "manual" : "equal",
         is_quantity_estimated: !row.hasCustomQuantity,
       })),
-      materials: calc.materialLines.filter((row) => row.material_id).map((row) => ({
+      materials: (calc.canonical ? [] : calc.materialLines).filter((row) => row.material_id).map((row) => ({
         material_id: row.material_id,
         used_quantity: row.actualQuantity,
         note: n(row.wasteQuantity) ? `คืน/สูญเสีย ${row.wasteQuantity}` : null,
       })),
       vehicles: calc.machineLines.filter((row) => row.vehicle_id).map((row) => ({
+        work_order_resource_requirement_id: row.work_order_resource_requirement_id || null,
         vehicle_id: row.vehicle_id,
         driver_employee_id: row.driver_employee_id || null,
         start_at: row.start_at || null,

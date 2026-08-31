@@ -250,13 +250,8 @@ const ACTIONS = {
   },
   get_or_create_work_result: {
     permission: "farm.result.record",
-    rpc: "get_or_create_work_result",
-    params: (args, actor) => ({
-      p_work_order_id: requireUuid(args.work_order_id, "work_order_id"),
-      p_result_date: /^\d{4}-\d{2}-\d{2}$/.test(String(args.result_date || ""))
-        ? args.result_date : new Date().toISOString().slice(0, 10),
-      p_profile_id: actor.profile.id,
-    }),
+    execute: getOrCreateWorkResult,
+    params: (args, actor) => ({ args, actor }),
     entity: "work_results",
   },
   save_work_result_draft: {
@@ -1546,16 +1541,9 @@ function surveyConfig(value) {
   try { return JSON.parse(value || "{}"); } catch { return {}; }
 }
 
-async function resolveSurveyTemplateForOrder(order, args, responseDate) {
-  const [assignments, templates, activity] = await Promise.all([
-    rest("survey_template_assignments?status=eq.active&select=template_id,activity_id,block_id,team_id,vehicle_id,employee_id,priority,effective_from,effective_to,condition_json")
-      .then(({ data }) => data || []),
-    rest("survey_templates?status=eq.active&select=id,activity_id,survey_scope,configuration_json")
-      .then(({ data }) => data || []),
-    order.activity_id
-      ? one(`activities?id=eq.${order.activity_id}&select=id,activity_group_id,work_type&limit=1`, "Activity")
-      : {},
-  ]);
+function selectResolvedSurveyTemplate({
+  assignments = [], templates = [], activity = {}, order = {}, args = {}, responseDate,
+} = {}) {
   const byId = new Map(templates.map((row) => [String(row.id), row]));
   const matches = assignments.filter((assignment) => {
     if (!byId.has(String(assignment.template_id || ""))) return false;
@@ -1589,6 +1577,21 @@ async function resolveSurveyTemplateForOrder(order, args, responseDate) {
   if (workType) return String(workType.id);
   const general = templates.find((row) => !row.activity_id && ["work_result", "work_order", "general"].includes(String(row.survey_scope || "general")));
   return general ? String(general.id) : null;
+}
+
+async function resolveSurveyTemplateForOrder(order, args, responseDate) {
+  const [assignments, templates, activity] = await Promise.all([
+    rest("survey_template_assignments?status=eq.active&select=template_id,activity_id,block_id,team_id,vehicle_id,employee_id,priority,effective_from,effective_to,condition_json")
+      .then(({ data }) => data || []),
+    rest("survey_templates?status=eq.active&select=id,activity_id,survey_scope,configuration_json")
+      .then(({ data }) => data || []),
+    order.activity_id
+      ? one(`activities?id=eq.${order.activity_id}&select=id,activity_group_id,work_type&limit=1`, "Activity")
+      : {},
+  ]);
+  return selectResolvedSurveyTemplate({
+    assignments, templates, activity, order, args, responseDate,
+  });
 }
 
 async function createSurveyResponse({ args, actor }) {
@@ -1703,9 +1706,122 @@ function calculateConsumedFuel({ opening, issued, closing, fallback }, field = "
   return optionalNumber(fallback, field) || 0;
 }
 
+async function getOrCreateWorkResult({ args, actor }) {
+  const workOrderId = requireUuid(args.work_order_id, "work_order_id");
+  const resultDate = /^\d{4}-\d{2}-\d{2}$/.test(String(args.result_date || ""))
+    ? args.result_date : new Date().toISOString().slice(0, 10);
+  const order = await one(
+    `work_orders?id=eq.${workOrderId}&select=id,work_order_no,estate_id,plot_id,block_id,workflow_source,status&limit=1`,
+    "Work order",
+  );
+  await authorizeWorkOrderScope(actor, order);
+  if (order.workflow_source === "canonical_planning") {
+    return rpc("get_or_create_canonical_work_result", {
+      p_work_order_id: workOrderId,
+      p_result_date: resultDate,
+      p_profile_id: actor.profile.id,
+    });
+  }
+  return rpc("get_or_create_work_result", {
+    p_work_order_id: workOrderId,
+    p_result_date: resultDate,
+    p_profile_id: actor.profile.id,
+  });
+}
+
+function canonicalWorkResultWorkerPayload(worker) {
+  const resultWorkerId = optionalUuid(worker.work_result_worker_id, "work_result_worker_id");
+  const assignmentId = optionalUuid(
+    worker.work_order_worker_assignment_id || worker.assignment_id,
+    "work_order_worker_assignment_id",
+  );
+  if (!resultWorkerId && !assignmentId) {
+    throw new ApiError(
+      400,
+      "VALIDATION_ERROR",
+      "work_result_worker_id or work_order_worker_assignment_id is required",
+    );
+  }
+  return {
+    work_result_worker_id: resultWorkerId,
+    work_order_worker_assignment_id: assignmentId,
+    attendance_status: String(worker.attendance_status || "present").slice(0, 80),
+    actual_hours: optionalNumber(worker.actual_hours, "actual_hours") || 0,
+    actual_quantity: optionalNumber(worker.actual_quantity, "actual_quantity") || 0,
+    actual_unit: worker.actual_unit == null ? null : String(worker.actual_unit).slice(0, 80),
+    actual_area_rai: optionalNumber(worker.actual_area_rai, "actual_area_rai") || 0,
+    actual_tree_count: optionalNumber(worker.actual_tree_count, "actual_tree_count") || 0,
+    individual_quality_pct: optionalNumber(worker.individual_quality_pct, "individual_quality_pct"),
+    individual_completion_pct: optionalNumber(worker.individual_completion_pct, "individual_completion_pct"),
+    quantity_allocation_method: String(worker.quantity_allocation_method || "individual").slice(0, 80),
+    is_quantity_estimated: worker.is_quantity_estimated === true,
+    note: worker.note == null ? null : String(worker.note).slice(0, 1000),
+  };
+}
+
+function canonicalWorkResultVehiclePayload(vehicle) {
+  return {
+    work_order_resource_requirement_id: requireUuid(
+      vehicle.work_order_resource_requirement_id || vehicle.resource_requirement_id,
+      "work_order_resource_requirement_id",
+    ),
+    vehicle_id: requireUuid(vehicle.vehicle_id, "vehicle_id"),
+    start_at: vehicle.start_at || null,
+    end_at: vehicle.end_at || null,
+    start_odometer: optionalNumber(vehicle.start_odometer, "start_odometer"),
+    end_odometer: optionalNumber(vehicle.end_odometer, "end_odometer"),
+    start_hour_meter: optionalNumber(vehicle.start_hour_meter, "start_hour_meter"),
+    end_hour_meter: optionalNumber(vehicle.end_hour_meter, "end_hour_meter"),
+    distance_km: optionalNumber(vehicle.distance_km, "distance_km"),
+    engine_hours: optionalNumber(vehicle.engine_hours, "engine_hours"),
+    working_hours: optionalNumber(vehicle.working_hours, "working_hours") || 0,
+    idle_hours: optionalNumber(vehicle.idle_hours, "idle_hours") || 0,
+    actual_area_rai: optionalNumber(vehicle.actual_area_rai, "actual_area_rai") || 0,
+    actual_tree_count: optionalNumber(vehicle.actual_tree_count, "actual_tree_count") || 0,
+    actual_quantity: optionalNumber(vehicle.actual_quantity, "actual_quantity") || 0,
+    actual_unit: vehicle.actual_unit == null ? null : String(vehicle.actual_unit).slice(0, 80),
+    allocation_basis_value: optionalNumber(vehicle.allocation_basis_value, "allocation_basis_value") || 0,
+    actual_fuel_liter: optionalNumber(vehicle.actual_fuel_liter ?? vehicle.allocated_fuel_liter, "actual_fuel_liter") || 0,
+    opening_fuel_liter: optionalNumber(vehicle.opening_fuel_liter, "opening_fuel_liter"),
+    issued_fuel_liter: optionalNumber(vehicle.issued_fuel_liter, "issued_fuel_liter") || 0,
+    closing_fuel_liter: optionalNumber(vehicle.closing_fuel_liter, "closing_fuel_liter"),
+    note: vehicle.note == null ? null : String(vehicle.note).slice(0, 1000),
+  };
+}
+
+async function saveCanonicalWorkResultDraft(args, actor) {
+  const workers = Array.isArray(args.workers) ? args.workers.map(canonicalWorkResultWorkerPayload) : [];
+  const vehicles = Array.isArray(args.vehicles) ? args.vehicles.map(canonicalWorkResultVehiclePayload) : [];
+  return rpc("save_canonical_work_result_draft", {
+    p_result_id: requireUuid(args.result_id, "result_id"),
+    p_actor_profile_id: actor.profile.id,
+    p_header: {
+      actual_start_at: args.actual_start_at || null,
+      actual_end_at: args.actual_end_at || null,
+      actual_quantity: optionalNumber(args.actual_quantity, "actual_quantity"),
+      actual_unit: args.actual_unit == null ? null : String(args.actual_unit).slice(0, 80),
+      actual_area_rai: optionalNumber(args.actual_area_rai, "actual_area_rai"),
+      actual_tree_count: optionalNumber(args.actual_tree_count, "actual_tree_count"),
+      working_minutes: optionalNumber(args.working_minutes, "working_minutes"),
+      stoppage_minutes: optionalNumber(args.stoppage_minutes, "stoppage_minutes"),
+      quality_score: optionalNumber(args.quality_score, "quality_score"),
+      completion_pct: optionalNumber(args.completion_pct, "completion_pct"),
+      rework_quantity: optionalNumber(args.rework_quantity, "rework_quantity"),
+      weather_condition: args.weather_condition == null ? null : String(args.weather_condition).slice(0, 120),
+      terrain_condition: args.terrain_condition == null ? null : String(args.terrain_condition).slice(0, 120),
+      note: args.note == null ? null : String(args.note).slice(0, 2000),
+    },
+    p_workers: workers,
+    p_vehicles: vehicles,
+  });
+}
+
 async function saveWorkResultDraft({ args, actor }) {
   const resultId = requireUuid(args.result_id, "result_id");
-  const { result } = await workResultContext(resultId, actor);
+  const { result, order } = await workResultContext(resultId, actor);
+  if (order.workflow_source === "canonical_planning") {
+    return saveCanonicalWorkResultDraft(args, actor);
+  }
   if (result.result_status !== "draft") throw new ApiError(409, "INVALID_STATE", "Only draft work results can be edited");
   const workers = Array.isArray(args.workers) ? args.workers : [];
   const materials = Array.isArray(args.materials) ? args.materials : [];
@@ -1968,7 +2084,7 @@ async function workResultContext(resultId, actor = null) {
   );
   if (!result.work_order_id) throw new ApiError(409, "RESULT_INCOMPLETE", "Work result is not linked to a work order");
   const order = await one(
-    `work_orders?id=eq.${result.work_order_id}&select=id,estate_id,plot_id,activity_id,block_id,team_id,status&limit=1`,
+    `work_orders?id=eq.${result.work_order_id}&select=id,estate_id,plot_id,activity_id,block_id,team_id,status,workflow_source,survey_required&limit=1`,
     "Work order",
   );
   if (actor) await authorizeWorkOrderScope(actor, order);
@@ -2007,10 +2123,60 @@ async function validateRequiredSurveys(context, acceptedStatuses) {
   if (missing.length) throw new ApiError(409, "SURVEY_REQUIRED", `${missing.length} required survey(s) are incomplete`);
 }
 
+async function validateCanonicalResolvedSurveys(context, acceptedStatuses) {
+  const [assignments, responses, workers, vehicles] = await Promise.all([
+    rest("survey_template_assignments?required=eq.true&status=eq.active&select=template_id,trigger_event")
+      .then(({ data }) => data || []),
+    rest(`survey_responses?work_result_id=eq.${context.result.id}&select=template_id,status,pass_status`)
+      .then(({ data }) => data || []),
+    rest(`work_result_workers?work_result_id=eq.${context.result.id}&select=employee_id`)
+      .then(({ data }) => data || []),
+    rest(`work_result_vehicle_usage?work_result_id=eq.${context.result.id}&select=vehicle_id`)
+      .then(({ data }) => data || []),
+  ]);
+  const requiredTemplateIds = new Set(assignments
+    .filter((row) => ["after_result", "before_close"].includes(row.trigger_event))
+    .map((row) => String(row.template_id)));
+  const resolutionContexts = [
+    {},
+    ...workers.filter((row) => row.employee_id).map((row) => ({ employee_id: row.employee_id })),
+    ...vehicles.filter((row) => row.vehicle_id).map((row) => ({ vehicle_id: row.vehicle_id })),
+  ];
+  const resolved = new Set();
+  for (const resolverArgs of resolutionContexts) {
+    const templateId = await resolveSurveyTemplateForOrder(
+      context.order,
+      resolverArgs,
+      context.result.result_date,
+    );
+    if (templateId && (requiredTemplateIds.has(String(templateId)) || context.order.survey_required)) {
+      resolved.add(String(templateId));
+    }
+  }
+  if (context.order.survey_required && !resolved.size) {
+    const templateId = await resolveSurveyTemplateForOrder(context.order, {}, context.result.result_date);
+    if (templateId) resolved.add(String(templateId));
+  }
+  if (!resolved.size) return;
+  const complete = new Set(responses
+    .filter((row) => acceptedStatuses.has(row.status) && row.pass_status !== "failed")
+    .map((row) => String(row.template_id)));
+  const missing = [...resolved].filter((templateId) => !complete.has(templateId));
+  if (missing.length) {
+    throw new ApiError(409, "WORK_RESULT_SURVEY_NOT_VERIFIED", "Required Survey must be verified and pass before Work Result verification");
+  }
+}
+
 async function submitWorkResult({ args, actor }) {
   const resultId = requireUuid(args.result_id, "result_id");
   const context = await workResultContext(resultId, actor);
   if (context.result.result_status !== "draft") throw new ApiError(409, "INVALID_STATE", "Only draft results can be submitted");
+  if (context.order.workflow_source === "canonical_planning") {
+    return rpc("submit_canonical_work_result_phase2e", {
+      p_result_id: resultId,
+      p_actor_profile_id: actor.profile.id,
+    });
+  }
   if (!(Number(context.result.actual_quantity) > 0)) throw new ApiError(409, "RESULT_INCOMPLETE", "Actual quantity is required");
   if (context.activity.requires_weigh_ticket) {
     await requireRows(
@@ -2040,6 +2206,22 @@ async function submitWorkResult({ args, actor }) {
 async function changeWorkResultStatus(args, actor, from, to, context = null) {
   const resultId = requireUuid(args.result_id, "result_id");
   const authorizedContext = context || await workResultContext(resultId, actor);
+  if (authorizedContext.order.workflow_source === "canonical_planning") {
+    if (to === "verified" || to === "closed") {
+      await validateCanonicalResolvedSurveys(
+        authorizedContext,
+        new Set(["verified", "closed"]),
+      );
+    }
+    const canonicalRpc = to === "verified"
+      ? "verify_canonical_work_result_phase2e"
+      : to === "closed" ? "close_canonical_work_result_phase2e" : null;
+    if (!canonicalRpc) throw new ApiError(409, "INVALID_STATE", "Unsupported canonical Work Result transition");
+    return rpc(canonicalRpc, {
+      p_result_id: resultId,
+      p_actor_profile_id: actor.profile.id,
+    });
+  }
   if (to === "closed") {
     await validateRequiredSurveys(authorizedContext, new Set(["verified", "closed"]));
   }
@@ -2613,8 +2795,11 @@ module.exports._test = {
   createWorkOrderFromPlanItem, submitWorkOrder,
   requireInventoryUatIssue, requirePlanningUatPlan, requirePlanningUatPlanName,
   requireUatWorkOrder, requireWebTestCode, requestHash,
-  activityMaterialStandardInput, budgetBlockMaterialActionParams, calculateConsumedFuel, ensureSurveyFailureFindings,
+  activityMaterialStandardInput, budgetBlockMaterialActionParams, calculateConsumedFuel,
+  canonicalWorkResultVehiclePayload, canonicalWorkResultWorkerPayload,
+  ensureSurveyFailureFindings, getOrCreateWorkResult,
   nextActivityMaterialStandardVersion, notificationContext, resolveSurveyTemplateForOrder,
+  selectResolvedSurveyTemplate,
   standardPeriodsOverlap,
-  surveyAnswerComplete, surveyQuestionVisible,
+  surveyAnswerComplete, surveyQuestionVisible, validateCanonicalResolvedSurveys,
 };

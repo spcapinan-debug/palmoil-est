@@ -62,6 +62,8 @@ const TABLES = new Set([
   "v_survey_response_summary", "v_survey_question_analysis", "v_survey_finding_followup",
   "v_survey_action_center", "v_available_inbound_weight_tickets",
   "v_canonical_work_order_scheduler_queue",
+  "v_canonical_daily_material_actual", "v_canonical_daily_resource_actual",
+  "v_canonical_daily_performance_input",
   "v_goods_issue_multi_day_status", "v_goods_return_readiness",
   "v_material_unit_conversion_options",
 ]);
@@ -95,6 +97,9 @@ const READ_RESTRICTED = {
   vehicle_fuel_efficiency_standards: ["fuel.view", "fuel.allocation.manage"],
   v_vehicle_fuel_status: ["fuel.view", "fuel.issue", "fuel.allocation.manage"],
   v_work_result_vehicle_fuel_detail: ["fuel.view", "farm.result.record", "fuel.allocation.manage"],
+  v_canonical_daily_material_actual: ["farm.result.record", "inventory.view", "inventory.manage"],
+  v_canonical_daily_resource_actual: ["farm.result.record", "fuel.view", "fuel.allocation.manage"],
+  v_canonical_daily_performance_input: ["farm.result.record", "performance.view"],
   v_fuel_control_exceptions: ["fuel.view", "fuel.allocation.manage"],
   app_notification_rules: ["notification.rule.manage", "notification.manage"],
   app_notifications: "notification.view",
@@ -583,6 +588,9 @@ async function assertLegacyBudgetMutationSafe(table, rowIds = []) {
 const CANONICAL_WORK_ORDER_MUTATION_TABLES = new Set([
   "work_orders", "work_order_workers", "work_order_materials", "work_order_machines",
 ]);
+const CANONICAL_WORK_RESULT_MUTATION_TABLES = new Set([
+  "work_results", "work_result_workers",
+]);
 
 async function assertCanonicalWorkOrderMutationSafe(table, rows = [], rowIds = []) {
   if (!CANONICAL_WORK_ORDER_MUTATION_TABLES.has(table)) return;
@@ -608,6 +616,55 @@ async function assertCanonicalWorkOrderMutationSafe(table, rows = [], rowIds = [
   ).then(({ data }) => data?.[0]);
   if (canonical) {
     throw new ApiError(403, "ACTION_REQUIRED", "Canonical Work Orders must be changed through /api/farm-actions");
+  }
+}
+
+async function assertCanonicalWorkResultMutationSafe(table, rows = [], rowIds = []) {
+  if (!CANONICAL_WORK_RESULT_MUTATION_TABLES.has(table)) return;
+  if (table === "work_results"
+      && rows.some((row) => row.workflow_source === "canonical_work_order")) {
+    throw new ApiError(
+      403,
+      "ACTION_REQUIRED",
+      "Canonical Work Results must be changed through /api/farm-actions",
+    );
+  }
+  let resultIds = table === "work_results"
+    ? [...rows.map((row) => row.id), ...rowIds]
+    : rows.map((row) => row.work_result_id);
+  const detailIds = table === "work_result_workers"
+    ? [...new Set([...rows.map((row) => row.id), ...rowIds].filter(Boolean))]
+    : [];
+  if (detailIds.length) {
+    const existing = await rest(
+      `work_result_workers?id=in.(${detailIds.map(encodeURIComponent).join(",")})&select=work_result_id`,
+    ).then(({ data }) => data || []);
+    resultIds.push(...existing.map((row) => row.work_result_id));
+  }
+  resultIds = [...new Set(resultIds.filter(Boolean)
+    .map((id) => requireUuid(id, "work_result_id")))];
+  if (!resultIds.length) return;
+  const results = await rest(
+    `work_results?id=in.(${resultIds.join(",")})&select=id,work_order_id,workflow_source`,
+  ).then(({ data }) => data || []);
+  if (results.some((row) => row.workflow_source === "canonical_work_order")) {
+    throw new ApiError(
+      403,
+      "ACTION_REQUIRED",
+      "Canonical Work Results must be changed through /api/farm-actions",
+    );
+  }
+  const orderIds = [...new Set(results.map((row) => row.work_order_id).filter(Boolean))];
+  if (!orderIds.length) return;
+  const canonicalOrder = await rest(
+    `work_orders?id=in.(${orderIds.join(",")})&workflow_source=eq.canonical_planning&select=id&limit=1`,
+  ).then(({ data }) => data?.[0]);
+  if (canonicalOrder) {
+    throw new ApiError(
+      403,
+      "ACTION_REQUIRED",
+      "Canonical Work Results must be changed through /api/farm-actions",
+    );
   }
 }
 
@@ -801,6 +858,7 @@ async function handlePost(req, res, actor) {
   if (rows.length > 500) throw new ApiError(400, "VALIDATION_ERROR", "A request may write at most 500 rows");
   await assertLegacyBudgetMutationSafe(table, rows.map((row) => row.id));
   await assertCanonicalWorkOrderMutationSafe(table, rows, []);
+  await assertCanonicalWorkResultMutationSafe(table, rows, []);
   if (table === "budget_rate_blocks") {
     await validateBudgetRateBlockRows(actor, rows, body.selectedPlantingYears, body.selectedBlockIds);
   }
@@ -842,6 +900,7 @@ async function handleDelete(req, res, url, actor) {
   const rawId = body.id || url.searchParams.get("id");
   await assertLegacyBudgetMutationSafe(table, [rawId]);
   await assertCanonicalWorkOrderMutationSafe(table, [], [rawId]);
+  await assertCanonicalWorkResultMutationSafe(table, [], [rawId]);
   const id = requireUuid(rawId, "id");
   const { data } = await rest(`${table}?id=eq.${encodeURIComponent(id)}`, {
     method: "DELETE",
@@ -884,7 +943,9 @@ module.exports = handler;
 module.exports._test = {
   ACTION_ONLY_TABLES, AREA_REFERENCE_TABLES, OPTIONAL_TABLES, SYSTEM_USER_TABLES, TABLES, UAT_OPERATIONAL_TABLES, WRITE_PERMISSIONS,
   CANONICAL_BUDGET_PROTECTION_CODE, CANONICAL_WORK_ORDER_MUTATION_TABLES,
-  areaReferenceRows, assertCanonicalWorkOrderMutationSafe, assertLegacyBudgetMutationSafe, cache, clearCache, parallelMap,
+  CANONICAL_WORK_RESULT_MUTATION_TABLES,
+  areaReferenceRows, assertCanonicalWorkOrderMutationSafe, assertCanonicalWorkResultMutationSafe,
+  assertLegacyBudgetMutationSafe, cache, clearCache, parallelMap,
   actorCanAccessBlock, databaseBlockPlantingYear, enforceUatTableWrite, normalizePlantingYear,
   requestedTables, requireActiveCatalogBlock, safeTableError, tableName, uatActionCenterRows, uatRowAllowed,
   validateActiveBlockRows, validateBudgetRateBlockRows, writePermission,
