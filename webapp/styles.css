@@ -17716,3 +17716,173 @@ details.farm-survey-score-section[open] > summary::after {
   .farm-planning-frozen { align-items: stretch; flex-direction: column; }
   .farm-canonical-planning .farm-plan-actions { display: grid; grid-template-columns: 1fr; }
 }
+/* Phase 2G canonical Payroll workspace: additive to the existing Farm shell. */
+.phase2g-payroll-workspace {
+  display: grid;
+  gap: 14px;
+}
+
+.phase2g-payroll-head,
+.phase2g-payroll-actions,
+.phase2g-adjustment-strip,
+.phase2g-export-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #d9e2ef;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.phase2g-payroll-head > div > span {
+  color: #48637f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.phase2g-payroll-head h3,
+.phase2g-payroll-head p {
+  margin: 3px 0;
+}
+
+.phase2g-payroll-head label {
+  min-width: min(390px, 100%);
+}
+
+.phase2g-payroll-head select {
+  width: 100%;
+  margin-top: 5px;
+}
+
+.phase2g-payroll-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  background: #f8fafc;
+}
+
+.phase2g-payroll-kpis {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.phase2g-eligibility-preview {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #d9e2ef;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.phase2g-eligibility-preview article {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.phase2g-eligibility-preview span,
+.phase2g-eligibility-preview strong { display: block; }
+.phase2g-eligibility-preview span { color: #607086; font-size: 12px; }
+.phase2g-eligibility-preview strong { margin-top: 4px; font-size: 18px; }
+.phase2g-eligibility-preview article.warning { background: #fffaf0; }
+.phase2g-eligibility-preview article.ok { background: #f3fbf6; }
+
+.phase2g-payroll-kpis article {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #dce5ef;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.phase2g-payroll-kpis article span,
+.phase2g-payroll-kpis article small {
+  display: block;
+  color: #607086;
+}
+
+.phase2g-payroll-kpis article strong {
+  display: block;
+  margin: 5px 0;
+  font-size: 20px;
+}
+
+.phase2g-payroll-kpis article.warning {
+  border-color: #f1c36d;
+  background: #fffaf0;
+}
+
+.phase2g-payroll-kpis article.ok {
+  border-color: #a8d7bf;
+  background: #f3fbf6;
+}
+
+.phase2g-payroll-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, .9fr) minmax(500px, 1.4fr);
+  gap: 14px;
+}
+
+.phase2g-payroll-workspace .mini-table tr[data-phase2g-payroll-summary] {
+  cursor: pointer;
+}
+
+.phase2g-payroll-workspace .mini-table tr.is-selected td {
+  background: #eef6ff;
+}
+
+.phase2g-payroll-detail .table-wrap {
+  max-height: 420px;
+}
+
+.phase2g-adjustment-strip {
+  justify-content: flex-start;
+  margin-top: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.phase2g-adjustment-strip small {
+  margin-left: auto;
+  color: #607086;
+}
+
+.phase2g-export-note {
+  justify-content: flex-start;
+  background: #f7fafc;
+  color: #42576e;
+}
+
+@media (max-width: 1180px) {
+  .phase2g-eligibility-preview {
+    grid-template-columns: repeat(3, minmax(130px, 1fr));
+  }
+  .phase2g-payroll-kpis {
+    grid-template-columns: repeat(4, minmax(130px, 1fr));
+  }
+  .phase2g-payroll-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .phase2g-payroll-head,
+  .phase2g-adjustment-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .phase2g-eligibility-preview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .phase2g-payroll-kpis {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+  .phase2g-adjustment-strip small {
+    margin-left: 0;
+  }
+}

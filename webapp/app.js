@@ -58,6 +58,8 @@ const state = {
   farmInventoryReturnId: "",
   farmInventoryCalculation: null,
   farmSelectedTeamId: "",
+  farmPayrollPeriodId: "",
+  farmPayrollSummaryId: "",
   farmActivityModalTable: "",
   farmBudgetContract: {
     query: "",
@@ -1550,7 +1552,15 @@ const FARM_MODULES = [
     group: "Payroll",
     accent: "Rate / OT / Deduction / Allowance",
     description: "คำนวณค่าแรงจาก work_results, OT, เงินหัก, เงินเพิ่ม, งวดค่าแรง และปิดงวด",
-    tables: ["payroll_periods", "payroll_lines", "payroll_rates", "payroll_rules"],
+    tables: [
+      "v_phase2g_payroll_period_workspace", "v_phase2g_payroll_eligibility_preview",
+      "v_phase2g_payroll_employee_drilldown",
+      "v_phase2g_bpay_reconciliation_export", "payroll_periods", "payroll_employee_summaries",
+      "payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines",
+      "payroll_team_pool_reconciliations", "contractor_period_estimates",
+      "work_results", "work_orders", "employees", "contractors",
+      "payroll_lines", "payroll_rates", "payroll_rules",
+    ],
     fields: [
       ["code", "งวด/รหัส", "PAY-2569-01"],
       ["name", "รายการ", "งวดค่าแรงมกราคม"],
@@ -3618,6 +3628,42 @@ const FARM_TABLE_SCHEMAS = {
     seed: [
       { id: "pay-period-2569-01", period_code: "PAY-2569-01", period_name: "งวดค่าแรงมกราคม 2569", start_date: "2026-01-01", end_date: "2026-01-31", status: "open" },
     ],
+  },
+  v_phase2g_payroll_period_workspace: {
+    moduleId: "farm-payroll", title: "สรุปงวดค่าแรง Canonical", primaryKey: "payroll_period_id",
+    codeField: "period_code", labelField: "period_name", fields: [], seed: [],
+  },
+  v_phase2g_payroll_eligibility_preview: {
+    moduleId: "farm-payroll", title: "ผลงานพร้อมคำนวณค่าแรง", primaryKey: "period_code",
+    codeField: "period_code", labelField: "period_code", fields: [], seed: [],
+  },
+  v_phase2g_payroll_employee_drilldown: {
+    moduleId: "farm-payroll", title: "รายละเอียดค่าแรงพนักงาน", primaryKey: "earning_line_id",
+    codeField: "earning_line_id", labelField: "employee_code", fields: [], seed: [],
+  },
+  v_phase2g_bpay_reconciliation_export: {
+    moduleId: "farm-payroll", title: "B-Pay Reconciliation", primaryKey: "employee_code",
+    codeField: "employee_code", labelField: "full_name", fields: [], seed: [],
+  },
+  payroll_employee_summaries: {
+    moduleId: "farm-payroll", title: "สรุปค่าแรงพนักงาน", primaryKey: "id",
+    codeField: "employee_id", labelField: "employee_id", fields: [], seed: [],
+  },
+  payroll_earning_lines: {
+    moduleId: "farm-payroll", title: "รายการรายได้", primaryKey: "id",
+    codeField: "work_order_no", labelField: "activity_code", fields: [], seed: [],
+  },
+  payroll_allowance_lines: {
+    moduleId: "farm-payroll", title: "รายการเงินเพิ่ม", primaryKey: "id",
+    codeField: "source_reference", labelField: "reason", fields: [], seed: [],
+  },
+  payroll_deduction_lines: {
+    moduleId: "farm-payroll", title: "รายการเงินหัก", primaryKey: "id",
+    codeField: "source_reference", labelField: "reason", fields: [], seed: [],
+  },
+  payroll_team_pool_reconciliations: {
+    moduleId: "farm-payroll", title: "Team Pool Reconciliation", primaryKey: "id",
+    codeField: "allocation_group_key", labelField: "status", fields: [], seed: [],
   },
   payroll_period_lines: {
     moduleId: "farm-payroll",
@@ -27492,6 +27538,225 @@ function renderFarmDailyWorkspace() {
     <div class="farm-daily-workspace daily-tab-${esc(active)}">${renderFarmResultPanel()}${extras}</div>`;
 }
 
+function farmPhase2gPayrollRows() {
+  const workspace = farmRowsByKey("v_phase2g_payroll_period_workspace");
+  if (workspace.length) return workspace;
+  const summaries = farmRowsByKey("payroll_employee_summaries");
+  const contractors = farmRowsByKey("contractor_period_estimates");
+  return farmRowsByKey("payroll_periods").map((period) => {
+    const employeeRows = summaries.filter((row) => String(row.payroll_period_id) === String(period.id));
+    const contractorRows = contractors.filter((row) => String(row.payroll_period_id) === String(period.id));
+    return {
+      ...period,
+      payroll_period_id: period.id,
+      employee_count: employeeRows.length,
+      base_earning: employeeRows.reduce((sum, row) => sum + n(row.regular_earning) + n(row.piece_rate_earning), 0),
+      overtime_earning: employeeRows.reduce((sum, row) => sum + n(row.overtime_earning), 0),
+      allowance_amount: employeeRows.reduce((sum, row) => sum + n(row.allowance_amount), 0),
+      deduction_amount: employeeRows.reduce((sum, row) => sum + n(row.deduction_amount), 0),
+      employee_net_amount: employeeRows.reduce((sum, row) => sum + n(row.net_amount), 0),
+      contractor_count: new Set(contractorRows.map((row) => row.contractor_id).filter(Boolean)).size,
+      contractor_gross_amount: contractorRows.reduce((sum, row) => sum + n(row.gross_amount || row.actual_amount), 0),
+      contractor_net_amount: contractorRows.reduce((sum, row) => sum + n(row.net_amount), 0),
+      exception_count: 0,
+    };
+  });
+}
+
+function renderFarmPhase2gPayrollWorkspace() {
+  const periods = farmPhase2gPayrollRows()
+    .sort((a, b) => String(b.start_date || "").localeCompare(String(a.start_date || "")));
+  const selectedId = periods.some((row) => String(row.payroll_period_id || row.id) === String(state.farmPayrollPeriodId))
+    ? state.farmPayrollPeriodId : String(periods[0]?.payroll_period_id || periods[0]?.id || "");
+  const period = periods.find((row) => String(row.payroll_period_id || row.id) === selectedId) || {};
+  const summaries = farmRowsByKey("payroll_employee_summaries")
+    .filter((row) => String(row.payroll_period_id) === selectedId);
+  const selectedSummaryId = summaries.some((row) => String(row.id) === String(state.farmPayrollSummaryId))
+    ? state.farmPayrollSummaryId : String(summaries[0]?.id || "");
+  const summary = summaries.find((row) => String(row.id) === selectedSummaryId) || {};
+  const employee = farmLookup("employees", summary.employee_id) || {};
+  const allDrilldown = farmRowsByKey("v_phase2g_payroll_employee_drilldown");
+  const drilldown = allDrilldown.filter((row) => String(row.payroll_summary_id) === selectedSummaryId);
+  const earningLines = drilldown.length ? drilldown : farmRowsByKey("payroll_earning_lines")
+    .filter((row) => String(row.payroll_summary_id) === selectedSummaryId);
+  const allowances = farmRowsByKey("payroll_allowance_lines")
+    .filter((row) => String(row.payroll_summary_id) === selectedSummaryId);
+  const deductions = farmRowsByKey("payroll_deduction_lines")
+    .filter((row) => String(row.payroll_summary_id) === selectedSummaryId);
+  const contractors = farmRowsByKey("contractor_period_estimates")
+    .filter((row) => String(row.payroll_period_id) === selectedId);
+  const bpayRows = farmRowsByKey("v_phase2g_bpay_reconciliation_export")
+    .filter((row) => String(row.payroll_period_id) === selectedId);
+  const eligibilityRows = farmRowsByKey("v_phase2g_payroll_eligibility_preview");
+  const eligibility = eligibilityRows.find((row) =>
+    (period.start_date && row.start_date === period.start_date && row.end_date === period.end_date)
+      || (!period.start_date && row.next_work_result_id)
+  ) || eligibilityRows[0] || {};
+  const status = String(period.status || "open").toLowerCase();
+  const canCalculate = ["open", "calculated", "reviewing"].includes(status);
+  const canApprove = ["calculated", "reviewing"].includes(status);
+  const canClose = status === "approved";
+  return `
+    <section class="phase2g-payroll-workspace" data-phase2g-payroll-workspace>
+      <div class="phase2g-payroll-head">
+        <div>
+          <span>Verified Actual → Payroll / Contractor Estimate</span>
+          <h3>งวดค่าแรง Canonical</h3>
+          <p>Rate มาจาก Work Result Worker → Frozen WO Labor Requirement เท่านั้น · ไม่มีการอ่าน Rate Master ใหม่</p>
+        </div>
+        <label>งวด 1–15 / 16–สิ้นเดือน
+          <select data-phase2g-payroll-period>
+            ${periods.map((row) => {
+              const id = String(row.payroll_period_id || row.id || "");
+              return `<option value="${esc(id)}"${id === selectedId ? " selected" : ""}>${esc(row.period_code || row.period_name || id)} · ${esc(row.start_date || "-")} – ${esc(row.end_date || "-")}</option>`;
+            }).join("")}
+          </select>
+        </label>
+      </div>
+      <div class="phase2g-eligibility-preview" data-phase2g-eligibility-preview>
+        <article><span>Verified Results พร้อมเข้า Payroll</span><strong>${fmt(eligibility.ready_result_count)}</strong></article>
+        <article><span>พนักงาน</span><strong>${fmt(eligibility.employee_count)}</strong></article>
+        <article><span>Contractor</span><strong>${fmt(eligibility.contractor_count)}</strong></article>
+        <article><span>จำนวน Result</span><strong>${fmt(eligibility.verified_result_count)}</strong></article>
+        <article><span>Already processed</span><strong>${fmt(eligibility.already_processed_count)}</strong></article>
+        <article class="${n(eligibility.exception_count) ? "warning" : "ok"}"><span>Exceptions</span><strong>${fmt(eligibility.exception_count)}</strong></article>
+      </div>
+      ${!periods.length ? `<div class="farm-empty-state"><strong>ยังไม่มีงวดค่าแรง</strong><span>Verified Result ที่พร้อมจะถูกคำนวณผ่าน canonical payroll server action</span>
+        ${eligibility.next_work_result_id ? `<button type="button" data-phase2g-prepare-result="${esc(eligibility.next_work_result_id)}">คำนวณจากผลงานที่ตรวจสอบแล้ว</button>` : "<small>ยังไม่มี canonical Work Result ที่ผ่าน Verify และพร้อมคำนวณ</small>"}
+      </div>` : `
+        <div class="phase2g-payroll-actions">
+          <span class="status-pill ${esc(status)}">${esc(farmTranslateValue(status))}</span>
+          <span>Eligible Result ${fmt(eligibility.ready_result_count)}</span>
+          <button type="button" data-phase2g-payroll-action="prepare_payroll_period" ${canCalculate ? "" : "disabled"}>คำนวณ / Reconcile</button>
+          <button type="button" data-phase2g-payroll-action="approve_payroll_period" ${canApprove ? "" : "disabled"}>อนุมัติงวด</button>
+          <button type="button" data-phase2g-payroll-action="close_payroll_period" ${canClose ? "" : "disabled"}>ปิดงวด</button>
+        </div>
+        <div class="phase2g-payroll-kpis">
+          <article><span>พนักงาน</span><strong>${fmt(period.employee_count)}</strong><small>Base ${fmt(period.base_earning)}</small></article>
+          <article><span>OT</span><strong>${fmt(period.overtime_earning)}</strong><small>แยก OT1 ตามกฎที่อนุมัติ</small></article>
+          <article><span>เงินเพิ่ม</span><strong>${fmt(period.allowance_amount)}</strong><small>มี source / reason / approver</small></article>
+          <article><span>เงินหัก</span><strong>${fmt(period.deduction_amount)}</strong><small>น้ำ · ไฟ · ปาล์มดิบ · อื่น ๆ</small></article>
+          <article><span>สุทธิพนักงาน</span><strong>${fmt(period.employee_net_amount)}</strong><small>พร้อม reconcile B-Pay</small></article>
+          <article><span>ผู้รับเหมา</span><strong>${fmt(period.contractor_net_amount)}</strong><small>${fmt(period.contractor_count)} ราย · แยกจาก Payroll</small></article>
+          <article class="${n(period.exception_count) ? "warning" : "ok"}"><span>Exceptions</span><strong>${fmt(period.exception_count)}</strong><small>Team pool / lineage gate</small></article>
+        </div>
+        <div class="phase2g-payroll-grid">
+          <article class="farm-panel">
+            <div class="section-head"><h3>พนักงานในงวด</h3><span>${fmt(summaries.length)} คน</span></div>
+            <div class="table-wrap"><table class="mini-table">
+              <thead><tr><th>พนักงาน</th><th>วันทำงาน</th><th>กิจกรรม</th><th>Base</th><th>OT</th><th>เพิ่ม</th><th>หัก</th><th>สุทธิ</th><th>สถานะ</th></tr></thead>
+              <tbody>${summaries.map((row) => {
+                const person = farmLookup("employees", row.employee_id) || {};
+                const employeeMetrics = allDrilldown.find((line) => String(line.payroll_summary_id) === String(row.id)) || {};
+                return `<tr class="${String(row.id) === selectedSummaryId ? "is-selected" : ""}" data-phase2g-payroll-summary="${esc(row.id)}">
+                  <td><strong>${esc(person.employee_code || "-")}</strong><small>${esc(person.full_name || row.employee_id || "-")}</small></td>
+                  <td class="num">${fmt(employeeMetrics.work_day_count)}</td><td class="num">${fmt(employeeMetrics.activity_count)}</td>
+                  <td class="num">${fmt(n(row.regular_earning) + n(row.piece_rate_earning))}</td><td class="num">${fmt(row.overtime_earning)}</td>
+                  <td class="num">${fmt(row.allowance_amount)}</td><td class="num">${fmt(row.deduction_amount)}</td>
+                  <td class="num"><strong>${fmt(row.net_amount)}</strong></td><td>${esc(farmTranslateValue(row.status))}</td>
+                </tr>`;
+              }).join("") || `<tr><td colspan="9">ยังไม่มี Employee earning ที่คำนวณแล้ว</td></tr>`}</tbody>
+            </table></div>
+          </article>
+          <article class="farm-panel phase2g-payroll-detail">
+            <div class="section-head"><h3>Drill-down</h3><span>${esc(employee.full_name || "เลือกพนักงาน")}</span></div>
+            <div class="table-wrap"><table class="mini-table">
+              <thead><tr><th>วันที่ / WO</th><th>กิจกรรม</th><th>Actual</th><th>Frozen Rate</th><th>ประเภท</th><th>ยอด</th></tr></thead>
+              <tbody>${earningLines.map((row) => `<tr>
+                <td>${esc(row.work_date || "-")}<small>${esc(row.work_order_no || "-")}</small></td>
+                <td>${esc(row.activity_code || "-")}<small>${esc(String(row.work_result_id || "").slice(0, 8))}</small></td>
+                <td class="num">${fmt(row.quantity || row.actual_quantity)} ${esc(row.unit || row.rate_uom || "")}</td>
+                <td class="num">${fmt(row.frozen_rate_amount || row.rate)}</td>
+                <td>${esc(row.earning_component || row.earning_type || "base")}${row.is_driver ? "<small>Driver labor</small>" : ""}</td>
+                <td class="num"><strong>${fmt(row.amount)}</strong></td>
+              </tr>`).join("") || `<tr><td colspan="6">เลือกพนักงานเพื่อดู Date → Activity → WO → Result → Rate</td></tr>`}</tbody>
+            </table></div>
+            <div class="phase2g-adjustment-strip">
+              <span>Allowance ${fmt(allowances.reduce((sum, row) => sum + n(row.amount), 0))}</span>
+              <span>Deduction ${fmt(deductions.reduce((sum, row) => sum + n(row.amount), 0))}</span>
+              <small>เพิ่ม/หักผ่าน action พร้อม source, reference, reason และ approver เท่านั้น</small>
+            </div>
+          </article>
+        </div>
+        <article class="farm-panel phase2g-contractor-panel">
+          <div class="section-head"><h3>Contractor Estimate (แยกจาก Employee Payroll)</h3><span>${fmt(contractors.length)} Rate lines</span></div>
+          <div class="table-wrap"><table class="mini-table">
+            <thead><tr><th>ผู้รับเหมา</th><th>วันที่</th><th>Actual</th><th>Frozen Rate</th><th>Gross</th><th>หัก/คุณภาพ</th><th>เพิ่ม</th><th>Net</th></tr></thead>
+            <tbody>${contractors.map((row) => {
+              const contractor = farmLookup("contractors", row.contractor_id) || {};
+              return `<tr><td><strong>${esc(contractor.contractor_code || "-")}</strong><small>${esc(contractor.contractor_name || row.contractor_id || "-")}</small></td>
+                <td>${esc(row.estimate_date || "-")}</td><td class="num">${fmt(row.actual_quantity)} ${esc(row.actual_unit || row.estimated_unit || "")}</td>
+                <td class="num">${fmt(row.frozen_rate_amount || row.estimated_rate)}</td><td class="num">${fmt(row.gross_amount || row.actual_amount)}</td>
+                <td class="num">${fmt(n(row.deduction_amount) + n(row.quality_deduction_amount))}</td><td class="num">${fmt(row.allowance_amount)}</td>
+                <td class="num"><strong>${fmt(row.net_amount)}</strong></td></tr>`;
+            }).join("") || `<tr><td colspan="8">ยังไม่มี Contractor Estimate ในงวดนี้</td></tr>`}</tbody>
+          </table></div>
+        </article>
+        <article class="farm-panel phase2g-bpay-panel" data-phase2g-bpay-reconciliation>
+          <div class="section-head"><h3>B-Pay Reconciliation</h3><span>DB/service read-only · ${fmt(bpayRows.length)} คน</span></div>
+          <div class="table-wrap"><table class="mini-table">
+            <thead><tr><th>พนักงาน</th><th>Source Results</th><th>Base</th><th>OT</th><th>เพิ่ม</th><th>หัก</th><th>สุทธิ</th><th>Variance</th></tr></thead>
+            <tbody>${bpayRows.map((row) => `<tr>
+              <td><strong>${esc(row.employee_code || "-")}</strong><small>${esc(row.full_name || "-")}</small></td>
+              <td class="num">${fmt(row.source_result_count)}</td><td class="num">${fmt(row.base_earning)}</td>
+              <td class="num">${fmt(row.overtime_earning)}</td><td class="num">${fmt(row.allowance_amount)}</td>
+              <td class="num">${fmt(row.deduction_amount)}</td><td class="num"><strong>${fmt(row.net_amount)}</strong></td>
+              <td><span class="status-pill ${esc(row.variance_state || "review_required")}">${esc(row.variance_state || "review_required")}</span></td>
+            </tr>`).join("") || `<tr><td colspan="8">ยังไม่มีข้อมูล B-Pay reconciliation สำหรับงวดนี้</td></tr>`}</tbody>
+          </table></div>
+          <div class="phase2g-export-note"><strong>B-Pay:</strong> รอบนี้มีเฉพาะ read-only reconciliation/export view ไม่มีการเขียนออกระบบภายนอก</div>
+        </article>
+      `}
+    </section>`;
+}
+
+async function runFarmPhase2gPayrollAction(action) {
+  const periodId = state.farmPayrollPeriodId || farmPhase2gPayrollRows()[0]?.payroll_period_id || "";
+  if (!periodId) return;
+  const confirmed = ["approve_payroll_period", "close_payroll_period"].includes(action);
+  if (confirmed && !window.confirm(action === "close_payroll_period" ? "ยืนยันปิดงวด? หลังปิดแล้วแก้ไขไม่ได้" : "ยืนยันอนุมัติงวดค่าแรง?")) return;
+  state.farmSyncMessage = "กำลังประมวลผลงวดค่าแรงจาก Verified Actual...";
+  try {
+    await runFarmAction(action, { period_id: periodId }, { confirmed, reason: "Phase 2G canonical Payroll workspace" });
+    state.farmSyncStatus = "success";
+    state.farmSyncMessage = "อัปเดตงวดค่าแรงเรียบร้อย";
+    await loadFarmCurrentViewTables({ silent: true, force: true, extraTables: [
+      "v_phase2g_payroll_period_workspace", "v_phase2g_payroll_eligibility_preview",
+      "v_phase2g_payroll_employee_drilldown",
+      "payroll_periods", "payroll_employee_summaries", "payroll_earning_lines",
+      "payroll_allowance_lines", "payroll_deduction_lines", "contractor_period_estimates",
+    ] });
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = error.message || "ไม่สามารถประมวลผลงวดค่าแรงได้";
+  } finally {
+    render();
+  }
+}
+
+async function runFarmPhase2gPrepareResult(workResultId) {
+  if (!workResultId) return;
+  state.farmSyncMessage = "กำลังสร้างงวดค่าแรงจาก Verified Actual...";
+  try {
+    await runFarmAction("prepare_verified_work_result_payroll_phase2g", { work_result_id: workResultId }, {
+      reason: "Phase 2G prepare verified Work Result",
+    });
+    state.farmSyncStatus = "success";
+    state.farmSyncMessage = "สร้างและคำนวณงวดค่าแรงเรียบร้อย";
+    await loadFarmCurrentViewTables({ silent: true, force: true, extraTables: [
+      "v_phase2g_payroll_period_workspace", "v_phase2g_payroll_eligibility_preview",
+      "v_phase2g_payroll_employee_drilldown",
+      "payroll_periods", "payroll_employee_summaries", "payroll_earning_lines",
+      "payroll_allowance_lines", "payroll_deduction_lines", "contractor_period_estimates",
+    ] });
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = error.message || "ไม่สามารถสร้างงวดค่าแรงจาก Verified Result ได้";
+  } finally {
+    render();
+  }
+}
+
 function renderFarmPage() {
   const module = selectedFarmModule();
   if (module.id === "farm-management-dashboard") return renderFarmManagementDashboard();
@@ -27518,6 +27783,7 @@ function renderFarmPage() {
   const isTeamPage = module.id === "farm-hr-teams";
   const isPeoplePage = module.id === "farm-people";
   const isInventoryPage = module.id === "farm-inventory";
+  const isPayrollPage = module.id === "farm-payroll";
   const pageTitle = isWorkPage ? "วางแผนสร้าง Work Order"
     : isDispatchPage ? "สั่งงานผู้จัดการ"
       : isResultPage ? "บันทึกงานหัวหน้างาน"
@@ -27542,7 +27808,7 @@ function renderFarmPage() {
       ${isBudgetPage ? "" : renderFarmWorkflowNav(module)}
       ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isBudgetPage ? renderFarmBudgetBoard() : ""}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : `<section class="farm-hero">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : `<section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
@@ -27555,6 +27821,7 @@ function renderFarmPage() {
       ${isTeamPage ? renderFarmTeamsBoard() : ""}
       ${isPeoplePage ? renderFarmPeopleBoard(table, rows, tables) : ""}
       ${isInventoryPage ? renderFarmInventoryBoard() : ""}
+      ${isPayrollPage ? renderFarmPhase2gPayrollWorkspace() : ""}
       ${isWorkPage ? (farmWorkflowModeFromUrl() === "workspace" ? `${renderFarmWorkflowModeBar({
         workspaceLabel: "ดู Workspace และติดตามงาน",
         entryLabel: "กลับหน้าวางแผน",
@@ -27564,7 +27831,7 @@ function renderFarmPage() {
       ${isInventoryIssuePage ? renderFarmInventoryIssueQueue() : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : `<section class="farm-toolbar">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : `<section class="farm-toolbar">
         <label>ตารางข้อมูล
           <select id="farmTableSelect">
             ${tables.map((item) => `<option value="${esc(item.key)}"${item.key === table.key ? " selected" : ""}>${esc(farmTableDisplayName(item))}</option>`).join("")}
@@ -27588,9 +27855,9 @@ function renderFarmPage() {
           <input id="farmImportFile" type="file" accept=".csv,text/csv" ${state.farmSyncBusy ? "disabled" : ""}>
         </label>
       </section>`}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : renderFarmDataEntryGuide(table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : renderFarmKeyBindings(table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : `<section class="farm-panel">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : renderFarmDataEntryGuide(table)}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : renderFarmKeyBindings(table)}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : `<section class="farm-panel">
         <div class="section-head"><h3>ตารางรายการ</h3><span>กดเพิ่มหรือดับเบิลคลิกแถวเพื่อเปิดหน้าต่างแก้ไข</span></div>
         <div class="table-wrap farm-table-wrap">
           <table class="mini-table farm-table">
@@ -27611,7 +27878,7 @@ function renderFarmPage() {
           </table>
         </div>
       </section>`}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage ? "" : renderFarmActivityModal()}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : renderFarmActivityModal()}
       ${module.id === "farm-reports" ? renderFarmReportMatrix() : ""}
     </div>`;
 }
@@ -29688,6 +29955,12 @@ async function startAuthenticatedApplication() {
     }
   });
   els.reportPage.addEventListener("input", (e) => {
+    if (e.target.matches("[data-phase2g-payroll-period]")) {
+      state.farmPayrollPeriodId = e.target.value || "";
+      state.farmPayrollSummaryId = "";
+      render();
+      return;
+    }
     if (e.target.matches("[data-farm-workspace-filter]")) {
       state.farmWorkWorkspaceFilters[e.target.dataset.farmWorkspaceFilter] = e.target.value.trim();
       clearTimeout(state.estSearchTimer);
@@ -29861,6 +30134,22 @@ async function startAuthenticatedApplication() {
     }
     if (e.target.closest("[data-farm-db-refresh]")) {
       loadFarmCurrentViewTables({ silent: true, force: true });
+      return;
+    }
+    const payrollPrepareResult = e.target.closest("[data-phase2g-prepare-result]");
+    if (payrollPrepareResult) {
+      runFarmPhase2gPrepareResult(payrollPrepareResult.dataset.phase2gPrepareResult);
+      return;
+    }
+    const payrollSummary = e.target.closest("[data-phase2g-payroll-summary]");
+    if (payrollSummary) {
+      state.farmPayrollSummaryId = payrollSummary.dataset.phase2gPayrollSummary || "";
+      render();
+      return;
+    }
+    const payrollAction = e.target.closest("[data-phase2g-payroll-action]");
+    if (payrollAction) {
+      runFarmPhase2gPayrollAction(payrollAction.dataset.phase2gPayrollAction);
       return;
     }
     if (e.target.closest("[data-farm-budget-sync]")) {

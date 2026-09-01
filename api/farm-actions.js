@@ -419,6 +419,55 @@ const ACTIONS = {
     params: (args, actor) => ({ p_period_id: requireUuid(args.period_id, "period_id"), p_profile_id: actor.profile.id }),
     entity: "payroll_periods", entityId: (args) => args.period_id,
   },
+  prepare_verified_work_result_payroll_phase2g: {
+    permission: "payroll.calculate", rpc: "prepare_verified_work_result_payroll_phase2g",
+    params: (args, actor) => ({
+      p_work_result_id: requireUuid(args.work_result_id, "work_result_id"),
+      p_profile_id: actor.profile.id,
+    }),
+    entity: "work_results", entityId: (args) => args.work_result_id,
+  },
+  add_payroll_allowance_phase2g: {
+    permission: "payroll.calculate", confirmation: true, rpc: "add_payroll_allowance_phase2g",
+    params: (args, actor, context) => ({
+      p_summary_id: requireUuid(args.summary_id, "summary_id"),
+      p_source_type: requireText(args.source_type, "source_type", 80),
+      p_source_reference: requireText(args.source_reference, "source_reference", 300),
+      p_reason: requireText(args.reason, "reason", 1000),
+      p_amount: requiredNumber(args.amount, "amount", { minimum: Number.EPSILON }),
+      p_profile_id: actor.profile.id,
+      p_idempotency_key: context.idempotencyKey,
+    }),
+    entity: "payroll_allowance_lines", entityId: (args) => args.summary_id,
+  },
+  add_payroll_deduction_phase2g: {
+    permission: "payroll.calculate", confirmation: true, rpc: "add_payroll_deduction_phase2g",
+    params: (args, actor, context) => ({
+      p_summary_id: requireUuid(args.summary_id, "summary_id"),
+      p_category: enumValue(args.category, "category", ["water", "electric", "raw_palm", "quality", "rework", "other"]),
+      p_source_type: requireText(args.source_type, "source_type", 80),
+      p_source_reference: requireText(args.source_reference, "source_reference", 300),
+      p_reason: requireText(args.reason, "reason", 1000),
+      p_amount: requiredNumber(args.amount, "amount", { minimum: Number.EPSILON }),
+      p_profile_id: actor.profile.id,
+      p_idempotency_key: context.idempotencyKey,
+    }),
+    entity: "payroll_deduction_lines", entityId: (args) => args.summary_id,
+  },
+  adjust_contractor_estimate_phase2g: {
+    permission: "payroll.calculate", confirmation: true, rpc: "adjust_contractor_estimate_phase2g",
+    params: (args, actor) => ({
+      p_estimate_id: requireUuid(args.estimate_id, "estimate_id"),
+      p_deduction_amount: optionalNumber(args.deduction_amount, "deduction_amount") || 0,
+      p_allowance_amount: optionalNumber(args.allowance_amount, "allowance_amount") || 0,
+      p_quality_deduction_amount: optionalNumber(args.quality_deduction_amount, "quality_deduction_amount") || 0,
+      p_quality_source: optionalText(args.quality_source, 80),
+      p_quality_reference: optionalText(args.quality_reference, 300),
+      p_reason: optionalText(args.reason, 1000),
+      p_profile_id: actor.profile.id,
+    }),
+    entity: "contractor_period_estimates", entityId: (args) => args.estimate_id,
+  },
   approve_payroll_period: {
     permission: "payroll.approve", confirmation: true, rpc: "approve_payroll_period",
     params: (args, actor) => ({ p_period_id: requireUuid(args.period_id, "period_id"), p_profile_id: actor.profile.id }),
@@ -1080,6 +1129,13 @@ async function inventoryIssueFromArgs(action, args, { requireUatPrefix = true } 
 }
 
 async function enforceActionScope(actor, action, args) {
+  if ([
+    "prepare_payroll_period", "approve_payroll_period", "close_payroll_period",
+    "prepare_verified_work_result_payroll_phase2g", "add_payroll_allowance_phase2g",
+    "add_payroll_deduction_phase2g", "adjust_contractor_estimate_phase2g",
+  ].includes(action)) {
+    await enforcePayrollEstateScope(actor, action, args);
+  }
   if (action === "create_canonical_work_order_from_planned_item") {
     const item = await one(
       `planned_work_items?id=eq.${requireUuid(args.planned_work_item_id, "planned_work_item_id")}`
@@ -1105,6 +1161,42 @@ async function enforceActionScope(actor, action, args) {
   if (INVENTORY_UAT_ACTIONS.has(action)) {
     const order = await inventoryIssueFromArgs(action, args, { requireUatPrefix: false });
     if (order) await authorizeWorkOrderScope(actor, order);
+  }
+}
+
+function actorCanAccessPayrollEstate(actor, estateId) {
+  if ([...actor.roles].some((role) => ADMIN_ROLES.has(role))) return true;
+  if (!actor.scopes?.length) return true;
+  return actor.scopes.some((scope) => {
+    const type = String(scope.scope_type || "").toLowerCase();
+    return ["all", "global"].includes(type) || (!estateId ? !scope.estate_id : scope.estate_id === estateId);
+  });
+}
+
+async function enforcePayrollEstateScope(actor, action, args) {
+  let estateId = null;
+  if (action === "prepare_verified_work_result_payroll_phase2g") {
+    const resultId = requireUuid(args.work_result_id, "work_result_id");
+    const result = await rest(`work_results?id=eq.${resultId}&select=work_order_id&limit=1`).then(({ data }) => data?.[0]);
+    const order = result?.work_order_id
+      ? await rest(`work_orders?id=eq.${result.work_order_id}&select=estate_id&limit=1`).then(({ data }) => data?.[0])
+      : null;
+    estateId = order?.estate_id || null;
+  } else if (["prepare_payroll_period", "approve_payroll_period", "close_payroll_period"].includes(action)) {
+    const periodId = requireUuid(args.period_id, "period_id");
+    estateId = await rest(`payroll_periods?id=eq.${periodId}&select=estate_id&limit=1`).then(({ data }) => data?.[0]?.estate_id || null);
+  } else if (["add_payroll_allowance_phase2g", "add_payroll_deduction_phase2g"].includes(action)) {
+    const summaryId = requireUuid(args.summary_id, "summary_id");
+    const summary = await rest(`payroll_employee_summaries?id=eq.${summaryId}&select=payroll_period_id&limit=1`).then(({ data }) => data?.[0]);
+    estateId = summary?.payroll_period_id
+      ? await rest(`payroll_periods?id=eq.${summary.payroll_period_id}&select=estate_id&limit=1`).then(({ data }) => data?.[0]?.estate_id || null)
+      : null;
+  } else {
+    const estimateId = requireUuid(args.estimate_id, "estimate_id");
+    estateId = await rest(`contractor_period_estimates?id=eq.${estimateId}&select=estate_id&limit=1`).then(({ data }) => data?.[0]?.estate_id || null);
+  }
+  if (!actorCanAccessPayrollEstate(actor, estateId)) {
+    throw new ApiError(403, "SCOPE_FORBIDDEN", "Payroll period is outside your assigned estate scope");
   }
 }
 
@@ -2803,4 +2895,5 @@ module.exports._test = {
   selectResolvedSurveyTemplate,
   standardPeriodsOverlap,
   surveyAnswerComplete, surveyQuestionVisible, validateCanonicalResolvedSurveys,
+  actorCanAccessPayrollEstate, enforcePayrollEstateScope,
 };
