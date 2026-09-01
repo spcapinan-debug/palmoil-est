@@ -1,0 +1,125 @@
+{
+  "phase": "2I",
+  "release_candidate_source": "7521cfca5fe5d90028a4ea8da2c3309a16949875",
+  "branch": "codex/phase2i-integration-release-candidate",
+  "captured_at": "2026-09-01T20:11:32.7928747+07:00",
+  "production": {
+    "project_ref": "xhtwmzlorceebsemqkww",
+    "postgres_version": "17.6",
+    "migration_version": "20260820090323",
+    "migration_count": 69,
+    "counts_fingerprint": "72978762e921e91f795d27db765d53f6",
+    "counts": {
+      "budget.budget_activity_rates": 41,
+      "budget.budget_rate_block_materials": 712,
+      "budget.budget_rate_blocks": 712,
+      "budget.budget_rate_roles": 343,
+      "inventory.goods_issue_lines": 1,
+      "inventory.goods_issues": 1,
+      "inventory.goods_return_lines": 0,
+      "inventory.goods_returns": 0,
+      "inventory.stock_transactions": 2,
+      "payroll.contractor_period_estimates": 0,
+      "payroll.payroll_earning_lines": 37,
+      "payroll.payroll_employee_summaries": 19,
+      "payroll.payroll_periods": 3,
+      "planning.annual_work_plans": 2,
+      "planning.planned_work_items": 717,
+      "planning.planned_work_materials": 0,
+      "result.work_result_vehicle_usage": 2,
+      "result.work_result_workers": 47,
+      "result.work_results": 7,
+      "survey.survey_answers": 32,
+      "survey.survey_findings": 3,
+      "survey.survey_responses": 5,
+      "survey.survey_templates": 4,
+      "vehicles.fuel_issues": 1,
+      "vehicles.vehicles": 45,
+      "work_order.work_order_machines": 4,
+      "work_order.work_order_materials": 713,
+      "work_order.work_order_workers": 77,
+      "work_order.work_orders": 719
+    }
+  },
+  "staging": {
+    "requested_name": "phase2i-rc-20260901",
+    "project_ref": null,
+    "status": "blocked",
+    "error_code": "PaymentRequiredException",
+    "reason": "Supabase Branching is available only on Pro plan or above.",
+    "quoted_hourly_cost_usd": 0.01344
+  },
+  "preview": {
+    "hostname": null,
+    "environment": "Preview",
+    "database_project_ref": null,
+    "status": "not_deployed_without_staging"
+  },
+  "migration_stack": [
+    {
+      "version": "20260830135944",
+      "file": "20260830135944_phase2c2_full_resource_snapshot.sql",
+      "sha256": "53419b2ca42e429ed0b38c0618b1cf067a9e3314857785ae3964d254fa547fdb"
+    },
+    {
+      "version": "20260830144232",
+      "file": "20260830144232_phase2c2_1_full_resource_snapshot_hardening.sql",
+      "sha256": "024e09474f022926342bce65d85277b2542abe768ccd46ee19eac9a059712adb"
+    },
+    {
+      "version": "20260830232530",
+      "file": "20260830232530_phase2d_scheduler_work_order_snapshot.sql",
+      "sha256": "18ad9a275967ef5a1e9bd6faf5a0bdefd6e2cff3278e87c2f1f2670eb4e5b0c4"
+    },
+    {
+      "version": "20260831034621",
+      "file": "20260831034621_phase2e_daily_result_survey_integration.sql",
+      "sha256": "e86760f72bf6f08f6e508099ca9f62be4bd72b649a0b538ebafb6a970a9dbdd6"
+    },
+    {
+      "version": "20260831063205",
+      "file": "20260831063205_phase2f_actual_variance.sql",
+      "sha256": "69f838fa0dc1d898ab3d720647cd998c65d6e07bf4760815f7c225aaf5137400"
+    },
+    {
+      "version": "20260831222521",
+      "file": "20260831222521_phase2g_payroll_contractor.sql",
+      "sha256": "d5fe065b2c7486349fe4bc973b52a0683e5b82d7dcc179b5811752be57e2f2ac"
+    },
+    {
+      "version": "20260901061931",
+      "file": "20260901061931_phase2h_performance_analytics.sql",
+      "sha256": "620dececba7c22001a388d1b66765c93586de9b08bff7d0ad9ec461ddc1f00ea"
+    }
+  ],
+  "rc_status": "blocked",
+  "blocking_gates": [
+    "staging_project_ref",
+    "migration_stack_execution",
+    "staging_e2e",
+    "staging_security_matrix",
+    "vercel_preview_staging_binding",
+    "playwright_full_rc"
+  ],
+  "runtime_gates": {
+    "migration_stack_applied": false,
+    "migration_replay_clean": false,
+    "historical_compatibility": false,
+    "e2e_employee": false,
+    "e2e_contractor": false,
+    "e2e_material": false,
+    "e2e_hour_meter_vehicle": false,
+    "e2e_odometer_vehicle": false,
+    "e2e_survey": false,
+    "payroll_and_bpay_reconciled": false,
+    "performance_reconciled": false,
+    "roles_and_action_security": false,
+    "idempotency": false,
+    "playwright_viewport_matrix": false,
+    "npm_test_lint_build": true,
+    "production_after_matches_before": true
+  },
+  "known_baseline_conditions": [
+    "renderFarmWorkPlanner() Step 01-04 remains unwired exactly as at the release candidate source."
+  ]
+}

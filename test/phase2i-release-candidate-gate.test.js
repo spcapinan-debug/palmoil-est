@@ -1,0 +1,109 @@
+const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+
+const root = path.join(__dirname, "..");
+const manifest = JSON.parse(fs.readFileSync(path.join(root, "docs", "phase2i-rc-manifest.json"), "utf8"));
+const releaseRunbook = fs.readFileSync(path.join(root, "docs", "phase2i-release-candidate-runbook.md"), "utf8");
+const rollbackRunbook = fs.readFileSync(path.join(root, "docs", "phase2i-rollback-runbook.md"), "utf8");
+const migrationsDir = path.join(root, "supabase", "migrations");
+
+const migrations = manifest.migration_stack.map(({ file }) => ({
+  file,
+  sql: fs.readFileSync(path.join(migrationsDir, file), "utf8"),
+}));
+
+test("Phase 2I manifest pins the RC source, Production baseline and exact migration bytes", () => {
+  assert.equal(manifest.release_candidate_source, "7521cfca5fe5d90028a4ea8da2c3309a16949875");
+  assert.equal(manifest.production.migration_version, "20260820090323");
+  assert.equal(manifest.production.migration_count, 69);
+  assert.equal(manifest.production.counts["work_order.work_orders"], 719);
+  assert.equal(manifest.production.counts_fingerprint, "72978762e921e91f795d27db765d53f6");
+  for (const item of manifest.migration_stack) {
+    const digest = crypto.createHash("sha256")
+      .update(fs.readFileSync(path.join(migrationsDir, item.file)))
+      .digest("hex");
+    assert.equal(digest, item.sha256, item.file);
+  }
+});
+
+test("migration order is complete from the Production baseline through Phase 2H", () => {
+  assert.deepEqual(manifest.migration_stack.map(({ file }) => file), [
+    "20260830135944_phase2c2_full_resource_snapshot.sql",
+    "20260830144232_phase2c2_1_full_resource_snapshot_hardening.sql",
+    "20260830232530_phase2d_scheduler_work_order_snapshot.sql",
+    "20260831034621_phase2e_daily_result_survey_integration.sql",
+    "20260831063205_phase2f_actual_variance.sql",
+    "20260831222521_phase2g_payroll_contractor.sql",
+    "20260901061931_phase2h_performance_analytics.sql",
+  ]);
+  const versions = manifest.migration_stack.map(({ version }) => version);
+  assert.deepEqual(versions, [...versions].sort());
+  assert.equal(new Set(versions).size, versions.length);
+});
+
+test("canonical lineage remains snapshot based from Planning through Performance", () => {
+  const stack = migrations.map(({ sql }) => sql).join("\n");
+  for (const token of [
+    "planned_work_labor_requirements",
+    "work_order_labor_requirements",
+    "source_planned_work_labor_requirement_id",
+    "source_budget_rate_role_id",
+    "work_result_workers",
+    "payroll_earning_lines",
+    "v_phase2h_performance_result",
+  ]) assert.match(stack, new RegExp(token));
+
+  const resultAndLater = migrations.slice(3).map(({ sql }) => sql).join("\n");
+  assert.doesNotMatch(
+    resultAndLater,
+    /from\s+public[.](?:budget_rate_roles|budget_activity_rates|payroll_rates)\b/i,
+  );
+});
+
+test("material and fuel analytics preserve consumption semantics", () => {
+  const phase2f = migrations.find(({ file }) => file.includes("phase2f_actual_variance")).sql;
+  const phase2h = migrations.find(({ file }) => file.includes("phase2h_performance")).sql;
+  assert.match(phase2f, /issued_quantity/);
+  assert.match(phase2f, /actual_quantity/);
+  assert.match(phase2f, /returned_quantity/);
+  assert.match(phase2h, /actual_quantity as used_quantity/);
+  assert.match(phase2h, /issued_fuel_liters/);
+  assert.match(phase2h, /actual_fuel_liters/);
+  assert.match(phase2h, /actual_material_consumption_cost/);
+});
+
+test("canonical tables remain action-only and Performance remains service-only read-only", () => {
+  const stack = migrations.map(({ sql }) => sql).join("\n");
+  assert.match(stack, /revoke all on table public[.]planned_work_labor_requirements from public, anon, authenticated/i);
+  assert.match(stack, /revoke all on public[.]v_phase2h_performance_result[\s\S]*from public,anon,authenticated/i);
+  assert.match(stack, /grant select on public[.]v_phase2h_performance_result[\s\S]*to service_role/i);
+  assert.match(stack, /security_invoker=true/i);
+});
+
+test("RC correctly fails closed while staging and Preview bindings are absent", () => {
+  assert.equal(manifest.staging.status, "blocked");
+  assert.equal(manifest.staging.project_ref, null);
+  assert.equal(manifest.preview.status, "not_deployed_without_staging");
+  assert.equal(manifest.rc_status, "blocked");
+  assert.ok(manifest.blocking_gates.includes("staging_e2e"));
+  assert.ok(manifest.blocking_gates.includes("vercel_preview_staging_binding"));
+  assert.equal(manifest.runtime_gates.production_after_matches_before, true);
+  assert.ok(Object.values(manifest.runtime_gates).some((passed) => passed === false));
+});
+
+test("release and rollback runbooks contain every required decision section", () => {
+  for (const heading of [
+    "Pre-deploy checks", "Backup and read-only evidence", "Migration order",
+    "Expected schema objects", "Application deployment order", "Smoke tests",
+    "Rollback decision points", "Post-deploy verification",
+  ]) assert.match(releaseRunbook, new RegExp(heading, "i"));
+  for (const heading of [
+    "Application rollback", "Database forward-fix", "Database rollback",
+    "Data safety", "Immutable snapshots",
+  ]) assert.match(rollbackRunbook, new RegExp(heading, "i"));
+  assert.match(releaseRunbook, /renderFarmWorkPlanner\(\)/);
+  assert.match(releaseRunbook, /Production DB must remain read-only/);
+});
