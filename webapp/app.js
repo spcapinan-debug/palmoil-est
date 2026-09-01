@@ -60,6 +60,15 @@ const state = {
   farmSelectedTeamId: "",
   farmPayrollPeriodId: "",
   farmPayrollSummaryId: "",
+  phase2hPerformance: null,
+  phase2hPerformanceLoading: false,
+  phase2hPerformanceError: "",
+  phase2hPerformanceTab: "executive",
+  phase2hPerformanceResultId: "",
+  phase2hPerformanceFilters: {
+    from: "", to: "", estate: "", block: "", planting_year: "", rspo: "",
+    activity_group: "", activity: "", team: "", employee: "", contractor: "", status: "",
+  },
   farmActivityModalTable: "",
   farmBudgetContract: {
     query: "",
@@ -364,6 +373,7 @@ const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
 const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_weight.json";
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
+const FARM_PERFORMANCE_API = window.__FARM_PERFORMANCE_API__ || "/api/farm-performance";
 const FARM_AREA_MASTER_API = window.__FARM_AREA_MASTER_API__ || "/api/farm-area-master";
 const FARM_SESSION_API = window.__FARM_SESSION_API__ || "/api/farm-session";
 const FARM_AUTH_API = window.__FARM_AUTH_API__ || "/api/farm-auth";
@@ -1660,7 +1670,11 @@ const FARM_MODULES = [
     group: "Reports",
     accent: "Result → Person / Team / Activity / Block",
     description: "วิเคราะห์ผลงานจากบันทึกงานจริง เทียบรายคน รายทีม กิจกรรม โซน แปลง Block จำนวนต้น และปีปลูก",
-    tables: ["work_results", "payroll_period_lines", "work_orders", "work_attendance", "cost_entries"],
+    tables: [
+      "v_phase2h_performance_result", "v_phase2h_performance_worker",
+      "v_phase2h_performance_material", "v_phase2h_performance_resource",
+      "v_phase2h_performance_fuel", "work_results", "work_orders",
+    ],
     fields: [],
     seed: [],
   },
@@ -3644,6 +3658,26 @@ const FARM_TABLE_SCHEMAS = {
   v_phase2g_bpay_reconciliation_export: {
     moduleId: "farm-payroll", title: "B-Pay Reconciliation", primaryKey: "employee_code",
     codeField: "employee_code", labelField: "full_name", fields: [], seed: [],
+  },
+  v_phase2h_performance_result: {
+    moduleId: "farm-performance", title: "Canonical Performance Result", primaryKey: "work_result_id",
+    codeField: "work_order_no", labelField: "activity_name", fields: [], seed: [],
+  },
+  v_phase2h_performance_worker: {
+    moduleId: "farm-performance", title: "Performance Worker", primaryKey: "work_result_worker_id",
+    codeField: "employee_code", labelField: "full_name", fields: [], seed: [],
+  },
+  v_phase2h_performance_material: {
+    moduleId: "farm-performance", title: "Performance Material", primaryKey: "work_order_material_id",
+    codeField: "material_code", labelField: "material_name", fields: [], seed: [],
+  },
+  v_phase2h_performance_resource: {
+    moduleId: "farm-performance", title: "Performance Resource", primaryKey: "work_order_resource_requirement_id",
+    codeField: "resource_code", labelField: "resource_name", fields: [], seed: [],
+  },
+  v_phase2h_performance_fuel: {
+    moduleId: "farm-performance", title: "Performance Fuel", primaryKey: "work_result_vehicle_usage_id",
+    codeField: "vehicle_code", labelField: "vehicle_name", fields: [], seed: [],
   },
   payroll_employee_summaries: {
     moduleId: "farm-payroll", title: "สรุปค่าแรงพนักงาน", primaryKey: "id",
@@ -27757,6 +27791,180 @@ async function runFarmPhase2gPrepareResult(workResultId) {
   }
 }
 
+function phase2hPerformanceFilters() {
+  state.phase2hPerformanceFilters = state.phase2hPerformanceFilters || {};
+  return state.phase2hPerformanceFilters;
+}
+
+function phase2hOptions(rows = [], value = "") {
+  return `<option value="">ทั้งหมด</option>${rows.map((row) => {
+    const optionValue = row?.value ?? row;
+    const label = row?.label ?? row;
+    return `<option value="${esc(optionValue)}"${String(optionValue) === String(value) ? " selected" : ""}>${esc(label)}</option>`;
+  }).join("")}`;
+}
+
+function phase2hMetric(value, suffix = "") {
+  if (value == null || value === "") return "-";
+  return `${fmt(value)}${suffix}`;
+}
+
+function phase2hMoney(value) {
+  return value == null ? "-" : `${Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`;
+}
+
+function phase2hStatusLabel(value) {
+  return ({
+    planned_only: "มีเฉพาะแผน", actual_draft: "ผลงาน Draft",
+    actual_submitted: "ผลงาน Submitted", survey_pending: "รอตรวจ Survey",
+    verified: "Verified", payroll_pending: "รอ Payroll", payroll_prepared: "Payroll พร้อม",
+    closed: "Closed",
+  })[value] || value || "-";
+}
+
+function phase2hCostRows(components = {}) {
+  const rows = [
+    ["แรงงานพนักงาน", "planned_employee_labor", "actual_employee_labor"],
+    ["ผู้รับเหมา", "planned_contractor", "actual_contractor"],
+    ["วัสดุ (ใช้จริง)", "planned_material", "actual_material_consumed"],
+    ["อุปกรณ์", "planned_equipment", "actual_equipment"],
+    ["เครื่องจักร/รถ", "planned_machine_vehicle", "actual_machine_vehicle"],
+    ["น้ำมัน", "planned_fuel", "actual_fuel"],
+  ];
+  return `<div class="phase2h-table-scroll"><table class="phase2h-table">
+    <thead><tr><th>Cost component</th><th>Planned</th><th>Actual operational</th></tr></thead>
+    <tbody>${rows.map(([label, planned, actual]) => `<tr><td>${label}</td><td>${phase2hMoney(components[planned])}</td><td>${phase2hMoney(components[actual])}</td></tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+function renderFarmPhase2hPerformanceWorkspace() {
+  const payload = state.phase2hPerformance;
+  const filters = phase2hPerformanceFilters();
+  const dimensions = payload?.dimensions || {};
+  const summary = payload?.summary || {};
+  const kpis = summary.kpis || {};
+  const counts = summary.counts || {};
+  const views = payload?.views || {};
+  const tabs = [
+    ["executive", "Executive Summary"], ["plan", "Plan vs Actual"],
+    ["cost", "Cost Analysis"], ["labor", "Labor Productivity"],
+    ["material", "Material Efficiency"], ["fuel", "Vehicle/Fuel Efficiency"],
+    ["survey", "Survey & Quality"], ["people", "Employee/Team Performance"],
+  ];
+  const active = state.phase2hPerformanceTab || "executive";
+  if (state.phase2hPerformanceLoading && !payload) {
+    return `<section class="phase2h-performance-workspace" data-phase2h-performance-workspace>
+      <div class="phase2h-loading">กำลังโหลด Canonical Performance…</div>
+    </section>`;
+  }
+  if (state.phase2hPerformanceError && !payload) {
+    return `<section class="phase2h-performance-workspace" data-phase2h-performance-workspace>
+      <div class="phase2h-error"><strong>โหลด Performance ไม่สำเร็จ</strong><span>${esc(state.phase2hPerformanceError)}</span>
+      <button type="button" data-phase2h-refresh>ลองใหม่</button></div>
+    </section>`;
+  }
+  const executiveRows = views.executive || [];
+  const quantityRows = views.plan_vs_actual || [];
+  const laborRows = views.labor_productivity || [];
+  const materialRows = views.material_efficiency || [];
+  const fuelRows = views.vehicle_fuel_efficiency || [];
+  const surveyRows = views.survey_quality || [];
+  const peopleRows = views.employee_team || [];
+  const tabContent = {
+    executive: `<div class="phase2h-table-scroll"><table class="phase2h-table"><thead><tr><th>Activity Group</th><th>WO</th><th>Planned Cost</th><th>Actual Cost</th></tr></thead><tbody>
+      ${executiveRows.map((row) => `<tr><td>${esc(row.activity_group_name || "-")}</td><td>${fmt(row.work_order_count)}</td><td>${phase2hMoney(row.planned_operational_cost)}</td><td>${phase2hMoney(row.actual_operational_cost)}</td></tr>`).join("") || '<tr><td colspan="4">ไม่มีข้อมูลตามตัวกรอง</td></tr>'}
+    </tbody></table></div>`,
+    plan: `<div class="phase2h-table-scroll"><table class="phase2h-table"><thead><tr><th>Unit/Basis</th><th>Planned</th><th>Verified Actual</th><th>Variance</th><th>Completion</th></tr></thead><tbody>
+      ${quantityRows.map((row) => `<tr><td>${esc(row.actual_unit_basis || "-")}</td><td>${phase2hMetric(row.planned_quantity)}</td><td>${phase2hMetric(row.actual_verified_quantity)}</td><td>${phase2hMetric(row.variance_quantity)}</td><td>${phase2hMetric(row.completion_pct, "%")}</td></tr>`).join("") || '<tr><td colspan="5">ไม่มี Verified Result ที่หน่วยตรงกับแผน</td></tr>'}
+    </tbody></table></div>`,
+    cost: phase2hCostRows(views.cost_analysis || {}),
+    labor: `<div class="phase2h-table-scroll"><table class="phase2h-table"><thead><tr><th>Team</th><th>Unit</th><th>Hours</th><th>Quantity</th><th>Operational earning</th></tr></thead><tbody>
+      ${laborRows.map((row) => `<tr><td>${esc(row.team_name || "-")}</td><td>${esc(row.actual_unit_basis || "-")}</td><td>${phase2hMetric(row.actual_hours)}</td><td>${phase2hMetric(row.actual_quantity)}</td><td>${phase2hMoney(row.operational_earning_amount)}</td></tr>`).join("") || '<tr><td colspan="5">ไม่มีข้อมูลแรงงาน Verified</td></tr>'}
+    </tbody></table></div>`,
+    material: `<div class="phase2h-table-scroll"><table class="phase2h-table"><thead><tr><th>Material</th><th>Planned</th><th>Issued</th><th>Used</th><th>Returned</th><th>Outstanding</th><th>Actual cost</th></tr></thead><tbody>
+      ${materialRows.map((row) => `<tr><td>${esc(row.material_name || row.material_code || "-")}</td><td>${phase2hMetric(row.planned_quantity)}</td><td>${phase2hMetric(row.issued_quantity)}</td><td>${phase2hMetric(row.used_quantity)}</td><td>${phase2hMetric(row.returned_quantity)}</td><td>${phase2hMetric(row.outstanding_quantity)}</td><td>${phase2hMoney(row.actual_material_consumption_cost)}</td></tr>`).join("") || '<tr><td colspan="7">ไม่มีข้อมูลวัสดุ Verified</td></tr>'}
+    </tbody></table></div>`,
+    fuel: `<div class="phase2h-table-scroll"><table class="phase2h-table"><thead><tr><th>Vehicle/Machine</th><th>Primary KPI</th><th>Standard</th><th>Actual</th><th>Variance</th><th>Issued L</th><th>Consumed L</th></tr></thead><tbody>
+      ${fuelRows.map((row) => `<tr><td>${esc(row.vehicle_name || row.vehicle_code || "-")}</td><td>${esc(row.primary_kpi || "-")}</td><td>${phase2hMetric(row.primary_standard_rate)}</td><td>${phase2hMetric(row.primary_actual_rate)}</td><td>${phase2hMetric(row.primary_variance_pct, "%")}</td><td>${phase2hMetric(row.issued_fuel_liter)}</td><td>${phase2hMetric(row.actual_fuel_liters)}</td></tr>`).join("") || '<tr><td colspan="7">ไม่มีข้อมูล Fuel Verified</td></tr>'}
+    </tbody></table></div>`,
+    survey: `<div class="phase2h-table-scroll"><table class="phase2h-table"><thead><tr><th>WO</th><th>Required</th><th>Completed</th><th>Score</th><th>Findings</th><th>Unresolved</th><th>Rework</th></tr></thead><tbody>
+      ${surveyRows.map((row) => `<tr><td><button type="button" data-phase2h-result="${esc(row.work_result_id)}">${esc(row.work_order_no || "-")}</button></td><td>${row.survey_required ? "Yes" : "No"}</td><td>${fmt(row.survey_completed_count)}</td><td>${phase2hMetric(row.survey_score_pct, "%")}</td><td>${fmt(row.finding_count)}</td><td>${fmt(row.unresolved_finding_count)}</td><td>${row.rework_required ? "Yes" : "No"}</td></tr>`).join("") || '<tr><td colspan="7">ไม่มีข้อมูล Survey</td></tr>'}
+    </tbody></table></div>`,
+    people: `<div class="phase2h-table-scroll"><table class="phase2h-table"><thead><tr><th>Person</th><th>Type</th><th>Team</th><th>Hours</th><th>Quantity</th><th>Operational cost</th><th>Quality</th><th>Completion</th></tr></thead><tbody>
+      ${peopleRows.map((row) => `<tr><td><button type="button" data-phase2h-result="${esc(row.work_result_id)}">${esc(row.full_name || row.contractor_name || row.employee_code || row.contractor_code || "-")}</button></td><td>${esc(row.person_type || "-")}</td><td>${esc(row.team_name || "-")}</td><td>${phase2hMetric(row.actual_hours)}</td><td>${phase2hMetric(row.actual_quantity)} ${esc(row.actual_unit_basis || "")}</td><td>${phase2hMoney(row.operational_earning_amount)}</td><td>${phase2hMetric(row.individual_quality_pct, "%")}</td><td>${phase2hMetric(row.individual_completion_pct, "%")}</td></tr>`).join("") || '<tr><td colspan="8">ไม่มีข้อมูลบุคคล Verified</td></tr>'}
+    </tbody></table></div>`,
+  }[active] || "";
+  const detail = (payload?.drilldown?.results || []).find((row) => row.work_result_id === state.phase2hPerformanceResultId);
+  return `<section class="phase2h-performance-workspace" data-phase2h-performance-workspace>
+    <header class="phase2h-header"><div><span>Read-only canonical analytics</span><h3>Performance / Plan vs Actual</h3><p>Budget → Planning → WO → Verified Result → Survey → Payroll reconciliation</p></div>
+      <div><span class="phase2h-readonly">READ ONLY</span><button type="button" data-phase2h-refresh>Refresh</button></div></header>
+    <div class="phase2h-filters">
+      <label>จากวันที่<input type="date" data-phase2h-filter="from" value="${esc(filters.from)}"></label>
+      <label>ถึงวันที่<input type="date" data-phase2h-filter="to" value="${esc(filters.to)}"></label>
+      <label>Estate<select data-phase2h-filter="estate">${phase2hOptions(dimensions.estates, filters.estate)}</select></label>
+      <label>Block<select data-phase2h-filter="block">${phase2hOptions(dimensions.blocks, filters.block)}</select></label>
+      <label>ปีปลูก<select data-phase2h-filter="planting_year">${phase2hOptions(dimensions.planting_years, filters.planting_year)}</select></label>
+      <label>RSPO<select data-phase2h-filter="rspo">${phase2hOptions(dimensions.rspo, filters.rspo)}</select></label>
+      <label>กลุ่มกิจกรรม<select data-phase2h-filter="activity_group">${phase2hOptions(dimensions.activity_groups, filters.activity_group)}</select></label>
+      <label>กิจกรรม<select data-phase2h-filter="activity">${phase2hOptions(dimensions.activities, filters.activity)}</select></label>
+      <label>ทีม<select data-phase2h-filter="team">${phase2hOptions(dimensions.teams, filters.team)}</select></label>
+      <label>พนักงาน<select data-phase2h-filter="employee">${phase2hOptions(dimensions.employees, filters.employee)}</select></label>
+      <label>ผู้รับเหมา<select data-phase2h-filter="contractor">${phase2hOptions(dimensions.contractors, filters.contractor)}</select></label>
+      <label>Completeness<select data-phase2h-filter="status">${phase2hOptions([
+        { value: "planned_only", label: "Planned only" }, { value: "actual_draft", label: "Actual draft" },
+        { value: "actual_submitted", label: "Actual submitted" }, { value: "survey_pending", label: "Survey pending" },
+        { value: "verified", label: "Verified" },
+      ], filters.status)}</select></label>
+    </div>
+    <div class="phase2h-kpis">
+      <article><span>Plan Completion</span><strong>${phase2hMetric(kpis.plan_completion_pct, "%")}</strong><small>Verified / same unit</small></article>
+      <article><span>Planned Cost</span><strong>${phase2hMoney(kpis.planned_operational_cost)}</strong><small>${fmt(counts.work_orders)} WO</small></article>
+      <article><span>Actual Cost</span><strong>${phase2hMoney(kpis.actual_operational_cost)}</strong><small>Verified operational</small></article>
+      <article><span>Cost Variance</span><strong>${phase2hMoney(kpis.cost_variance)}</strong><small>${phase2hMetric(kpis.cost_variance_pct, "%")}</small></article>
+      <article><span>Labor Productivity</span><strong>${phase2hMetric(kpis.labor_productivity)}</strong><small>quantity / labor hour</small></article>
+      <article><span>Material Variance</span><strong>${phase2hMetric(kpis.material_variance_pct, "%")}</strong><small>Used, not Issued</small></article>
+      <article><span>Fuel</span><strong>${phase2hMetric(summary.operational?.fuel_consumed_liters, " L")}</strong><small>Issued ${phase2hMetric(summary.operational?.fuel_issued_liters, " L")}</small></article>
+      <article><span>Survey Quality</span><strong>${phase2hMetric(kpis.survey_quality_pct, "%")}</strong><small>${fmt(counts.verified_results)} verified results</small></article>
+    </div>
+    <nav class="phase2h-tabs">${tabs.map(([id, label]) => `<button type="button" data-phase2h-tab="${id}" class="${active === id ? "active" : ""}">${label}</button>`).join("")}</nav>
+    <div class="phase2h-view" data-phase2h-view="${esc(active)}">${tabContent}</div>
+    <section class="phase2h-completeness"><strong>Data completeness</strong>
+      <span>Verified ${fmt(counts.verified_results)}</span><span>Draft/Submitted ${fmt(counts.draft_or_submitted_results)}</span>
+      <span>Employee ${fmt(counts.employees)}</span><span>Contractor ${fmt(counts.contractors)}</span><span>Worker-days ${fmt(counts.worker_days)}</span>
+    </section>
+    ${payload?.payrollRestricted ? '<div class="phase2h-restricted">Payroll reconciliation ถูกซ่อน: ต้องมีสิทธิ์ payroll.view</div>'
+      : `<section class="phase2h-payroll-evidence"><strong>Payroll reconciliation (supporting evidence only)</strong><span>Operational Labor Cost ≠ Payroll Net Pay</span><em>${fmt(summary.payroll_reconciliation?.length || 0)} summaries</em></section>`}
+    ${detail ? `<aside class="phase2h-drilldown" data-phase2h-drilldown><header><strong>${esc(detail.work_order_no)} / ${esc(detail.activity_name || "-")}</strong><button type="button" data-phase2h-result="">ปิด</button></header>
+      <div><span>Annual Plan</span><code>${esc(detail.annual_plan_id)}</code><span>Planned Item</span><code>${esc(detail.planned_work_item_id)}</code><span>Work Result</span><code>${esc(detail.work_result_id)}</code></div>
+      <p>Status: ${esc(phase2hStatusLabel(detail.data_completeness_status))} · Unit: ${esc(detail.actual_unit_basis || detail.planned_unit_basis || "-")}</p>
+      <button type="button" data-workspace-route="/farm/daily?work_order=${esc(detail.work_order_id)}">เปิดหลักฐาน Daily Result</button></aside>` : ""}
+  </section>`;
+}
+
+async function loadFarmPhase2hPerformance({ silent = false } = {}) {
+  if (state.phase2hPerformanceLoading) return false;
+  state.phase2hPerformanceLoading = true;
+  state.phase2hPerformanceError = "";
+  if (!silent && state.view === "farm-performance") render();
+  try {
+    const query = new URLSearchParams(Object.entries(phase2hPerformanceFilters())
+      .filter(([, value]) => value != null && value !== ""));
+    const { response, payload } = await farmJsonRequest(`${FARM_PERFORMANCE_API}?${query}`, { cache: "no-store" });
+    if (!response.ok || !payload?.ok || payload.readOnly !== true) {
+      throw farmApiRequestError(response, payload, "Performance API unavailable");
+    }
+    state.phase2hPerformance = payload;
+    state.phase2hPerformanceError = "";
+    return true;
+  } catch (error) {
+    state.phase2hPerformanceError = error.message || "Performance API unavailable";
+    return false;
+  } finally {
+    state.phase2hPerformanceLoading = false;
+    if (state.view === "farm-performance") render();
+  }
+}
+
 function renderFarmPage() {
   const module = selectedFarmModule();
   if (module.id === "farm-management-dashboard") return renderFarmManagementDashboard();
@@ -27784,6 +27992,7 @@ function renderFarmPage() {
   const isPeoplePage = module.id === "farm-people";
   const isInventoryPage = module.id === "farm-inventory";
   const isPayrollPage = module.id === "farm-payroll";
+  const isPerformancePage = module.id === "farm-performance";
   const pageTitle = isWorkPage ? "วางแผนสร้าง Work Order"
     : isDispatchPage ? "สั่งงานผู้จัดการ"
       : isResultPage ? "บันทึกงานหัวหน้างาน"
@@ -27808,7 +28017,7 @@ function renderFarmPage() {
       ${isBudgetPage ? "" : renderFarmWorkflowNav(module)}
       ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isBudgetPage ? renderFarmBudgetBoard() : ""}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : `<section class="farm-hero">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage || isPerformancePage ? "" : `<section class="farm-hero">
         <article><span>กลุ่ม</span><strong>${esc(module.group)}</strong><small>${esc(module.accent)}</small></article>
         <article><span>ตาราง Supabase</span><strong>${fmt(tables.length)}</strong><small>${tables.slice(0, 3).map((item) => `<code>${esc(item.key)}</code>`).join(" ")}</small></article>
         <article><span>รายการ</span><strong>${fmt(rows.length)}</strong><small>ทั้งหมด ${fmt(allRows.length)} รายการ</small></article>
@@ -27822,6 +28031,7 @@ function renderFarmPage() {
       ${isPeoplePage ? renderFarmPeopleBoard(table, rows, tables) : ""}
       ${isInventoryPage ? renderFarmInventoryBoard() : ""}
       ${isPayrollPage ? renderFarmPhase2gPayrollWorkspace() : ""}
+      ${isPerformancePage ? renderFarmPhase2hPerformanceWorkspace() : ""}
       ${isWorkPage ? (farmWorkflowModeFromUrl() === "workspace" ? `${renderFarmWorkflowModeBar({
         workspaceLabel: "ดู Workspace และติดตามงาน",
         entryLabel: "กลับหน้าวางแผน",
@@ -27831,7 +28041,7 @@ function renderFarmPage() {
       ${isInventoryIssuePage ? renderFarmInventoryIssueQueue() : ""}
       ${module.id === "farm-governance" ? renderFarmGovernanceBoard(table) : ""}
       ${renderFarmVersionNotice(module, table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : `<section class="farm-toolbar">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage || isPerformancePage ? "" : `<section class="farm-toolbar">
         <label>ตารางข้อมูล
           <select id="farmTableSelect">
             ${tables.map((item) => `<option value="${esc(item.key)}"${item.key === table.key ? " selected" : ""}>${esc(farmTableDisplayName(item))}</option>`).join("")}
@@ -27855,9 +28065,9 @@ function renderFarmPage() {
           <input id="farmImportFile" type="file" accept=".csv,text/csv" ${state.farmSyncBusy ? "disabled" : ""}>
         </label>
       </section>`}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : renderFarmDataEntryGuide(table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : renderFarmKeyBindings(table)}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : `<section class="farm-panel">
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage || isPerformancePage ? "" : renderFarmDataEntryGuide(table)}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage || isPerformancePage ? "" : renderFarmKeyBindings(table)}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage || isPerformancePage ? "" : `<section class="farm-panel">
         <div class="section-head"><h3>ตารางรายการ</h3><span>กดเพิ่มหรือดับเบิลคลิกแถวเพื่อเปิดหน้าต่างแก้ไข</span></div>
         <div class="table-wrap farm-table-wrap">
           <table class="mini-table farm-table">
@@ -27878,7 +28088,7 @@ function renderFarmPage() {
           </table>
         </div>
       </section>`}
-      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage ? "" : renderFarmActivityModal()}
+      ${isWorkflowPage || isBudgetPage || isActivityPage || isAreaPage || isTeamPage || isPeoplePage || isInventoryPage || isPayrollPage || isPerformancePage ? "" : renderFarmActivityModal()}
       ${module.id === "farm-reports" ? renderFarmReportMatrix() : ""}
     </div>`;
 }
@@ -28578,6 +28788,7 @@ function setView(view) {
   for (const btn of els.tabs.querySelectorAll("button")) btn.classList.toggle("active", btn.dataset.view === view);
   render();
   loadFarmCurrentViewTables({ silent: true });
+  if (view === "farm-performance") loadFarmPhase2hPerformance({ silent: true });
 }
 
 const STATIC_MENU_ROUTE_BY_VIEW = Object.freeze(Object.entries(WORKSPACE_ROUTE_FALLBACKS)
@@ -28967,6 +29178,12 @@ async function startAuthenticatedApplication() {
   document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.matches("[data-phase2h-filter]")) {
+      phase2hPerformanceFilters()[e.target.dataset.phase2hFilter] = e.target.value || "";
+      state.phase2hPerformanceResultId = "";
+      loadFarmPhase2hPerformance({ silent: false });
+      return;
+    }
     if (e.target.matches("[data-canonical-planning-field], [data-canonical-plan-header-field]")) {
       const draft = farmCanonicalPlanningState();
       const key = e.target.dataset.canonicalPlanningField || e.target.dataset.canonicalPlanHeaderField;
@@ -30130,6 +30347,22 @@ async function startAuthenticatedApplication() {
     const jumpBtn = e.target.closest("button[data-view-jump]");
     if (jumpBtn) {
       setView(jumpBtn.dataset.viewJump);
+      return;
+    }
+    if (e.target.closest("[data-phase2h-refresh]")) {
+      loadFarmPhase2hPerformance({ silent: false });
+      return;
+    }
+    const phase2hTab = e.target.closest("[data-phase2h-tab]");
+    if (phase2hTab) {
+      state.phase2hPerformanceTab = phase2hTab.dataset.phase2hTab || "executive";
+      render();
+      return;
+    }
+    const phase2hResult = e.target.closest("[data-phase2h-result]");
+    if (phase2hResult) {
+      state.phase2hPerformanceResultId = phase2hResult.dataset.phase2hResult || "";
+      render();
       return;
     }
     if (e.target.closest("[data-farm-db-refresh]")) {
