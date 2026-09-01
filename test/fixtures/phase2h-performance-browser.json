@@ -1,0 +1,146 @@
+{
+  "ok": true,
+  "readOnly": true,
+  "generatedAt": "2026-09-01T00:00:00Z",
+  "payrollRestricted": false,
+  "filters": {},
+  "dimensions": {
+    "estates": [{ "value": "estate-1", "label": "Estate QA" }],
+    "blocks": [{ "value": "30000000-0000-4000-8000-000000000001", "label": "WEBTEST-BLOCK" }],
+    "planting_years": [2556],
+    "rspo": ["RSPO"],
+    "activity_groups": [{ "value": "ag-1", "label": "Maintenance" }],
+    "activities": [{ "value": "40000000-0000-4000-8000-000000000001", "label": "ใส่ปุ๋ย" }],
+    "teams": [{ "value": "50000000-0000-4000-8000-000000000001", "label": "ทีม WEBTEST" }],
+    "employees": [{ "value": "60000000-0000-4000-8000-000000000001", "label": "หัวหน้าทีมทดสอบ" }],
+    "contractors": [{ "value": "contractor-1", "label": "ผู้รับเหมา QA" }]
+  },
+  "summary": {
+    "kpis": {
+      "plan_completion_pct": 80,
+      "planned_operational_cost": 3681,
+      "actual_operational_cost": 7394.5,
+      "cost_variance": 3713.5,
+      "cost_variance_pct": 100.88,
+      "labor_productivity": 2,
+      "material_variance_pct": -5,
+      "survey_quality_pct": 95
+    },
+    "counts": {
+      "work_orders": 1,
+      "results": 1,
+      "verified_results": 1,
+      "draft_or_submitted_results": 0,
+      "employees": 1,
+      "contractors": 1,
+      "worker_days": 1
+    },
+    "operational": {
+      "labor_hours": 4,
+      "material_issued": 12,
+      "material_used": 8,
+      "material_returned": 2,
+      "material_outstanding": 2,
+      "fuel_issued_liters": 40,
+      "fuel_consumed_liters": 32,
+      "machine_hours": 8,
+      "distance_km": 0
+    },
+    "payroll_reconciliation": [{ "variance_state": "matched" }]
+  },
+  "views": {
+    "executive": [{
+      "activity_group_name": "Maintenance",
+      "work_order_count": 1,
+      "planned_operational_cost": 3681,
+      "actual_operational_cost": 7394.5
+    }],
+    "plan_vs_actual": [{
+      "actual_unit_basis": "rai",
+      "planned_quantity": 10,
+      "actual_verified_quantity": 8,
+      "variance_quantity": -2,
+      "completion_pct": 80
+    }],
+    "cost_analysis": {
+      "planned_employee_labor": 100,
+      "planned_contractor": 120,
+      "planned_material": 2000,
+      "planned_equipment": 300,
+      "planned_machine_vehicle": 800,
+      "planned_fuel": 361,
+      "actual_employee_labor": 112.5,
+      "actual_contractor": 139.5,
+      "actual_material_consumed": 3622.5,
+      "actual_equipment": 400,
+      "actual_machine_vehicle": 2000,
+      "actual_fuel": 1120
+    },
+    "labor_productivity": [{
+      "team_name": "ทีม WEBTEST",
+      "actual_unit_basis": "rai",
+      "actual_hours": 4,
+      "actual_quantity": 8,
+      "operational_earning_amount": 112.5
+    }],
+    "material_efficiency": [{
+      "work_result_id": "80000000-0000-4000-8000-000000000001",
+      "material_name": "ปุ๋ย QA",
+      "planned_quantity": 10,
+      "issued_quantity": 12,
+      "used_quantity": 8,
+      "returned_quantity": 2,
+      "outstanding_quantity": 2,
+      "actual_material_consumption_cost": 3622.5
+    }],
+    "vehicle_fuel_efficiency": [{
+      "work_result_id": "80000000-0000-4000-8000-000000000001",
+      "vehicle_name": "รถไถ QA",
+      "primary_kpi": "L/hour",
+      "primary_standard_rate": 4,
+      "primary_actual_rate": 4,
+      "primary_variance_pct": 0,
+      "issued_fuel_liter": 40,
+      "actual_fuel_liters": 32
+    }],
+    "survey_quality": [{
+      "work_result_id": "80000000-0000-4000-8000-000000000001",
+      "work_order_no": "WEBTEST-2569-WO-FERT-001",
+      "survey_required": true,
+      "survey_completed_count": 1,
+      "survey_score_pct": 95,
+      "finding_count": 1,
+      "unresolved_finding_count": 0,
+      "rework_required": false
+    }],
+    "employee_team": [{
+      "work_result_id": "80000000-0000-4000-8000-000000000001",
+      "employee_id": "60000000-0000-4000-8000-000000000001",
+      "full_name": "หัวหน้าทีมทดสอบ",
+      "person_type": "employee",
+      "team_name": "ทีม WEBTEST",
+      "actual_hours": 4,
+      "actual_quantity": 8,
+      "actual_unit_basis": "rai",
+      "operational_earning_amount": 112.5,
+      "individual_quality_pct": 95,
+      "individual_completion_pct": 80
+    }]
+  },
+  "drilldown": {
+    "results": [{
+      "annual_plan_id": "10000000-0000-4000-8000-000000000001",
+      "planned_work_item_id": "20000000-0000-4000-8000-000000000001",
+      "work_order_id": "70000000-0000-4000-8000-000000000001",
+      "work_result_id": "80000000-0000-4000-8000-000000000001",
+      "work_order_no": "WEBTEST-2569-WO-FERT-001",
+      "activity_name": "ใส่ปุ๋ย",
+      "data_completeness_status": "verified",
+      "actual_unit_basis": "rai"
+    }],
+    "workers": [],
+    "materials": [],
+    "resources": [],
+    "fuel": []
+  }
+}

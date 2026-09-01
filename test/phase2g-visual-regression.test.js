@@ -8,12 +8,15 @@ const app = fs.readFileSync(path.join(root, "webapp", "app.js"), "utf8");
 const styles = fs.readFileSync(path.join(root, "webapp", "styles.css"), "utf8");
 
 const payrollMarker = "/* Phase 2G canonical Payroll workspace: additive to the existing Farm shell. */";
+const performanceMarker = "/* Phase 2H canonical Performance workspace: all selectors remain locally scoped. */";
 const payrollStart = styles.indexOf(payrollMarker);
+const performanceStart = styles.indexOf(performanceMarker, payrollStart);
 const sharedStyles = styles.slice(0, payrollStart);
-const payrollStyles = styles.slice(payrollStart).replace(/\/\*[\s\S]*?\*\//g, "");
+const payrollStyles = styles.slice(payrollStart, performanceStart).replace(/\/\*[\s\S]*?\*\//g, "");
 
 test("Phase 2G Payroll CSS stays scoped and cannot override shared workspace selectors", () => {
   assert.ok(payrollStart > 0, "missing Phase 2G Payroll CSS boundary");
+  assert.ok(performanceStart > payrollStart, "missing Phase 2H Performance CSS boundary");
   assert.doesNotMatch(sharedStyles, /phase2g-/);
 
   const selectorHeaders = [...payrollStyles.matchAll(/(?:^|})\s*([^{}]+?)\s*\{/gm)]
@@ -84,5 +87,5 @@ test("Phase 2G components render only on Payroll", () => {
   assert.match(app, /const isPayrollPage = module\.id === "farm-payroll"/);
   assert.match(app, /\$\{isPayrollPage \? renderFarmPhase2gPayrollWorkspace\(\) : ""\}/);
   assert.match(app, /<section class="phase2g-payroll-workspace" data-phase2g-payroll-workspace>/);
-  assert.match(app, /isWorkflowPage \|\| isBudgetPage \|\| isActivityPage \|\| isAreaPage \|\| isTeamPage \|\| isPeoplePage \|\| isInventoryPage \|\| isPayrollPage \? ""/);
+  assert.match(app, /isWorkflowPage \|\| isBudgetPage \|\| isActivityPage \|\| isAreaPage \|\| isTeamPage \|\| isPeoplePage \|\| isInventoryPage \|\| isPayrollPage \|\| isPerformancePage \? ""/);
 });

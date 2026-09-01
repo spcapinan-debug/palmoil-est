@@ -17886,3 +17886,250 @@ details.farm-survey-score-section[open] > summary::after {
     margin-left: 0;
   }
 }
+/* Phase 2H canonical Performance workspace: all selectors remain locally scoped. */
+.phase2h-performance-workspace {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.phase2h-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #d8e1dd;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f4faf6, #fff);
+}
+
+.phase2h-header h3 {
+  margin: 3px 0;
+  color: #173d2c;
+}
+
+.phase2h-header p,
+.phase2h-header span {
+  margin: 0;
+  color: #62736c;
+}
+
+.phase2h-header > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.phase2h-readonly {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #e4f2e9;
+  color: #17613f !important;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.phase2h-filters {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.phase2h-filters label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #55665f;
+  font-size: 12px;
+}
+
+.phase2h-filters input,
+.phase2h-filters select {
+  width: 100%;
+  min-width: 0;
+}
+
+.phase2h-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.phase2h-kpis article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #dfe6e2;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.phase2h-kpis span,
+.phase2h-kpis small {
+  color: #6e7a75;
+}
+
+.phase2h-kpis strong {
+  overflow-wrap: anywhere;
+  color: #173d2c;
+  font-size: 20px;
+}
+
+.phase2h-tabs {
+  display: flex;
+  gap: 6px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
+
+.phase2h-tabs button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.phase2h-tabs button.active {
+  border-color: #17613f;
+  background: #17613f;
+  color: #fff;
+}
+
+.phase2h-view {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #dfe6e2;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.phase2h-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.phase2h-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+.phase2h-table th,
+.phase2h-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #edf0ee;
+  text-align: left;
+  vertical-align: top;
+}
+
+.phase2h-table th {
+  color: #52635c;
+  font-size: 12px;
+}
+
+.phase2h-table td {
+  color: #273a32;
+}
+
+.phase2h-completeness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 11px 13px;
+  border: 1px solid #dfe6e2;
+  border-radius: 10px;
+  background: #f8faf9;
+}
+
+.phase2h-completeness span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eaf1ed;
+  color: #3d5148;
+  font-size: 12px;
+}
+
+.phase2h-restricted,
+.phase2h-payroll-evidence,
+.phase2h-loading,
+.phase2h-error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid #eadfbd;
+  border-radius: 10px;
+  background: #fffaf0;
+  color: #6b5621;
+}
+
+.phase2h-payroll-evidence {
+  border-color: #dfe6e2;
+  background: #f8faf9;
+  color: #354a40;
+}
+
+.phase2h-error {
+  border-color: #efc7c2;
+  background: #fff5f4;
+  color: #832d26;
+}
+
+.phase2h-drilldown {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #cddbd4;
+  border-radius: 12px;
+  background: #fbfdfc;
+}
+
+.phase2h-drilldown header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.phase2h-drilldown > div {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 10px;
+}
+
+.phase2h-drilldown code {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .phase2h-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .phase2h-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .phase2h-header {
+    display: grid;
+  }
+
+  .phase2h-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .phase2h-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .phase2h-drilldown > div {
+    grid-template-columns: 1fr;
+  }
+}

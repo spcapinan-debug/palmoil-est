@@ -71,6 +71,9 @@ const TABLES = new Set([
   "v_phase2g_payroll_period_workspace", "v_phase2g_payroll_eligibility_preview",
   "v_phase2g_payroll_employee_drilldown",
   "v_phase2g_bpay_reconciliation_export",
+  "v_phase2h_performance_result", "v_phase2h_performance_worker",
+  "v_phase2h_performance_material", "v_phase2h_performance_resource",
+  "v_phase2h_performance_fuel", "v_phase2h_performance_payroll_reconciliation",
   "v_goods_issue_multi_day_status", "v_goods_return_readiness",
   "v_material_unit_conversion_options",
 ]);
@@ -118,6 +121,12 @@ const READ_RESTRICTED = {
   v_phase2g_payroll_eligibility_preview: ["payroll.view", "payroll.calculate"],
   v_phase2g_payroll_employee_drilldown: ["payroll.view", "payroll.calculate"],
   v_phase2g_bpay_reconciliation_export: ["payroll.view", "payroll.calculate"],
+  v_phase2h_performance_result: "performance.view",
+  v_phase2h_performance_worker: "performance.view",
+  v_phase2h_performance_material: "performance.view",
+  v_phase2h_performance_resource: "performance.view",
+  v_phase2h_performance_fuel: "performance.view",
+  v_phase2h_performance_payroll_reconciliation: ["payroll.view", "payroll.calculate"],
   v_fuel_control_exceptions: ["fuel.view", "fuel.allocation.manage"],
   app_notification_rules: ["notification.rule.manage", "notification.manage"],
   app_notifications: "notification.view",
@@ -172,6 +181,12 @@ const WRITE_PERMISSIONS = {
   budget_rate_rule_blocks: "budget.rate_rule.manage",
   system_settings: "system.integration.manage",
 };
+
+const PHASE2H_READ_ONLY_TABLES = new Set([
+  "v_phase2h_performance_result", "v_phase2h_performance_worker",
+  "v_phase2h_performance_material", "v_phase2h_performance_resource",
+  "v_phase2h_performance_fuel", "v_phase2h_performance_payroll_reconciliation",
+]);
 
 const CONFLICT_KEYS = {
   estates: "estate_code", zones: "zone_code", plot_groups: "group_code", plots: "plot_code",
@@ -863,6 +878,9 @@ async function handlePost(req, res, actor) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   const table = tableName(body.table);
+  if (PHASE2H_READ_ONLY_TABLES.has(table)) {
+    throw new ApiError(403, "READ_ONLY_ANALYTICS", `${table} is read-only`);
+  }
   if (SYSTEM_USER_TABLES.has(table)) {
     throw new ApiError(403, "USER_API_REQUIRED", `${table} must be changed through /api/farm-users`);
   }
@@ -905,6 +923,9 @@ async function handleDelete(req, res, url, actor) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   const table = tableName(body.table || url.searchParams.get("table"));
+  if (PHASE2H_READ_ONLY_TABLES.has(table)) {
+    throw new ApiError(403, "READ_ONLY_ANALYTICS", `${table} is read-only`);
+  }
   if (SYSTEM_USER_TABLES.has(table)) {
     throw new ApiError(403, "USER_API_REQUIRED", `${table} must be changed through /api/farm-users`);
   }
@@ -960,7 +981,8 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports._test = {
-  ACTION_ONLY_TABLES, AREA_REFERENCE_TABLES, OPTIONAL_TABLES, SYSTEM_USER_TABLES, TABLES, UAT_OPERATIONAL_TABLES, WRITE_PERMISSIONS,
+  ACTION_ONLY_TABLES, AREA_REFERENCE_TABLES, OPTIONAL_TABLES, PHASE2H_READ_ONLY_TABLES,
+  SYSTEM_USER_TABLES, TABLES, UAT_OPERATIONAL_TABLES, WRITE_PERMISSIONS,
   CANONICAL_BUDGET_PROTECTION_CODE, CANONICAL_WORK_ORDER_MUTATION_TABLES,
   CANONICAL_WORK_RESULT_MUTATION_TABLES,
   areaReferenceRows, assertCanonicalWorkOrderMutationSafe, assertCanonicalWorkResultMutationSafe,
