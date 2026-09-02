@@ -23,12 +23,18 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "$target_ref" != "$expected_staging_ref" || "$target_ref" == "$production_ref" ]]; then
-  echo "RC_PREVIEW_PRODUCTION_DATABASE_FORBIDDEN" >&2
+  echo "RC_STAGING_TARGET_REQUIRED" >&2
   exit 65
 fi
 
-if [[ ! -x "$psql_bin" || ! -s "$schema_file" ]]; then
-  echo "PHASE2I_RESTORE_INPUT_MISSING" >&2
+printf 'TARGET_REF=%s\n' "$target_ref"
+
+if [[ ! -x "$psql_bin" ]]; then
+  echo "PHASE2I_PSQL_INPUT_MISSING" >&2
+  exit 66
+fi
+if [[ ! -s "$schema_file" ]]; then
+  echo "PHASE2I_SCHEMA_INPUT_MISSING" >&2
   exit 66
 fi
 
@@ -51,6 +57,7 @@ mkdir -p -- "$(dirname -- "$log_file")"
 {
   printf '%s\n' 'SET ROLE postgres;'
   printf '%s\n' 'CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;'
+  printf '%s\n' 'DROP SCHEMA IF EXISTS supabase_migrations CASCADE;'
   printf '%s\n' 'DROP SCHEMA IF EXISTS public CASCADE;'
   # supabase_admin is platform-owned. Preserve its staging defaults and replay
   # application-owned public objects plus postgres-owned default ACLs verbatim.

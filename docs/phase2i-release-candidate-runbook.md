@@ -1,6 +1,6 @@
 # Phase 2I release candidate runbook
 
-This runbook validates the Phase 2C.2–2H stack in an isolated Supabase branch and a Vercel Preview. It does not authorize a Production database migration, a Production deployment, or a merge of `main`, PR #1, or PR #2.
+This runbook validates the Phase 2C.2–2H stack in a standalone isolated Supabase Staging project and a Vercel Preview. It does not authorize a Production database migration, a Production deployment, or a merge of `main`, PR #1, or PR #2.
 
 Current gate state is recorded in `docs/phase2i-rc-manifest.json`. The gate must remain failed while the staging project ref or the staging-bound Preview is absent.
 
@@ -9,12 +9,12 @@ Current gate state is recorded in `docs/phase2i-rc-manifest.json`. The gate must
 1. Confirm Git HEAD descends directly from `7521cfca5fe5d90028a4ea8da2c3309a16949875` on `codex/phase2i-integration-release-candidate`.
 2. Confirm `git status --short` is empty and no Phase 2I business migration exists.
 3. Run `node scripts/phase2i-rc-preflight.mjs`. This verifies migration filenames, order, SHA-256 digests, and absence of a hard-coded Production ref in runtime source.
-4. Create a persistent Supabase development/staging branch from project `xhtwmzlorceebsemqkww`. Do not copy Production data. Record only the new project ref; never record credentials or keys.
-5. Confirm the branch is healthy and isolated. The staging ref must differ from `xhtwmzlorceebsemqkww`.
+4. Use the standalone Staging project `bertkuucbcegsvvvatyy`. Do not copy Production data. Record only the project ref; never record credentials or keys.
+5. Confirm the Staging project is healthy and isolated. Its ref must differ from `xhtwmzlorceebsemqkww`.
 6. Update the RC manifest with the staging ref. Keep secrets in the hosting provider's encrypted environment store only.
 7. Production DB must remain read-only throughout Phase 2I.
 
-Stop immediately if the branch cannot be provisioned, the staging ref equals Production, a migration digest differs, or any Production count changes.
+Stop immediately if the standalone Staging project is unavailable, the staging ref equals Production, a migration digest differs, or any Production count changes.
 
 ## B. Backup and read-only evidence
 
@@ -30,7 +30,12 @@ Repeat the same read-only count query after RC. Before/after counts and fingerpr
 
 ## C. Migration order
 
-Production currently ends at `20260820090323` with 69 recorded migrations. Apply every pending migration to staging in this exact order, with no SQL extraction or cherry-picking:
+Production currently ends at `20260820090323` with 69 recorded migrations. The RC migration gate has two distinct parts:
+
+- **2I-C1 SQL compatibility replay:** restore the verified Production schema-only snapshot, create the synthetic compatibility fixture, and execute the exact SQL to prove schema/data compatibility. This evidence does not satisfy deployment bookkeeping by itself.
+- **2I-C2 managed deployment:** rebuild Staging from the same verified snapshot, recreate the fixture, and apply the seven exact files through Supabase managed `db push`, which must create durable `supabase_migrations.schema_migrations` records.
+
+Apply every pending migration to Staging in this exact order, with no SQL extraction or cherry-picking:
 
 1. `20260830135944_phase2c2_full_resource_snapshot.sql`
 2. `20260830144232_phase2c2_1_full_resource_snapshot_hardening.sql`
@@ -40,9 +45,15 @@ Production currently ends at `20260820090323` with 69 recorded migrations. Apply
 6. `20260831222521_phase2g_payroll_contractor.sql`
 7. `20260901061931_phase2h_performance_analytics.sql`
 
-Use the complete checked-in files. Verify applied migration versions and digests against the manifest. A missing dependency, duplicate object error, hidden replay conflict, or signature mismatch fails the RC.
+Use the complete checked-in files. Verify applied migration versions and digests against the manifest. A missing dependency, duplicate object error, hidden replay conflict, signature mismatch, missing migration-history table, or missing bookkeeping record fails the RC.
 
-After first application, rehearse migration replay against a freshly recreated staging branch from the same Production baseline. Reusing a partially migrated database is not replay evidence.
+After managed application, list remote migrations and require seven timestamp/name records matching the manifest. Run the same deployment bundle a second time with `db push --dry-run`; it must report zero pending migrations and must not execute any migration body.
+
+### Eventual Production deployment mechanism
+
+Production rollout is managed `supabase db push`; raw SQL without bookkeeping is forbidden. Because the repository does not contain fabricated bodies for every historical Production migration, create an ephemeral release workdir and use `supabase migration fetch` against Production to hydrate its 69 official history records. Verify count `69` and head `20260820090323`, then add only the seven exact manifest-pinned files and verify every SHA-256. `db push --dry-run` must list exactly the seven release migrations. An actual Production `db push` requires separate promotion authorization and is not permitted during Phase 2I.
+
+The C2 preflight performed only the read-only Production history fetch and dry-run; it did not execute any Production migration.
 
 ## D. Expected schema objects
 
@@ -59,7 +70,7 @@ Verify RLS is enabled where required, canonical tables reject generic `anon`/`au
 
 ## E. Controlled compatibility fixture
 
-Supabase development branches do not contain Production data by default. Create staging-only fixtures that reproduce the historical row shapes used by:
+The standalone Staging project must not contain Production data. Create staging-only fixtures that reproduce the historical row shapes used by:
 
 - 719 legacy Work Orders;
 - existing Work Results, Payroll, Surveys, Inventory, Vehicles, Budget rates/blocks;

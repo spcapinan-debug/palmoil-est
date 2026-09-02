@@ -3,7 +3,7 @@
   "release_candidate_source": "7521cfca5fe5d90028a4ea8da2c3309a16949875",
   "branch": "codex/phase2i-integration-release-candidate",
   "captured_at": "2026-09-01T20:11:32.7928747+07:00",
-  "updated_at": "2026-09-02T07:11:05.3395069+07:00",
+  "updated_at": "2026-09-02T10:06:52.2021414+07:00",
   "production": {
     "project_ref": "xhtwmzlorceebsemqkww",
     "postgres_version": "17.6",
@@ -69,6 +69,24 @@
     "application_schema_equivalent": true,
     "compatibility_fixture": "PASS"
   },
+  "migration_deployment": {
+    "classification": {
+      "2I-A_production_baseline_capture": "PASS",
+      "2I-B_baseline_equivalence": "PASS",
+      "2I-C1_exact_sql_compatibility_replay": "PASS",
+      "2I-C2_deployment_mechanism_and_bookkeeping": "PASS"
+    },
+    "compatibility_replay_evidence": "docs/phase2i-baseline/pending-migration-replay.tsv",
+    "managed_bookkeeping_evidence": "docs/phase2i-baseline/managed-migration-bookkeeping-20260902.json",
+    "mechanism": "supabase_cli_db_push",
+    "cli_version": "2.114.0",
+    "history_table": "supabase_migrations.schema_migrations",
+    "release_record_count": 7,
+    "second_run_pending_count": 0,
+    "deployment_replay_idempotent": true,
+    "production_rollout": "fetch_official_remote_history_into_ephemeral_bundle_then_supabase_db_push",
+    "production_rollout_dry_run_only": true
+  },
   "preview": {
     "hostname": null,
     "environment": "Preview",
@@ -122,6 +140,8 @@
   "runtime_gates": {
     "migration_stack_applied": true,
     "migration_replay_clean": true,
+    "migration_bookkeeping": true,
+    "deployment_replay_idempotent": true,
     "historical_compatibility": true,
     "e2e_employee": false,
     "e2e_contractor": false,

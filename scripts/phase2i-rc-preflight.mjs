@@ -33,6 +33,30 @@ for (const migration of manifest.migration_stack) {
   );
 }
 
+const deployment = manifest.migration_deployment || {};
+assert.equal(
+  deployment.classification?.["2I-C2_deployment_mechanism_and_bookkeeping"],
+  "PASS",
+  "managed migration bookkeeping gate is not complete",
+);
+assert.equal(deployment.mechanism, "supabase_cli_db_push");
+assert.equal(deployment.history_table, "supabase_migrations.schema_migrations");
+assert.equal(deployment.release_record_count, manifest.migration_stack.length);
+assert.equal(deployment.second_run_pending_count, 0);
+assert.equal(deployment.deployment_replay_idempotent, true);
+
+const bookkeepingPath = path.join(root, deployment.managed_bookkeeping_evidence || "");
+assert.ok(fs.existsSync(bookkeepingPath), "managed migration bookkeeping evidence is missing");
+const bookkeeping = JSON.parse(fs.readFileSync(bookkeepingPath, "utf8"));
+assert.equal(bookkeeping.status, "PASS");
+assert.equal(bookkeeping.execution.history_record_count, manifest.migration_stack.length);
+assert.equal(bookkeeping.execution.second_run_pending_count, 0);
+assert.deepEqual(
+  bookkeeping.records.map(({ version, file, sha256 }) => ({ version, file, sha256 })),
+  manifest.migration_stack.map(({ version, file, sha256 }) => ({ version, file, sha256 })),
+  "bookkeeping version/name mapping differs from the reviewed release stack",
+);
+
 const runtimeFiles = [
   "api",
   "lib",
@@ -74,6 +98,7 @@ const result = {
   },
   preview: manifest.preview,
   migrations: manifest.migration_stack.map(({ version, file, sha256 }) => ({ version, file, sha256 })),
+  migration_deployment: manifest.migration_deployment,
   blocking_gates: manifest.blocking_gates,
   rc_status: manifest.rc_status,
 };

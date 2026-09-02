@@ -3,7 +3,8 @@
 ## Gate status
 
 Phase 2I remains **BLOCKED / DO NOT PROMOTE**. Gates 2I-A (Production baseline),
-2I-B (baseline equivalence), and 2I-C (pending migration replay) passed. Runtime
+2I-B (baseline equivalence), 2I-C1 (exact SQL compatibility replay), and 2I-C2
+(managed deployment bookkeeping) passed. Runtime
 E2E, security/idempotency, Vercel Preview binding, visual regression, and final
 release gates remain pending.
 
@@ -27,7 +28,7 @@ ref and rejecting the Production ref.
 ## Production schema-only baseline
 
 - Artifact: `docs/phase2i-baseline/production-schema-20260820090323.sql`
-- Size: 1,124,245 bytes
+- Size: 1,124,244 bytes
 - SHA-256: `ee1a723813d16b2b75bfe0e36777110b322e979c134c19c8ed8396eb4f1b6e8b`
 - Production migration head: `20260820090323`
 - Production migration count: 69
@@ -69,7 +70,7 @@ response/finding, Payroll period/summary/earning, Employee, Material/Unit,
 Warehouse, and Vehicle. It contains no Production identity, Production UUID,
 employee name, payroll record, or business transaction.
 
-## Exact pending migration replay
+## 2I-C1 exact SQL compatibility replay
 
 Every file SHA-256 matched `docs/phase2i-rc-manifest.json` before execution.
 Transactions and file ordering were unchanged.
@@ -84,10 +85,35 @@ Transactions and file ordering were unchanged.
 | `20260831222521_phase2g_payroll_contractor.sql` | 10,017 ms | 16 | 170 | 82 | PASS |
 | `20260901061931_phase2h_performance_analytics.sql` | 2,703 ms | 16 | 170 | 88 | PASS |
 
-The RC validates the upgrade from the exact current Production schema state. It
-does not reconstruct the unavailable bodies of 69 historical migrations. The
-Staging migration-history table intentionally remains empty; the baseline and
-seven exact migration files are tracked by their manifests and replay evidence.
+This first pass validates SQL compatibility from the exact Production schema
+state. It does not reconstruct the unavailable bodies of 69 historical
+migrations. At the time of this C1 replay, Staging had no migration bookkeeping;
+the timings above remain preserved as compatibility evidence and are not the C2
+deployment-mechanism evidence.
+
+## 2I-C2 managed deployment bookkeeping
+
+Staging was rebuilt again from the verified baseline. The application catalog
+fingerprint returned to `f8fc5e5633f1baf79bed3dc3dc344e2b` / 11,626 records,
+and the synthetic fixture passed 16/16 before deployment.
+
+The seven exact, SHA-verified files were placed in an isolated release bundle
+and applied with Supabase CLI `2.114.0` `db push`. This created
+`supabase_migrations.schema_migrations` with exactly seven durable records using
+the source timestamp and migration name. A second `db push --dry-run` reported
+the remote database up to date with zero pending migrations:
+
+- Managed records: 7/7
+- First version: `20260830135944` / `phase2c2_full_resource_snapshot`
+- Last version: `20260901061931` / `phase2h_performance_analytics`
+- `DEPLOYMENT_REPLAY_IDEMPOTENT`: PASS
+- Evidence: `docs/phase2i-baseline/managed-migration-bookkeeping-20260902.json`
+
+The eventual Production mechanism is also managed `db push`, never raw SQL.
+The read-only preflight fetched the 69 official Production history records into
+an ephemeral bundle, verified head `20260820090323`, added the seven exact
+manifest-pinned files, and reported only those seven as pending. No Production
+migration was executed.
 
 ## Post-migration schema health
 

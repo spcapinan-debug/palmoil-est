@@ -8,6 +8,12 @@ const root = path.join(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "docs", "phase2i-rc-manifest.json"), "utf8"));
 const releaseRunbook = fs.readFileSync(path.join(root, "docs", "phase2i-release-candidate-runbook.md"), "utf8");
 const rollbackRunbook = fs.readFileSync(path.join(root, "docs", "phase2i-rollback-runbook.md"), "utf8");
+const bookkeeping = JSON.parse(fs.readFileSync(
+  path.join(root, "docs", "phase2i-baseline", "managed-migration-bookkeeping-20260902.json"),
+  "utf8",
+));
+const managedRelease = fs.readFileSync(path.join(root, "scripts", "phase2i-managed-release.sh"), "utf8");
+const stagingRestore = fs.readFileSync(path.join(root, "scripts", "phase2i-restore-schema.sh"), "utf8");
 const migrationsDir = path.join(root, "supabase", "migrations");
 
 const migrations = manifest.migration_stack.map(({ file }) => ({
@@ -42,6 +48,27 @@ test("migration order is complete from the Production baseline through Phase 2H"
   const versions = manifest.migration_stack.map(({ version }) => version);
   assert.deepEqual(versions, [...versions].sort());
   assert.equal(new Set(versions).size, versions.length);
+});
+
+test("managed deployment records every release migration and is idempotent", () => {
+  assert.equal(manifest.migration_deployment.classification["2I-C1_exact_sql_compatibility_replay"], "PASS");
+  assert.equal(manifest.migration_deployment.classification["2I-C2_deployment_mechanism_and_bookkeeping"], "PASS");
+  assert.equal(manifest.migration_deployment.mechanism, "supabase_cli_db_push");
+  assert.equal(manifest.migration_deployment.history_table, "supabase_migrations.schema_migrations");
+  assert.equal(manifest.migration_deployment.release_record_count, 7);
+  assert.equal(manifest.migration_deployment.second_run_pending_count, 0);
+  assert.equal(manifest.migration_deployment.deployment_replay_idempotent, true);
+  assert.equal(bookkeeping.status, "PASS");
+  assert.deepEqual(
+    bookkeeping.records.map(({ version, file, sha256 }) => ({ version, file, sha256 })),
+    manifest.migration_stack.map(({ version, file, sha256 }) => ({ version, file, sha256 })),
+  );
+  assert.match(managedRelease, /RC_STAGING_TARGET_REQUIRED/);
+  assert.match(managedRelease, /db push[\s\S]*--dry-run/);
+  assert.match(managedRelease, /migration list/);
+  assert.match(managedRelease, /DEPLOYMENT_REPLAY_IDEMPOTENT=PASS/);
+  assert.match(stagingRestore, /DROP SCHEMA IF EXISTS supabase_migrations CASCADE/);
+  assert.match(stagingRestore, /RC_STAGING_TARGET_REQUIRED/);
 });
 
 test("canonical lineage remains snapshot based from Planning through Performance", () => {
@@ -91,6 +118,8 @@ test("RC remains fail closed after isolated Staging until runtime and Preview ga
   assert.equal(manifest.baseline.application_schema_equivalent, true);
   assert.equal(manifest.runtime_gates.migration_stack_applied, true);
   assert.equal(manifest.runtime_gates.migration_replay_clean, true);
+  assert.equal(manifest.runtime_gates.migration_bookkeeping, true);
+  assert.equal(manifest.runtime_gates.deployment_replay_idempotent, true);
   assert.equal(manifest.runtime_gates.historical_compatibility, true);
   assert.equal(manifest.preview.status, "not_deployed_pending_runtime_gates");
   assert.equal(manifest.preview.database_project_ref, null);

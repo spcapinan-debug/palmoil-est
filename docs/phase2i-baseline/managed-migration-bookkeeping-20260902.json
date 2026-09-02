@@ -1,0 +1,52 @@
+{
+  "gate": "2I-C2",
+  "status": "PASS",
+  "recorded_at": "2026-09-02T10:06:52.2021414+07:00",
+  "staging_project_ref": "bertkuucbcegsvvvatyy",
+  "production_project_ref": "xhtwmzlorceebsemqkww",
+  "execution": {
+    "mechanism": "supabase_cli_db_push",
+    "cli_version": "2.114.0",
+    "release_bundle": "exact_seven_manifest_pinned_migrations_only",
+    "first_run_pending_count": 7,
+    "applied_count": 7,
+    "history_table": "supabase_migrations.schema_migrations",
+    "history_record_count": 7,
+    "second_run_pending_count": 0,
+    "deployment_replay_idempotent": true
+  },
+  "records": [
+    {"version": "20260830135944", "name": "phase2c2_full_resource_snapshot", "file": "20260830135944_phase2c2_full_resource_snapshot.sql", "sha256": "53419b2ca42e429ed0b38c0618b1cf067a9e3314857785ae3964d254fa547fdb"},
+    {"version": "20260830144232", "name": "phase2c2_1_full_resource_snapshot_hardening", "file": "20260830144232_phase2c2_1_full_resource_snapshot_hardening.sql", "sha256": "024e09474f022926342bce65d85277b2542abe768ccd46ee19eac9a059712adb"},
+    {"version": "20260830232530", "name": "phase2d_scheduler_work_order_snapshot", "file": "20260830232530_phase2d_scheduler_work_order_snapshot.sql", "sha256": "18ad9a275967ef5a1e9bd6faf5a0bdefd6e2cff3278e87c2f1f2670eb4e5b0c4"},
+    {"version": "20260831034621", "name": "phase2e_daily_result_survey_integration", "file": "20260831034621_phase2e_daily_result_survey_integration.sql", "sha256": "e86760f72bf6f08f6e508099ca9f62be4bd72b649a0b538ebafb6a970a9dbdd6"},
+    {"version": "20260831063205", "name": "phase2f_actual_variance", "file": "20260831063205_phase2f_actual_variance.sql", "sha256": "69f838fa0dc1d898ab3d720647cd998c65d6e07bf4760815f7c225aaf5137400"},
+    {"version": "20260831222521", "name": "phase2g_payroll_contractor", "file": "20260831222521_phase2g_payroll_contractor.sql", "sha256": "d5fe065b2c7486349fe4bc973b52a0683e5b82d7dcc179b5811752be57e2f2ac"},
+    {"version": "20260901061931", "name": "phase2h_performance_analytics", "file": "20260901061931_phase2h_performance_analytics.sql", "sha256": "620dececba7c22001a388d1b66765c93586de9b08bff7d0ad9ec461ddc1f00ea"}
+  ],
+  "production_rollout_preflight": {
+    "mechanism": "fetch_official_remote_history_into_ephemeral_bundle_then_supabase_db_push",
+    "fetched_history_count": 69,
+    "fetched_history_head": "20260820090323",
+    "dry_run_pending_count": 7,
+    "executed": false
+  },
+  "post_migration_health": {
+    "fixture_assertions": "16/16 PASS",
+    "public_tables": 170,
+    "public_views": 88,
+    "public_functions": 151,
+    "public_triggers": 96,
+    "unvalidated_checks": 22,
+    "unvalidated_check_violations": 0,
+    "status": "PASS"
+  },
+  "production_after": {
+    "migration_count": 69,
+    "migration_head": "20260820090323",
+    "application_fingerprint": "f8fc5e5633f1baf79bed3dc3dc344e2b",
+    "count_checks": 29,
+    "count_mismatches": 0,
+    "unchanged": true
+  }
+}
