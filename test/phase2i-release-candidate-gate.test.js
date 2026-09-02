@@ -14,6 +14,7 @@ const bookkeeping = JSON.parse(fs.readFileSync(
 ));
 const managedRelease = fs.readFileSync(path.join(root, "scripts", "phase2i-managed-release.sh"), "utf8");
 const stagingRestore = fs.readFileSync(path.join(root, "scripts", "phase2i-restore-schema.sh"), "utf8");
+const rcPreflight = fs.readFileSync(path.join(root, "scripts", "phase2i-rc-preflight.mjs"), "utf8");
 const stagingSql = fs.readFileSync(path.join(root, "scripts", "phase2i-staging-sql.sh"), "utf8");
 const securitySql = fs.readFileSync(path.join(root, "scripts", "phase2i-security-runtime.sql"), "utf8");
 const runtimeEvidenceDir = path.join(root, "docs", "phase2i-runtime");
@@ -148,6 +149,9 @@ test("security harness restores postgres explicitly and has bounded timeouts", (
   assert.match(securitySql, /lock_timeout = '5s'/i);
   assert.match(securitySql, /idle_in_transaction_session_timeout = '60s'/i);
   assert.match(stagingSql, /timeout_bin[\s\S]*--kill-after=5s 90s/);
+  assert.match(rcPreflight, /VERCEL_ENV[\s\S]*preview/);
+  assert.match(rcPreflight, /RC_PREVIEW_PRODUCTION_DATABASE_FORBIDDEN/);
+  assert.match(rcPreflight, /RC_PREVIEW_STAGING_DATABASE_REQUIRED/);
 });
 
 test("RC remains fail closed after isolated Staging until runtime and Preview gates pass", () => {

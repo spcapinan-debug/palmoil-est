@@ -13,6 +13,15 @@ function digest(file) {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
 
+function supabaseProjectRef(url) {
+  try {
+    const hostname = new URL(String(url || "")).hostname.toLowerCase();
+    return hostname.match(/^([a-z0-9]+)[.]supabase[.]co$/)?.[1] || "";
+  } catch {
+    return "";
+  }
+}
+
 const actual = fs.readdirSync(migrationsDir)
   .filter((file) => /^\d{14}_.+[.]sql$/.test(file))
   .map((file) => ({ file, version: file.slice(0, 14) }))
@@ -83,6 +92,20 @@ function scan(entry) {
 
 runtimeFiles.forEach(scan);
 assert.deepEqual(violations, [], "Production project ref is hard-coded in runtime source");
+
+if (String(process.env.VERCEL_ENV || "").toLowerCase() === "preview") {
+  const resolvedRef = supabaseProjectRef(process.env.SUPABASE_URL);
+  if (resolvedRef === manifest.production.project_ref) {
+    throw new Error("RC_PREVIEW_PRODUCTION_DATABASE_FORBIDDEN");
+  }
+  assert.equal(
+    resolvedRef,
+    manifest.staging.project_ref,
+    "RC_PREVIEW_STAGING_DATABASE_REQUIRED",
+  );
+  assert.equal(process.env.RC_STAGING_SUPABASE_REF, manifest.staging.project_ref,
+    "RC_PREVIEW_STAGING_REF_ASSERTION_MISSING");
+}
 
 const result = {
   phase: manifest.phase,
