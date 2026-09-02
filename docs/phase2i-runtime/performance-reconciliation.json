@@ -1,0 +1,24 @@
+{
+  "phase": "2I-G-performance",
+  "generated_at": "2026-09-02T16:31:49+07:00",
+  "environment": "staging",
+  "transaction": "ROLLBACK",
+  "status": "PASS",
+  "phase2h_uat": { "passed": 37, "failed": 0, "range": "A-AK" },
+  "reconciliations": [
+    { "name": "plan_vs_actual", "status": "PASS" },
+    { "name": "frozen_labor_rate_lines", "status": "PASS" },
+    { "name": "employee_contractor_separation", "status": "PASS" },
+    { "name": "material_issued_vs_consumed", "status": "PASS" },
+    { "name": "fuel_issued_vs_consumed", "status": "PASS" },
+    { "name": "hour_meter_primary_kpi", "status": "PASS" },
+    { "name": "odometer_primary_kpi", "status": "PASS" },
+    { "name": "survey_quality_finding_lineage", "status": "PASS" },
+    { "name": "planned_operational_cost", "status": "PASS" },
+    { "name": "actual_operational_cost", "status": "PASS" },
+    { "name": "payroll_net_excluded_from_operational_cost", "status": "PASS" },
+    { "name": "contractor_net_not_double_counted", "status": "PASS" },
+    { "name": "service_scope_and_read_only_boundary", "status": "PASS" }
+  ],
+  "source_output": ".phase2i-tools/phase2i-runtime-rollback.out"
+}

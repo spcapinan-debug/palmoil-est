@@ -14,6 +14,16 @@ const bookkeeping = JSON.parse(fs.readFileSync(
 ));
 const managedRelease = fs.readFileSync(path.join(root, "scripts", "phase2i-managed-release.sh"), "utf8");
 const stagingRestore = fs.readFileSync(path.join(root, "scripts", "phase2i-restore-schema.sh"), "utf8");
+const stagingSql = fs.readFileSync(path.join(root, "scripts", "phase2i-staging-sql.sh"), "utf8");
+const securitySql = fs.readFileSync(path.join(root, "scripts", "phase2i-security-runtime.sql"), "utf8");
+const runtimeEvidenceDir = path.join(root, "docs", "phase2i-runtime");
+const runtimeEvidence = Object.fromEntries([
+  "e2e-results.json",
+  "security-matrix.json",
+  "idempotency-results.json",
+  "payroll-reconciliation.json",
+  "performance-reconciliation.json",
+].map((file) => [file, JSON.parse(fs.readFileSync(path.join(runtimeEvidenceDir, file), "utf8"))]));
 const migrationsDir = path.join(root, "supabase", "migrations");
 
 const migrations = manifest.migration_stack.map(({ file }) => ({
@@ -110,6 +120,36 @@ test("canonical tables remain action-only and Performance remains service-only r
   assert.match(stack, /security_invoker=true/i);
 });
 
+test("staging runtime evidence covers E2E 1-6 and reconciliation gates", () => {
+  const e2e = runtimeEvidence["e2e-results.json"];
+  const security = runtimeEvidence["security-matrix.json"];
+  const idempotency = runtimeEvidence["idempotency-results.json"];
+  const payroll = runtimeEvidence["payroll-reconciliation.json"];
+  const performance = runtimeEvidence["performance-reconciliation.json"];
+  assert.equal(e2e.execution_layer, "database_transaction_uat");
+  assert.deepEqual(e2e.scenarios.map(({ id, status }) => [id, status]),
+    [1, 2, 3, 4, 5, 6].map((id) => [id, "PASS"]));
+  assert.equal(e2e.frozen_lineage.status, "PASS");
+  assert.equal(security.summary.passed, 10);
+  assert.equal(security.summary.failed, 0);
+  assert.equal(security.role_restoration.status, "PASS");
+  assert.equal(idempotency.status, "PASS");
+  assert.equal(payroll.bpay_reconciliation.status, "PASS");
+  assert.equal(performance.phase2h_uat.passed, 37);
+  assert.equal(performance.phase2h_uat.failed, 0);
+});
+
+test("security harness restores postgres explicitly and has bounded timeouts", () => {
+  assert.match(securitySql, /set local role postgres;/i);
+  assert.match(securitySql, /current_user <> 'postgres'/i);
+  assert.match(securitySql, /SECURITY_HARNESS_ROLE_RESTORE_FAILED/);
+  assert.doesNotMatch(securitySql, /reset role;/i);
+  assert.match(securitySql, /statement_timeout = '60s'/i);
+  assert.match(securitySql, /lock_timeout = '5s'/i);
+  assert.match(securitySql, /idle_in_transaction_session_timeout = '60s'/i);
+  assert.match(stagingSql, /timeout_bin[\s\S]*--kill-after=5s 90s/);
+});
+
 test("RC remains fail closed after isolated Staging until runtime and Preview gates pass", () => {
   assert.equal(manifest.staging.status, "active_healthy");
   assert.equal(manifest.staging.project_ref, "bertkuucbcegsvvvatyy");
@@ -121,11 +161,17 @@ test("RC remains fail closed after isolated Staging until runtime and Preview ga
   assert.equal(manifest.runtime_gates.migration_bookkeeping, true);
   assert.equal(manifest.runtime_gates.deployment_replay_idempotent, true);
   assert.equal(manifest.runtime_gates.historical_compatibility, true);
+  for (const gate of ["e2e_employee", "e2e_contractor", "e2e_material",
+    "e2e_hour_meter_vehicle", "e2e_odometer_vehicle", "e2e_survey",
+    "payroll_and_bpay_reconciled", "performance_reconciled",
+    "roles_and_action_security", "idempotency"]) assert.equal(manifest.runtime_gates[gate], true, gate);
   assert.equal(manifest.preview.status, "not_deployed_pending_runtime_gates");
   assert.equal(manifest.preview.database_project_ref, null);
   assert.equal(manifest.rc_status, "blocked");
-  assert.ok(manifest.blocking_gates.includes("staging_e2e"));
+  assert.ok(!manifest.blocking_gates.includes("staging_e2e"));
+  assert.ok(!manifest.blocking_gates.includes("staging_security_matrix"));
   assert.ok(manifest.blocking_gates.includes("vercel_preview_staging_binding"));
+  assert.ok(manifest.blocking_gates.includes("playwright_full_rc"));
   assert.equal(manifest.runtime_gates.production_after_matches_before, true);
   assert.ok(Object.values(manifest.runtime_gates).some((passed) => passed === false));
 });

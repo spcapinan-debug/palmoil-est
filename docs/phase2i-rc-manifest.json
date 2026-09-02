@@ -3,7 +3,7 @@
   "release_candidate_source": "7521cfca5fe5d90028a4ea8da2c3309a16949875",
   "branch": "codex/phase2i-integration-release-candidate",
   "captured_at": "2026-09-01T20:11:32.7928747+07:00",
-  "updated_at": "2026-09-02T10:06:52.2021414+07:00",
+  "updated_at": "2026-09-02T16:31:49+07:00",
   "production": {
     "project_ref": "xhtwmzlorceebsemqkww",
     "postgres_version": "17.6",
@@ -132,8 +132,6 @@
   ],
   "rc_status": "blocked",
   "blocking_gates": [
-    "staging_e2e",
-    "staging_security_matrix",
     "vercel_preview_staging_binding",
     "playwright_full_rc"
   ],
@@ -143,19 +141,26 @@
     "migration_bookkeeping": true,
     "deployment_replay_idempotent": true,
     "historical_compatibility": true,
-    "e2e_employee": false,
-    "e2e_contractor": false,
-    "e2e_material": false,
-    "e2e_hour_meter_vehicle": false,
-    "e2e_odometer_vehicle": false,
-    "e2e_survey": false,
-    "payroll_and_bpay_reconciled": false,
-    "performance_reconciled": false,
-    "roles_and_action_security": false,
-    "idempotency": false,
+    "e2e_employee": true,
+    "e2e_contractor": true,
+    "e2e_material": true,
+    "e2e_hour_meter_vehicle": true,
+    "e2e_odometer_vehicle": true,
+    "e2e_survey": true,
+    "payroll_and_bpay_reconciled": true,
+    "performance_reconciled": true,
+    "roles_and_action_security": true,
+    "idempotency": true,
     "playwright_viewport_matrix": false,
     "npm_test_lint_build": true,
     "production_after_matches_before": true
+  },
+  "runtime_evidence": {
+    "e2e": "docs/phase2i-runtime/e2e-results.json",
+    "security": "docs/phase2i-runtime/security-matrix.json",
+    "idempotency": "docs/phase2i-runtime/idempotency-results.json",
+    "payroll_reconciliation": "docs/phase2i-runtime/payroll-reconciliation.json",
+    "performance_reconciliation": "docs/phase2i-runtime/performance-reconciliation.json"
   },
   "known_baseline_conditions": [
     "renderFarmWorkPlanner() Step 01-04 remains unwired exactly as at the release candidate source."

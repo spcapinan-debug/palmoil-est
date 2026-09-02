@@ -42,7 +42,14 @@ eval "$connection_exports"
 export LD_LIBRARY_PATH="$lib_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 mkdir -p -- "$(dirname -- "$output_file")"
-"$psql_bin" --no-psqlrc --set=ON_ERROR_STOP=1 --command='SET ROLE postgres;' \
+timeout_bin="$(command -v timeout || true)"
+if [[ -z "$timeout_bin" ]]; then
+  echo "PHASE2I_STAGING_SQL_TIMEOUT_MISSING" >&2
+  exit 68
+fi
+
+"$timeout_bin" --signal=TERM --kill-after=5s 90s \
+  "$psql_bin" --no-psqlrc --set=ON_ERROR_STOP=1 --command='SET ROLE postgres;' \
   --file="$sql_file" >"$output_file" 2>&1
 
 printf 'PHASE2I_STAGING_SQL_%s=PASS\n' "$label"
