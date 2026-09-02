@@ -83,10 +83,17 @@ test("canonical tables remain action-only and Performance remains service-only r
   assert.match(stack, /security_invoker=true/i);
 });
 
-test("RC correctly fails closed while staging and Preview bindings are absent", () => {
-  assert.equal(manifest.staging.status, "blocked");
-  assert.equal(manifest.staging.project_ref, null);
-  assert.equal(manifest.preview.status, "not_deployed_without_staging");
+test("RC remains fail closed after isolated Staging until runtime and Preview gates pass", () => {
+  assert.equal(manifest.staging.status, "active_healthy");
+  assert.equal(manifest.staging.project_ref, "bertkuucbcegsvvvatyy");
+  assert.notEqual(manifest.staging.project_ref, manifest.production.project_ref);
+  assert.equal(manifest.staging.production_isolated, true);
+  assert.equal(manifest.baseline.application_schema_equivalent, true);
+  assert.equal(manifest.runtime_gates.migration_stack_applied, true);
+  assert.equal(manifest.runtime_gates.migration_replay_clean, true);
+  assert.equal(manifest.runtime_gates.historical_compatibility, true);
+  assert.equal(manifest.preview.status, "not_deployed_pending_runtime_gates");
+  assert.equal(manifest.preview.database_project_ref, null);
   assert.equal(manifest.rc_status, "blocked");
   assert.ok(manifest.blocking_gates.includes("staging_e2e"));
   assert.ok(manifest.blocking_gates.includes("vercel_preview_staging_binding"));

@@ -1,0 +1,75 @@
+{
+  "artifact_kind": "production_schema_only_baseline",
+  "baseline_generated_at": "2026-09-02T06:38:49+07:00",
+  "manifest_updated_at": "2026-09-02T07:11:05.3395069+07:00",
+  "production_project_ref": "xhtwmzlorceebsemqkww",
+  "production_postgres_version": "17.6.1.127",
+  "dump_reported_postgres_version": "17.6",
+  "production_migration_head": "20260820090323",
+  "production_migration_count": 69,
+  "baseline_file": "docs/phase2i-baseline/production-schema-20260820090323.sql",
+  "baseline_size_bytes": 1124244,
+  "baseline_sha256": "ee1a723813d16b2b75bfe0e36777110b322e979c134c19c8ed8396eb4f1b6e8b",
+  "scope": {
+    "included": [
+      "application-owned public relations and columns",
+      "constraints and indexes",
+      "views",
+      "functions and triggers",
+      "RLS state and policies",
+      "application grants and revokes",
+      "comments"
+    ],
+    "required_extensions": [
+      "btree_gist",
+      "pgcrypto",
+      "uuid-ossp"
+    ],
+    "excluded_platform_objects": [
+      "Supabase-managed auth schema except existing auth.users reference",
+      "Supabase-managed storage schema",
+      "Supabase-managed realtime, graphql, vault, and internal schemas",
+      "platform-owned supabase_admin default ACL replay"
+    ]
+  },
+  "data_and_secret_scan": {
+    "status": "PASS",
+    "copy_statements": 0,
+    "insert_statements": 0,
+    "jwt_or_api_key_shapes": 0,
+    "credentialed_connection_strings": 0,
+    "http_urls": 0,
+    "production_business_or_user_rows": 0
+  },
+  "application_catalog_fingerprint": {
+    "algorithm": "md5 over sorted canonical public catalog records; excludes OIDs, timestamps, row data, and platform schemas",
+    "record_count": 11626,
+    "overall": "f8fc5e5633f1baf79bed3dc3dc344e2b",
+    "components": {
+      "column": { "record_count": 3745, "fingerprint": "7966d8aee40329ba8a1b5626a95c7198" },
+      "constraint": { "record_count": 982, "fingerprint": "d7ccc2f809b16184763a52c3b6b59788" },
+      "function": { "record_count": 102, "fingerprint": "5a8f39d3e2adf133df036dbb554d6d4f" },
+      "index": { "record_count": 499, "fingerprint": "9243f9d7280c2e2ada2982cc51f817c6" },
+      "policy": { "record_count": 155, "fingerprint": "18231af6a694b7c651d9802323f57702" },
+      "relation": { "record_count": 231, "fingerprint": "e4a7aa9f20c0fd5aa68896de5c55f141" },
+      "routine_grant": { "record_count": 336, "fingerprint": "5c55d3b1dd195ec10589dd50c4e3edf9" },
+      "sequence_grant": { "record_count": 4, "fingerprint": "cd3b933d2fb0751d19ff062f3d4c4043" },
+      "table_grant": { "record_count": 5503, "fingerprint": "1d2b3f2d316c0f294daaab3fa7d20933" },
+      "trigger": { "record_count": 69, "fingerprint": "d255bb1a0b5523289c021fea831a432e" }
+    }
+  },
+  "staging_baseline_verification": {
+    "project_ref": "bertkuucbcegsvvvatyy",
+    "postgres_version": "17.6.1.166",
+    "application_catalog_fingerprint": "f8fc5e5633f1baf79bed3dc3dc344e2b",
+    "record_count": 11626,
+    "application_schema_equivalent": true
+  },
+  "compatibility_fixture": {
+    "file": "docs/phase2i-baseline/pre-upgrade-compatibility-fixture.sql",
+    "sha256": "98116ccffe971b2cdb4bae4e20860968193f58ef2dbbd6e97f26f6874bd45a84",
+    "synthetic_only": true,
+    "fixture_assertion_count": 16,
+    "status": "PASS"
+  }
+}

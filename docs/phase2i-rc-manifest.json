@@ -3,6 +3,7 @@
   "release_candidate_source": "7521cfca5fe5d90028a4ea8da2c3309a16949875",
   "branch": "codex/phase2i-integration-release-candidate",
   "captured_at": "2026-09-01T20:11:32.7928747+07:00",
+  "updated_at": "2026-09-02T07:11:05.3395069+07:00",
   "production": {
     "project_ref": "xhtwmzlorceebsemqkww",
     "postgres_version": "17.6",
@@ -42,18 +43,37 @@
     }
   },
   "staging": {
-    "requested_name": "phase2i-rc-20260901",
-    "project_ref": null,
-    "status": "blocked",
-    "error_code": "PaymentRequiredException",
-    "reason": "Supabase Branching is available only on Pro plan or above.",
-    "quoted_hourly_cost_usd": 0.01344
+    "strategy": "standalone_supabase_project",
+    "requested_name": "spc-est-rc",
+    "project_ref": "bertkuucbcegsvvvatyy",
+    "status": "active_healthy",
+    "region": "ap-northeast-1",
+    "postgres_version": "17.6.1.166",
+    "created_at": "2026-09-01T12:15:56.9513Z",
+    "production_isolated": true,
+    "prior_branch_attempt": {
+      "status": "rejected",
+      "error_code": "PaymentRequiredException",
+      "reason": "Supabase Branching is available only on Pro plan or above.",
+      "quoted_hourly_cost_usd": 0.01344
+    }
+  },
+  "baseline": {
+    "strategy": "verified_production_schema_only_snapshot",
+    "file": "docs/phase2i-baseline/production-schema-20260820090323.sql",
+    "manifest": "docs/phase2i-baseline/production-schema-manifest.json",
+    "sha256": "ee1a723813d16b2b75bfe0e36777110b322e979c134c19c8ed8396eb4f1b6e8b",
+    "secret_scan": "PASS",
+    "production_application_fingerprint": "f8fc5e5633f1baf79bed3dc3dc344e2b",
+    "staging_application_fingerprint": "f8fc5e5633f1baf79bed3dc3dc344e2b",
+    "application_schema_equivalent": true,
+    "compatibility_fixture": "PASS"
   },
   "preview": {
     "hostname": null,
     "environment": "Preview",
     "database_project_ref": null,
-    "status": "not_deployed_without_staging"
+    "status": "not_deployed_pending_runtime_gates"
   },
   "migration_stack": [
     {
@@ -94,17 +114,15 @@
   ],
   "rc_status": "blocked",
   "blocking_gates": [
-    "staging_project_ref",
-    "migration_stack_execution",
     "staging_e2e",
     "staging_security_matrix",
     "vercel_preview_staging_binding",
     "playwright_full_rc"
   ],
   "runtime_gates": {
-    "migration_stack_applied": false,
-    "migration_replay_clean": false,
-    "historical_compatibility": false,
+    "migration_stack_applied": true,
+    "migration_replay_clean": true,
+    "historical_compatibility": true,
     "e2e_employee": false,
     "e2e_contractor": false,
     "e2e_material": false,
