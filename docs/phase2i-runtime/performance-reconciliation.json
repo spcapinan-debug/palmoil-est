@@ -1,7 +1,8 @@
 {
   "phase": "2I-G-performance",
-  "generated_at": "2026-09-02T16:31:49+07:00",
+  "generated_at": "2026-09-03T14:06:38+07:00",
   "environment": "staging",
+  "staging_project_ref": "bertkuucbcegsvvvatyy",
   "transaction": "ROLLBACK",
   "status": "PASS",
   "phase2h_uat": { "passed": 37, "failed": 0, "range": "A-AK" },
@@ -20,5 +21,11 @@
     { "name": "contractor_net_not_double_counted", "status": "PASS" },
     { "name": "service_scope_and_read_only_boundary", "status": "PASS" }
   ],
+  "preview_browser": {
+    "status": "PASS",
+    "performance_result_count": 1,
+    "performance_worker_count": 2,
+    "concepts_present": ["Plan", "Actual", "Labor", "Material", "Fuel", "Survey", "Cost"]
+  },
   "source_output": ".phase2i-tools/phase2i-runtime-rollback.out"
 }

@@ -139,7 +139,10 @@ if (process.argv.includes("--require-runtime")) {
     && manifest.blocking_gates.length === 0
     && runtimeGatesPassed;
   if (!ready) {
-    console.error("Phase 2I RC gate FAILED: an isolated staging runtime and staging-bound Preview are required.");
+    const blockers = manifest.blocking_gates.length
+      ? manifest.blocking_gates.join(", ")
+      : "runtime readiness requirements not met";
+    console.error(`Phase 2I RC gate BLOCKED: ${blockers}`);
     process.exitCode = 1;
   }
 }

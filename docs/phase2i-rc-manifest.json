@@ -3,7 +3,7 @@
   "release_candidate_source": "7521cfca5fe5d90028a4ea8da2c3309a16949875",
   "branch": "codex/phase2i-integration-release-candidate",
   "captured_at": "2026-09-01T20:11:32.7928747+07:00",
-  "updated_at": "2026-09-02T16:31:49+07:00",
+  "updated_at": "2026-09-03T14:06:38+07:00",
   "production": {
     "project_ref": "xhtwmzlorceebsemqkww",
     "postgres_version": "17.6",
@@ -88,10 +88,10 @@
     "production_rollout_dry_run_only": true
   },
   "preview": {
-    "hostname": null,
+    "hostname": "palmoil-iz3p6na3q-spc-est.vercel.app",
     "environment": "Preview",
-    "database_project_ref": null,
-    "status": "not_deployed_pending_runtime_gates"
+    "database_project_ref": "bertkuucbcegsvvvatyy",
+    "status": "ready"
   },
   "migration_stack": [
     {
@@ -130,11 +130,8 @@
       "sha256": "620dececba7c22001a388d1b66765c93586de9b08bff7d0ad9ec461ddc1f00ea"
     }
   ],
-  "rc_status": "blocked",
-  "blocking_gates": [
-    "vercel_preview_staging_binding",
-    "playwright_full_rc"
-  ],
+  "rc_status": "passed",
+  "blocking_gates": [],
   "runtime_gates": {
     "migration_stack_applied": true,
     "migration_replay_clean": true,
@@ -151,7 +148,7 @@
     "performance_reconciled": true,
     "roles_and_action_security": true,
     "idempotency": true,
-    "playwright_viewport_matrix": false,
+    "playwright_viewport_matrix": true,
     "npm_test_lint_build": true,
     "production_after_matches_before": true
   },
@@ -160,7 +157,8 @@
     "security": "docs/phase2i-runtime/security-matrix.json",
     "idempotency": "docs/phase2i-runtime/idempotency-results.json",
     "payroll_reconciliation": "docs/phase2i-runtime/payroll-reconciliation.json",
-    "performance_reconciliation": "docs/phase2i-runtime/performance-reconciliation.json"
+    "performance_reconciliation": "docs/phase2i-runtime/performance-reconciliation.json",
+    "playwright": "docs/phase2i-runtime/playwright-results.json"
   },
   "known_baseline_conditions": [
     "renderFarmWorkPlanner() Step 01-04 remains unwired exactly as at the release candidate source."

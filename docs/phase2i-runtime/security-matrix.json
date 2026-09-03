@@ -1,6 +1,6 @@
 {
   "phase": "2I-E",
-  "generated_at": "2026-09-02T16:31:49+07:00",
+  "generated_at": "2026-09-03T14:06:38+07:00",
   "environment": "staging",
   "staging_project_ref": "bertkuucbcegsvvvatyy",
   "production_project_ref": "xhtwmzlorceebsemqkww",
@@ -30,5 +30,13 @@
     { "case_code": "SEC-10", "result": "PASS", "detail": "Authenticated RC2I Manager updated zero Result and Worker rows under RLS." }
   ],
   "summary": { "passed": 10, "failed": 0, "status": "PASS" },
+  "preview_browser_permission_smoke": {
+    "admin": "PASS",
+    "performance_only_read": "PASS",
+    "performance_only_payroll_http_status": 403,
+    "performance_only_payroll_error_code": "FORBIDDEN",
+    "payroll_authorized_read": "PASS",
+    "status": "PASS"
+  },
   "source_output": ".phase2i-tools/phase2i-security-runtime.out"
 }

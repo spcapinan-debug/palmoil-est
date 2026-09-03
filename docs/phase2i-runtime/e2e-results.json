@@ -1,6 +1,6 @@
 {
   "phase": "2I-G",
-  "generated_at": "2026-09-02T16:31:49+07:00",
+  "generated_at": "2026-09-03T14:06:38+07:00",
   "environment": "staging",
   "staging_project_ref": "bertkuucbcegsvvvatyy",
   "execution_layer": "database_transaction_uat",
@@ -20,6 +20,23 @@
     "master_rate_mutation_changed_snapshot": false,
     "vehicle_master_mutation_changed_snapshot": false
   },
-  "preview_browser_e2e": "PENDING_PHASE2I_F_G",
+  "preview_browser_e2e": {
+    "status": "PASS",
+    "preview_hostname": "palmoil-iz3p6na3q-spc-est.vercel.app",
+    "frozen_lineage": true,
+    "selected_labor_requirements": 2,
+    "work_order_labor_requirements": 2,
+    "result_workers": 2,
+    "canonical_counts": {
+      "annual_work_plans": 1,
+      "planned_work_items": 1,
+      "work_orders": 1,
+      "work_results": 1,
+      "survey_responses": 1,
+      "survey_findings": 1,
+      "payroll_earning_lines": 1,
+      "performance_results": 1
+    }
+  },
   "source_output": ".phase2i-tools/phase2i-runtime-rollback.out"
 }

@@ -17,3 +17,4 @@ webapp/data/local_api_server.*.log
 # Phase 2I local CLI/runtime artifacts (may contain connection metadata).
 .phase2i-tools/
 supabase/.temp/
+output/playwright/

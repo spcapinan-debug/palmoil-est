@@ -15,6 +15,7 @@ const bookkeeping = JSON.parse(fs.readFileSync(
 const managedRelease = fs.readFileSync(path.join(root, "scripts", "phase2i-managed-release.sh"), "utf8");
 const stagingRestore = fs.readFileSync(path.join(root, "scripts", "phase2i-restore-schema.sh"), "utf8");
 const rcPreflight = fs.readFileSync(path.join(root, "scripts", "phase2i-rc-preflight.mjs"), "utf8");
+const previewAuth = fs.readFileSync(path.join(root, "scripts", "phase2i-preview-auth-fixture.mjs"), "utf8");
 const stagingSql = fs.readFileSync(path.join(root, "scripts", "phase2i-staging-sql.sh"), "utf8");
 const securitySql = fs.readFileSync(path.join(root, "scripts", "phase2i-security-runtime.sql"), "utf8");
 const runtimeEvidenceDir = path.join(root, "docs", "phase2i-runtime");
@@ -24,6 +25,7 @@ const runtimeEvidence = Object.fromEntries([
   "idempotency-results.json",
   "payroll-reconciliation.json",
   "performance-reconciliation.json",
+  "playwright-results.json",
 ].map((file) => [file, JSON.parse(fs.readFileSync(path.join(runtimeEvidenceDir, file), "utf8"))]));
 const migrationsDir = path.join(root, "supabase", "migrations");
 
@@ -127,6 +129,7 @@ test("staging runtime evidence covers E2E 1-6 and reconciliation gates", () => {
   const idempotency = runtimeEvidence["idempotency-results.json"];
   const payroll = runtimeEvidence["payroll-reconciliation.json"];
   const performance = runtimeEvidence["performance-reconciliation.json"];
+  const playwright = runtimeEvidence["playwright-results.json"];
   assert.equal(e2e.execution_layer, "database_transaction_uat");
   assert.deepEqual(e2e.scenarios.map(({ id, status }) => [id, status]),
     [1, 2, 3, 4, 5, 6].map((id) => [id, "PASS"]));
@@ -138,6 +141,14 @@ test("staging runtime evidence covers E2E 1-6 and reconciliation gates", () => {
   assert.equal(payroll.bpay_reconciliation.status, "PASS");
   assert.equal(performance.phase2h_uat.passed, 37);
   assert.equal(performance.phase2h_uat.failed, 0);
+  assert.equal(playwright.preview_smoke.passed, 7);
+  assert.equal(playwright.viewport_matrix.passed, 42);
+  assert.equal(playwright.browser_canonical_e2e.frozen_lineage, true);
+  assert.equal(playwright.permission_browser_smoke.performance_only.payroll_error_code, "FORBIDDEN");
+  assert.equal(playwright.browser_errors.status, "PASS");
+  assert.equal(playwright.automation_bypass.revoked, true);
+  assert.equal(playwright.automation_bypass.protection_restored, true);
+  assert.equal(playwright.status, "PASS");
 });
 
 test("security harness restores postgres explicitly and has bounded timeouts", () => {
@@ -152,9 +163,23 @@ test("security harness restores postgres explicitly and has bounded timeouts", (
   assert.match(rcPreflight, /VERCEL_ENV[\s\S]*preview/);
   assert.match(rcPreflight, /RC_PREVIEW_PRODUCTION_DATABASE_FORBIDDEN/);
   assert.match(rcPreflight, /RC_PREVIEW_STAGING_DATABASE_REQUIRED/);
+  assert.match(rcPreflight, /Phase 2I RC gate BLOCKED/);
+  assert.match(rcPreflight, /blocking_gates/);
 });
 
-test("RC remains fail closed after isolated Staging until runtime and Preview gates pass", () => {
+test("Preview Auth fixture is staging-only, idempotent, and keeps credentials server-side", () => {
+  assert.match(previewAuth, /RC_PREVIEW_PRODUCTION_DATABASE_FORBIDDEN/);
+  assert.match(previewAuth, /manifest[.]staging[.]project_ref/);
+  assert.match(previewAuth, /manifest[.]production[.]project_ref/);
+  assert.match(previewAuth, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(previewAuth, /profiles[?]on_conflict=id/);
+  assert.match(previewAuth, /profile_roles[?]on_conflict=id/);
+  assert.match(previewAuth, /--cleanup/);
+  assert.doesNotMatch(previewAuth, /NEXT_PUBLIC/);
+  assert.doesNotMatch(previewAuth, /console[.]log[(].*serviceKey/);
+});
+
+test("RC records completed runtime gates and explicit validation approval", () => {
   assert.equal(manifest.staging.status, "active_healthy");
   assert.equal(manifest.staging.project_ref, "bertkuucbcegsvvvatyy");
   assert.notEqual(manifest.staging.project_ref, manifest.production.project_ref);
@@ -169,15 +194,13 @@ test("RC remains fail closed after isolated Staging until runtime and Preview ga
     "e2e_hour_meter_vehicle", "e2e_odometer_vehicle", "e2e_survey",
     "payroll_and_bpay_reconciled", "performance_reconciled",
     "roles_and_action_security", "idempotency"]) assert.equal(manifest.runtime_gates[gate], true, gate);
-  assert.equal(manifest.preview.status, "not_deployed_pending_runtime_gates");
-  assert.equal(manifest.preview.database_project_ref, null);
-  assert.equal(manifest.rc_status, "blocked");
-  assert.ok(!manifest.blocking_gates.includes("staging_e2e"));
-  assert.ok(!manifest.blocking_gates.includes("staging_security_matrix"));
-  assert.ok(manifest.blocking_gates.includes("vercel_preview_staging_binding"));
-  assert.ok(manifest.blocking_gates.includes("playwright_full_rc"));
+  assert.equal(manifest.preview.status, "ready");
+  assert.equal(manifest.preview.hostname, "palmoil-iz3p6na3q-spc-est.vercel.app");
+  assert.equal(manifest.preview.database_project_ref, manifest.staging.project_ref);
+  assert.equal(manifest.rc_status, "passed");
+  assert.deepEqual(manifest.blocking_gates, []);
   assert.equal(manifest.runtime_gates.production_after_matches_before, true);
-  assert.ok(Object.values(manifest.runtime_gates).some((passed) => passed === false));
+  assert.ok(Object.values(manifest.runtime_gates).every((passed) => passed === true));
 });
 
 test("release and rollback runbooks contain every required decision section", () => {

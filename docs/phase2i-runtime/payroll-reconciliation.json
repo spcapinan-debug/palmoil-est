@@ -1,7 +1,8 @@
 {
   "phase": "2I-G-payroll",
-  "generated_at": "2026-09-02T16:31:49+07:00",
+  "generated_at": "2026-09-03T14:06:38+07:00",
   "environment": "staging",
+  "staging_project_ref": "bertkuucbcegsvvvatyy",
   "transaction": "ROLLBACK",
   "status": "PASS",
   "employee_payroll": {
@@ -37,5 +38,12 @@
     "status": "PASS"
   },
   "idempotent_retry": "PASS",
+  "preview_browser": {
+    "status": "PASS",
+    "source_result_count": 1,
+    "variance_state": "matched",
+    "employee_net_amount": 420.00,
+    "contractor_count": 1
+  },
   "source_output": ".phase2i-tools/phase2i-runtime-rollback.out"
 }
