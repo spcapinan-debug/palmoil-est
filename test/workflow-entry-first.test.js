@@ -26,13 +26,12 @@ test("workflow routes default to entry mode and keep workspace as an explicit se
   assert.match(appSource, /url\.searchParams\.delete\("mode"\)/);
 });
 
-test("planning entry restores the compact planner board before the full planning form", () => {
+test("planning entry opens the canonical Annual Plan and Material Snapshot flow", () => {
   const match = appSource.match(/function renderFarmWorkEntry\(\) \{([\s\S]*?)\n\}/);
   assert.ok(match);
   const body = match[1];
-  assert.ok(body.indexOf("renderFarmWorkBoard") < body.indexOf("renderFarmWorkPlanner"));
-  assert.match(body, /title:\s*"Planner"/);
-  assert.match(body, /ตารางแผนงานแบบย่อ แสดง Activity, Block, ทีม และสถานะในแถวเดียว/);
+  assert.match(body, /renderFarmCanonicalPlanner\(\)/);
+  assert.doesNotMatch(body, /renderFarmWorkBoard|renderFarmWorkPlanner/);
   assert.match(body, /ดู Workspace และติดตามงาน/);
 });
 

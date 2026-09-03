@@ -18,14 +18,192 @@ const {
 } = require("../lib/server/farm-api");
 
 const ACTIONS = {
+  create_canonical_annual_work_plan: {
+    permission: "farm.plan.create",
+    rpc: "create_canonical_annual_work_plan",
+    params: (args, actor, context) => ({
+      p_plan_year: requiredInteger(args.plan_year, "plan_year", { minimum: 1 }),
+      p_plan_name: requireText(args.plan_name, "plan_name", 500),
+      p_actor_profile_id: actor.profile.id,
+      p_request_key: context.idempotencyKey,
+      p_estate_id: optionalUuid(args.estate_id, "estate_id"),
+      p_note: optionalText(args.note, 2000),
+    }),
+    entity: "annual_work_plans",
+  },
+  update_canonical_annual_work_plan: {
+    permission: "farm.plan.create",
+    rpc: "update_canonical_annual_work_plan",
+    params: (args, actor) => ({
+      p_annual_plan_id: requireUuid(args.annual_plan_id, "annual_plan_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_plan_name: requireText(args.plan_name, "plan_name", 500),
+      p_estate_id: optionalUuid(args.estate_id, "estate_id"),
+      p_note: optionalText(args.note, 2000),
+    }),
+    entity: "annual_work_plans", entityId: (args) => args.annual_plan_id,
+  },
+  approve_canonical_annual_work_plan: {
+    permission: "farm.plan.approve",
+    confirmation: true,
+    rpc: "approve_canonical_annual_work_plan",
+    params: (args, actor) => ({
+      p_annual_plan_id: requireUuid(args.annual_plan_id, "annual_plan_id"),
+      p_actor_profile_id: actor.profile.id,
+    }),
+    entity: "annual_work_plans", entityId: (args) => args.annual_plan_id,
+  },
+  delete_canonical_annual_work_plan: {
+    permission: "farm.plan.create",
+    confirmation: true,
+    rpc: "delete_canonical_annual_work_plan",
+    params: (args, actor) => ({
+      p_annual_plan_id: requireUuid(args.annual_plan_id, "annual_plan_id"),
+      p_actor_profile_id: actor.profile.id,
+    }),
+    entity: "annual_work_plans", entityId: (args) => args.annual_plan_id,
+  },
+  create_canonical_planned_work_item_snapshot: {
+    permission: "farm.plan.create",
+    rpc: "create_canonical_planned_work_item_snapshot",
+    params: (args, actor, context) => ({
+      p_annual_plan_id: requireUuid(args.annual_plan_id, "annual_plan_id"),
+      p_budget_year_id: requireText(args.budget_year_id, "budget_year_id", 200),
+      p_budget_activity_rate_id: requireText(args.budget_activity_rate_id, "budget_activity_rate_id", 200),
+      p_budget_rate_block_id: requireText(args.budget_rate_block_id, "budget_rate_block_id", 200),
+      p_block_id: requireUuid(args.block_id, "block_id"),
+      p_activity_id: requireUuid(args.activity_id, "activity_id"),
+      p_planning_request_key: context.idempotencyKey,
+      p_actor_profile_id: actor.profile.id,
+      p_plot_id: optionalUuid(args.plot_id, "plot_id"),
+      p_planned_start_date: optionalDate(args.planned_start_date, "planned_start_date"),
+      p_planned_end_date: optionalDate(args.planned_end_date, "planned_end_date"),
+      p_recurrence_type: optionalText(args.recurrence_type, 80),
+      p_recurrence_interval: optionalInteger(args.recurrence_interval, "recurrence_interval", { minimum: 1 }),
+      p_repeat_after_last_done_days: optionalInteger(
+        args.repeat_after_last_done_days,
+        "repeat_after_last_done_days",
+      ),
+      p_target_quantity: optionalNumber(args.target_quantity, "target_quantity"),
+      p_target_unit: optionalText(args.target_unit, 120),
+      p_planned_budget: optionalNumber(args.planned_budget, "planned_budget"),
+      p_suggested_team_id: optionalUuid(args.suggested_team_id, "suggested_team_id"),
+      p_status: "planned",
+      p_note: optionalText(args.note, 2000),
+      p_ap_code: optionalText(args.ap_code, 200),
+    }),
+    entity: "planned_work_items",
+  },
+  update_canonical_planned_work_item: {
+    permission: "farm.plan.create",
+    rpc: "update_canonical_planned_work_item",
+    params: (args, actor) => ({
+      p_planned_work_item_id: requireUuid(args.planned_work_item_id, "planned_work_item_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_planned_start_date: optionalDate(args.planned_start_date, "planned_start_date"),
+      p_planned_end_date: optionalDate(args.planned_end_date, "planned_end_date"),
+      p_recurrence_type: optionalText(args.recurrence_type, 80),
+      p_recurrence_interval: optionalInteger(args.recurrence_interval, "recurrence_interval", { minimum: 1 }),
+      p_repeat_after_last_done_days: optionalInteger(
+        args.repeat_after_last_done_days,
+        "repeat_after_last_done_days",
+      ),
+      p_target_quantity: optionalNumber(args.target_quantity, "target_quantity"),
+      p_target_unit: optionalText(args.target_unit, 120),
+      p_planned_budget: optionalNumber(args.planned_budget, "planned_budget"),
+      p_suggested_team_id: optionalUuid(args.suggested_team_id, "suggested_team_id"),
+      p_note: optionalText(args.note, 2000),
+      p_ap_code: optionalText(args.ap_code, 200),
+    }),
+    entity: "planned_work_items", entityId: (args) => args.planned_work_item_id,
+  },
+  update_canonical_planned_resource_requirements: {
+    permission: "farm.plan.create",
+    rpc: "update_canonical_planned_resource_requirements",
+    params: (args, actor) => ({
+      p_planned_work_item_id: requireUuid(args.planned_work_item_id, "planned_work_item_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_labor_requirements: Array.isArray(args.labor_requirements) ? args.labor_requirements : [],
+      p_resource_requirements: Array.isArray(args.resource_requirements) ? args.resource_requirements : [],
+    }),
+    entity: "planned_work_items", entityId: (args) => args.planned_work_item_id,
+  },
+  refresh_canonical_planned_work_item_snapshot: {
+    permission: "farm.plan.create",
+    rpc: "refresh_canonical_planned_work_item_snapshot",
+    params: (args, actor, context) => ({
+      p_planned_work_item_id: requireUuid(args.planned_work_item_id, "planned_work_item_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_refresh_request_key: context.idempotencyKey,
+    }),
+    entity: "planned_work_items", entityId: (args) => args.planned_work_item_id,
+  },
+  delete_canonical_planned_work_item: {
+    permission: "farm.plan.create",
+    confirmation: true,
+    rpc: "delete_canonical_planned_work_item",
+    params: (args, actor) => ({
+      p_planned_work_item_id: requireUuid(args.planned_work_item_id, "planned_work_item_id"),
+      p_actor_profile_id: actor.profile.id,
+    }),
+    entity: "planned_work_items", entityId: (args) => args.planned_work_item_id,
+  },
+  create_activity_material_standard_draft: {
+    permission: "performance.standard.manage", execute: createActivityMaterialStandardDraft,
+    params: (args, actor) => ({ args, actor }),
+    entity: "activity_material_usage_rates",
+  },
+  update_activity_material_standard_draft: {
+    permission: "performance.standard.manage", execute: updateActivityMaterialStandardDraft,
+    params: (args, actor) => ({ args, actor }),
+    entity: "activity_material_usage_rates", entityId: (args) => args.standard_id,
+  },
+  approve_activity_material_standard: {
+    permission: "performance.standard.manage", confirmation: true, execute: approveActivityMaterialStandard,
+    params: (args, actor) => ({ args, actor }),
+    entity: "activity_material_usage_rates", entityId: (args) => args.standard_id,
+  },
+  inactivate_activity_material_standard: {
+    permission: "performance.standard.manage", confirmation: true, execute: inactivateActivityMaterialStandard,
+    params: (args, actor) => ({ args, actor }),
+    entity: "activity_material_usage_rates", entityId: (args) => args.standard_id,
+  },
   create_work_order_from_plan_item: {
     permission: "farm.work_order.create", confirmation: true, execute: createWorkOrderFromPlanItem,
     params: (args, actor) => ({ args, actor }),
     entity: "work_orders", entityId: (args) => args.planned_work_item_id,
   },
+  create_canonical_work_order_from_planned_item: {
+    permission: "farm.work_order.create", confirmation: true,
+    rpc: "create_canonical_work_order_from_planned_item",
+    params: (args, actor, context) => ({
+      p_planned_work_item_id: requireUuid(args.planned_work_item_id, "planned_work_item_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_request_key: context.idempotencyKey,
+      p_scheduled_date: optionalDate(args.scheduled_date, "scheduled_date"),
+      p_note: optionalText(args.note, 2000),
+    }),
+    entity: "work_orders", entityId: (args) => args.planned_work_item_id,
+  },
+  update_canonical_work_order_draft: {
+    permission: "farm.work_order.create",
+    rpc: "update_canonical_work_order_draft",
+    params: (args, actor) => ({
+      p_work_order_id: requireUuid(args.work_order_id, "work_order_id"),
+      p_actor_profile_id: actor.profile.id,
+      p_scheduled_date: requiredDate(args.scheduled_date, "scheduled_date"),
+      p_scheduled_end_date: requiredDate(args.scheduled_end_date || args.scheduled_date, "scheduled_end_date"),
+      p_team_id: optionalUuid(args.team_id, "team_id"),
+      p_supervisor_employee_id: optionalUuid(args.supervisor_employee_id, "supervisor_employee_id"),
+      p_contractor_id: optionalUuid(args.contractor_id, "contractor_id"),
+      p_labor_assignments: Array.isArray(args.labor_assignments) ? args.labor_assignments : [],
+      p_resource_assignments: Array.isArray(args.resource_assignments) ? args.resource_assignments : [],
+    }),
+    entity: "work_orders", entityId: (args) => args.work_order_id,
+  },
   submit_work_order: {
     permission: "farm.work_order.create", confirmation: true,
-    execute: ({ args, actor }) => changeWorkOrderStatus(args, actor, ["draft"], "submitted"),
+    execute: submitWorkOrder,
     params: (args, actor) => ({ args, actor }),
     entity: "work_orders", entityId: (args) => args.work_order_id,
   },
@@ -72,13 +250,8 @@ const ACTIONS = {
   },
   get_or_create_work_result: {
     permission: "farm.result.record",
-    rpc: "get_or_create_work_result",
-    params: (args, actor) => ({
-      p_work_order_id: requireUuid(args.work_order_id, "work_order_id"),
-      p_result_date: /^\d{4}-\d{2}-\d{2}$/.test(String(args.result_date || ""))
-        ? args.result_date : new Date().toISOString().slice(0, 10),
-      p_profile_id: actor.profile.id,
-    }),
+    execute: getOrCreateWorkResult,
+    params: (args, actor) => ({ args, actor }),
     entity: "work_results",
   },
   save_work_result_draft: {
@@ -246,6 +419,55 @@ const ACTIONS = {
     params: (args, actor) => ({ p_period_id: requireUuid(args.period_id, "period_id"), p_profile_id: actor.profile.id }),
     entity: "payroll_periods", entityId: (args) => args.period_id,
   },
+  prepare_verified_work_result_payroll_phase2g: {
+    permission: "payroll.calculate", rpc: "prepare_verified_work_result_payroll_phase2g",
+    params: (args, actor) => ({
+      p_work_result_id: requireUuid(args.work_result_id, "work_result_id"),
+      p_profile_id: actor.profile.id,
+    }),
+    entity: "work_results", entityId: (args) => args.work_result_id,
+  },
+  add_payroll_allowance_phase2g: {
+    permission: "payroll.calculate", confirmation: true, rpc: "add_payroll_allowance_phase2g",
+    params: (args, actor, context) => ({
+      p_summary_id: requireUuid(args.summary_id, "summary_id"),
+      p_source_type: requireText(args.source_type, "source_type", 80),
+      p_source_reference: requireText(args.source_reference, "source_reference", 300),
+      p_reason: requireText(args.reason, "reason", 1000),
+      p_amount: requiredNumber(args.amount, "amount", { minimum: Number.EPSILON }),
+      p_profile_id: actor.profile.id,
+      p_idempotency_key: context.idempotencyKey,
+    }),
+    entity: "payroll_allowance_lines", entityId: (args) => args.summary_id,
+  },
+  add_payroll_deduction_phase2g: {
+    permission: "payroll.calculate", confirmation: true, rpc: "add_payroll_deduction_phase2g",
+    params: (args, actor, context) => ({
+      p_summary_id: requireUuid(args.summary_id, "summary_id"),
+      p_category: enumValue(args.category, "category", ["water", "electric", "raw_palm", "quality", "rework", "other"]),
+      p_source_type: requireText(args.source_type, "source_type", 80),
+      p_source_reference: requireText(args.source_reference, "source_reference", 300),
+      p_reason: requireText(args.reason, "reason", 1000),
+      p_amount: requiredNumber(args.amount, "amount", { minimum: Number.EPSILON }),
+      p_profile_id: actor.profile.id,
+      p_idempotency_key: context.idempotencyKey,
+    }),
+    entity: "payroll_deduction_lines", entityId: (args) => args.summary_id,
+  },
+  adjust_contractor_estimate_phase2g: {
+    permission: "payroll.calculate", confirmation: true, rpc: "adjust_contractor_estimate_phase2g",
+    params: (args, actor) => ({
+      p_estimate_id: requireUuid(args.estimate_id, "estimate_id"),
+      p_deduction_amount: optionalNumber(args.deduction_amount, "deduction_amount") || 0,
+      p_allowance_amount: optionalNumber(args.allowance_amount, "allowance_amount") || 0,
+      p_quality_deduction_amount: optionalNumber(args.quality_deduction_amount, "quality_deduction_amount") || 0,
+      p_quality_source: optionalText(args.quality_source, 80),
+      p_quality_reference: optionalText(args.quality_reference, 300),
+      p_reason: optionalText(args.reason, 1000),
+      p_profile_id: actor.profile.id,
+    }),
+    entity: "contractor_period_estimates", entityId: (args) => args.estimate_id,
+  },
   approve_payroll_period: {
     permission: "payroll.approve", confirmation: true, rpc: "approve_payroll_period",
     params: (args, actor) => ({ p_period_id: requireUuid(args.period_id, "period_id"), p_profile_id: actor.profile.id }),
@@ -275,6 +497,26 @@ const ACTIONS = {
     permission: "fuel.issue", confirmation: true, execute: issueFuel,
     params: (args, actor) => ({ args, actor }),
     entity: "fuel_issues",
+  },
+  create_budget_block_material_rate: {
+    permission: "budget.rate_rule.manage", rpc: "apply_budget_block_material_rates",
+    params: (args, actor) => budgetBlockMaterialActionParams(args, actor, "create"),
+    entity: "budget_rate_block_materials",
+  },
+  update_budget_block_material_rate: {
+    permission: "budget.rate_rule.manage", rpc: "apply_budget_block_material_rates",
+    params: (args, actor) => budgetBlockMaterialActionParams(args, actor, "update"),
+    entity: "budget_rate_block_materials", entityId: (args) => args.row_id,
+  },
+  deactivate_budget_block_material_rate: {
+    permission: "budget.rate_rule.manage", confirmation: true, rpc: "apply_budget_block_material_rates",
+    params: (args, actor) => budgetBlockMaterialActionParams(args, actor, "deactivate"),
+    entity: "budget_rate_block_materials", entityId: (args) => args.row_id,
+  },
+  bulk_apply_budget_block_material_rate: {
+    permission: "budget.rate_rule.manage", confirmation: true, rpc: "apply_budget_block_material_rates",
+    params: (args, actor) => budgetBlockMaterialActionParams(args, actor, "bulk_apply"),
+    entity: "budget_rate_block_materials",
   },
   preview_budget_rule_set_movement: {
     permission: "budget.rate_rule.view", rpc: "preview_budget_rule_set_movement",
@@ -402,8 +644,24 @@ const ACTIONS = {
   },
 };
 
+const PLANNING_UAT_PLAN_PREFIX = "WEBTEST-UAT-P2C-";
+
+const PLANNING_UAT_ACTIONS = new Set([
+  "create_canonical_annual_work_plan",
+  "update_canonical_annual_work_plan",
+  "delete_canonical_annual_work_plan",
+  "create_canonical_planned_work_item_snapshot",
+  "update_canonical_planned_work_item",
+  "update_canonical_planned_resource_requirements",
+  "refresh_canonical_planned_work_item_snapshot",
+  "delete_canonical_planned_work_item",
+]);
+
 const UAT_MUTATION_ACTIONS = new Set([
+  ...PLANNING_UAT_ACTIONS,
   "create_work_order_from_plan_item",
+  "create_canonical_work_order_from_planned_item",
+  "update_canonical_work_order_draft",
   "submit_work_order",
   "approve_work_order",
   "reject_work_order",
@@ -478,6 +736,25 @@ function requiredDate(value, field) {
   return date;
 }
 
+function optionalDate(value, field) {
+  return value == null || value === "" ? null : requiredDate(value, field);
+}
+
+function optionalInteger(value, field, { minimum = 0 } = {}) {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < minimum) {
+    throw new ApiError(400, "VALIDATION_ERROR", `${field} must be an integer greater than or equal to ${minimum}`, { field });
+  }
+  return number;
+}
+
+function requiredInteger(value, field, options = {}) {
+  const number = optionalInteger(value, field, options);
+  if (number == null) throw new ApiError(400, "VALIDATION_ERROR", `${field} is required`, { field });
+  return number;
+}
+
 function requiredNumber(value, field, options = {}) {
   const number = optionalNumber(value, field, options);
   if (number == null) throw new ApiError(400, "VALIDATION_ERROR", `${field} is required`, { field });
@@ -505,6 +782,47 @@ function optionalText(value, max) {
   return String(value).slice(0, max);
 }
 
+const BUDGET_MATERIAL_USAGE_BASES = ["tree_count", "area_rai", "manual_qty", "bag_count"];
+const BUDGET_MATERIAL_STATUSES = ["active", "inactive"];
+
+function budgetBlockMaterialTextIds(value, field) {
+  if (!Array.isArray(value)) {
+    throw new ApiError(400, "VALIDATION_ERROR", `${field} must be an array`, { field });
+  }
+  const ids = [...new Set(value.map((id) => requireText(id, field, 200)))];
+  if (!ids.length || ids.length > 500) {
+    throw new ApiError(400, "VALIDATION_ERROR", `${field} must contain between 1 and 500 IDs`, { field });
+  }
+  return ids;
+}
+
+function budgetBlockMaterialActionParams(args, actor, operation) {
+  const blockIds = budgetBlockMaterialTextIds(args.budget_rate_block_ids, "budget_rate_block_ids");
+  if (["create", "update", "deactivate"].includes(operation) && blockIds.length !== 1) {
+    throw new ApiError(400, "VALIDATION_ERROR", `${operation} requires exactly one Budget Block`, {
+      field: "budget_rate_block_ids",
+    });
+  }
+  return {
+    p_operation: operation,
+    p_budget_year_id: requireText(args.budget_year_id, "budget_year_id", 200),
+    p_budget_activity_rate_id: requireText(args.budget_activity_rate_id, "budget_activity_rate_id", 200),
+    p_budget_rate_block_ids: blockIds,
+    p_material_id: requireUuid(args.material_id, "material_id"),
+    p_usage_basis: enumValue(args.usage_basis, "usage_basis", BUDGET_MATERIAL_USAGE_BASES),
+    p_usage_rate: requiredNumber(args.usage_rate, "usage_rate", { minimum: Number.EPSILON }),
+    p_unit_id: requireUuid(args.unit_id, "unit_id"),
+    p_actor_profile_id: actor.profile.id,
+    p_unit_cost: optionalNumber(args.unit_cost, "unit_cost"),
+    p_amount_per_basis: optionalNumber(args.amount_per_basis, "amount_per_basis"),
+    p_status: enumValue(args.status || (operation === "deactivate" ? "inactive" : "active"), "status", BUDGET_MATERIAL_STATUSES),
+    p_note: optionalText(args.note, 2000),
+    p_row_id: ["update", "deactivate"].includes(operation)
+      ? requireUuid(args.row_id, "row_id")
+      : null,
+  };
+}
+
 async function one(path, label) {
   const row = await rest(path).then(({ data }) => data?.[0]);
   if (!row) throw new ApiError(404, "NOT_FOUND", `${label} was not found`);
@@ -515,11 +833,219 @@ function actorIsAdmin(actor) {
   return [...actor.roles].some((role) => ADMIN_ROLES.has(role));
 }
 
+const MATERIAL_USAGE_BASES = new Set(["per_tree", "per_rai"]);
+
+function activityMaterialStandardInput(args) {
+  const usageBasis = requireText(args.usage_basis, "usage_basis", 40);
+  if (!MATERIAL_USAGE_BASES.has(usageBasis)) {
+    throw new ApiError(400, "VALIDATION_ERROR", "usage_basis must use an existing canonical basis", { field: "usage_basis" });
+  }
+  const fiscalYear = requireText(args.fiscal_year, "fiscal_year", 16);
+  if (!/^\d{4}$/.test(fiscalYear)) {
+    throw new ApiError(400, "VALIDATION_ERROR", "fiscal_year must be four digits", { field: "fiscal_year" });
+  }
+  const start = requiredDate(args.effective_start_date, "effective_start_date");
+  const end = args.effective_end_date ? requiredDate(args.effective_end_date, "effective_end_date") : null;
+  if (end && end < start) {
+    throw new ApiError(400, "VALIDATION_ERROR", "effective_end_date must not precede effective_start_date");
+  }
+  return {
+    activity_id: requireUuid(args.activity_id, "activity_id"),
+    material_id: requireUuid(args.material_id, "material_id"),
+    unit_id: requireUuid(args.unit_id, "unit_id"),
+    fiscal_year: fiscalYear,
+    usage_basis: usageBasis,
+    usage_rate: requiredNumber(args.usage_rate, "usage_rate", { minimum: Number.EPSILON }),
+    usage_unit: null,
+    effective_start_date: start,
+    effective_end_date: end,
+    source_type: requireText(args.source_type || "manual", "source_type", 80),
+    note: optionalText(args.note, 2000),
+  };
+}
+
+async function requireActiveStandardParent(table, id, label) {
+  const row = await one(`${table}?id=eq.${encodeURIComponent(id)}&select=id,status&limit=1`, label);
+  if (String(row.status || "active") !== "active") {
+    throw new ApiError(409, "INACTIVE_REFERENCE", `${label} is inactive`);
+  }
+  return row;
+}
+
+async function validateActivityMaterialStandardParents(input) {
+  await Promise.all([
+    requireActiveStandardParent("activities", input.activity_id, "Activity"),
+    requireActiveStandardParent("materials", input.material_id, "Material"),
+    requireActiveStandardParent("units", input.unit_id, "Unit"),
+  ]);
+}
+
+async function nextActivityMaterialStandardVersion(input) {
+  const path = `activity_material_usage_rates?activity_id=eq.${encodeURIComponent(input.activity_id)}`
+    + `&material_id=eq.${encodeURIComponent(input.material_id)}`
+    + `&fiscal_year=eq.${encodeURIComponent(input.fiscal_year)}`
+    + "&select=version_no&order=version_no.desc&limit=1";
+  const rows = await rest(path).then(({ data }) => data || []);
+  return Number(rows[0]?.version_no || 0) + 1;
+}
+
+async function createActivityMaterialStandardDraft({ args, actor }) {
+  const input = activityMaterialStandardInput(args);
+  await validateActivityMaterialStandardParents(input);
+  const now = new Date().toISOString();
+  const version = await nextActivityMaterialStandardVersion(input);
+  const rows = await rest("activity_material_usage_rates", {
+    method: "POST",
+    body: JSON.stringify({
+      ...input,
+      version_no: version,
+      approval_status: "draft",
+      status: "active",
+      created_by_profile_id: actor.profile.id,
+      updated_by_profile_id: actor.profile.id,
+      created_at: now,
+      updated_at: now,
+    }),
+    headers: { Prefer: "return=representation" },
+  }).then(({ data }) => data || []);
+  return rows[0];
+}
+
+async function standardById(id) {
+  return one(`activity_material_usage_rates?id=eq.${encodeURIComponent(requireUuid(id, "standard_id"))}&select=*&limit=1`, "Activity material standard");
+}
+
+async function updateActivityMaterialStandardDraft({ args, actor }) {
+  const current = await standardById(args.standard_id);
+  if (current.approval_status !== "draft" || current.status !== "active") {
+    throw new ApiError(409, "STANDARD_NOT_DRAFT", "Only an active draft can be edited");
+  }
+  const input = activityMaterialStandardInput({ ...current, ...args });
+  await validateActivityMaterialStandardParents(input);
+  const rows = await rest(`activity_material_usage_rates?id=eq.${encodeURIComponent(current.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ...input, updated_by_profile_id: actor.profile.id, updated_at: new Date().toISOString() }),
+    headers: { Prefer: "return=representation" },
+  }).then(({ data }) => data || []);
+  return rows[0];
+}
+
+function standardPeriodsOverlap(left, right) {
+  const leftEnd = left.effective_end_date || "9999-12-31";
+  const rightEnd = right.effective_end_date || "9999-12-31";
+  return left.effective_start_date <= rightEnd && right.effective_start_date <= leftEnd;
+}
+
+async function approveActivityMaterialStandard({ args, actor }) {
+  const current = await standardById(args.standard_id);
+  if (current.approval_status !== "draft" || current.status !== "active") {
+    throw new ApiError(409, "STANDARD_NOT_DRAFT", "Only an active draft can be approved");
+  }
+  await validateActivityMaterialStandardParents(current);
+  const candidates = await rest(
+    `activity_material_usage_rates?activity_id=eq.${encodeURIComponent(current.activity_id)}`
+      + `&material_id=eq.${encodeURIComponent(current.material_id)}`
+      + `&approval_status=eq.approved&status=eq.active&select=id,effective_start_date,effective_end_date`,
+  ).then(({ data }) => data || []);
+  if (candidates.some((row) => row.id !== current.id && standardPeriodsOverlap(current, row))) {
+    throw new ApiError(409, "STANDARD_PERIOD_OVERLAP", "An approved standard already covers this effective period");
+  }
+  const now = new Date().toISOString();
+  const rows = await rest(`activity_material_usage_rates?id=eq.${encodeURIComponent(current.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      approval_status: "approved",
+      approved_by_profile_id: actor.profile.id,
+      approved_at: now,
+      updated_by_profile_id: actor.profile.id,
+      updated_at: now,
+    }),
+    headers: { Prefer: "return=representation" },
+  }).then(({ data }) => data || []);
+  return rows[0];
+}
+
+async function inactivateActivityMaterialStandard({ args, actor }) {
+  const current = await standardById(args.standard_id);
+  if (current.approval_status === "inactive" || current.status === "inactive") return current;
+  const rows = await rest(`activity_material_usage_rates?id=eq.${encodeURIComponent(current.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      approval_status: "inactive",
+      status: "inactive",
+      updated_by_profile_id: actor.profile.id,
+      updated_at: new Date().toISOString(),
+    }),
+    headers: { Prefer: "return=representation" },
+  }).then(({ data }) => data || []);
+  return rows[0];
+}
+
 function requireUatWorkOrder(order) {
   if (!String(order?.work_order_no || "").startsWith("WEBTEST-UAT-")) {
     throw new ApiError(403, "UAT_WRITE_FORBIDDEN", "UAT writes are restricted to WEBTEST-UAT records");
   }
   return order;
+}
+
+function requirePlanningUatPlanName(planName) {
+  if (!String(planName || "").startsWith(PLANNING_UAT_PLAN_PREFIX)) {
+    throw new ApiError(
+      403,
+      "UAT_WRITE_FORBIDDEN",
+      `Planning UAT writes are restricted to ${PLANNING_UAT_PLAN_PREFIX} Plans`,
+    );
+  }
+}
+
+function requirePlanningUatPlan(actor, plan) {
+  if (
+    plan?.source_type !== "canonical_budget"
+    || plan?.created_by !== actor.profile.id
+    || !String(plan?.plan_name || "").startsWith(PLANNING_UAT_PLAN_PREFIX)
+  ) {
+    throw new ApiError(
+      403,
+      "UAT_WRITE_FORBIDDEN",
+      `Planning UAT writes are restricted to owned ${PLANNING_UAT_PLAN_PREFIX} canonical Plans`,
+    );
+  }
+  return plan;
+}
+
+async function planningUatPlanById(actor, annualPlanId, dependencies = {}) {
+  const loadOne = dependencies.one || one;
+  const plan = await loadOne(
+    `annual_work_plans?id=eq.${requireUuid(annualPlanId, "annual_plan_id")}`
+      + "&select=id,source_type,created_by,plan_name&limit=1",
+    "Annual work plan",
+  );
+  return requirePlanningUatPlan(actor, plan);
+}
+
+async function enforcePlanningUatMutation(actor, action, args, dependencies = {}) {
+  const loadOne = dependencies.one || one;
+  if (action === "create_canonical_annual_work_plan") {
+    requirePlanningUatPlanName(args.plan_name);
+    return;
+  }
+  if (action === "update_canonical_annual_work_plan") {
+    requirePlanningUatPlanName(args.plan_name);
+  }
+  if (["update_canonical_annual_work_plan", "delete_canonical_annual_work_plan"].includes(action)) {
+    await planningUatPlanById(actor, args.annual_plan_id, dependencies);
+    return;
+  }
+  if (action === "create_canonical_planned_work_item_snapshot") {
+    await planningUatPlanById(actor, args.annual_plan_id, dependencies);
+    return;
+  }
+  const item = await loadOne(
+    `planned_work_items?id=eq.${requireUuid(args.planned_work_item_id, "planned_work_item_id")}`
+      + "&select=id,annual_plan_id&limit=1",
+    "Planned work item",
+  );
+  await planningUatPlanById(actor, item.annual_plan_id, dependencies);
 }
 
 function requireInventoryUatIssue(issue) {
@@ -603,13 +1129,79 @@ async function inventoryIssueFromArgs(action, args, { requireUatPrefix = true } 
 }
 
 async function enforceActionScope(actor, action, args) {
-  if (!INVENTORY_UAT_ACTIONS.has(action)) return;
-  const order = await inventoryIssueFromArgs(action, args, { requireUatPrefix: false });
-  if (order) await authorizeWorkOrderScope(actor, order);
+  if ([
+    "prepare_payroll_period", "approve_payroll_period", "close_payroll_period",
+    "prepare_verified_work_result_payroll_phase2g", "add_payroll_allowance_phase2g",
+    "add_payroll_deduction_phase2g", "adjust_contractor_estimate_phase2g",
+  ].includes(action)) {
+    await enforcePayrollEstateScope(actor, action, args);
+  }
+  if (action === "create_canonical_work_order_from_planned_item") {
+    const item = await one(
+      `planned_work_items?id=eq.${requireUuid(args.planned_work_item_id, "planned_work_item_id")}`
+        + "&select=id,annual_plan_id,plot_id,block_id&limit=1",
+      "Planned work item",
+    );
+    const plan = await one(
+      `annual_work_plans?id=eq.${item.annual_plan_id}&select=id,estate_id&limit=1`,
+      "Annual work plan",
+    );
+    await authorizeWorkOrderScope(actor, { estate_id: plan.estate_id, plot_id: item.plot_id, block_id: item.block_id });
+    return;
+  }
+  if (["update_canonical_work_order_draft", "submit_work_order"].includes(action)) {
+    const order = await one(
+      `work_orders?id=eq.${requireUuid(args.work_order_id, "work_order_id")}`
+        + "&select=id,estate_id,plot_id,block_id&limit=1",
+      "Work order",
+    );
+    await authorizeWorkOrderScope(actor, order);
+    return;
+  }
+  if (INVENTORY_UAT_ACTIONS.has(action)) {
+    const order = await inventoryIssueFromArgs(action, args, { requireUatPrefix: false });
+    if (order) await authorizeWorkOrderScope(actor, order);
+  }
+}
+
+function actorCanAccessPayrollEstate(actor, estateId) {
+  if ([...actor.roles].some((role) => ADMIN_ROLES.has(role))) return true;
+  if (!actor.scopes?.length) return true;
+  return actor.scopes.some((scope) => {
+    const type = String(scope.scope_type || "").toLowerCase();
+    return ["all", "global"].includes(type) || (!estateId ? !scope.estate_id : scope.estate_id === estateId);
+  });
+}
+
+async function enforcePayrollEstateScope(actor, action, args) {
+  let estateId = null;
+  if (action === "prepare_verified_work_result_payroll_phase2g") {
+    const resultId = requireUuid(args.work_result_id, "work_result_id");
+    const result = await rest(`work_results?id=eq.${resultId}&select=work_order_id&limit=1`).then(({ data }) => data?.[0]);
+    const order = result?.work_order_id
+      ? await rest(`work_orders?id=eq.${result.work_order_id}&select=estate_id&limit=1`).then(({ data }) => data?.[0])
+      : null;
+    estateId = order?.estate_id || null;
+  } else if (["prepare_payroll_period", "approve_payroll_period", "close_payroll_period"].includes(action)) {
+    const periodId = requireUuid(args.period_id, "period_id");
+    estateId = await rest(`payroll_periods?id=eq.${periodId}&select=estate_id&limit=1`).then(({ data }) => data?.[0]?.estate_id || null);
+  } else if (["add_payroll_allowance_phase2g", "add_payroll_deduction_phase2g"].includes(action)) {
+    const summaryId = requireUuid(args.summary_id, "summary_id");
+    const summary = await rest(`payroll_employee_summaries?id=eq.${summaryId}&select=payroll_period_id&limit=1`).then(({ data }) => data?.[0]);
+    estateId = summary?.payroll_period_id
+      ? await rest(`payroll_periods?id=eq.${summary.payroll_period_id}&select=estate_id&limit=1`).then(({ data }) => data?.[0]?.estate_id || null)
+      : null;
+  } else {
+    const estimateId = requireUuid(args.estimate_id, "estimate_id");
+    estateId = await rest(`contractor_period_estimates?id=eq.${estimateId}&select=estate_id&limit=1`).then(({ data }) => data?.[0]?.estate_id || null);
+  }
+  if (!actorCanAccessPayrollEstate(actor, estateId)) {
+    throw new ApiError(403, "SCOPE_FORBIDDEN", "Payroll period is outside your assigned estate scope");
+  }
 }
 
 async function uatOrderFromArgs(action, args) {
-  if (action === "create_work_order_from_plan_item") {
+  if (["create_work_order_from_plan_item", "create_canonical_work_order_from_planned_item"].includes(action)) {
     const itemId = requireUuid(args.planned_work_item_id, "planned_work_item_id");
     const item = await one(`planned_work_items?id=eq.${itemId}&select=id,annual_plan_id&limit=1`, "Planned work item");
     const plan = await one(`annual_work_plans?id=eq.${item.annual_plan_id}&select=id,plan_name,note&limit=1`, "Annual work plan");
@@ -653,10 +1245,14 @@ async function uatOrderFromArgs(action, args) {
   return null;
 }
 
-async function enforceUatMutation(actor, action, args) {
+async function enforceUatMutation(actor, action, args, dependencies = {}) {
   if (!actorIsUat(actor)) return;
   if (!UAT_MUTATION_ACTIONS.has(action)) {
     throw new ApiError(403, "UAT_ACTION_FORBIDDEN", "This action is disabled for UAT identities");
+  }
+  if (PLANNING_UAT_ACTIONS.has(action)) {
+    await enforcePlanningUatMutation(actor, action, args, dependencies);
+    return;
   }
   const order = INVENTORY_UAT_ACTIONS.has(action)
     ? await inventoryIssueFromArgs(action, args)
@@ -715,25 +1311,41 @@ async function prepareGoodsIssueFromWorkOrder({ args, actor }) {
   return issue;
 }
 
-async function createWorkOrderFromPlanItem({ args, actor }) {
+async function createWorkOrderFromPlanItem({ args, actor }, dependencies = {}) {
+  const restClient = dependencies.rest || rest;
+  const loadOne = dependencies.one || (async (path, label) => {
+    const row = await restClient(path).then(({ data }) => data?.[0]);
+    if (!row) throw new ApiError(404, "NOT_FOUND", `${label} was not found`);
+    return row;
+  });
   const plannedWorkItemId = requireUuid(args.planned_work_item_id, "planned_work_item_id");
-  const existing = await rest(
-    `work_orders?planned_work_item_id=eq.${plannedWorkItemId}&select=*&order=created_at.asc&limit=1`,
-  ).then(({ data }) => data?.[0]);
-  if (existing) return { ...existing, already_exists: true };
-  const item = await one(
+  const item = await loadOne(
     `planned_work_items?id=eq.${plannedWorkItemId}&select=*&limit=1`,
     "Planned work item",
   );
-  await one(
+  const annual = item.annual_plan_id
+    ? await loadOne(
+      `annual_work_plans?id=eq.${item.annual_plan_id}&select=id,plan_year,estate_id,status,source_type&limit=1`,
+      "Annual work plan",
+    )
+    : null;
+  if (item.source_type === "canonical_budget" || annual?.source_type === "canonical_budget") {
+    throw new ApiError(
+      409,
+      "PLANNING_CANONICAL_WORK_ORDER_NOT_READY",
+      "Canonical Planning must be converted to a Work Order through the Phase 2D flow",
+    );
+  }
+  const existing = await restClient(
+    `work_orders?planned_work_item_id=eq.${plannedWorkItemId}&select=*&order=created_at.asc&limit=1`,
+  ).then(({ data }) => data?.[0]);
+  if (existing) return { ...existing, already_exists: true };
+  await loadOne(
     `blocks?id=eq.${requireUuid(item.block_id, "block_id")}&status=eq.active&select=id&limit=1`,
     "Active Block",
   );
-  const annual = item.annual_plan_id
-    ? await one(`annual_work_plans?id=eq.${item.annual_plan_id}&select=id,plan_year,estate_id,status&limit=1`, "Annual work plan")
-    : null;
   const team = item.suggested_team_id
-    ? await one(`teams?id=eq.${item.suggested_team_id}&select=id,supervisor_employee_id,contractor_id,status&limit=1`, "Suggested team")
+    ? await loadOne(`teams?id=eq.${item.suggested_team_id}&select=id,supervisor_employee_id,contractor_id,status&limit=1`, "Suggested team")
     : null;
   const row = {
     work_order_no: actorIsUat(actor)
@@ -759,12 +1371,12 @@ async function createWorkOrderFromPlanItem({ args, actor }) {
   };
   let created;
   try {
-    created = await rest("work_orders", {
+    created = await restClient("work_orders", {
       method: "POST", body: JSON.stringify([row]), headers: { Prefer: "return=representation" },
     }).then(({ data }) => data?.[0]);
   } catch (error) {
     if (error?.details?.postgresCode !== "23505") throw error;
-    const winner = await rest(
+    const winner = await restClient(
       `work_orders?planned_work_item_id=eq.${plannedWorkItemId}&select=*&order=created_at.asc&limit=1`,
     ).then(({ data }) => data?.[0]);
     if (winner) return { ...winner, already_exists: true };
@@ -772,12 +1384,12 @@ async function createWorkOrderFromPlanItem({ args, actor }) {
   }
   if (!created) throw new ApiError(500, "WRITE_FAILED", "Work order could not be created");
   const members = team?.id
-    ? await rest(`team_members?team_id=eq.${team.id}&is_active=eq.true&select=employee_id,member_role`)
+    ? await restClient(`team_members?team_id=eq.${team.id}&is_active=eq.true&select=employee_id,member_role`)
       .then(({ data }) => data || [])
     : [];
   const uniqueMembers = [...new Map(members.map((member) => [member.employee_id, member])).values()];
   if (uniqueMembers.length) {
-    await rest("work_order_workers?on_conflict=work_order_id,employee_id", {
+    await restClient("work_order_workers?on_conflict=work_order_id,employee_id", {
       method: "POST",
       body: JSON.stringify(uniqueMembers.map((member) => ({
         work_order_id: created.id,
@@ -789,6 +1401,24 @@ async function createWorkOrderFromPlanItem({ args, actor }) {
     });
   }
   return { ...created, copied_worker_count: uniqueMembers.length, already_exists: false };
+}
+
+async function submitWorkOrder({ args, actor }) {
+  const workOrderId = requireUuid(args.work_order_id, "work_order_id");
+  const order = await one(
+    `work_orders?id=eq.${workOrderId}&select=id,workflow_source,status,estate_id,plot_id,block_id&limit=1`,
+    "Work order",
+  );
+  await authorizeWorkOrderScope(actor, order);
+  if (order.workflow_source === "canonical_planning") {
+    return rpc("submit_canonical_work_order", {
+      p_work_order_id: workOrderId,
+      p_actor_profile_id: actor.profile.id,
+      p_headcount_variance_reason: optionalText(args.headcount_variance_reason, 2000),
+      p_note: optionalText(args.reason, 2000),
+    });
+  }
+  return changeWorkOrderStatus(args, actor, ["draft"], "submitted");
 }
 
 async function validateWorkOrderStart(order) {
@@ -1003,16 +1633,9 @@ function surveyConfig(value) {
   try { return JSON.parse(value || "{}"); } catch { return {}; }
 }
 
-async function resolveSurveyTemplateForOrder(order, args, responseDate) {
-  const [assignments, templates, activity] = await Promise.all([
-    rest("survey_template_assignments?status=eq.active&select=template_id,activity_id,block_id,team_id,vehicle_id,employee_id,priority,effective_from,effective_to,condition_json")
-      .then(({ data }) => data || []),
-    rest("survey_templates?status=eq.active&select=id,activity_id,survey_scope,configuration_json")
-      .then(({ data }) => data || []),
-    order.activity_id
-      ? one(`activities?id=eq.${order.activity_id}&select=id,activity_group_id,work_type&limit=1`, "Activity")
-      : {},
-  ]);
+function selectResolvedSurveyTemplate({
+  assignments = [], templates = [], activity = {}, order = {}, args = {}, responseDate,
+} = {}) {
   const byId = new Map(templates.map((row) => [String(row.id), row]));
   const matches = assignments.filter((assignment) => {
     if (!byId.has(String(assignment.template_id || ""))) return false;
@@ -1046,6 +1669,21 @@ async function resolveSurveyTemplateForOrder(order, args, responseDate) {
   if (workType) return String(workType.id);
   const general = templates.find((row) => !row.activity_id && ["work_result", "work_order", "general"].includes(String(row.survey_scope || "general")));
   return general ? String(general.id) : null;
+}
+
+async function resolveSurveyTemplateForOrder(order, args, responseDate) {
+  const [assignments, templates, activity] = await Promise.all([
+    rest("survey_template_assignments?status=eq.active&select=template_id,activity_id,block_id,team_id,vehicle_id,employee_id,priority,effective_from,effective_to,condition_json")
+      .then(({ data }) => data || []),
+    rest("survey_templates?status=eq.active&select=id,activity_id,survey_scope,configuration_json")
+      .then(({ data }) => data || []),
+    order.activity_id
+      ? one(`activities?id=eq.${order.activity_id}&select=id,activity_group_id,work_type&limit=1`, "Activity")
+      : {},
+  ]);
+  return selectResolvedSurveyTemplate({
+    assignments, templates, activity, order, args, responseDate,
+  });
 }
 
 async function createSurveyResponse({ args, actor }) {
@@ -1160,9 +1798,123 @@ function calculateConsumedFuel({ opening, issued, closing, fallback }, field = "
   return optionalNumber(fallback, field) || 0;
 }
 
+async function getOrCreateWorkResult({ args, actor }) {
+  const workOrderId = requireUuid(args.work_order_id, "work_order_id");
+  const resultDate = /^\d{4}-\d{2}-\d{2}$/.test(String(args.result_date || ""))
+    ? args.result_date : new Date().toISOString().slice(0, 10);
+  const order = await one(
+    `work_orders?id=eq.${workOrderId}&select=id,work_order_no,estate_id,plot_id,block_id,workflow_source,status&limit=1`,
+    "Work order",
+  );
+  await authorizeWorkOrderScope(actor, order);
+  if (order.workflow_source === "canonical_planning") {
+    return rpc("get_or_create_canonical_work_result", {
+      p_work_order_id: workOrderId,
+      p_result_date: resultDate,
+      p_profile_id: actor.profile.id,
+    });
+  }
+  return rpc("get_or_create_work_result", {
+    p_work_order_id: workOrderId,
+    p_result_date: resultDate,
+    p_profile_id: actor.profile.id,
+  });
+}
+
+function canonicalWorkResultWorkerPayload(worker) {
+  const resultWorkerId = optionalUuid(worker.work_result_worker_id, "work_result_worker_id");
+  const assignmentId = optionalUuid(
+    worker.work_order_worker_assignment_id || worker.assignment_id,
+    "work_order_worker_assignment_id",
+  );
+  if (!resultWorkerId && !assignmentId) {
+    throw new ApiError(
+      400,
+      "VALIDATION_ERROR",
+      "work_result_worker_id or work_order_worker_assignment_id is required",
+    );
+  }
+  return {
+    work_result_worker_id: resultWorkerId,
+    work_order_worker_assignment_id: assignmentId,
+    attendance_status: String(worker.attendance_status || "present").slice(0, 80),
+    actual_hours: optionalNumber(worker.actual_hours, "actual_hours") || 0,
+    actual_quantity: optionalNumber(worker.actual_quantity, "actual_quantity") || 0,
+    actual_unit: worker.actual_unit == null ? null : String(worker.actual_unit).slice(0, 80),
+    actual_area_rai: optionalNumber(worker.actual_area_rai, "actual_area_rai") || 0,
+    actual_tree_count: optionalNumber(worker.actual_tree_count, "actual_tree_count") || 0,
+    individual_quality_pct: optionalNumber(worker.individual_quality_pct, "individual_quality_pct"),
+    individual_completion_pct: optionalNumber(worker.individual_completion_pct, "individual_completion_pct"),
+    quantity_allocation_method: String(worker.quantity_allocation_method || "individual").slice(0, 80),
+    is_quantity_estimated: worker.is_quantity_estimated === true,
+    note: worker.note == null ? null : String(worker.note).slice(0, 1000),
+  };
+}
+
+function canonicalWorkResultVehiclePayload(vehicle) {
+  return {
+    work_order_resource_requirement_id: requireUuid(
+      vehicle.work_order_resource_requirement_id || vehicle.resource_requirement_id,
+      "work_order_resource_requirement_id",
+    ),
+    vehicle_id: requireUuid(vehicle.vehicle_id, "vehicle_id"),
+    start_at: vehicle.start_at || null,
+    end_at: vehicle.end_at || null,
+    start_odometer: optionalNumber(vehicle.start_odometer, "start_odometer"),
+    end_odometer: optionalNumber(vehicle.end_odometer, "end_odometer"),
+    start_hour_meter: optionalNumber(vehicle.start_hour_meter, "start_hour_meter"),
+    end_hour_meter: optionalNumber(vehicle.end_hour_meter, "end_hour_meter"),
+    distance_km: optionalNumber(vehicle.distance_km, "distance_km"),
+    engine_hours: optionalNumber(vehicle.engine_hours, "engine_hours"),
+    working_hours: optionalNumber(vehicle.working_hours, "working_hours") || 0,
+    idle_hours: optionalNumber(vehicle.idle_hours, "idle_hours") || 0,
+    actual_area_rai: optionalNumber(vehicle.actual_area_rai, "actual_area_rai") || 0,
+    actual_tree_count: optionalNumber(vehicle.actual_tree_count, "actual_tree_count") || 0,
+    actual_quantity: optionalNumber(vehicle.actual_quantity, "actual_quantity") || 0,
+    actual_weight_ton: optionalNumber(vehicle.actual_weight_ton, "actual_weight_ton") || 0,
+    actual_unit: vehicle.actual_unit == null ? null : String(vehicle.actual_unit).slice(0, 80),
+    allocation_basis_value: optionalNumber(vehicle.allocation_basis_value, "allocation_basis_value") || 0,
+    actual_fuel_liter: optionalNumber(vehicle.actual_fuel_liter ?? vehicle.allocated_fuel_liter, "actual_fuel_liter") || 0,
+    opening_fuel_liter: optionalNumber(vehicle.opening_fuel_liter, "opening_fuel_liter"),
+    issued_fuel_liter: optionalNumber(vehicle.issued_fuel_liter, "issued_fuel_liter") || 0,
+    closing_fuel_liter: optionalNumber(vehicle.closing_fuel_liter, "closing_fuel_liter"),
+    note: vehicle.note == null ? null : String(vehicle.note).slice(0, 1000),
+  };
+}
+
+async function saveCanonicalWorkResultDraft(args, actor) {
+  const workers = Array.isArray(args.workers) ? args.workers.map(canonicalWorkResultWorkerPayload) : [];
+  const vehicles = Array.isArray(args.vehicles) ? args.vehicles.map(canonicalWorkResultVehiclePayload) : [];
+  return rpc("save_canonical_work_result_draft_phase2f", {
+    p_result_id: requireUuid(args.result_id, "result_id"),
+    p_actor_profile_id: actor.profile.id,
+    p_header: {
+      actual_start_at: args.actual_start_at || null,
+      actual_end_at: args.actual_end_at || null,
+      actual_quantity: optionalNumber(args.actual_quantity, "actual_quantity"),
+      actual_unit: args.actual_unit == null ? null : String(args.actual_unit).slice(0, 80),
+      actual_area_rai: optionalNumber(args.actual_area_rai, "actual_area_rai"),
+      actual_tree_count: optionalNumber(args.actual_tree_count, "actual_tree_count"),
+      working_minutes: optionalNumber(args.working_minutes, "working_minutes"),
+      stoppage_minutes: optionalNumber(args.stoppage_minutes, "stoppage_minutes"),
+      quality_score: optionalNumber(args.quality_score, "quality_score"),
+      completion_pct: optionalNumber(args.completion_pct, "completion_pct"),
+      rework_quantity: optionalNumber(args.rework_quantity, "rework_quantity"),
+      weather_condition: args.weather_condition == null ? null : String(args.weather_condition).slice(0, 120),
+      terrain_condition: args.terrain_condition == null ? null : String(args.terrain_condition).slice(0, 120),
+      note: args.note == null ? null : String(args.note).slice(0, 2000),
+    },
+    p_workers: workers,
+    p_vehicles: vehicles,
+  });
+}
+
 async function saveWorkResultDraft({ args, actor }) {
   const resultId = requireUuid(args.result_id, "result_id");
-  const { result } = await workResultContext(resultId, actor);
+  const { result, order } = await workResultContext(resultId, actor);
+  if (order.workflow_source === "canonical_planning") {
+    return saveCanonicalWorkResultDraft(args, actor);
+  }
   if (result.result_status !== "draft") throw new ApiError(409, "INVALID_STATE", "Only draft work results can be edited");
   const workers = Array.isArray(args.workers) ? args.workers : [];
   const materials = Array.isArray(args.materials) ? args.materials : [];
@@ -1425,7 +2177,7 @@ async function workResultContext(resultId, actor = null) {
   );
   if (!result.work_order_id) throw new ApiError(409, "RESULT_INCOMPLETE", "Work result is not linked to a work order");
   const order = await one(
-    `work_orders?id=eq.${result.work_order_id}&select=id,estate_id,plot_id,activity_id,block_id,team_id,status&limit=1`,
+    `work_orders?id=eq.${result.work_order_id}&select=id,estate_id,plot_id,activity_id,block_id,team_id,status,workflow_source,survey_required&limit=1`,
     "Work order",
   );
   if (actor) await authorizeWorkOrderScope(actor, order);
@@ -1464,10 +2216,60 @@ async function validateRequiredSurveys(context, acceptedStatuses) {
   if (missing.length) throw new ApiError(409, "SURVEY_REQUIRED", `${missing.length} required survey(s) are incomplete`);
 }
 
+async function validateCanonicalResolvedSurveys(context, acceptedStatuses) {
+  const [assignments, responses, workers, vehicles] = await Promise.all([
+    rest("survey_template_assignments?required=eq.true&status=eq.active&select=template_id,trigger_event")
+      .then(({ data }) => data || []),
+    rest(`survey_responses?work_result_id=eq.${context.result.id}&select=template_id,status,pass_status`)
+      .then(({ data }) => data || []),
+    rest(`work_result_workers?work_result_id=eq.${context.result.id}&select=employee_id`)
+      .then(({ data }) => data || []),
+    rest(`work_result_vehicle_usage?work_result_id=eq.${context.result.id}&select=vehicle_id`)
+      .then(({ data }) => data || []),
+  ]);
+  const requiredTemplateIds = new Set(assignments
+    .filter((row) => ["after_result", "before_close"].includes(row.trigger_event))
+    .map((row) => String(row.template_id)));
+  const resolutionContexts = [
+    {},
+    ...workers.filter((row) => row.employee_id).map((row) => ({ employee_id: row.employee_id })),
+    ...vehicles.filter((row) => row.vehicle_id).map((row) => ({ vehicle_id: row.vehicle_id })),
+  ];
+  const resolved = new Set();
+  for (const resolverArgs of resolutionContexts) {
+    const templateId = await resolveSurveyTemplateForOrder(
+      context.order,
+      resolverArgs,
+      context.result.result_date,
+    );
+    if (templateId && (requiredTemplateIds.has(String(templateId)) || context.order.survey_required)) {
+      resolved.add(String(templateId));
+    }
+  }
+  if (context.order.survey_required && !resolved.size) {
+    const templateId = await resolveSurveyTemplateForOrder(context.order, {}, context.result.result_date);
+    if (templateId) resolved.add(String(templateId));
+  }
+  if (!resolved.size) return;
+  const complete = new Set(responses
+    .filter((row) => acceptedStatuses.has(row.status) && row.pass_status !== "failed")
+    .map((row) => String(row.template_id)));
+  const missing = [...resolved].filter((templateId) => !complete.has(templateId));
+  if (missing.length) {
+    throw new ApiError(409, "WORK_RESULT_SURVEY_NOT_VERIFIED", "Required Survey must be verified and pass before Work Result verification");
+  }
+}
+
 async function submitWorkResult({ args, actor }) {
   const resultId = requireUuid(args.result_id, "result_id");
   const context = await workResultContext(resultId, actor);
   if (context.result.result_status !== "draft") throw new ApiError(409, "INVALID_STATE", "Only draft results can be submitted");
+  if (context.order.workflow_source === "canonical_planning") {
+    return rpc("submit_canonical_work_result_phase2e", {
+      p_result_id: resultId,
+      p_actor_profile_id: actor.profile.id,
+    });
+  }
   if (!(Number(context.result.actual_quantity) > 0)) throw new ApiError(409, "RESULT_INCOMPLETE", "Actual quantity is required");
   if (context.activity.requires_weigh_ticket) {
     await requireRows(
@@ -1497,6 +2299,22 @@ async function submitWorkResult({ args, actor }) {
 async function changeWorkResultStatus(args, actor, from, to, context = null) {
   const resultId = requireUuid(args.result_id, "result_id");
   const authorizedContext = context || await workResultContext(resultId, actor);
+  if (authorizedContext.order.workflow_source === "canonical_planning") {
+    if (to === "verified" || to === "closed") {
+      await validateCanonicalResolvedSurveys(
+        authorizedContext,
+        new Set(["verified", "closed"]),
+      );
+    }
+    const canonicalRpc = to === "verified"
+      ? "verify_canonical_work_result_phase2e"
+      : to === "closed" ? "close_canonical_work_result_phase2e" : null;
+    if (!canonicalRpc) throw new ApiError(409, "INVALID_STATE", "Unsupported canonical Work Result transition");
+    return rpc(canonicalRpc, {
+      p_result_id: resultId,
+      p_actor_profile_id: actor.profile.id,
+    });
+  }
   if (to === "closed") {
     await validateRequiredSurveys(authorizedContext, new Set(["verified", "closed"]));
   }
@@ -2065,8 +2883,17 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports._test = {
-  ACTIONS, INVENTORY_UAT_ACTIONS, UAT_MUTATION_ACTIONS, enforceActionScope, enforceUatMutation,
-  requireInventoryUatIssue, requireUatWorkOrder, requireWebTestCode, requestHash,
-  calculateConsumedFuel, ensureSurveyFailureFindings, notificationContext, resolveSurveyTemplateForOrder,
-  surveyAnswerComplete, surveyQuestionVisible,
+  ACTIONS, INVENTORY_UAT_ACTIONS, PLANNING_UAT_ACTIONS, PLANNING_UAT_PLAN_PREFIX,
+  UAT_MUTATION_ACTIONS, enforceActionScope, enforcePlanningUatMutation, enforceUatMutation,
+  createWorkOrderFromPlanItem, submitWorkOrder,
+  requireInventoryUatIssue, requirePlanningUatPlan, requirePlanningUatPlanName,
+  requireUatWorkOrder, requireWebTestCode, requestHash,
+  activityMaterialStandardInput, budgetBlockMaterialActionParams, calculateConsumedFuel,
+  canonicalWorkResultVehiclePayload, canonicalWorkResultWorkerPayload,
+  ensureSurveyFailureFindings, getOrCreateWorkResult,
+  nextActivityMaterialStandardVersion, notificationContext, resolveSurveyTemplateForOrder,
+  selectResolvedSurveyTemplate,
+  standardPeriodsOverlap,
+  surveyAnswerComplete, surveyQuestionVisible, validateCanonicalResolvedSurveys,
+  actorCanAccessPayrollEstate, enforcePayrollEstateScope,
 };

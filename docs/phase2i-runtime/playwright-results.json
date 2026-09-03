@@ -1,0 +1,95 @@
+{
+  "phase": "2I-G",
+  "generated_at": "2026-09-03T14:06:38+07:00",
+  "environment": "vercel_preview",
+  "preview_hostname": "palmoil-iz3p6na3q-spc-est.vercel.app",
+  "staging_project_ref": "bertkuucbcegsvvvatyy",
+  "production_project_ref": "xhtwmzlorceebsemqkww",
+  "guard": {
+    "code": "RC_PREVIEW_PRODUCTION_DATABASE_FORBIDDEN",
+    "resolved_staging_ref": "bertkuucbcegsvvvatyy",
+    "production_ref_used": false,
+    "status": "PASS"
+  },
+  "preview_smoke": {
+    "passed": 7,
+    "failed": 0,
+    "workspaces": ["Planning", "Budget", "Work", "Scheduler", "Daily Result", "Payroll", "Performance"],
+    "status": "PASS"
+  },
+  "viewport_matrix": {
+    "passed": 42,
+    "failed": 0,
+    "viewports": ["1728x992", "1440x900", "1366x768", "1024x768", "768x1024", "390x844"],
+    "no_document_overflow": true,
+    "no_card_overlap": true,
+    "no_critical_clipping": true,
+    "status": "PASS"
+  },
+  "browser_canonical_e2e": {
+    "status": "PASS",
+    "frozen_lineage": true,
+    "selected_labor_requirements": 2,
+    "work_order_labor_requirements": 2,
+    "result_workers": 2,
+    "counts": {
+      "annual_work_plans": 1,
+      "planned_work_items": 1,
+      "work_orders": 1,
+      "work_results": 1,
+      "survey_responses": 1,
+      "survey_findings": 1,
+      "payroll_earning_lines": 1,
+      "performance_results": 1
+    }
+  },
+  "payroll_reconciliation": {
+    "status": "PASS",
+    "period_match": true,
+    "source_result_count": 1,
+    "variance_state": "matched",
+    "employee_net_amount": 420,
+    "contractor_count": 1
+  },
+  "performance_reconciliation": {
+    "status": "PASS",
+    "result_count": 1,
+    "worker_count": 2,
+    "concepts_present": ["Plan", "Actual", "Labor", "Material", "Fuel", "Survey", "Cost"]
+  },
+  "permission_browser_smoke": {
+    "admin": "PASS",
+    "performance_only": {
+      "status": "PASS",
+      "permissions": ["performance.view"],
+      "payroll_http_status": 403,
+      "payroll_error_code": "FORBIDDEN"
+    },
+    "payroll_view_calculate": "PASS",
+    "status": "PASS"
+  },
+  "authentication": {
+    "attempts": 9,
+    "successful_first_attempts": 9,
+    "retries": 0,
+    "identity_assertions": "PASS"
+  },
+  "browser_errors": {
+    "unexpected_console": 0,
+    "unexpected_page": 0,
+    "unexpected_request": 0,
+    "expected_unauthenticated_bootstrap_401": 9,
+    "expected_permission_denial_403": 1,
+    "status": "PASS"
+  },
+  "automation_bypass": {
+    "bypass_created": true,
+    "created_at": "2026-09-03T06:56:54.8914286+00:00",
+    "revoked": true,
+    "revoked_at": "2026-09-03T07:06:37.4947421+00:00",
+    "revoked_header_http": 302,
+    "protection_restored": true
+  },
+  "production_environment_unchanged": true,
+  "status": "PASS"
+}

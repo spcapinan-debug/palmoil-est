@@ -1,0 +1,19 @@
+{
+  "phase": "2I-D/E",
+  "generated_at": "2026-09-03T14:06:38+07:00",
+  "environment": "staging",
+  "staging_project_ref": "bertkuucbcegsvvvatyy",
+  "status": "PASS",
+  "checks": [
+    { "name": "managed_migration_replay", "status": "PASS", "first_run_records": 7, "second_run_pending": 0, "migration_head": "20260901061931" },
+    { "name": "runtime_fixture_second_run", "status": "PASS", "detail": "Second fixture execution completed without duplicate canonical fixture rows." },
+    { "name": "work_order_action_retry", "status": "PASS", "detail": "Retry returned the same Work Order." },
+    { "name": "payroll_action_retry", "status": "PASS", "detail": "Retry created no duplicate earning or Contractor estimate lines." },
+    { "name": "transaction_cleanup", "status": "PASS", "detail": "Phase 2D-2H composite UAT ended with ROLLBACK." }
+  ],
+  "source_outputs": [
+    ".phase2i-tools/phase2i-runtime-fixture-idempotent.out",
+    ".phase2i-tools/phase2i-runtime-rollback.out",
+    "docs/phase2i-baseline/managed-migration-bookkeeping-20260902.json"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "phase": "2I-G",
+  "generated_at": "2026-09-03T14:06:38+07:00",
+  "environment": "staging",
+  "staging_project_ref": "bertkuucbcegsvvvatyy",
+  "execution_layer": "database_transaction_uat",
+  "transaction": "ROLLBACK",
+  "status": "PASS",
+  "scenarios": [
+    { "id": 1, "name": "employee_frozen_lineage", "status": "PASS", "evidence": ["Phase2D E-F", "Phase2E C-E", "Phase2G D-E", "Phase2H A-H"] },
+    { "id": 2, "name": "contractor_estimate_and_performance", "status": "PASS", "evidence": ["Phase2G R-T", "Phase2H J, AB"] },
+    { "id": 3, "name": "material_issue_use_return", "status": "PASS", "evidence": ["Phase2E G", "Phase2F A-C, U", "Phase2H K-M"] },
+    { "id": 4, "name": "tractor_hour_meter", "status": "PASS", "actual_fuel_liters": 32, "engine_hours": 8, "liters_per_hour": 4, "odometer_required": false, "evidence": ["Phase2F Q", "Phase2H O"] },
+    { "id": 5, "name": "road_vehicle_odometer", "status": "PASS", "distance_km": 160, "actual_fuel_liters": 40, "km_per_liter": 4, "hour_meter_required": false, "evidence": ["Phase2F R", "Phase2H P"] },
+    { "id": 6, "name": "survey_finding_and_verification", "status": "PASS", "evidence": ["Phase2E N-R", "Phase2H S-T"] }
+  ],
+  "frozen_lineage": {
+    "status": "PASS",
+    "chain": ["planned_work_labor_requirements", "work_order_labor_requirements", "work_result_workers", "payroll_earning_lines", "v_phase2h_performance_result"],
+    "master_rate_mutation_changed_snapshot": false,
+    "vehicle_master_mutation_changed_snapshot": false
+  },
+  "preview_browser_e2e": {
+    "status": "PASS",
+    "preview_hostname": "palmoil-iz3p6na3q-spc-est.vercel.app",
+    "frozen_lineage": true,
+    "selected_labor_requirements": 2,
+    "work_order_labor_requirements": 2,
+    "result_workers": 2,
+    "canonical_counts": {
+      "annual_work_plans": 1,
+      "planned_work_items": 1,
+      "work_orders": 1,
+      "work_results": 1,
+      "survey_responses": 1,
+      "survey_findings": 1,
+      "payroll_earning_lines": 1,
+      "performance_results": 1
+    }
+  },
+  "source_output": ".phase2i-tools/phase2i-runtime-rollback.out"
+}

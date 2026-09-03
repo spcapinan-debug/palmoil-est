@@ -75,13 +75,15 @@ test("Planning mutation requires permissions while Area selection ignores Block 
   const planner = actor({ permissions: ["farm.plan.create"] });
   assert.throws(() => farmTables._test.writePermission(viewer, "planned_work_items"), (error) => error.code === "FORBIDDEN");
   assert.doesNotThrow(() => farmTables._test.writePermission(planner, "planned_work_items"));
-  assert.match(appSource, /function farmCanCreatePlanning\(\)[\s\S]*?farm\.plan\.create[\s\S]*?farm\.work_order\.create/);
-  assert.match(appSource, /data-farm-create-work-plan \$\{state\.farmSyncBusy \|\| !farmCanCreatePlanning\(\)/);
+  const planningPermission = appSource.match(/function farmCanCreatePlanning\(\) \{[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(planningPermission, /farm\.plan\.create/);
+  assert.doesNotMatch(planningPermission, /farm\.work_order\.create/);
+  assert.match(appSource, /data-canonical-item-create \$\{canCreate \? "" : "disabled"\}/);
 });
 
 test("Work Order creation uses action permission and active Block validation, not assignment scope", () => {
   const start = actionSource.indexOf("async function createWorkOrderFromPlanItem");
-  const end = actionSource.indexOf("async function validateWorkOrderStart", start);
+  const end = actionSource.indexOf("async function submitWorkOrder", start);
   const create = actionSource.slice(start, end);
   assert.match(actionSource, /create_work_order_from_plan_item:[\s\S]*?permission:\s*"farm\.work_order\.create"/);
   assert.match(create, /blocks\?id=eq\.\$\{requireUuid\(item\.block_id/);

@@ -290,6 +290,45 @@ test("Supabase server configuration fails fast without both required variables",
   }
 });
 
+test("Preview Supabase configuration fails closed unless it resolves to the isolated RC staging ref", () => {
+  const previous = Object.fromEntries([
+    "VERCEL_ENV", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY",
+    "RC_STAGING_SUPABASE_REF", "RC_PRODUCTION_SUPABASE_REF",
+  ].map((name) => [name, process.env[name]]));
+  try {
+    process.env.VERCEL_ENV = "preview";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-test-key";
+    process.env.RC_STAGING_SUPABASE_REF = "stagingref";
+    process.env.RC_PRODUCTION_SUPABASE_REF = "productionref";
+    process.env.SUPABASE_URL = "https://productionref.supabase.co";
+    assert.throws(() => farmApi.config(), (error) => (
+      error.code === "RC_PREVIEW_PRODUCTION_DATABASE_FORBIDDEN"
+      && error.message === "RC_PREVIEW_PRODUCTION_DATABASE_FORBIDDEN"
+    ));
+
+    process.env.SUPABASE_URL = "https://anotherref.supabase.co";
+    assert.throws(() => farmApi.config(), (error) => (
+      error.code === "RC_PREVIEW_PRODUCTION_DATABASE_FORBIDDEN"
+    ));
+
+    process.env.SUPABASE_URL = "https://stagingref.supabase.co";
+    assert.deepEqual(farmApi.config(), {
+      url: "https://stagingref.supabase.co",
+      serviceKey: "server-only-test-key",
+    });
+
+    delete process.env.RC_STAGING_SUPABASE_REF;
+    assert.throws(() => farmApi.config(), (error) => (
+      error.code === "RC_PREVIEW_PRODUCTION_DATABASE_FORBIDDEN"
+    ));
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
 test("write implementation has no fallback or silent column stripping", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "api", "farm-tables.js"), "utf8");
   const shared = fs.readFileSync(path.join(__dirname, "..", "lib", "server", "farm-api.js"), "utf8");

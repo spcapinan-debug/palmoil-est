@@ -1,0 +1,42 @@
+{
+  "phase": "2I-E",
+  "generated_at": "2026-09-03T14:06:38+07:00",
+  "environment": "staging",
+  "staging_project_ref": "bertkuucbcegsvvvatyy",
+  "production_project_ref": "xhtwmzlorceebsemqkww",
+  "transaction": "ROLLBACK",
+  "role_restoration": {
+    "method": "SET LOCAL ROLE postgres",
+    "assertion": "current_user = 'postgres'",
+    "status": "PASS"
+  },
+  "timeouts": {
+    "statement_timeout": "60s",
+    "lock_timeout": "5s",
+    "idle_in_transaction_session_timeout": "60s",
+    "outer_command_timeout": "90s",
+    "outer_kill_after": "5s"
+  },
+  "cases": [
+    { "case_code": "SEC-01", "result": "PASS", "detail": "Legacy Result grants remain behind RLS; canonical Payroll has no browser writes." },
+    { "case_code": "SEC-02", "result": "PASS", "detail": "Canonical write RPCs remain service-only at the database boundary." },
+    { "case_code": "SEC-03", "result": "PASS", "detail": "service_role retains the canonical server-action RPC path." },
+    { "case_code": "SEC-04", "result": "PASS", "detail": "RC2I Manager has Result, Survey and Performance permissions." },
+    { "case_code": "SEC-05", "result": "PASS", "detail": "RC2I Supervisor can verify Result but has no Payroll permission." },
+    { "case_code": "SEC-06", "result": "PASS", "detail": "RC2I Payroll can calculate, approve and close Payroll and cannot write Result." },
+    { "case_code": "SEC-07", "result": "PASS", "detail": "RC2I Viewer is read-only and receives only performance.view." },
+    { "case_code": "SEC-08", "result": "PASS", "detail": "Payroll and B-Pay reconciliation views remain server-only." },
+    { "case_code": "SEC-09", "result": "PASS", "detail": "Payroll mutation guards are installed; closed-row mutation passed negative runtime UAT." },
+    { "case_code": "SEC-10", "result": "PASS", "detail": "Authenticated RC2I Manager updated zero Result and Worker rows under RLS." }
+  ],
+  "summary": { "passed": 10, "failed": 0, "status": "PASS" },
+  "preview_browser_permission_smoke": {
+    "admin": "PASS",
+    "performance_only_read": "PASS",
+    "performance_only_payroll_http_status": 403,
+    "performance_only_payroll_error_code": "FORBIDDEN",
+    "payroll_authorized_read": "PASS",
+    "status": "PASS"
+  },
+  "source_output": ".phase2i-tools/phase2i-security-runtime.out"
+}
