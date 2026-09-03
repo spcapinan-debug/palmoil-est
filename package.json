@@ -4,6 +4,7 @@
   "scripts": {
     "build": "node webapp/scripts/build_online_export.mjs --check",
     "lint": "node scripts/check-syntax.mjs",
+    "phase2i:gate": "node scripts/phase2i-rc-preflight.mjs --require-runtime",
     "test": "node --test"
   }
 }

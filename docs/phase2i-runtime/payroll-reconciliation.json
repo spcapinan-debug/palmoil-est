@@ -1,0 +1,49 @@
+{
+  "phase": "2I-G-payroll",
+  "generated_at": "2026-09-03T14:06:38+07:00",
+  "environment": "staging",
+  "staging_project_ref": "bertkuucbcegsvvvatyy",
+  "transaction": "ROLLBACK",
+  "status": "PASS",
+  "employee_payroll": {
+    "base": 200.00,
+    "ot": 0.00,
+    "allowance": 125.00,
+    "deduction": 35.00,
+    "net": 290.00,
+    "employee_count": 3,
+    "earning_line_count": 1,
+    "work_day_employee_sum": 1,
+    "activity_employee_sum": 1,
+    "formula_reconciled": true
+  },
+  "contractor": {
+    "gross": 780.00,
+    "allowance": 50.00,
+    "deduction": 20.00,
+    "quality_deduction": 10.00,
+    "net": 800.00,
+    "contractor_count": 2,
+    "line_count": 2,
+    "formula_reconciled": true
+  },
+  "bpay_reconciliation": {
+    "net": 290.00,
+    "source_result_count": 1,
+    "matched": 1,
+    "difference": 0,
+    "missing_source": 2,
+    "review_required": 0,
+    "row_count": 3,
+    "status": "PASS"
+  },
+  "idempotent_retry": "PASS",
+  "preview_browser": {
+    "status": "PASS",
+    "source_result_count": 1,
+    "variance_state": "matched",
+    "employee_net_amount": 420.00,
+    "contractor_count": 1
+  },
+  "source_output": ".phase2i-tools/phase2i-runtime-rollback.out"
+}
