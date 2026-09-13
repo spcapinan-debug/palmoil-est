@@ -35,20 +35,32 @@ const blocks = [
   { id: "b4", block_code: "60-C01-R", planting_year: 2017, status: "active" },
 ];
 
-test("planning renders planting years inside its existing location box", () => {
-  assert.match(appSource, /data-budget-context="work-plan"[^`]+budget-area-tree-card[^`]+พื้นที่ \/ ที่ตั้ง[^`]+budget-tree-scroll[^`]+renderFarmBudgetPlantingYearSelector\(budgetPicks,[^`]+renderFarmBudgetAreaTree\(budgetPicks\)/s);
+test("planning renders its canonical area selector inside the existing location box", () => {
+  assert.match(appSource, /data-budget-context="work-plan"[^`]+budget-area-tree-card[^`]+พื้นที่ \/ ที่ตั้ง[^`]+budget-tree-scroll[^`]+renderFarmWorkAreaSelector\(budgetPicks\)/s);
+
+  const body = functionSlice("renderFarmWorkAreaSelector", "renderFarmBudgetAreaTree");
+  assert.match(body, /farmWorkAreaCatalogRows\(\)/);
+  assert.match(body, /picks\.areaPlantingYears/);
+  assert.match(body, /data-farm-work-planting-year-all/);
+  assert.match(body, /data-farm-work-planting-year=/);
+  assert.match(body, /<span>ทั้งหมด<\/span>/);
 });
 
-test("budget settings still render the same shared selector inside their location box", () => {
+test("budget settings still render the shared budget selector inside their location box", () => {
   assert.match(appSource, /budget-area-tree-card[^`]+พื้นที่ \/ ที่ตั้ง[^`]+budget-tree-scroll[^`]+renderFarmBudgetPlantingYearSelector\(picks\)[^`]+renderFarmBudgetAreaTree\(picks\)/s);
 });
 
-test("budget and planning share one selector and route events to separate state", () => {
+test("planning and budget use separate selector implementations without sharing state", () => {
   assert.equal((appSource.match(/function renderFarmBudgetPlantingYearSelector/g) || []).length, 1);
-  assert.match(appSource, /closest\('\[data-budget-context="work-plan"\]'\)[\s\S]*?farmWorkPlanState\(\)[\s\S]*?farmBudgetContractState\(\)/);
-  assert.match(appSource, /idPrefix: "planning", allLabel: "ทุกปี"/);
-});
+  assert.equal((appSource.match(/function renderFarmWorkAreaSelector/g) || []).length, 1);
 
+  const planningBody = functionSlice("renderFarmWorkAreaSelector", "renderFarmBudgetAreaTree");
+  assert.match(planningBody, /picks\.areaPlantingYears/);
+  assert.match(planningBody, /picks\.selectedBlocks/);
+
+  assert.match(appSource, /renderFarmWorkAreaSelector\(budgetPicks\)/);
+  assert.match(appSource, /renderFarmBudgetPlantingYearSelector\(picks\)/);
+});
 test("Block Master year priority and Buddhist-year normalization are preserved", () => {
   const api = plantingHarness();
   assert.equal(api.farmBudgetPlantingYearFromBlock({ planted_year: 2557, planting_date: "2010-01-01", block_code: "50-B07" }).year, 2557);

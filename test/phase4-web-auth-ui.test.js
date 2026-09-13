@@ -8,10 +8,10 @@ const indexHtml = fs.readFileSync(path.join(__dirname, "..", "webapp", "index.ht
 
 test("Preview exposes a first-party UAT sign-in dialog backed by HttpOnly auth cookies", () => {
   assert.match(indexHtml, /id="farmAuthDialog"/);
-  assert.match(indexHtml, /id="farmAuthEmail"[^>]+autocomplete="username"[^>]+required/);
+  assert.match(indexHtml, /id="farmAuthIdentifier"[^>]+autocomplete="username"[^>]+required/);
   assert.match(indexHtml, /id="farmAuthPassword"[^>]+autocomplete="current-password"[^>]+required/);
   assert.match(appSource, /const FARM_AUTH_API[^;]+\/api\/farm-auth/);
-  assert.match(appSource, /body:\s*JSON\.stringify\(\{\s*action:\s*"sign_in",\s*email,\s*password\s*\}\)/);
+  assert.match(appSource, /body:\s*JSON\.stringify\(\{\s*action:\s*"sign_in",\s*identifier,\s*password\s*\}\)/);
   assert.match(appSource, /credentials:\s*"same-origin"/);
   assert.doesNotMatch(appSource, /localStorage\.getItem\("supabaseAccessToken"\)/);
 });

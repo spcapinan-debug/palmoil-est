@@ -1,6 +1,6 @@
 const {
-  ADMIN_ROLES,
   ApiError,
+  actorCanAccessBlock,
   actorIsUat,
   audit,
   authenticate,
@@ -48,6 +48,8 @@ const TABLES = new Set([
   "roles", "permissions", "role_permissions", "menu_items", "profile_roles",
   "user_access_scopes", "master_record_versions", "audit_logs", "system_settings",
   "attachments", "report_exports",
+  "app_notification_rules", "app_notifications", "app_notification_deliveries",
+  "app_notification_preferences", "app_notification_jobs",
   "v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs",
   "v_management_action_center", "v_system_module_readiness", "v_farm_workflow_workspace",
   "v_daily_work_entry_context", "v_inventory_work_order_workspace", "v_inventory_setup_queue",
@@ -62,8 +64,8 @@ const TABLES = new Set([
 
 const READ_RESTRICTED = {
   audit_logs: "system.audit.view",
-  profiles: "system.user.manage",
-  profile_roles: "system.role.manage",
+  profiles: ["system.user.view", "system.user.manage"],
+  profile_roles: ["system.user.view", "system.user.role.manage", "system.role.manage"],
   roles: "system.role.manage",
   permissions: "system.role.manage",
   role_permissions: "system.role.manage",
@@ -80,6 +82,21 @@ const READ_RESTRICTED = {
   v_goods_issue_multi_day_status: ["inventory.view", "inventory.manage"],
   v_goods_return_readiness: ["inventory.view", "inventory.manage"],
   v_material_unit_conversion_options: ["inventory.conversion.view", "inventory.manage"],
+  fuel_tanks: ["fuel.view", "fuel.issue"],
+  fuel_requisitions: ["fuel.view", "fuel.requisition.create", "fuel.issue"],
+  fuel_issues: ["fuel.view", "fuel.issue"],
+  vehicle_fuel_balances: ["fuel.view", "fuel.issue", "fuel.allocation.manage"],
+  vehicle_fuel_measurements: ["fuel.view", "fuel.issue", "fuel.allocation.manage"],
+  vehicle_fuel_consumption_periods: ["fuel.view", "fuel.allocation.manage"],
+  vehicle_fuel_efficiency_standards: ["fuel.view", "fuel.allocation.manage"],
+  v_vehicle_fuel_status: ["fuel.view", "fuel.issue", "fuel.allocation.manage"],
+  v_work_result_vehicle_fuel_detail: ["fuel.view", "farm.result.record", "fuel.allocation.manage"],
+  v_fuel_control_exceptions: ["fuel.view", "fuel.allocation.manage"],
+  app_notification_rules: ["notification.rule.manage", "notification.manage"],
+  app_notifications: "notification.view",
+  app_notification_deliveries: "notification.delivery.view",
+  app_notification_preferences: "notification.view",
+  app_notification_jobs: ["notification.rule.manage", "notification.manage"],
 };
 
 const WRITE_PERMISSIONS = {
@@ -116,6 +133,11 @@ const WRITE_PERMISSIONS = {
   survey_findings: "survey.finding.manage",
   activity_performance_standards: "performance.standard.manage",
   activity_budget_rate_recommendations: "budget.recommendation.generate",
+  budget_years: "budget.rate_rule.manage",
+  budget_activity_rates: "budget.rate_rule.manage",
+  budget_rate_blocks: "budget.rate_rule.manage",
+  budget_rate_materials: "budget.rate_rule.manage",
+  budget_rate_roles: "budget.rate_rule.manage",
   budget_rate_rule_sets: "budget.rate_rule.manage",
   budget_rate_rules: "budget.rate_rule.manage",
   budget_rate_rule_conditions: "budget.rate_rule.manage",
@@ -150,16 +172,21 @@ const OPTIONAL_TABLES = new Set([...TABLES].filter((name) => name.startsWith("v_
 ));
 const CACHE_MS = 30_000;
 const cache = new Map();
+const AREA_REFERENCE_TABLES = new Set(["blocks", "estates", "zones", "plots", "plot_groups"]);
 const ACTION_ONLY_TABLES = new Set([
   "goods_issue_daily_usage", "goods_issues", "goods_issue_lines",
   "goods_returns", "goods_return_lines", "sku_conversions", "unit_conversions",
   "stock_balances", "stock_transactions",
-  "fuel_issues", "vehicle_fuel_balances", "vehicle_fuel_consumption_periods",
+  "fuel_requisitions", "fuel_issues", "vehicle_fuel_balances", "vehicle_fuel_consumption_periods",
   "payroll_periods", "payroll_period_lines", "payroll_employee_summaries",
   "payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines",
   "budget_rate_block_snapshots", "survey_responses", "survey_answers", "survey_findings",
-  "work_result_weight_tickets",
+  "survey_response_attachments", "survey_answer_attachments",
+  "work_result_weight_tickets", "work_result_vehicle_usage",
+  "app_notification_rules", "app_notifications", "app_notification_deliveries",
+  "app_notification_preferences", "app_notification_jobs",
 ]);
+const SYSTEM_USER_TABLES = new Set(["profiles", "profile_roles"]);
 
 function tableName(value) {
   const name = String(value || "").trim();
@@ -203,14 +230,44 @@ async function parallelMap(items, concurrency, task) {
   return results;
 }
 
+async function readRowsAll(path, maxRows = 50000) {
+  const rows = [];
+  const separator = path.includes("?") ? "&" : "?";
+  const pageSize = 1000;
+  for (let offset = 0; rows.length < maxRows; offset += pageSize) {
+    const take = Math.min(pageSize, maxRows - rows.length);
+    const { data } = await rest(`${path}${separator}limit=${take}&offset=${offset}`);
+    const page = Array.isArray(data) ? data : [];
+    rows.push(...page);
+    if (page.length < take) break;
+  }
+  return rows;
+}
+
+function supabaseProjectRef(url) {
+  const hostname = new URL(String(url || "")).hostname;
+  return hostname.endsWith(".supabase.co") ? hostname.slice(0, -".supabase.co".length) : "";
+}
+
 async function readTable(table, limit, offset) {
   try {
-    const { data, response } = await rest(`${table}?select=*&limit=${limit}&offset=${offset}`, {
-      headers: { Prefer: "count=exact" },
-    });
-    const range = String(response.headers.get("content-range") || "");
-    const total = Number(range.split("/")[1]);
-    return { table, rows: Array.isArray(data) ? data : [], total: Number.isFinite(total) ? total : null };
+    const rows = [];
+    let total = null;
+    const pageSize = 1000;
+    while (rows.length < limit) {
+      const take = Math.min(pageSize, limit - rows.length);
+      const pageOffset = offset + rows.length;
+      const { data, response } = await rest(`${table}?select=*&limit=${take}&offset=${pageOffset}`, {
+        headers: { Prefer: "count=exact" },
+      });
+      const page = Array.isArray(data) ? data : [];
+      const range = String(response.headers.get("content-range") || "");
+      const parsedTotal = Number(range.split("/")[1]);
+      if (Number.isFinite(parsedTotal)) total = parsedTotal;
+      rows.push(...page);
+      if (page.length < take || (total != null && pageOffset + page.length >= total)) break;
+    }
+    return { table, rows, total };
   } catch (error) {
     if (OPTIONAL_TABLES.has(table) && isMissingRelation(error)) return { table, rows: [], total: 0, warning: error.message };
     throw error;
@@ -232,6 +289,7 @@ const UAT_OPERATIONAL_TABLES = new Set([
   "goods_issues", "goods_issue_lines", "goods_issue_daily_usage",
   "goods_returns", "goods_return_lines", "stock_balances", "stock_transactions",
   "sku_conversions",
+  "app_notifications", "app_notification_preferences",
   "payroll_periods", "payroll_period_lines", "payroll_employee_summaries",
   "payroll_earning_lines", "payroll_allowance_lines", "payroll_deduction_lines",
 ]);
@@ -240,78 +298,86 @@ function setOf(rows, field) {
   return new Set(rows.map((row) => row[field]).filter(Boolean));
 }
 
+function actorCanReadUnassignedHistorical(actor = {}) {
+  if (actor.roles?.has?.("super_admin")) return true;
+  return (actor.scopes || []).some((scope) =>
+    ["all", "global"].includes(String(scope.scope_type || "").toLowerCase()));
+}
+
 async function uatReadContext(actor) {
-  const blockIds = new Set(actor.scopes.map((scope) => scope.block_id).filter(Boolean));
-  if (!blockIds.size) throw new ApiError(403, "SCOPE_FORBIDDEN", "UAT identity has no active block scope");
-  const [orders, blocks] = await Promise.all([
-    rest(`work_orders?block_id=in.(${[...blockIds].join(",")})&select=id,work_order_no,planned_work_item_id,status,team_id,contractor_id`)
-      .then(({ data }) => data || []),
-    rest(`blocks?id=in.(${[...blockIds].join(",")})&select=id,block_code,block_name`)
-      .then(({ data }) => data || []),
-  ]);
+  const allBlocks = await readRowsAll("blocks?status=eq.active&select=id,block_code,block_name,estate_id,zone_id,plot_id");
+  const blocks = allBlocks.filter((block) => actorCanAccessBlock(actor, block));
+  const blockIds = setOf(blocks, "id");
+  const canReadUnassignedHistorical = actorCanReadUnassignedHistorical(actor);
+  const scopedOrders = blockIds.size
+    ? await readRowsAll(`work_orders?block_id=in.(${[...blockIds].join(",")})&select=id,work_order_no,planned_work_item_id,block_id,status,workflow_source,team_id,contractor_id`)
+    : [];
+  const historicalOrders = canReadUnassignedHistorical
+    ? await readRowsAll("work_orders?block_id=is.null&workflow_source=eq.historical_excel&select=id,work_order_no,planned_work_item_id,block_id,status,workflow_source,team_id,contractor_id")
+    : [];
+  const allOrders = [...scopedOrders, ...historicalOrders];
+  const orders = allOrders.filter((row) => blockIds.has(row.block_id)
+    || (canReadUnassignedHistorical && !row.block_id && row.workflow_source === "historical_excel"));
   const blockKeys = new Set(blocks.flatMap((row) => [row.id, row.block_code, row.block_name]).filter(Boolean));
   const workOrderIds = setOf(orders, "id");
   const plannedItemIds = setOf(orders, "planned_work_item_id");
-  const items = plannedItemIds.size
-    ? await rest(`planned_work_items?id=in.(${[...plannedItemIds].join(",")})&select=id,annual_plan_id`)
-      .then(({ data }) => data || [])
+  const allItems = plannedItemIds.size
+    ? await readRowsAll("planned_work_items?select=id,annual_plan_id")
     : [];
+  const items = allItems.filter((row) => plannedItemIds.has(row.id));
   const annualPlanIds = setOf(items, "annual_plan_id");
-  const results = workOrderIds.size
-    ? await rest(`work_results?work_order_id=in.(${[...workOrderIds].join(",")})&select=id,work_order_id,result_status`)
-      .then(({ data }) => data || [])
+  const allResults = workOrderIds.size
+    ? await readRowsAll("work_results?select=id,work_order_id,result_status")
     : [];
+  const results = allResults.filter((row) => workOrderIds.has(row.work_order_id));
   const workResultIds = setOf(results, "id");
-  const goodsIssues = workOrderIds.size
-    ? await rest(`goods_issues?work_order_id=in.(${[...workOrderIds].join(",")})&select=id,issue_no,work_order_id`)
-      .then(({ data }) => data || [])
+  const allGoodsIssues = workOrderIds.size
+    ? await readRowsAll(`goods_issues?work_order_id=in.(${[...workOrderIds].join(",")})&select=id,issue_no,work_order_id`)
     : [];
+  const goodsIssues = allGoodsIssues.filter((row) => workOrderIds.has(row.work_order_id));
   const goodsIssueIds = setOf(goodsIssues, "id");
-  const goodsIssueLines = goodsIssueIds.size
-    ? await rest(`goods_issue_lines?issue_id=in.(${[...goodsIssueIds].join(",")})&select=id,issue_id,material_id,material_lot_id`)
-      .then(({ data }) => data || [])
+  const allGoodsIssueLines = goodsIssueIds.size
+    ? await readRowsAll("goods_issue_lines?select=id,issue_id,material_id,material_lot_id")
     : [];
+  const goodsIssueLines = allGoodsIssueLines.filter((row) => goodsIssueIds.has(row.issue_id));
   const goodsIssueLineIds = setOf(goodsIssueLines, "id");
   const inventoryMaterialIds = setOf(goodsIssueLines, "material_id");
   const inventoryLotIds = setOf(goodsIssueLines, "material_lot_id");
-  const goodsReturns = goodsIssueIds.size
-    ? await rest(`goods_returns?goods_issue_id=in.(${[...goodsIssueIds].join(",")})&select=id,goods_issue_id`)
-      .then(({ data }) => data || [])
+  const allGoodsReturns = goodsIssueIds.size
+    ? await readRowsAll("goods_returns?select=id,goods_issue_id")
     : [];
+  const goodsReturns = allGoodsReturns.filter((row) => goodsIssueIds.has(row.goods_issue_id));
   const goodsReturnIds = setOf(goodsReturns, "id");
-  const responses = workOrderIds.size
-    ? await rest(`survey_responses?work_order_id=in.(${[...workOrderIds].join(",")})&select=id,work_order_id,work_result_id`)
-      .then(({ data }) => data || [])
+  const allResponses = workOrderIds.size || workResultIds.size
+    ? await readRowsAll("survey_responses?select=id,work_order_id,work_result_id")
     : [];
-  const resultResponses = workResultIds.size
-    ? await rest(`survey_responses?work_result_id=in.(${[...workResultIds].join(",")})&select=id,work_order_id,work_result_id`)
-      .then(({ data }) => data || [])
+  const responses = allResponses.filter((row) => workOrderIds.has(row.work_order_id)
+    || workResultIds.has(row.work_result_id));
+  const surveyResponseIds = setOf(responses, "id");
+  const allSurveyAnswers = surveyResponseIds.size
+    ? await readRowsAll("survey_answers?select=id,response_id")
     : [];
-  const surveyResponseIds = setOf([...responses, ...resultResponses], "id");
-  const surveyAnswers = surveyResponseIds.size
-    ? await rest(`survey_answers?response_id=in.(${[...surveyResponseIds].join(",")})&select=id,response_id`)
-      .then(({ data }) => data || [])
-    : [];
+  const surveyAnswers = allSurveyAnswers.filter((row) => surveyResponseIds.has(row.response_id));
   const surveyAnswerIds = setOf(surveyAnswers, "id");
-  const [responseAttachments, answerAttachments, payrollPeriodLines] = await Promise.all([
+  const [allResponseAttachments, allAnswerAttachments, allPayrollPeriodLines] = await Promise.all([
     surveyResponseIds.size
-      ? rest(`survey_response_attachments?response_id=in.(${[...surveyResponseIds].join(",")})&select=attachment_id`)
-        .then(({ data }) => data || [])
+      ? readRowsAll("survey_response_attachments?select=attachment_id,response_id")
       : [],
     surveyAnswerIds.size
-      ? rest(`survey_answer_attachments?answer_id=in.(${[...surveyAnswerIds].join(",")})&select=attachment_id`)
-        .then(({ data }) => data || [])
+      ? readRowsAll("survey_answer_attachments?select=attachment_id,answer_id")
       : [],
     workResultIds.size
-      ? rest(`payroll_period_lines?work_result_id=in.(${[...workResultIds].join(",")})&select=id,payroll_period_id,work_result_id`)
-        .then(({ data }) => data || [])
+      ? readRowsAll(`payroll_period_lines?work_result_id=in.(${[...workResultIds].join(",")})&select=id,payroll_period_id,work_result_id`)
       : [],
   ]);
+  const responseAttachments = allResponseAttachments.filter((row) => surveyResponseIds.has(row.response_id));
+  const answerAttachments = allAnswerAttachments.filter((row) => surveyAnswerIds.has(row.answer_id));
+  const payrollPeriodLines = allPayrollPeriodLines.filter((row) => workResultIds.has(row.work_result_id));
   const payrollPeriodIds = setOf(payrollPeriodLines, "payroll_period_id");
-  const payrollSummaries = payrollPeriodIds.size
-    ? await rest(`payroll_employee_summaries?payroll_period_id=in.(${[...payrollPeriodIds].join(",")})&select=id,payroll_period_id`)
-      .then(({ data }) => data || [])
+  const allPayrollSummaries = payrollPeriodIds.size
+    ? await readRowsAll("payroll_employee_summaries?select=id,payroll_period_id")
     : [];
+  const payrollSummaries = allPayrollSummaries.filter((row) => payrollPeriodIds.has(row.payroll_period_id));
   return {
     annualPlanIds, blockIds, blockKeys, orders, payrollPeriodIds,
     payrollPeriodLineIds: setOf(payrollPeriodLines, "id"),
@@ -339,8 +405,12 @@ function uatActionCenterRows(rows, context) {
 }
 
 function uatRowAllowed(table, row, context) {
+  if (table === "blocks") {
+    return String(row.status || "active").toLowerCase() === "active"
+      && context.blockIds.has(row.id);
+  }
+  if (AREA_REFERENCE_TABLES.has(table)) return String(row.status || "active").toLowerCase() === "active";
   if (!UAT_OPERATIONAL_TABLES.has(table)) {
-    if (table === "blocks") return context.blockIds.has(row.id);
     if (table === "attachments") return context.surveyAttachmentIds.has(row.id);
     if (table === "v_management_action_center") return ["farm.work", "farm.daily"].includes(row.module_key);
     if (table === "v_available_inbound_weight_tickets") {
@@ -360,6 +430,7 @@ function uatRowAllowed(table, row, context) {
   if (table === "planned_work_items") return context.plannedItemIds.has(row.id);
   if (table === "planned_work_materials") return context.plannedItemIds.has(row.planned_work_item_id);
   if (table === "work_orders") return context.workOrderIds.has(row.id);
+  if (table === "app_notifications" || table === "app_notification_preferences") return true;
   if (table === "goods_issues") return context.goodsIssueIds.has(row.id);
   if (table === "goods_issue_lines") {
     return context.goodsIssueIds.has(row.issue_id) || context.goodsIssueLineIds.has(row.id);
@@ -420,18 +491,6 @@ function databaseBlockPlantingYear(block = {}) {
   return year >= 2450 && year <= new Date().getFullYear() + 544 ? year : 0;
 }
 
-function actorCanAccessBlock(actor, block) {
-  if ([...actor.roles].some((role) => ADMIN_ROLES.has(role))) return true;
-  return actor.scopes.some((scope) => {
-    if (["all", "global"].includes(String(scope.scope_type || "").toLowerCase())) return true;
-    if (scope.block_id) return scope.block_id === block.id;
-    if (scope.plot_id) return scope.plot_id === block.plot_id;
-    if (scope.zone_id) return scope.zone_id === block.zone_id;
-    if (scope.estate_id) return scope.estate_id === block.estate_id;
-    return false;
-  });
-}
-
 async function validateBudgetRateBlockRows(actor, rows, selectedPlantingYears = [], selectedBlockIds = []) {
   const blockIds = rows.map((row) => requireUuid(row.block_id, "block_id"));
   if (new Set(blockIds).size !== blockIds.length) {
@@ -457,7 +516,7 @@ async function validateBudgetRateBlockRows(actor, rows, selectedPlantingYears = 
       throw new ApiError(400, "BLOCK_INACTIVE", "A selected Block is not active");
     }
     if (!actorCanAccessBlock(actor, block)) {
-      throw new ApiError(403, "SCOPE_FORBIDDEN", "A selected Block is outside your assigned scope");
+      throw new ApiError(403, "SCOPE_FORBIDDEN", "Selected Block is outside the actor scope");
     }
   }
   if (selectedPlantingYears !== undefined && !Array.isArray(selectedPlantingYears)) {
@@ -476,10 +535,40 @@ async function validateBudgetRateBlockRows(actor, rows, selectedPlantingYears = 
   return blocks;
 }
 
+function areaReferenceRows(table, rows = []) {
+  if (!AREA_REFERENCE_TABLES.has(table)) return rows;
+  return rows.filter((row) => String(row.status || "active").toLowerCase() === "active");
+}
+
+async function validateActiveBlockRows(rows = []) {
+  const blockIds = [...new Set(rows.map((row) => row.block_id).filter(Boolean).map((id) => requireUuid(id, "block_id")))];
+  if (!blockIds.length) return [];
+  const { data } = await rest(`blocks?id=in.(${blockIds.join(",")})&status=eq.active&select=id`);
+  const activeIds = new Set((data || []).map((block) => block.id));
+  if (blockIds.some((id) => !activeIds.has(id))) {
+    throw new ApiError(400, "BLOCK_NOT_ACTIVE", "Selected Block must exist and be active");
+  }
+  return data || [];
+}
+
 function safeTableError(error) {
   return error?.status && error.status < 500
     ? { code: error.code || "TABLE_READ_FAILED", message: error.message || "Table read failed" }
     : { code: "TABLE_READ_FAILED", message: "Table read failed" };
+}
+
+function readPagination(item, limit, offset) {
+  const rawTotal = Number.isFinite(item.rawTotal) ? item.rawTotal : item.total;
+  return {
+    limit,
+    offset,
+    page: Math.floor(offset / limit) + 1,
+    total: rawTotal,
+    scopedRows: item.rows.length,
+    hasMore: Number.isFinite(rawTotal)
+      ? offset + limit < rawTotal
+      : item.rows.length === limit,
+  };
 }
 
 async function uatPlanForItem(itemId) {
@@ -498,10 +587,12 @@ function requireUatPlan(plan) {
   }
 }
 
-function requireUatBlock(actor, blockId) {
-  if (!blockId || !actor.scopes.some((scope) => scope.block_id === blockId)) {
-    throw new ApiError(403, "SCOPE_FORBIDDEN", "Plan item is outside your assigned block scope");
-  }
+async function requireActiveCatalogBlock(blockId) {
+  const id = requireUuid(blockId, "block_id");
+  const block = await rest(`blocks?id=eq.${encodeURIComponent(id)}&status=eq.active&select=id&limit=1`)
+    .then(({ data }) => data?.[0]);
+  if (!block) throw new ApiError(400, "BLOCK_NOT_ACTIVE", "Plan item Block must exist and be active");
+  return block;
 }
 
 async function enforceUatTableWrite(actor, table, rows) {
@@ -527,7 +618,10 @@ async function enforceUatTableWrite(actor, table, rows) {
       const plan = await rest(`annual_work_plans?id=eq.${encodeURIComponent(annualPlanId)}&select=id,plan_name,note&limit=1`)
         .then(({ data }) => data?.[0]);
       requireUatPlan(plan);
-      requireUatBlock(actor, row.block_id || existing?.block_id);
+      const block = await requireActiveCatalogBlock(row.block_id || existing?.block_id);
+      if (!actorCanAccessBlock(actor, block)) {
+        throw new ApiError(403, "SCOPE_FORBIDDEN", "Planned work item is outside your assigned Block scope");
+      }
     }
     return;
   }
@@ -541,7 +635,10 @@ async function enforceUatTableWrite(actor, table, rows) {
       if (!itemId) throw new ApiError(400, "VALIDATION_ERROR", "planned_work_item_id is required");
       const { item, plan } = await uatPlanForItem(itemId);
       requireUatPlan(plan);
-      requireUatBlock(actor, item.block_id);
+      const block = await requireActiveCatalogBlock(item.block_id);
+      if (!actorCanAccessBlock(actor, block)) {
+        throw new ApiError(403, "SCOPE_FORBIDDEN", "Planned work material is outside your assigned Block scope");
+      }
     }
     return;
   }
@@ -576,8 +673,20 @@ async function handleGet(req, res, url, actor) {
     }
     try {
       const read = await readTable(table, limit, offset);
-      if (table === "blocks" && ![...actor.roles].some((role) => ADMIN_ROLES.has(role))) {
-        const rows = read.rows.filter((row) => actorCanAccessBlock(actor, row));
+      if (AREA_REFERENCE_TABLES.has(table)) {
+        const activeRows = areaReferenceRows(table, read.rows);
+        const rows = context && table === "blocks"
+          ? activeRows.filter((row) => context.blockIds.has(row.id))
+          : activeRows;
+        return { ...read, rows, rawTotal: read.total, total: rows.length };
+      }
+      if (table === "app_notifications") {
+        const rows = read.rows.filter((row) => row.recipient_profile_id === actor.profile.id
+          || (row.recipient_employee_id && row.recipient_employee_id === actor.profile.employee_id));
+        return { ...read, rows, rawTotal: read.total, total: rows.length };
+      }
+      if (table === "app_notification_preferences") {
+        const rows = read.rows.filter((row) => row.profile_id === actor.profile.id);
         return { ...read, rows, rawTotal: read.total, total: rows.length };
       }
       if (!context) return { ...read, rawTotal: read.total };
@@ -602,10 +711,7 @@ async function handleGet(req, res, url, actor) {
     }])),
     errors: Object.fromEntries(reads.filter((item) => item.error).map((item) => [item.table, item.error])),
     warnings: Object.fromEntries(reads.filter((item) => item.warning).map((item) => [item.table, item.warning])),
-    pagination: Object.fromEntries(reads.map((item) => [item.table, {
-      limit, offset, page: Math.floor(offset / limit) + 1, total: item.total,
-      hasMore: item.total == null ? item.rows.length === limit : offset + item.rows.length < item.total,
-    }])),
+    pagination: Object.fromEntries(reads.map((item) => [item.table, readPagination(item, limit, offset)])),
     source: {
       mode: "supabase-real-only",
       tableCount: tables.length,
@@ -625,6 +731,9 @@ async function handlePost(req, res, actor) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   const table = tableName(body.table);
+  if (SYSTEM_USER_TABLES.has(table)) {
+    throw new ApiError(403, "USER_API_REQUIRED", `${table} must be changed through /api/farm-users`);
+  }
   if (ACTION_ONLY_TABLES.has(table)) {
     throw new ApiError(403, "ACTION_REQUIRED", `${table} must be changed through /api/farm-actions`);
   }
@@ -636,6 +745,9 @@ async function handlePost(req, res, actor) {
   if (rows.length > 500) throw new ApiError(400, "VALIDATION_ERROR", "A request may write at most 500 rows");
   if (table === "budget_rate_blocks") {
     await validateBudgetRateBlockRows(actor, rows, body.selectedPlantingYears, body.selectedBlockIds);
+  }
+  if (["planned_work_items", "work_orders"].includes(table)) {
+    await validateActiveBlockRows(rows);
   }
   await enforceUatTableWrite(actor, table, rows);
   const conflict = String(body.onConflict || CONFLICT_KEYS[table] || "id");
@@ -658,6 +770,9 @@ async function handleDelete(req, res, url, actor) {
     throw new ApiError(400, "INVALID_PAYLOAD", "Request payload is invalid");
   }
   const table = tableName(body.table || url.searchParams.get("table"));
+  if (SYSTEM_USER_TABLES.has(table)) {
+    throw new ApiError(403, "USER_API_REQUIRED", `${table} must be changed through /api/farm-users`);
+  }
   if (actorIsUat(actor)) {
     throw new ApiError(403, "UAT_DELETE_FORBIDDEN", "UAT identities cannot delete records");
   }
@@ -688,8 +803,14 @@ async function handler(req, res) {
   try {
     const url = new URL(req.url, "http://localhost");
     if (req.method === "GET" && url.searchParams.get("healthcheck") === "1") {
-      config();
-      return json(res, 200, { ok: true, route: "farm-tables", configured: true, authRequired: true });
+      const runtime = config();
+      return json(res, 200, {
+        ok: true,
+        route: "farm-tables",
+        configured: true,
+        authRequired: true,
+        projectRef: supabaseProjectRef(runtime.url),
+      });
     }
     if (!["GET", "POST", "DELETE"].includes(req.method)) {
       res.setHeader("Allow", allowedMethods);
@@ -706,7 +827,9 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports._test = {
-  ACTION_ONLY_TABLES, OPTIONAL_TABLES, TABLES, UAT_OPERATIONAL_TABLES, cache, clearCache, parallelMap,
+  ACTION_ONLY_TABLES, AREA_REFERENCE_TABLES, OPTIONAL_TABLES, SYSTEM_USER_TABLES, TABLES, UAT_OPERATIONAL_TABLES, WRITE_PERMISSIONS,
+  actorCanReadUnassignedHistorical, areaReferenceRows, cache, clearCache, parallelMap, readPagination,
   actorCanAccessBlock, databaseBlockPlantingYear, enforceUatTableWrite, normalizePlantingYear,
-  requestedTables, safeTableError, tableName, uatActionCenterRows, uatRowAllowed, validateBudgetRateBlockRows,
+  requestedTables, requireActiveCatalogBlock, safeTableError, supabaseProjectRef, tableName, uatActionCenterRows, uatRowAllowed,
+  validateActiveBlockRows, validateBudgetRateBlockRows, writePermission,
 };

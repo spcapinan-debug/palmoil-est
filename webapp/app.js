@@ -38,6 +38,13 @@ const state = {
   summaryPalmoilAreas: [],
   summaryPalmoilSource: null,
   blockMapData: null,
+  farmCanonicalAreaRows: [],
+  farmAreaMapReconciliation: null,
+  farmAreaCatalogDiagnostic: null,
+  farmAreaCatalogDiagnosticSignature: "",
+  farmAreaMapAudit: null,
+  farmAreaMasterLoading: false,
+  farmAreaMasterError: "",
   farmBudgetRateData: null,
   farmSyncMessage: "",
   farmSyncStatus: "",
@@ -135,7 +142,29 @@ const state = {
   dynamicMenuEnabled: false,
   farmSession: null,
   farmAuthRequired: false,
+  farmConnectionState: "LOADING",
+  farmCoreHealth: "LOADING",
+  farmModuleHealth: {},
+  farmConnectionError: "",
   farmAuthBusy: false,
+  farmPasswordRecoveryToken: "",
+  farmAuthScreen: "login",
+  farmAppInitialized: false,
+  farmAppActive: false,
+  liveRefreshTimer: null,
+  systemUsers: [],
+  systemUserEmployees: [],
+  systemUserRoles: [],
+  systemUsersLoading: false,
+  systemUsersLoaded: false,
+  systemUserDrawer: null,
+  workNotifications: [],
+  notificationDeliveries: [],
+  notificationCenterOpen: false,
+  notificationReturnFocus: null,
+  notificationFilter: "all",
+  notificationLoading: false,
+  notificationError: "",
   actionCenterFilters: {
     year: "", from: "", to: "", ap: "", block: "", team: "", activity: "", rspo: "",
   },
@@ -199,7 +228,26 @@ function resetFarmDerivedCaches() {
 }
 
 const els = {
-  appShell: document.querySelector(".app-shell"),
+  appShell: document.querySelector("#appShell"),
+  farmAuthGate: document.querySelector("#authShell"),
+  farmAuthGateTitle: document.querySelector("#authTitle"),
+  farmAuthGateDescription: document.querySelector("#authDescription"),
+  farmAuthGateStatus: document.querySelector("#authStatus"),
+  farmAuthGateLoginForm: document.querySelector("#authLoginForm"),
+  farmAuthGateIdentifier: document.querySelector("#authIdentifier"),
+  farmAuthGatePassword: document.querySelector("#authPassword"),
+  farmAuthGateShowPassword: document.querySelector("#authTogglePassword"),
+  farmAuthGateSubmit: document.querySelector("#authSubmit"),
+  farmAuthGateForgot: document.querySelector("#authForgot"),
+  farmAuthGateForgotForm: document.querySelector("#authForgotForm"),
+  farmAuthGateForgotIdentifier: document.querySelector("#authForgotIdentifier"),
+  farmAuthGateForgotSubmit: document.querySelector("#authForgotSubmit"),
+  farmAuthGateResetForm: document.querySelector("#authResetForm"),
+  farmAuthGateRecoveryPassword: document.querySelector("#authResetPassword"),
+  farmAuthGateRecoveryConfirm: document.querySelector("#authResetConfirm"),
+  farmAuthGateRecoveryShow: document.querySelector("#authToggleResetPassword"),
+  farmAuthGateRecoveryConfirmShow: document.querySelector("#authToggleResetConfirm"),
+  farmAuthGateRecoverySubmit: document.querySelector("#authResetSubmit"),
   sidebar: document.querySelector("#appSidebar"),
   sidebarToggle: document.querySelector("#sidebarToggle"),
   sourceInfo: document.querySelector("#sourceInfo"),
@@ -233,12 +281,29 @@ const els = {
   farmAuthClose: document.querySelector("#farmAuthClose"),
   farmAuthCancel: document.querySelector("#farmAuthCancel"),
   farmAuthFields: document.querySelector("#farmAuthFields"),
-  farmAuthEmail: document.querySelector("#farmAuthEmail"),
+  farmAuthIdentifier: document.querySelector("#farmAuthIdentifier"),
   farmAuthPassword: document.querySelector("#farmAuthPassword"),
+  farmForgotPassword: document.querySelector("#farmForgotPassword"),
+  farmRecoveryPasswordFields: document.querySelector("#farmRecoveryPasswordFields"),
+  farmRecoveryPassword: document.querySelector("#farmRecoveryPassword"),
+  farmRecoveryPasswordConfirm: document.querySelector("#farmRecoveryPasswordConfirm"),
+  farmRecoveryShowPassword: document.querySelector("#farmRecoveryShowPassword"),
+  farmRecoveryPasswordSubmit: document.querySelector("#farmRecoveryPasswordSubmit"),
+  farmOwnPassword: document.querySelector("#farmOwnPassword"),
+  farmOwnPasswordConfirm: document.querySelector("#farmOwnPasswordConfirm"),
+  farmOwnPasswordFields: document.querySelector("#farmOwnPasswordFields"),
+  farmOwnPasswordSubmit: document.querySelector("#farmOwnPasswordSubmit"),
   farmAuthDescription: document.querySelector("#farmAuthDescription"),
   farmAuthStatus: document.querySelector("#farmAuthStatus"),
   farmAuthSubmit: document.querySelector("#farmAuthSubmit"),
   farmAuthSignOut: document.querySelector("#farmAuthSignOut"),
+  appNotificationButton: document.querySelector("#appNotificationButton"),
+  appNotificationBadge: document.querySelector("#appNotificationBadge"),
+  appNotificationCenter: document.querySelector("#appNotificationCenter"),
+  appNotificationClose: document.querySelector("#appNotificationClose"),
+  appNotificationBackdrop: document.querySelector("#appNotificationBackdrop"),
+  appNotificationList: document.querySelector("#appNotificationList"),
+  appNotificationSummary: document.querySelector("#appNotificationSummary"),
   applyBtn: document.querySelector("#applyBtn"),
   csvBtn: document.querySelector("#csvBtn"),
   clearDate: document.querySelector("#clearDate"),
@@ -263,8 +328,10 @@ const EST_DATA_URL = window.__EST_DATA_URL__ || "./data/est_data.json";
 const MILL_WEIGHT_DATA_URL = window.__MILL_WEIGHT_DATA_URL__ || "./data/mill_weight.json";
 const EST_MASTER_API = window.__EST_MASTER_API__ || "/api/est-master";
 const FARM_TABLES_API = window.__FARM_TABLES_API__ || "/api/farm-tables";
+const FARM_AREA_MASTER_API = window.__FARM_AREA_MASTER_API__ || "/api/farm-area-master";
 const FARM_SESSION_API = window.__FARM_SESSION_API__ || "/api/farm-session";
 const FARM_AUTH_API = window.__FARM_AUTH_API__ || "/api/farm-auth";
+const FARM_USERS_API = window.__FARM_USERS_API__ || "/api/farm-users";
 const FARM_ACTIONS_API = window.__FARM_ACTIONS_API__ || "/api/farm-actions";
 const FARM_BUDGET_SYNC_API = window.__FARM_BUDGET_SYNC_API__ || "/api/farm-budget-sync";
 const FARM_DB_TABLE_CACHE_MS = 30 * 1000;
@@ -283,10 +350,215 @@ function farmApiErrorMessage(payload, fallback) {
   return payload?.error?.message || payload?.message || payload?.error || fallback;
 }
 
+function farmConnectionStateFromResponse(response, payload = {}) {
+  const status = Number(response?.status || 0);
+  const code = String(payload?.error?.code || payload?.code || "").toUpperCase();
+  if (status === 401) return code === "SESSION_EXPIRED" ? "SESSION_EXPIRED" : "AUTH_REQUIRED";
+  if (status === 403) return "PERMISSION_DENIED";
+  if (status >= 500 || (status >= 400 && status !== 401 && status !== 403)) return "DATABASE_ERROR";
+  return status > 0 ? "CONNECTED" : "NETWORK_ERROR";
+}
+
+const FARM_CORE_DATA_TABLES = new Set([
+  "blocks", "activity_groups", "activities", "employees", "teams", "materials",
+  "annual_work_plans", "planned_work_items", "work_orders", "work_results",
+]);
+
+function farmDataConnectionState(payload = {}, requestedTables = []) {
+  const requested = new Set(requestedTables || []);
+  const failedTables = Object.keys(payload?.errors || {});
+  if (failedTables.some((table) => requested.has(table) && FARM_CORE_DATA_TABLES.has(table))) {
+    return "DATABASE_ERROR";
+  }
+  return "CONNECTED";
+}
+
+function farmModuleHealthState(errors = {}, requestedTables = []) {
+  const requested = new Set(requestedTables || []);
+  const failedTables = Object.keys(errors || {}).filter((table) => requested.has(table));
+  return { state: failedTables.length ? "DEGRADED" : "READY", failedTables };
+}
+
+function farmCoreHealthFromConnectionState(connectionState = "LOADING") {
+  if (["CONNECTED", "PARTIAL_DATA"].includes(connectionState)) return "READY";
+  if (connectionState === "NETWORK_ERROR") return "OFFLINE";
+  if (["AUTH_REQUIRED", "SESSION_EXPIRED"].includes(connectionState)) return "AUTH_REQUIRED";
+  if (connectionState === "LOADING") return "LOADING";
+  return "ERROR";
+}
+
+function setFarmCoreHealth(connectionState, error = "") {
+  state.farmConnectionState = connectionState;
+  state.farmCoreHealth = farmCoreHealthFromConnectionState(connectionState);
+  state.farmConnectionError = error;
+}
+
+function setFarmModuleHealth(moduleKey, health = {}) {
+  if (!moduleKey) return;
+  state.farmModuleHealth = {
+    ...(state.farmModuleHealth || {}),
+    [moduleKey]: { state: "READY", failedTables: [], ...health },
+  };
+}
+
+function farmClearResolvedErrors(currentErrors = {}, requestedTables = [], nextErrors = {}) {
+  const merged = { ...(currentErrors || {}) };
+  delete merged.api;
+  for (const table of requestedTables || []) delete merged[table];
+  return { ...merged, ...(nextErrors || {}) };
+}
+
+function farmConnectionNeedsLogin(connectionState = state.farmConnectionState) {
+  return ["AUTH_REQUIRED", "SESSION_EXPIRED"].includes(connectionState);
+}
+
 function farmPreviewDiagnostic(event, details = {}) {
   const hostname = String(window.location?.hostname || "").toLowerCase();
   if (!hostname.endsWith(".vercel.app") || hostname === "palmoil-est.vercel.app") return;
   console.info(`[farm-preview] ${event}`, details);
+}
+
+function notificationMetadata(row = {}) {
+  if (row.metadata_json && typeof row.metadata_json === "object") return row.metadata_json;
+  try { return JSON.parse(row.metadata_json || "{}"); } catch (_) { return {}; }
+}
+
+function notificationBangkokDay(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date(value));
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function notificationVisibleNow(row, now = new Date()) {
+  if (["closed", "cancelled"].includes(row.status) || row.closed_at) return false;
+  if (row.available_at && new Date(row.available_at) > now) return false;
+  if (row.status === "snoozed" && row.snoozed_until && new Date(row.snoozed_until) > now) return false;
+  return true;
+}
+
+function notificationRowsForFilter() {
+  const today = notificationBangkokDay();
+  return state.workNotifications
+    .filter((row) => notificationVisibleNow(row))
+    .filter((row) => {
+      if (state.notificationFilter === "today") return notificationBangkokDay(row.available_at || row.created_at) === today;
+      if (state.notificationFilter === "action") return notificationMetadata(row).action_required === true;
+      if (state.notificationFilter === "read") return Boolean(row.read_at);
+      return true;
+    })
+    .sort((left, right) => String(right.available_at || right.created_at || "").localeCompare(String(left.available_at || left.created_at || "")));
+}
+
+function safeNotificationActionUrl(value) {
+  const url = String(value || "");
+  return /^\/farm\/(dispatch|daily)(?:[/?]|$)/.test(url) ? url : "";
+}
+
+function renderWorkNotificationCenter() {
+  if (!els.appNotificationCenter) return;
+  const visible = state.workNotifications.filter((row) => notificationVisibleNow(row));
+  const unread = visible.filter((row) => !row.read_at).length;
+  els.appNotificationBadge.hidden = unread === 0;
+  els.appNotificationBadge.textContent = unread > 99 ? "99+" : String(unread);
+  els.appNotificationCenter.hidden = !state.notificationCenterOpen;
+  els.appNotificationBackdrop.hidden = !state.notificationCenterOpen;
+  els.appNotificationCenter.classList.toggle("is-page", window.location.pathname === "/notifications");
+  els.appNotificationCenter.querySelectorAll("[data-notification-filter]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.notificationFilter === state.notificationFilter);
+  });
+  if (els.appNotificationSummary) {
+    els.appNotificationSummary.textContent = state.notificationLoading ? "กำลังโหลด…"
+      : state.notificationError ? state.notificationError : `${visible.length} รายการ · ยังไม่อ่าน ${unread}`;
+  }
+  const rows = notificationRowsForFilter();
+  els.appNotificationList.innerHTML = rows.map((row) => {
+    const actionUrl = safeNotificationActionUrl(row.action_url);
+    const requiresAction = notificationMetadata(row).action_required === true;
+    return `<article class="app-notification-item severity-${esc(row.severity || "info")}${row.read_at ? " is-read" : " is-unread"}" data-notification-id="${esc(row.id)}">
+      <header><div><strong>${esc(row.title || row.notification_type)}</strong><span>${esc(row.notification_type || "")}</span></div><time>${esc(new Date(row.available_at || row.created_at).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }))}</time></header>
+      <p>${esc(row.message || "")}</p>
+      <footer>
+        ${!row.read_at ? `<button type="button" data-notification-read="${esc(row.id)}">อ่านแล้ว</button>` : ""}
+        ${requiresAction && !row.acknowledged_at ? `<button type="button" data-notification-ack="${esc(row.id)}">รับทราบ</button>` : ""}
+        ${requiresAction ? `<button type="button" data-notification-snooze="${esc(row.id)}">เตือนอีก 1 ชม.</button>` : ""}
+        ${actionUrl ? `<button type="button" class="primary" data-notification-open="${esc(row.id)}" data-action-url="${esc(actionUrl)}">เปิดงาน</button>` : ""}
+      </footer>
+    </article>`;
+  }).join("") || `<div class="app-notification-empty"><strong>ไม่มีการแจ้งเตือน</strong><span>ไม่มีรายการตามตัวกรองนี้</span></div>`;
+}
+
+async function loadWorkNotifications({ silent = false } = {}) {
+  if (!actorCan("notification.view")) {
+    state.workNotifications = [];
+    state.notificationError = state.farmSession?.ok ? "ไม่มีสิทธิ์ดูการแจ้งเตือน" : "กรุณาเข้าสู่ระบบ";
+    renderWorkNotificationCenter();
+    return false;
+  }
+  state.notificationLoading = true;
+  if (!silent) renderWorkNotificationCenter();
+  try {
+    const includeDeliveries = actorCan("notification.delivery.view");
+    const tables = includeDeliveries ? "app_notifications,app_notification_deliveries" : "app_notifications";
+    const request = await farmJsonRequest(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000&refresh=1`, { cache: "no-store" });
+    if (!request.response.ok || !request.payload?.ok) throw new Error(farmApiErrorMessage(request.payload, "Notification API unavailable"));
+    state.workNotifications = request.payload.tables?.app_notifications || [];
+    state.notificationDeliveries = request.payload.tables?.app_notification_deliveries || [];
+    state.notificationError = "";
+    return true;
+  } catch (error) {
+    state.notificationError = error.message || "โหลดการแจ้งเตือนไม่สำเร็จ";
+    return false;
+  } finally {
+    state.notificationLoading = false;
+    renderWorkNotificationCenter();
+  }
+}
+
+async function openWorkNotificationCenter({ page = false } = {}) {
+  state.notificationReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  state.notificationCenterOpen = true;
+  if (page && window.location.pathname !== "/notifications") window.history.pushState({}, "", "/notifications");
+  renderWorkNotificationCenter();
+  els.appNotificationClose?.focus();
+  await loadWorkNotifications();
+}
+
+function closeWorkNotificationCenter() {
+  const returnFocus = state.notificationReturnFocus;
+  state.notificationCenterOpen = false;
+  state.notificationReturnFocus = null;
+  if (window.location.pathname === "/notifications") window.history.back();
+  renderWorkNotificationCenter();
+  if (returnFocus?.isConnected) returnFocus.focus();
+}
+
+function handleWorkNotificationCenterKeydown(event) {
+  if (!state.notificationCenterOpen || !els.appNotificationCenter) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeWorkNotificationCenter();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusable = Array.from(els.appNotificationCenter.querySelectorAll("button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"))
+    .filter((element) => element.getClientRects().length > 0);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+async function mutateWorkNotification(action, args, options = {}) {
+  await runFarmAction(action, args, options);
+  await loadWorkNotifications({ silent: true });
 }
 
 function farmPreviewRenderDiagnostic(tableKeys = [], tableMeta = {}) {
@@ -367,6 +639,9 @@ async function farmJsonRequest(url, options = {}, { retrySession = true } = {}) 
       return farmJsonRequest(url, options, { retrySession: false });
     }
   }
+  if (response.status === 401 && state.farmAppActive) {
+    stopFarmAuthenticatedApplication("Session หมดอายุ กรุณาเข้าสู่ระบบใหม่");
+  }
   return { response, payload };
 }
 
@@ -385,6 +660,7 @@ function farmRoleLabel(role = "") {
 
 function renderFarmAuthState() {
   if (!els.farmAuthButton) return;
+  document.body?.setAttribute("data-farm-connection-state", state.farmConnectionState || "LOADING");
   const displayName = state.farmSession?.profile?.displayName || "เข้าสู่ระบบ";
   const primaryRole = [...state.workspaceRoles][0] || "";
   const authenticated = Boolean(state.farmSession?.ok);
@@ -397,17 +673,54 @@ function renderFarmAuthState() {
   els.farmAuthButton.setAttribute("aria-label", authenticated ? `ผู้ใช้งาน ${displayName}` : "เข้าสู่ระบบ");
 }
 
+function renderFarmConnectionNotice() {
+  const connectionState = state.farmConnectionState || "LOADING";
+  const globalCriticalStates = new Set(["DATABASE_ERROR", "NETWORK_ERROR", "PERMISSION_DENIED"]);
+  if (!globalCriticalStates.has(connectionState)) return "";
+  const notices = {
+    PERMISSION_DENIED: ["error", "บัญชีนี้ไม่มีสิทธิ์เข้าถึงข้อมูลสวนปาล์มส่วนนี้"],
+    DATABASE_ERROR: ["error", "Farm API ไม่สามารถโหลดข้อมูลหลักจากฐานข้อมูลได้"],
+    NETWORK_ERROR: ["error", "ไม่สามารถเชื่อมต่อ Farm API ได้ กรุณาลองใหม่"],
+  };
+  const [tone, message] = notices[connectionState] || notices.NETWORK_ERROR;
+  return `<div class="farm-sync-status ${tone}" data-farm-connection-notice="${esc(connectionState)}">${esc(message)}</div>`;
+}
+
+function farmModuleHealthForView(view = state.view) {
+  const stored = state.farmModuleHealth?.[view];
+  if (stored) return stored;
+  const requestedTables = typeof farmDatabaseTablesForView === "function" ? farmDatabaseTablesForView(view) : [];
+  return farmModuleHealthState(state.farmDbErrors || {}, requestedTables);
+}
+
+function renderFarmModuleHealthNotice(view = state.view) {
+  const health = farmModuleHealthForView(view);
+  if (!health || health.state === "READY" || health.state === "LOADING") return "";
+  const failedTables = Array.isArray(health.failedTables) ? health.failedTables : [];
+  const service = health.service || (failedTables.length ? `/api/farm-tables: ${failedTables.join(", ")}` : "ข้อมูลเสริมของ Module");
+  const message = health.message || "ข้อมูลเสริมบางส่วนของหน้านี้ยังไม่พร้อม ข้อมูลหลักยังใช้งานได้";
+  return `<div class="farm-sync-status warning" data-farm-module-warning="${esc(view)}">
+    <span>${esc(message)} <small>${esc(service)}</small></span>
+    <button type="button" data-farm-db-refresh>ลองใหม่</button>
+  </div>`;
+}
+
 function setFarmAuthDialogMode() {
   const authenticated = Boolean(state.farmSession?.ok);
+  const recovering = Boolean(state.farmPasswordRecoveryToken);
   const displayName = state.farmSession?.profile?.displayName || "";
   const roles = [...state.workspaceRoles].map(farmRoleLabel).join(", ");
-  els.farmAuthFields?.classList.toggle("hidden", authenticated);
-  els.farmAuthSubmit?.classList.toggle("hidden", authenticated);
-  els.farmAuthSignOut?.classList.toggle("hidden", !authenticated);
+  els.farmAuthFields?.classList.toggle("hidden", authenticated || recovering);
+  els.farmRecoveryPasswordFields?.classList.toggle("hidden", !recovering);
+  els.farmOwnPasswordFields?.classList.toggle("hidden", !authenticated || recovering);
+  els.farmAuthSubmit?.classList.toggle("hidden", authenticated || recovering);
+  els.farmAuthSignOut?.classList.toggle("hidden", !authenticated || recovering);
   if (els.farmAuthDescription) {
-    els.farmAuthDescription.textContent = authenticated
+    els.farmAuthDescription.textContent = recovering
+      ? "กรอกรหัสผ่านใหม่ ลิงก์นี้ใช้ยืนยันตัวตนผ่าน Supabase Auth และอาจหมดอายุได้"
+      : authenticated
       ? `เข้าสู่ระบบเป็น ${displayName}${roles ? ` · ${roles}` : ""}`
-      : "ใช้บัญชี UAT ของระบบ ข้อมูลรหัสผ่านจะถูกส่งตรงไปยัง API และไม่ถูกบันทึกในเบราว์เซอร์";
+      : "เข้าสู่ระบบด้วย Username หรือ Email รหัสผ่านจะถูกตรวจโดย Supabase Auth และไม่ถูกบันทึกในเบราว์เซอร์";
   }
   if (els.farmAuthStatus) els.farmAuthStatus.textContent = "";
 }
@@ -416,19 +729,123 @@ function openFarmAuthDialog() {
   if (!els.farmAuthDialog) return;
   setFarmAuthDialogMode();
   if (!els.farmAuthDialog.open) els.farmAuthDialog.showModal();
-  if (!state.farmSession?.ok) els.farmAuthEmail?.focus();
+  if (!state.farmSession?.ok) els.farmAuthIdentifier?.focus();
 }
 
 function closeFarmAuthDialog() {
   if (els.farmAuthDialog?.open) els.farmAuthDialog.close();
   if (els.farmAuthPassword) els.farmAuthPassword.value = "";
+  if (els.farmOwnPassword) els.farmOwnPassword.value = "";
+  if (els.farmOwnPasswordConfirm) els.farmOwnPasswordConfirm.value = "";
+  if (els.farmRecoveryPassword) els.farmRecoveryPassword.value = "";
+  if (els.farmRecoveryPasswordConfirm) els.farmRecoveryPasswordConfirm.value = "";
+}
+
+function setFarmAuthGateStatus(message = "", tone = "") {
+  if (!els.farmAuthGateStatus) return;
+  els.farmAuthGateStatus.textContent = message;
+  els.farmAuthGateStatus.classList.toggle("success", tone === "success");
+}
+
+function showFarmAuthScreen(screen = "login", message = "", tone = "") {
+  const copy = {
+    login: ["ระบบบริหารงานสวนปาล์ม", "เข้าสู่ระบบด้วย Username หรือ Email"],
+    "forgot-password": ["ลืมรหัสผ่าน", "ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ไปยังอีเมลที่ผูกกับบัญชี"],
+    "reset-password": ["ตั้งรหัสผ่านใหม่", "ลิงก์ได้รับการยืนยันแล้ว กรุณากำหนดรหัสผ่านใหม่"],
+    "recovery-error": ["ลิงก์ตั้งรหัสผ่านใช้ไม่ได้", "ลิงก์อาจไม่ถูกต้อง หมดอายุ หรือถูกเปิดไปแล้ว"],
+  };
+  state.farmAuthScreen = copy[screen] ? screen : "login";
+  els.farmAuthGate?.removeAttribute("hidden");
+  if (els.appShell) els.appShell.hidden = true;
+  document.querySelectorAll("[data-auth-screen]").forEach((node) => {
+    node.classList.toggle("hidden", node.dataset.authScreen !== state.farmAuthScreen);
+  });
+  if (els.farmAuthGateTitle) els.farmAuthGateTitle.textContent = copy[state.farmAuthScreen][0];
+  if (els.farmAuthGateDescription) els.farmAuthGateDescription.textContent = copy[state.farmAuthScreen][1];
+  setFarmAuthGateStatus(message, tone);
+  const focusTarget = state.farmAuthScreen === "login"
+    ? els.farmAuthGateIdentifier
+    : state.farmAuthScreen === "forgot-password"
+      ? els.farmAuthGateForgotIdentifier
+      : state.farmAuthScreen === "reset-password"
+        ? els.farmAuthGateRecoveryPassword
+        : null;
+  window.setTimeout(() => focusTarget?.focus(), 0);
+}
+
+function showFarmAuthenticatedApplication() {
+  els.farmAuthGate?.setAttribute("hidden", "");
+  if (els.appShell) els.appShell.hidden = false;
+  state.farmAppActive = true;
+}
+
+function stopFarmAuthenticatedApplication(message = "") {
+  if (state.liveRefreshTimer) window.clearInterval(state.liveRefreshTimer);
+  state.liveRefreshTimer = null;
+  state.farmAppActive = false;
+  state.farmSession = null;
+  state.farmAuthRequired = true;
+  setFarmCoreHealth(message ? "SESSION_EXPIRED" : "AUTH_REQUIRED", message);
+  resetFarmAuthenticatedData();
+  closeFarmAuthDialog();
+  showFarmAuthScreen("login", message);
+}
+
+function cleanFarmRecoveryUrl() {
+  window.history.replaceState({}, "", window.location.pathname || "/");
+}
+
+async function detectFarmPasswordRecovery() {
+  const query = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const expected = query.has("password_recovery") || hash.get("type") === "recovery";
+  const callbackError = hash.get("error_code") || hash.get("error") || query.get("error_code") || query.get("error");
+  if (callbackError) {
+    cleanFarmRecoveryUrl();
+    showFarmAuthScreen("recovery-error");
+    return true;
+  }
+  const accessToken = hash.get("type") === "recovery" ? hash.get("access_token") || "" : "";
+  if (!accessToken) {
+    if (!expected) return false;
+    cleanFarmRecoveryUrl();
+    showFarmAuthScreen("recovery-error");
+    return true;
+  }
+  state.farmPasswordRecoveryToken = accessToken;
+  cleanFarmRecoveryUrl();
+  showFarmAuthScreen("reset-password", "กำลังตรวจสอบลิงก์…");
+  try {
+    const response = await fetch(FARM_AUTH_API, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "validate_password_recovery", accessToken }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) throw new Error("invalid recovery link");
+    showFarmAuthScreen("reset-password");
+  } catch {
+    state.farmPasswordRecoveryToken = "";
+    showFarmAuthScreen("recovery-error");
+  }
+  return true;
 }
 
 function resetFarmAuthenticatedData() {
   farmDbTableLoadedAt.clear();
   farmDbTableInflight.clear();
   state.farmDbRows = {};
+  state.farmCanonicalAreaRows = [];
+  state.farmAreaMapReconciliation = null;
+  state.farmAreaCatalogDiagnostic = null;
+  state.farmAreaCatalogDiagnosticSignature = "";
+  state.farmAreaMapAudit = null;
+  state.farmAreaMasterLoading = false;
+  state.farmAreaMasterError = "";
   state.farmDbErrors = {};
+  state.farmCoreHealth = farmCoreHealthFromConnectionState(state.farmConnectionState);
+  state.farmModuleHealth = {};
   state.farmDbTableMeta = {};
   state.workspacePermissions = new Set();
   state.workspaceRoles = new Set();
@@ -437,42 +854,142 @@ function resetFarmAuthenticatedData() {
   state.workspaceTabs = [];
   state.workspaceActionCenter = [];
   state.workspaceReadiness = [];
+  state.systemUsers = [];
+  state.systemUserEmployees = [];
+  state.systemUserRoles = [];
+  state.systemUsersLoaded = false;
+  state.systemUserDrawer = null;
   resetFarmDerivedCaches();
 }
 
 async function submitFarmSignIn() {
   if (state.farmAuthBusy) return;
-  const email = els.farmAuthEmail?.value.trim() || "";
-  const password = els.farmAuthPassword?.value || "";
-  if (!email || !password) {
-    if (els.farmAuthStatus) els.farmAuthStatus.textContent = "กรุณากรอกอีเมลและรหัสผ่าน";
+  const identifier = els.farmAuthGateIdentifier?.value.trim() || "";
+  const password = els.farmAuthGatePassword?.value || "";
+  if (!identifier || !password) {
+    setFarmAuthGateStatus("กรุณากรอก Username หรือ Email และรหัสผ่าน");
     return;
   }
   state.farmAuthBusy = true;
-  if (els.farmAuthSubmit) els.farmAuthSubmit.disabled = true;
-  if (els.farmAuthStatus) els.farmAuthStatus.textContent = "กำลังเข้าสู่ระบบ…";
+  if (els.farmAuthGateSubmit) els.farmAuthGateSubmit.disabled = true;
+  setFarmAuthGateStatus("กำลังเข้าสู่ระบบ…");
   try {
     const response = await fetch(FARM_AUTH_API, {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "sign_in", email, password }),
+      body: JSON.stringify({ action: "sign_in", identifier, password }),
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "เข้าสู่ระบบไม่สำเร็จ"));
-    if (els.farmAuthPassword) els.farmAuthPassword.value = "";
+    if (els.farmAuthGatePassword) els.farmAuthGatePassword.value = "";
     resetFarmAuthenticatedData();
-    const loaded = await loadWorkspaceShell();
+    const loaded = await loadWorkspaceShell({ sessionOnly: true });
     if (!loaded || !state.farmSession?.ok) throw new Error("ไม่สามารถโหลด session หลังเข้าสู่ระบบ");
-    await loadFarmCurrentViewTables({ silent: true, force: true });
-    closeFarmAuthDialog();
-    render();
+    showFarmAuthenticatedApplication();
+    await startAuthenticatedApplication();
+  } catch (error) {
+    showFarmAuthScreen("login", error.message);
+  } finally {
+    state.farmAuthBusy = false;
+    if (els.farmAuthGateSubmit) els.farmAuthGateSubmit.disabled = false;
+  }
+}
+
+async function submitFarmPasswordResetRequest() {
+  const identifier = els.farmAuthGateForgotIdentifier?.value.trim() || "";
+  if (!identifier) {
+    setFarmAuthGateStatus("กรุณากรอก Username หรือ Email ก่อน");
+    return;
+  }
+  els.farmAuthGateForgotSubmit.disabled = true;
+  try {
+    const response = await fetch(FARM_AUTH_API, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "request_password_reset", identifier }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "ส่งลิงก์ตั้งรหัสผ่านไม่สำเร็จ"));
+    setFarmAuthGateStatus(payload.message, "success");
+  } catch {
+    setFarmAuthGateStatus("หากบัญชีนี้ใช้งานได้ ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ไปยังอีเมลที่ผูกไว้", "success");
+  } finally {
+    els.farmAuthGateForgotSubmit.disabled = false;
+  }
+}
+
+async function submitFarmRecoveryPassword() {
+  const password = els.farmAuthGateRecoveryPassword?.value || "";
+  const confirm = els.farmAuthGateRecoveryConfirm?.value || "";
+  if (password.length < 8 || password !== confirm) {
+    setFarmAuthGateStatus(password.length < 8
+      ? "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร"
+      : "ยืนยันรหัสผ่านไม่ตรงกัน");
+    return;
+  }
+  els.farmAuthGateRecoverySubmit.disabled = true;
+  try {
+    const response = await fetch(FARM_AUTH_API, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "complete_password_reset", accessToken: state.farmPasswordRecoveryToken, password }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "ตั้งรหัสผ่านใหม่ไม่สำเร็จ"));
+    state.farmPasswordRecoveryToken = "";
+    els.farmAuthGateRecoveryPassword.value = "";
+    els.farmAuthGateRecoveryConfirm.value = "";
+    showFarmAuthScreen("login", "ตั้งรหัสผ่านใหม่แล้ว กรุณาเข้าสู่ระบบ", "success");
+  } catch {
+    state.farmPasswordRecoveryToken = "";
+    showFarmAuthScreen("recovery-error");
+  } finally {
+    els.farmAuthGateRecoverySubmit.disabled = false;
+  }
+}
+
+async function submitFarmOwnPassword() {
+  const password = els.farmOwnPassword?.value || "";
+  const confirm = els.farmOwnPasswordConfirm?.value || "";
+  if (password.length < 8 || password !== confirm) {
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = password.length < 8
+      ? "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร"
+      : "ยืนยันรหัสผ่านไม่ตรงกัน";
+    return;
+  }
+  els.farmOwnPasswordSubmit.disabled = true;
+  try {
+    const { response, payload } = await farmJsonRequest(FARM_USERS_API, {
+      method: "POST",
+      body: JSON.stringify({ action: "change_own_password", password }),
+    });
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "เปลี่ยนรหัสผ่านไม่สำเร็จ"));
+    els.farmOwnPassword.value = "";
+    els.farmOwnPasswordConfirm.value = "";
+    if (els.farmAuthStatus) els.farmAuthStatus.textContent = "เปลี่ยนรหัสผ่านแล้ว";
   } catch (error) {
     if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
   } finally {
-    state.farmAuthBusy = false;
-    if (els.farmAuthSubmit) els.farmAuthSubmit.disabled = false;
+    els.farmOwnPasswordSubmit.disabled = false;
   }
+}
+
+function loadFarmPostLoginData() {
+  return Promise.allSettled([
+    loadWorkspaceNavigationData(),
+    loadFarmCurrentViewTables({ silent: true, force: true }),
+  ]).then((results) => {
+    const failures = results.filter((result) => result.status === "rejected");
+    if (!failures.length) return results.some((result) => result.status === "fulfilled" && result.value !== false);
+    const messages = failures.map((result) => String(result.reason?.message || result.reason || "Post-login workspace data unavailable"));
+    state.farmDbErrors = { ...(state.farmDbErrors || {}), post_login: messages.join(" | ") };
+    farmPreviewDiagnostic("post-login-data", { ok: false, errors: messages });
+    console.warn("Post-login workspace data diagnostic", { errors: messages });
+    return false;
+  });
 }
 
 async function submitFarmSignOut() {
@@ -489,12 +1006,7 @@ async function submitFarmSignOut() {
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "ออกจากระบบไม่สำเร็จ"));
-    state.farmSession = null;
-    state.farmAuthRequired = true;
-    resetFarmAuthenticatedData();
-    renderFarmAuthState();
-    closeFarmAuthDialog();
-    render();
+    stopFarmAuthenticatedApplication();
   } catch (error) {
     if (els.farmAuthStatus) els.farmAuthStatus.textContent = error.message;
   } finally {
@@ -693,7 +1205,7 @@ const FARM_MODULES = [
     group: "Master Data",
     accent: "Estate → Zone → Plot → Block",
     description: "จัดการ Estate, Zone, Plot และ Block โดยเก็บพื้นที่จริง จำนวนต้น ปีปลูก RSPO และ AP Code ที่ระดับ Block",
-    tables: ["areas", "plot_groups"],
+    tables: ["estates", "zones", "plots", "plot_groups", "blocks", "areas"],
     fields: [
       ["code", "รหัสพื้นที่", "BLK-001"],
       ["name", "ชื่อพื้นที่ / Block", "Block ตัวอย่าง 01"],
@@ -882,7 +1394,9 @@ const FARM_MODULES = [
       "work_order_machines", "survey_template_assignments", "survey_responses", "survey_answers",
       "survey_response_attachments", "survey_answer_attachments", "survey_findings", "attachments",
       "v_daily_work_entry_context", "v_available_inbound_weight_tickets",
-      "v_inventory_work_order_workspace", "v_work_result_vehicle_fuel_detail"],
+      "v_inventory_work_order_workspace", "v_work_result_vehicle_fuel_detail",
+      "fuel_requisitions", "fuel_issues", "fuel_tanks", "v_vehicle_fuel_status",
+      "vehicle_fuel_efficiency_standards"],
     fields: [],
     seed: [],
   },
@@ -2317,6 +2831,10 @@ const FARM_TABLE_SCHEMAS = {
     moduleId: "farm-result", title: "Vehicle Fuel Detail", primaryKey: "id",
     codeField: "vehicle_code", labelField: "vehicle_name", readonly: true, fields: [], seed: [],
   },
+  v_vehicle_fuel_status: {
+    moduleId: "farm-result", title: "Vehicle Fuel Status", primaryKey: "vehicle_id",
+    codeField: "vehicle_code", labelField: "vehicle_name", readonly: true, fields: [], seed: [],
+  },
   annual_work_plans: {
     moduleId: "farm-work",
     title: "แผนงานรายปี",
@@ -3730,10 +4248,21 @@ function workspaceLegacyView(item) {
   return "farm-reports";
 }
 
+function actorIsSuperAdmin() {
+  return [...state.workspaceRoles].some((role) => String(role).toLowerCase() === "super_admin");
+}
+
+function actorHasPermission(permission) {
+  return Boolean(permission && state.workspacePermissions.has(permission));
+}
+
+function actorCan(permission) {
+  return actorIsSuperAdmin() || actorHasPermission(permission);
+}
+
 function workspaceCanAccess(item) {
   if (!item.required_permission_key) return true;
-  if ([...state.workspaceRoles].some((role) => ["admin", "super_admin", "director"].includes(String(role).toLowerCase()))) return true;
-  return state.workspacePermissions.has(item.required_permission_key);
+  return actorCan(item.required_permission_key);
 }
 
 function workspaceRouteCanAccess(route) {
@@ -3801,39 +4330,64 @@ function openWorkspaceRoute(route) {
   return true;
 }
 
-async function loadWorkspaceShell() {
+const WORKSPACE_SHELL_TABLES = [
+  "system_settings", "v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs",
+  "v_management_action_center", "v_system_module_readiness",
+];
+
+async function loadWorkspaceNavigationData() {
+  const tables = WORKSPACE_SHELL_TABLES.join(",");
+  const tableRequest = await farmJsonRequest(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000`, {
+    cache: "no-store",
+  });
+  const payload = tableRequest.payload;
+  if (!tableRequest.response.ok || !payload?.ok) {
+    const error = new Error(farmApiErrorMessage(payload, "Workspace navigation unavailable"));
+    error.connectionState = farmConnectionStateFromResponse(tableRequest.response, payload);
+    throw error;
+  }
+  const connectionState = farmDataConnectionState(payload, WORKSPACE_SHELL_TABLES);
+  setFarmCoreHealth(connectionState);
+  setFarmModuleHealth("workspace-shell", { ...farmModuleHealthState(payload.errors || {}, WORKSPACE_SHELL_TABLES), service: FARM_TABLES_API });
+  const tabs = payload.tables?.v_app_workspace_tabs || [];
+  const tabMetadata = new Map(tabs.map((item) => [item.id, item]));
+  state.workspaceNavigation = (payload.tables?.v_app_navigation || []).map((item) => ({
+    ...item,
+    is_primary: tabMetadata.get(item.id)?.is_primary ?? false,
+    is_hidden: tabMetadata.get(item.id)?.is_hidden ?? false,
+  }));
+  state.workspaceDefinitions = payload.tables?.v_app_workspace_definition || [];
+  state.workspaceTabs = tabs;
+  state.workspaceActionCenter = payload.tables?.v_management_action_center || [];
+  state.workspaceReadiness = payload.tables?.v_system_module_readiness || [];
+  state.dynamicMenuEnabled = workspaceFlag(payload.tables?.system_settings, "system.dynamic_menu_enabled");
+  readActionCenterFiltersFromUrl();
+  const requestedRoute = requestedWorkspaceRouteFromUrl();
+  if (requestedRoute) applyWorkspaceRoute(requestedRoute);
+  renderDynamicWorkspaceMenu();
+  loadWorkNotifications({ silent: true });
+  return true;
+}
+
+async function loadWorkspaceShell({ sessionOnly = false } = {}) {
   try {
-    const tables = [
-      "system_settings", "v_app_navigation", "v_app_workspace_definition", "v_app_workspace_tabs",
-      "v_management_action_center", "v_system_module_readiness",
-    ].join(",");
+    setFarmCoreHealth("LOADING");
     const sessionRequest = await farmJsonRequest(FARM_SESSION_API, { cache: "no-store" }, { retrySession: false });
     const session = sessionRequest.payload;
     if (!sessionRequest.response.ok || !session?.ok) {
-      throw new Error(farmApiErrorMessage(session, "Workspace session unavailable"));
-    }
-    const tableRequest = await farmJsonRequest(`${FARM_TABLES_API}?tables=${encodeURIComponent(tables)}&limit=5000`, {
-      cache: "no-store",
-    });
-    const payload = tableRequest.payload;
-    if (!tableRequest.response.ok || !payload?.ok) {
-      throw new Error(farmApiErrorMessage(session?.ok ? payload : session, "Workspace navigation unavailable"));
+      const connectionState = farmConnectionStateFromResponse(sessionRequest.response, session);
+      state.farmSession = null;
+      setFarmCoreHealth(connectionState, farmApiErrorMessage(session, "Workspace session unavailable"));
+      state.farmAuthRequired = farmConnectionNeedsLogin(connectionState);
+      state.dynamicMenuEnabled = false;
+      state.farmDbErrors = farmClearResolvedErrors(state.farmDbErrors, ["workspace_navigation"], {});
+      renderFarmAuthState();
+      return false;
     }
     state.farmSession = session;
     state.farmAuthRequired = false;
     state.workspacePermissions = new Set(session.permissions || []);
     state.workspaceRoles = new Set(session.roles || []);
-    const tabs = payload.tables?.v_app_workspace_tabs || [];
-    const tabMetadata = new Map(tabs.map((item) => [item.id, item]));
-    state.workspaceNavigation = (payload.tables?.v_app_navigation || []).map((item) => ({
-      ...item,
-      is_primary: tabMetadata.get(item.id)?.is_primary ?? false,
-      is_hidden: tabMetadata.get(item.id)?.is_hidden ?? false,
-    }));
-    state.workspaceDefinitions = payload.tables?.v_app_workspace_definition || [];
-    state.workspaceTabs = tabs;
-    state.workspaceActionCenter = payload.tables?.v_management_action_center || [];
-    state.workspaceReadiness = payload.tables?.v_system_module_readiness || [];
     farmPreviewDiagnostic("session", {
       ok: true,
       httpStatus: sessionRequest.response.status,
@@ -3841,18 +4395,17 @@ async function loadWorkspaceShell() {
       roles: session.roles || [],
       scopeCount: session.scopes?.length || 0,
     });
-    state.dynamicMenuEnabled = workspaceFlag(payload.tables?.system_settings, "system.dynamic_menu_enabled");
-    readActionCenterFiltersFromUrl();
-    const requestedRoute = requestedWorkspaceRouteFromUrl();
-    if (requestedRoute) applyWorkspaceRoute(requestedRoute);
-    renderDynamicWorkspaceMenu();
     renderFarmAuthState();
+    if (!sessionOnly) await loadWorkspaceNavigationData();
     return true;
   } catch (error) {
-    state.farmSession = null;
-    state.farmAuthRequired = /access token|invalid token|expired|auth_required/i.test(String(error.message || ""));
+    const connectionState = error.connectionState || "NETWORK_ERROR";
+    setFarmCoreHealth(connectionState, String(error.message || "Workspace unavailable"));
+    state.farmAuthRequired = farmConnectionNeedsLogin(connectionState);
     state.dynamicMenuEnabled = false;
-    state.farmDbErrors = { ...(state.farmDbErrors || {}), workspace_navigation: error.message };
+    state.farmDbErrors = ["DATABASE_ERROR", "NETWORK_ERROR"].includes(connectionState)
+      ? { ...(state.farmDbErrors || {}), workspace_navigation: error.message }
+      : farmClearResolvedErrors(state.farmDbErrors, ["workspace_navigation"], {});
     renderFarmAuthState();
     return false;
   }
@@ -3984,6 +4537,50 @@ async function loadBlockMapData() {
     bounds: Array.isArray(raw.bounds) ? raw.bounds : [],
     features: Array.isArray(raw.features) ? raw.features : [],
   };
+}
+
+async function loadFarmAreaMasterData({ force = false } = {}) {
+  state.farmAreaMasterLoading = true;
+  state.farmAreaMasterError = "";
+  setFarmModuleHealth("farm-area", { state: "LOADING", service: FARM_AREA_MASTER_API });
+  if (state.view === "farm-area") render();
+  try {
+    const url = `${FARM_AREA_MASTER_API}?refresh=${force ? "1" : "0"}&t=${Date.now()}`;
+    const { response, payload } = await farmJsonRequest(url, { cache: "no-store" });
+    if (!response.ok || !payload?.ok || !payload.map || !Array.isArray(payload.catalogBlocks)) {
+      throw new Error(farmApiErrorMessage(payload, "Canonical Area Master unavailable"));
+    }
+    state.farmCanonicalAreaRows = normalizeFarmDbRows("blocks", payload.catalogBlocks);
+    state.farmAreaMapReconciliation = payload.reconciliation || null;
+    state.farmAreaMapAudit = payload.audit || null;
+    state.blockMapData = {
+      type: payload.map.type || "FeatureCollection",
+      source: payload.map.source || {},
+      bounds: Array.isArray(payload.map.bounds) ? payload.map.bounds : [],
+      features: Array.isArray(payload.map.features) ? payload.map.features : [],
+    };
+    farmPreviewDiagnostic("area-master-load", {
+      ok: true,
+      canonicalBlocks: payload.reconciliation?.canonicalDbBlocks || 0,
+      catalogBlocks: state.farmCanonicalAreaRows.length,
+      uniqueMapKeys: payload.reconciliation?.uniqueBlockKeys || 0,
+      matchedMaster: payload.reconciliation?.matchedMaster || 0,
+    });
+    setFarmModuleHealth("farm-area", { state: "READY", service: FARM_AREA_MASTER_API });
+    return true;
+  } catch (error) {
+    state.farmAreaMasterError = String(error.message || "Canonical Area Master unavailable");
+    setFarmModuleHealth("farm-area", {
+      state: "DEGRADED",
+      service: FARM_AREA_MASTER_API,
+      message: "ไม่สามารถโหลดแผนที่ KMZ ได้ ข้อมูล Area Master ยังใช้งานได้",
+    });
+    farmPreviewDiagnostic("area-master-load", { ok: false, error: state.farmAreaMasterError });
+    return false;
+  } finally {
+    state.farmAreaMasterLoading = false;
+    if (state.view === "farm-area") render();
+  }
 }
 
 function masterDataSignature(payload) {
@@ -4142,7 +4739,9 @@ function farmDatabaseTablesForView(view = state.view) {
       "plot_groups",
       "activity_groups",
       "activities",
+      "material_categories",
       "materials",
+      "units",
       "vehicles",
       "teams",
       "team_members",
@@ -4198,8 +4797,12 @@ function farmViewTableKeys(view = state.view, extraTables = []) {
 
 async function loadFarmCurrentViewTables({ silent = false, force = false, extraTables = [] } = {}) {
   const tableKeys = farmViewTableKeys(state.view, extraTables);
-  if (!tableKeys.length) return false;
-  return loadFarmTablesFromDatabase({ silent, force, tables: tableKeys });
+  const requests = [];
+  if (tableKeys.length) requests.push(loadFarmTablesFromDatabase({ silent, force, tables: tableKeys }));
+  if (state.view === "farm-area") requests.push(loadFarmAreaMasterData({ force }));
+  if (!requests.length) return false;
+  const results = await Promise.all(requests);
+  return results.some(Boolean);
 }
 
 function farmFilterFreshTableKeys(tableKeys = [], force = false) {
@@ -4225,31 +4828,73 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
   if (farmDbTableInflight.has(requestKey)) return farmDbTableInflight.get(requestKey);
 
   const request = (async () => {
-    const limit = state.view === "farm-inventory" ? 500 : 5000;
-    const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(tableKeys.join(","))}&limit=${limit}&t=${Date.now()}`;
-    const { response, payload } = await farmJsonRequest(url, { cache: "no-store" });
-    if (!response.ok || !payload?.ok || !payload.tables) {
-      throw new Error(farmApiErrorMessage(payload, "No farm table payload"));
+    const limit = state.view === "farm-inventory" ? 500 : 1000;
+    const maxPages = 60;
+    const rawRows = Object.fromEntries(tableKeys.map((tableKey) => [tableKey, []]));
+    const tableMeta = {};
+    const errors = {};
+    const warnings = {};
+    let source = null;
+    let response = null;
+    let pageCount = 0;
+    let pendingTableKeys = [...tableKeys];
+    for (let page = 1; page <= maxPages; page += 1) {
+      const url = `${FARM_TABLES_API}?tables=${encodeURIComponent(pendingTableKeys.join(","))}&limit=${limit}&page=${page}&refresh=${force ? "1" : "0"}&t=${Date.now()}`;
+      const pageResult = await farmJsonRequest(url, { cache: "no-store" });
+      response = pageResult.response;
+      const payload = pageResult.payload;
+      if (!response.ok || !payload?.ok || !payload.tables) {
+        const error = new Error(farmApiErrorMessage(payload, "No farm table payload"));
+        error.connectionState = farmConnectionStateFromResponse(response, payload);
+        throw error;
+      }
+      pageCount = page;
+      source = payload.source || source;
+      Object.assign(errors, payload.errors || {});
+      Object.assign(warnings, payload.warnings || {});
+      for (const tableKey of pendingTableKeys) {
+        const pageRows = Array.isArray(payload.tables[tableKey]) ? payload.tables[tableKey] : [];
+        rawRows[tableKey].push(...pageRows);
+        const meta = payload.tableMeta?.[tableKey] || {};
+        tableMeta[tableKey] = {
+          ...(tableMeta[tableKey] || {}),
+          ...meta,
+          rows: rawRows[tableKey].length,
+          scopedCount: rawRows[tableKey].length,
+        };
+      }
+      pendingTableKeys = pendingTableKeys.filter((tableKey) => payload.pagination?.[tableKey]?.hasMore === true);
+      if (!pendingTableKeys.length) break;
+      if (page === maxPages) throw new Error("Farm table pagination exceeded the safety limit");
     }
     const nextRows = Object.fromEntries(
-      Object.entries(payload.tables).map(([tableKey, rows]) => [tableKey, normalizeFarmDbRows(tableKey, Array.isArray(rows) ? rows : [])])
+      Object.entries(rawRows).map(([tableKey, rows]) => [tableKey, normalizeFarmDbRows(tableKey, rows)])
     );
-    const replaceSnapshot = replacesAll && !Object.keys(payload.errors || {}).length;
+    const replaceSnapshot = replacesAll && !Object.keys(errors).length;
     state.farmDbRows = replaceSnapshot ? nextRows : { ...(state.farmDbRows || {}), ...nextRows };
     resetFarmDerivedCaches();
-    state.farmDbSource = payload.source || null;
-    state.farmDbTableMeta = replaceSnapshot ? (payload.tableMeta || {}) : { ...(state.farmDbTableMeta || {}), ...(payload.tableMeta || {}) };
-    state.farmDbErrors = replaceSnapshot ? (payload.errors || {}) : { ...(state.farmDbErrors || {}), ...(payload.errors || {}) };
-    state.farmDbWarnings = replaceSnapshot ? (payload.warnings || {}) : { ...(state.farmDbWarnings || {}), ...(payload.warnings || {}) };
+    state.farmDbSource = source ? {
+      ...source,
+      pageCount,
+      rowCount: Object.values(rawRows).reduce((sum, rows) => sum + rows.length, 0),
+    } : null;
+    state.farmDbTableMeta = replaceSnapshot ? tableMeta : { ...(state.farmDbTableMeta || {}), ...tableMeta };
+    state.farmDbErrors = replaceSnapshot ? errors
+      : farmClearResolvedErrors(state.farmDbErrors, tableKeys, errors);
+    const connectionState = farmDataConnectionState({ errors: state.farmDbErrors }, allTableKeys);
+    setFarmCoreHealth(connectionState);
+    setFarmModuleHealth(state.view, { ...farmModuleHealthState(state.farmDbErrors, requestedKeys), service: FARM_TABLES_API });
+    state.farmDbWarnings = replaceSnapshot ? warnings : { ...(state.farmDbWarnings || {}), ...warnings };
     farmMarkTablesLoaded(Object.keys(nextRows));
     if (silent) render();
     farmPreviewDiagnostic("table-load", {
       ok: true,
       httpStatus: response.status,
       requestedTables: tableKeys,
-      failedTables: Object.keys(payload.errors || {}),
+      failedTables: Object.keys(errors),
+      pageCount,
     });
-    farmPreviewRenderDiagnostic(tableKeys, payload.tableMeta || {});
+    farmPreviewRenderDiagnostic(tableKeys, tableMeta);
     return true;
   })();
 
@@ -4261,10 +4906,18 @@ async function loadFarmTablesFromDatabase({ silent = false, tables = null, force
       state.farmDbRows = {};
       resetFarmDerivedCaches();
     }
+    const connectionState = error.connectionState || "NETWORK_ERROR";
+    setFarmCoreHealth(connectionState, String(error.message || "Farm tables unavailable"));
+    state.farmAuthRequired = farmConnectionNeedsLogin(connectionState);
     state.farmDbSource = { mode: "supabase-real-only", error: error.message };
-    state.farmDbErrors = { ...(state.farmDbErrors || {}), api: error.message };
+    state.farmDbErrors = ["DATABASE_ERROR", "NETWORK_ERROR"].includes(connectionState)
+      ? { ...(state.farmDbErrors || {}), api: error.message }
+      : farmClearResolvedErrors(state.farmDbErrors, ["api"], {});
     state.farmDbWarnings = state.farmDbWarnings || {};
     farmPreviewDiagnostic("table-load", { ok: false, requestedTables: tableKeys, error: error.message });
+    renderFarmAuthState();
+    if (state.farmAuthRequired && state.farmAppActive) stopFarmAuthenticatedApplication("Session หมดอายุ กรุณาเข้าสู่ระบบใหม่");
+    else if (state.farmAppActive) render();
     return false;
   } finally {
     if (farmDbTableInflight.get(requestKey) === request) farmDbTableInflight.delete(requestKey);
@@ -4502,6 +5155,20 @@ async function refreshTransportFromQuery() {
   els.refreshTransportBtn.disabled = true;
   let clearPersistOk = false;
   try {
+    if (transportRefreshUsesHostedSnapshot()) {
+      await loadPayload({ silent: true });
+      await loadMillWeightData();
+      await loadClearOverridesFromServer();
+      setDefaultTransportDateRange();
+      render();
+      const rowCount = state.payload?.source?.rowCount || state.payload?.records?.length || 0;
+      setClearSyncStatus(`Refresh Data succeeded - loaded the latest deployed Data.xlsx snapshot (${fmt(rowCount)} rows)`, "success");
+      els.refreshTransportBtn.textContent = `Data ${fmt(rowCount)} rows`;
+      window.setTimeout(() => {
+        els.refreshTransportBtn.textContent = original;
+      }, 2500);
+      return;
+    }
     writeClearOverridesLocal();
     clearPersistOk = await persistClearOverridesToServer();
     const res = await fetchJsonWithRetry(`${TRANSPORT_REFRESH_API}?t=${Date.now()}`, { method: "POST", cache: "no-store" }, 120000, 1);
@@ -4750,9 +5417,20 @@ function currentMonthStartIso(reference = todayIso()) {
   return day ? `${day.slice(0, 7)}-01` : "";
 }
 
+function transportDefaultDateRange(source = {}, reference = todayIso()) {
+  const today = isoDay(reference);
+  const dateMin = isoDay(source?.dateMin);
+  const dateMax = isoDay(source?.dateMax);
+  const todayOutsideData = dateMax && (today > dateMax || (dateMin && today < dateMin));
+  const end = todayOutsideData ? dateMax : today;
+  const monthStart = currentMonthStartIso(end);
+  const start = dateMin && dateMin > monthStart ? dateMin : monthStart;
+  return { start, end };
+}
+
 function setDefaultTransportDateRange() {
-  const end = todayIso();
-  setDateValue(els.startDate, currentMonthStartIso(end));
+  const { start, end } = transportDefaultDateRange(state.payload?.source || {});
+  setDateValue(els.startDate, start);
   setDateValue(els.endDate, end);
 }
 
@@ -4926,6 +5604,19 @@ function endpointIsLocalOnly(url) {
     const endpoint = new URL(url, window.location.href);
     return ["127.0.0.1", "localhost", "::1"].includes(endpoint.hostname)
       && !["127.0.0.1", "localhost", "::1"].includes(window.location.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function transportRefreshUsesHostedSnapshot(locationLike = window.location, endpoint = TRANSPORT_REFRESH_API) {
+  try {
+    const locationHost = String(locationLike?.hostname || "").toLowerCase();
+    const endpointHost = new URL(endpoint, locationLike?.href || "https://example.invalid").hostname.toLowerCase();
+    const localHosts = ["127.0.0.1", "localhost", "::1"];
+    return String(locationLike?.protocol || "").toLowerCase() === "https:"
+      && localHosts.includes(endpointHost)
+      && !localHosts.includes(locationHost);
   } catch {
     return false;
   }
@@ -5328,14 +6019,17 @@ async function loadFarmBudgetRateData() {
 }
 
 function startLiveRefresh() {
-  if (!state.liveMode) return;
-  window.setInterval(async () => {
+  if (state.liveRefreshTimer) window.clearInterval(state.liveRefreshTimer);
+  state.liveRefreshTimer = null;
+  if (!state.liveMode || !state.farmAppActive) return;
+  state.liveRefreshTimer = window.setInterval(async () => {
     try {
+      if (!state.farmAppActive) return;
       await loadPayload({ silent: true });
     } catch (error) {
       setSourceRefreshError(error);
     }
-  }, 15000);
+  }, state.view === "farm-inventory" ? 500 : 5000);
 }
 
 function workbookClearRows() {
@@ -11046,8 +11740,50 @@ function farmDbRowsByKey(tableKey) {
   return Array.isArray(state.farmDbRows?.[tableKey]) ? state.farmDbRows[tableKey] : [];
 }
 
+function farmCanonicalRowIsActive(row = {}) {
+  const status = String(row.status ?? "active").trim().toLowerCase();
+  return !status || status === "active" || status === "1";
+}
+
+function farmCanonicalActivityGroupRows() {
+  return farmDbRowsByKey("activity_groups").filter((row) =>
+    /^AG(?:0[1-9]|1[0-7])$/i.test(String(row.group_code || "").trim())
+    && farmCanonicalRowIsActive(row)
+  );
+}
+
+function farmCanonicalTeamRows() {
+  return farmDbRowsByKey("teams").filter((row) =>
+    /^(?:G(?:0[1-9]|1[0-2])|C0[1-7])$/i.test(String(row.team_code || "").trim())
+    && farmCanonicalRowIsActive(row)
+  );
+}
+
 function farmAuthoritativeRowsByKey(tableKey) {
   const dbRows = farmDbRowsByKey(tableKey);
+  if (tableKey === "activity_groups") return farmCanonicalActivityGroupRows();
+  if (tableKey === "activities") {
+    const groupIds = new Set(farmCanonicalActivityGroupRows().map((row) => String(row.id || "")));
+    return dbRows.filter((row) => groupIds.has(String(row.activity_group_id || "")) && farmCanonicalRowIsActive(row));
+  }
+  if (tableKey === "material_categories") {
+    return dbRows.filter((row) =>
+      String(row.category_code || "").trim().toUpperCase() !== "FERT"
+      && farmCanonicalRowIsActive(row)
+    );
+  }
+  if (tableKey === "materials") {
+    return dbRows.filter((row) =>
+      !/^FERT\d+$/i.test(String(row.material_code || "").trim())
+      && farmCanonicalRowIsActive(row)
+    );
+  }
+  if (tableKey === "vehicles") return dbRows.filter(farmCanonicalRowIsActive);
+  if (tableKey === "teams") return farmCanonicalTeamRows();
+  if (tableKey === "team_members") {
+    const teamIds = new Set(farmCanonicalTeamRows().map((row) => String(row.id || "")));
+    return dbRows.filter((row) => teamIds.has(String(row.team_id || "")));
+  }
   return dbRows;
 }
 
@@ -11485,6 +12221,19 @@ function farmCan(action) {
   return (FARM_ROLE_PERMISSIONS[state.farmFilters.role] || FARM_ROLE_PERMISSIONS.viewer).includes(action);
 }
 
+function farmHasWorkspacePermission(permission) {
+  return actorCan(permission);
+}
+
+function farmCanManageBudget() {
+  return farmHasWorkspacePermission("budget.rate_rule.manage");
+}
+
+function farmCanCreatePlanning() {
+  return farmHasWorkspacePermission("farm.plan.create")
+    && farmHasWorkspacePermission("farm.work_order.create");
+}
+
 function farmFieldKey(field) {
   return Array.isArray(field) ? field[0] : field.key;
 }
@@ -11792,6 +12541,9 @@ function appendFarmVersionLog(table, original, nextRow) {
 async function saveFarmRow() {
   const module = selectedFarmModule();
   const table = selectedFarmTable(module);
+  if (module.id === "farm-governance" && table.key === "profiles") {
+    return renderSystemUserManagement(module, table);
+  }
   const editId = state.farmEditId;
   const original = editId ? farmRows(table).find((row) => row.id === editId) : null;
   const shouldVersion = original && isFarmVersionedTable(table.key);
@@ -12871,19 +13623,19 @@ function farmSurveyQuestionChoices(question = {}) {
   if (choicePayload) {
     try {
       const parsed = typeof choicePayload === "string" ? JSON.parse(choicePayload) : choicePayload;
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) return parsed.map((choice) => typeof choice === "object" ? choice : { value: String(choice), label: String(choice) });
     } catch (_) {
       // Bad option JSON should not block recording the work result.
     }
   }
-  if (question.answer_type === "yes_no") {
+  if (["yes_no", "boolean"].includes(question.answer_type)) {
     return [
       { value: "yes", label: "ผ่าน / ใช่" },
       { value: "no", label: "ไม่ผ่าน / ไม่ใช่" },
     ];
   }
-  const max = n(question.score_weight);
-  if (question.answer_type === "choice" && max) {
+  const max = farmSurveyQuestionWeight(question);
+  if (["choice", "single_choice", "rating"].includes(question.answer_type) && max) {
     return [
       { value: String(max), label: `ผ่านครบ ${moneyNf.format(max)} คะแนน` },
       { value: String(Math.round(max / 2)), label: "ผ่านบางส่วน" },
@@ -12893,12 +13645,35 @@ function farmSurveyQuestionChoices(question = {}) {
   return [];
 }
 
+function farmSurveyQuestionVisible(question = {}, draft = {}) {
+  const condition = farmSurveyConditionObject(question.conditional_json || question.condition_json);
+  if (!Object.keys(condition).length) return true;
+  const sourceKey = condition.question_code || condition.depends_on || condition.question_id || condition.source_question;
+  if (!sourceKey) return true;
+  const current = farmSurveyAnswerValue(draft, sourceKey);
+  const expected = condition.value ?? condition.equals ?? condition.eq;
+  const operator = String(condition.operator || (condition.not_equals !== undefined ? "not_equals" : "equals")).toLowerCase();
+  if (operator === "in") return (Array.isArray(condition.values) ? condition.values : [expected]).map(String).includes(String(current));
+  if (operator === "not_equals" || operator === "neq") return String(current) !== String(condition.not_equals ?? expected);
+  if (operator === "contains") return Array.isArray(current) ? current.map(String).includes(String(expected)) : String(current || "").includes(String(expected || ""));
+  return String(current) === String(expected);
+}
+
+function farmSurveyQuestionWeight(question = {}) {
+  return n(question.max_score ?? question.score_weight ?? question.weight_pct);
+}
+
+function farmSurveyQuestionUnit(question = {}) {
+  return question.unit_name || question.answer_unit || "";
+}
+
 function farmSurveyScoreQuestions(questions = []) {
-  return questions.filter((question) => question.answer_type === "choice" || n(question.score_weight) > 0);
+  return questions.filter((question) => ["choice", "single_choice", "rating"].includes(question.answer_type) || farmSurveyQuestionWeight(question) > 0);
 }
 
 function farmSurveyReadinessQuestions(questions = []) {
-  return questions.filter((question) => question.answer_type === "yes_no" || String(question.section_title || "").toLowerCase().includes("readiness"));
+  return questions.filter((question) => ["yes_no", "boolean"].includes(question.answer_type)
+    || String(question.section_name || question.section_title || "").toLowerCase().includes("readiness"));
 }
 
 function farmSurveyMeasureQuestions(questions = []) {
@@ -12912,14 +13687,17 @@ function farmSurveyAnswerValue(draft = {}, key = "") {
 
 function farmSurveyScoreTotal(questions = [], draft = {}) {
   const scoreQuestions = farmSurveyScoreQuestions(questions);
-  const max = scoreQuestions.reduce((sum, question) => sum + n(question.score_weight), 0);
-  const score = scoreQuestions.reduce((sum, question) => sum + n(farmSurveyAnswerValue(draft, farmSurveyQuestionKey(question))), 0);
+  const max = scoreQuestions.reduce((sum, question) => sum + farmSurveyQuestionWeight(question), 0);
+  const score = scoreQuestions.reduce((sum, question) => {
+    const value = farmSurveyAnswerValue(draft, farmSurveyQuestionKey(question));
+    return sum + (["yes", true, "true"].includes(value) ? farmSurveyQuestionWeight(question) : n(value));
+  }, 0);
   return { score, max, percent: max ? Math.round((score / max) * 100) : 0 };
 }
 
 function farmSurveySectionGroups(questions = []) {
   return questions.reduce((groups, question) => {
-    const title = question.section_title || "ข้อมูลตรวจงาน";
+    const title = question.section_name || question.section_title || "ข้อมูลตรวจงาน";
     if (!groups[title]) groups[title] = [];
     groups[title].push(question);
     return groups;
@@ -12932,22 +13710,66 @@ function farmSurveyForActivity(activityOrId) {
   const templates = farmSurveyTemplates().filter((row) => String(row.status || "active").toLowerCase() !== "inactive");
   const exact = templates.find((row) => row.activity_id === activity.id);
   if (exact) return exact;
-  const activityText = [activity.activity_code, activity.activity_name, activity.work_type, farmLookupLabel("activity_groups", activity.activity_group_id)]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return templates.find((row) => {
-    const keywords = Array.isArray(row.keywords) ? row.keywords : farmSurveyText(row).split(/\s+/);
-    return keywords.some((keyword) => keyword && activityText.includes(String(keyword).toLowerCase()));
-  }) || null;
+  return templates.find((row) => !row.activity_id && ["work_result", "work_order", "general"].includes(String(row.survey_scope || "general"))) || null;
+}
+
+function farmSurveyConditionObject(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try { return JSON.parse(value); } catch (_) { return {}; }
+}
+
+function farmSurveyAssignmentMatches(assignment = {}, order = {}) {
+  const day = isoDay(state.farmResultDraft?.resultDate) || farmToday();
+  if (String(assignment.status || "active").toLowerCase() !== "active") return false;
+  if (assignment.effective_from && assignment.effective_from > day) return false;
+  if (assignment.effective_to && assignment.effective_to < day) return false;
+  if (assignment.activity_id && String(assignment.activity_id) !== String(order.activity_id || order.activity?.id || "")) return false;
+  if (assignment.block_id && String(assignment.block_id) !== String(order.block_id || order.block?.id || "")) return false;
+  if (assignment.team_id && String(assignment.team_id) !== String(order.team_id || "")) return false;
+  const condition = farmSurveyConditionObject(assignment.condition_json);
+  const activity = order.activity || farmLookup("activities", order.activity_id) || {};
+  if (condition.activity_group_id && String(condition.activity_group_id) !== String(activity.activity_group_id || order.activity_group_id || "")) return false;
+  if (condition.work_type && String(condition.work_type).toLowerCase() !== String(activity.work_type || order.work_type || "").toLowerCase()) return false;
+  return true;
+}
+
+function farmSurveyAssignmentRank(assignment = {}, order = {}) {
+  const condition = farmSurveyConditionObject(assignment.condition_json);
+  let rank = n(assignment.priority);
+  if (assignment.activity_id && String(assignment.activity_id) === String(order.activity_id || order.activity?.id || "")) rank += 5000;
+  else if (condition.activity_group_id) rank += 4000;
+  else if (condition.work_type) rank += 3000;
+  else rank += 2000;
+  if (assignment.block_id) rank += 200;
+  if (assignment.team_id) rank += 100;
+  return rank;
 }
 
 function farmSurveyForOrder(order = {}) {
-  if (order.survey_template_id) {
-    const byId = farmSurveyTemplates().find((row) => row.id === order.survey_template_id);
-    if (byId) return byId;
-  }
-  return farmSurveyForActivity(order.activity || order.activity_id);
+  const templates = farmSurveyTemplates().filter((row) => String(row.status || "active").toLowerCase() === "active");
+  const byId = new Map(templates.map((row) => [String(row.id), row]));
+  const assigned = farmRowsByKey("survey_template_assignments")
+    .filter((row) => farmSurveyAssignmentMatches(row, order) && byId.has(String(row.template_id || "")))
+    .sort((a, b) => farmSurveyAssignmentRank(b, order) - farmSurveyAssignmentRank(a, order))[0];
+  if (assigned) return { ...byId.get(String(assigned.template_id)), assignment: assigned, selection_source: "assignment" };
+  const activity = order.activity || farmLookup("activities", order.activity_id) || {};
+  const exact = templates.find((row) => row.activity_id && String(row.activity_id) === String(activity.id || order.activity_id || ""));
+  if (exact) return { ...exact, selection_source: "activity" };
+  const activityGroup = templates.find((row) => {
+    const config = farmSurveyConditionObject(row.configuration_json);
+    return config.activity_group_id && String(config.activity_group_id) === String(activity.activity_group_id || order.activity_group_id || "");
+  });
+  if (activityGroup) return { ...activityGroup, selection_source: "activity_group" };
+  const workType = templates.find((row) => {
+    const config = farmSurveyConditionObject(row.configuration_json);
+    return config.work_type && String(config.work_type).toLowerCase() === String(activity.work_type || order.work_type || "").toLowerCase();
+  });
+  if (workType) return { ...workType, selection_source: "work_type" };
+  const general = templates.find((row) => !row.activity_id && ["work_result", "work_order", "general"].includes(String(row.survey_scope || "general")));
+  if (general) return { ...general, selection_source: "general" };
+  const manual = byId.get(String(order.survey_template_id || ""));
+  return manual ? { ...manual, selection_source: "manual" } : null;
 }
 
 function farmSurveyAttachmentForOrder(order = {}) {
@@ -14469,15 +15291,13 @@ function farmEnrichPlanningBlock(block = {}) {
 }
 
 function farmPlanningBlockRows() {
-  const areaRows = farmAreaBlockSourceRows();
-  const sourceRows = areaRows.length ? areaRows : farmRowsByKey("blocks");
-  return sourceRows.map(farmEnrichPlanningBlock);
+  return farmAreaCatalogBlocks().map(farmEnrichPlanningBlock);
 }
 
 function farmSelectedPlanningBlocks(picks = farmWorkPlanState()) {
   const ids = farmBudgetUnique(picks.selectedBlocks || []);
   if (!ids.length) return [];
-  const candidates = [...farmAreaBlockSourceRows(), ...farmRowsByKey("blocks")].map(farmEnrichPlanningBlock);
+  const candidates = farmPlanningBlockRows();
   return ids
     .map((id) => candidates.find((block) =>
       block.id === id
@@ -14960,6 +15780,7 @@ function farmPlanBudgetMatchMessage({ activeRates = [], activity, selectedBlocks
 function renderFarmWorkPlanner() {
   const budgetPicks = farmWorkPlanState();
   const blocks = farmPlanningBlockRows();
+  const catalogBlockCount = farmAreaCatalogBlocks().length;
   const activityGroups = farmRows(farmTableByKey("activity_groups"));
   const activities = farmRows(farmTableByKey("activities"));
   const teams = farmRows(farmTableByKey("teams"));
@@ -15150,7 +15971,7 @@ function renderFarmWorkPlanner() {
             <b>Block ${fmt(selectedBlocks.length)} · กิจกรรม ${fmt(budgetPicks.selectedActivities.length || (previewActivity ? 1 : 0))} · วัสดุ ${fmt(selectedMaterials.length || rateMaterialUsageRows.length)} · รถ/เครื่องจักร ${fmt(selectedVehicles.length)} · พนักงาน/ทีม ${fmt(selectedWorkerCount)}</b>
           </div>
           <div class="budget-tree-grid budget-tree-grid-work-order farm-work-budget-selector" data-budget-context="work-plan">
-            <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetPlantingYearSelector(budgetPicks, { idPrefix: "planning", allLabel: "ทุกปี" })}${renderFarmBudgetAreaTree(budgetPicks)}</div></section>
+            <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmWorkAreaSelector(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>วัสดุ</h4><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>รถ / เครื่องจักร</h4><div class="budget-tree-scroll">${renderFarmBudgetVehicleTree(budgetPicks)}</div></section>
@@ -15206,9 +16027,9 @@ function renderFarmWorkPlanner() {
             </table>
           </div>
           <div class="farm-plan-actions">
-            ${state.farmWorkDetailId ? `<button type="button" class="secondary" data-farm-save-work-plan-edit ${state.farmSyncBusy ? "disabled" : ""}>บันทึกแก้ไขแผน</button>` : ""}
-            <button type="button" data-farm-create-work-plan ${state.farmSyncBusy ? "disabled" : ""}>สร้างแผน</button>
-            ${state.farmWorkDetailId ? `<button type="button" class="danger ghost" data-farm-delete-work-order="${esc(state.farmWorkDetailId)}" ${state.farmSyncBusy ? "disabled" : ""}>ลบ Work Order ที่เลือก</button>` : ""}
+            ${state.farmWorkDetailId ? `<button type="button" class="secondary" data-farm-save-work-plan-edit ${state.farmSyncBusy || !farmCanCreatePlanning() ? "disabled" : ""}>บันทึกแก้ไขแผน</button>` : ""}
+            <button type="button" data-farm-create-work-plan ${state.farmSyncBusy || !farmCanCreatePlanning() ? "disabled" : ""}>สร้างแผน</button>
+            ${state.farmWorkDetailId ? `<button type="button" class="danger ghost" data-farm-delete-work-order="${esc(state.farmWorkDetailId)}" ${state.farmSyncBusy || !farmCanCreatePlanning() ? "disabled" : ""}>ลบ Work Order ที่เลือก</button>` : ""}
           </div>
         </article>
       </div>
@@ -15216,6 +16037,12 @@ function renderFarmWorkPlanner() {
 }
 
 async function createFarmWorkPlanFromSelection() {
+  if (!farmCanCreatePlanning()) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "บัญชีนี้ดูข้อมูลพื้นที่ได้ แต่ไม่มีสิทธิ์สร้างหรือแก้ไขแผน";
+    render();
+    return;
+  }
   const table = farmTableByKey("work_orders");
   const picks = farmWorkPlanState();
   const activities = farmRows(farmTableByKey("activities"));
@@ -15553,6 +16380,63 @@ function farmDispatchSelectedOrder(rows = farmDispatchCandidateOrders()) {
     state.farmDispatchExtraVehicles = [];
   }
   return selected;
+}
+
+function farmDispatchCandidateReadiness(order = {}) {
+  const workers = farmRowsByKey("work_order_workers").filter((row) => String(row.work_order_id || "") === String(order.id || "") && row.status !== "cancelled");
+  const machines = farmRowsByKey("work_order_machines").filter((row) => String(row.work_order_id || "") === String(order.id || "") && row.status !== "cancelled");
+  const checks = [
+    Boolean(order.scheduled_date || order.planned_start_date),
+    Boolean(order.team_id || order.contractor_id),
+    Boolean(order.supervisor_employee_id || farmLookup("teams", order.team_id)?.supervisor_employee_id),
+    workers.length > 0,
+    machines.every((row) => !row.vehicle_id || row.driver_employee_id),
+  ];
+  return { complete: checks.filter(Boolean).length, total: checks.length, ready: checks.every(Boolean) };
+}
+
+function renderFarmDispatchCandidateList(orders = [], selectedOrder = null) {
+  return `
+    <section class="farm-mobile-candidate-panel" aria-labelledby="farmDispatchCandidateTitle">
+      <div class="farm-mobile-candidate-head">
+        <div><p class="eyebrow">งานที่พร้อมสั่ง</p><h4 id="farmDispatchCandidateTitle">เลือกใบงานแล้วทำต่อในหน้าเดียว</h4></div>
+        <span class="farm-mobile-count">${fmt(orders.length)} งาน</span>
+      </div>
+      <div class="farm-mobile-candidate-list">
+        ${orders.map((row) => {
+          const active = String(row.id || "") === String(selectedOrder?.id || "");
+          const readiness = farmDispatchCandidateReadiness(row);
+          const status = farmEffectiveWorkStatusMeta(row);
+          const area = [farmShortBlockText(row), farmWorkTextOption(row, "zone").label].filter((value) => value && value !== "-").join(" · ") || "ไม่ระบุพื้นที่";
+          return `<article class="farm-mobile-candidate-card${active ? " is-active" : ""}" ${active ? 'aria-current="true"' : ""}>
+            <div class="farm-mobile-candidate-top">
+              <span class="status-chip ${esc(status.className || "")}">${esc(status.label || "รอสั่งงาน")}</span>
+              <small>${esc(displayDate(row.scheduled_date || row.planned_start_date) || "ยังไม่กำหนดวัน")}</small>
+            </div>
+            <strong>${esc(farmWorkOrderShortTitle(row))}</strong>
+            <p>${esc(farmShortWorkOrderNo(row))} · ${esc(area)}</p>
+            <div class="farm-mobile-readiness" aria-label="ความพร้อม ${readiness.complete} จาก ${readiness.total}">
+              <span><i style="width:${(readiness.complete / readiness.total) * 100}%"></i></span>
+              <small>${readiness.ready ? "พร้อมส่งงาน" : `พร้อม ${readiness.complete}/${readiness.total}`}</small>
+            </div>
+            <button type="button" data-farm-dispatch-open="${esc(row.id)}">${active ? "กำลังแก้ไขงานนี้" : "เปิดเพื่อสั่งงาน"}</button>
+          </article>`;
+        }).join("") || `<div class="farm-mobile-empty">ยังไม่มีใบงานที่อนุมัติและพร้อมสั่ง</div>`}
+      </div>
+    </section>`;
+}
+
+function renderFarmDispatchMobileStepper(context = {}) {
+  const steps = [
+    ["overview", "1", "งานและวัน", Boolean(context.order && context.date && context.endDate)],
+    ["workers", "2", "ทีมและคน", Boolean(context.teamId && context.workers?.some((row) => row.checked !== false))],
+    ["materials", "3", "พัสดุ", true],
+    ["vehicles", "4", "รถและคนขับ", context.machines?.every((row) => !row.vehicle_id || row.driver_employee_id) !== false],
+    ["review", "5", "ตรวจและส่ง", false],
+  ];
+  return `<nav class="farm-mobile-stepper" aria-label="ขั้นตอนสั่งงาน">
+    ${steps.map(([id, no, label, done]) => `<button type="button" data-farm-dispatch-jump="${id}" class="${done ? "is-done" : ""}"><b>${done ? "✓" : no}</b><span>${label}</span></button>`).join("")}
+  </nav>`;
 }
 
 function farmTeamForEmployee(employeeId = "", preferredTeamId = "") {
@@ -16120,8 +17004,11 @@ function renderFarmDispatchPanel() {
         <h3>สั่งงานจากแผน</h3>
         <span>Estate Manager เลือก Work Order จากแผน ปรับวัน ทีม คนงาน และออกใบเบิกพัสดุให้หัวหน้าทีม</span>
       </div>
+      ${renderFarmDispatchCandidateList(orders, order)}
+      ${renderFarmDispatchMobileStepper({ order, date: dispatchDate, endDate: dispatchEndDate, teamId: activeTeamId || team.id, workers, machines })}
       <div class="farm-dispatch-grid">
-        <article class="farm-dispatch-card farm-dispatch-main">
+        <article class="farm-dispatch-card farm-dispatch-main" id="farm-dispatch-step-overview" data-farm-dispatch-step="overview">
+          <p class="farm-mobile-step-label">ขั้นตอน 1 · งานและวันทำงาน</p>
           <h4>ข้อมูลใบสั่งงาน</h4>
           <div class="farm-dispatch-fields">
             <label>เลือก Work Order
@@ -16145,7 +17032,8 @@ function renderFarmDispatchPanel() {
             <dt>หัวหน้าทีม</dt><dd>${esc(farmRecordLabel(farmTableByKey("employees"), supervisor) || farmLookupLabel("employees", team.supervisor_employee_id))}</dd>
           </dl>
         </article>
-        <article class="farm-dispatch-card">
+        <article class="farm-dispatch-card" id="farm-dispatch-step-workers" data-farm-dispatch-step="workers">
+          <p class="farm-mobile-step-label">ขั้นตอน 2 · ทีมและคนงาน</p>
           <div class="farm-dispatch-card-head">
             <h4>คนงาน / ทีมทำงาน</h4>
             <div class="farm-dispatch-add-control">
@@ -16164,7 +17052,8 @@ function renderFarmDispatchPanel() {
               </label>`).join("") || `<p>ยังไม่มีรายชื่อคนงานในทีมนี้</p>`}
           </div>
         </article>
-        <article class="farm-dispatch-card farm-dispatch-materials">
+        <article class="farm-dispatch-card farm-dispatch-materials" id="farm-dispatch-step-materials" data-farm-dispatch-step="materials">
+          <p class="farm-mobile-step-label">ขั้นตอน 3 · พัสดุ</p>
           <div class="farm-dispatch-card-head">
             <h4>ใบเบิกพัสดุ / ตัดจ่าย</h4>
             <div class="farm-dispatch-add-control">
@@ -16196,7 +17085,8 @@ function renderFarmDispatchPanel() {
             </table>
           </div>
         </article>
-        <article class="farm-dispatch-card farm-dispatch-materials">
+        <article class="farm-dispatch-card farm-dispatch-materials" id="farm-dispatch-step-vehicles" data-farm-dispatch-step="vehicles">
+          <p class="farm-mobile-step-label">ขั้นตอน 4 · รถและคนขับ</p>
           <div class="farm-dispatch-card-head">
             <h4>รถ / เครื่องจักร</h4>
             <div class="farm-dispatch-add-control">
@@ -16223,7 +17113,8 @@ function renderFarmDispatchPanel() {
             </table>
           </div>
         </article>
-        <article class="farm-dispatch-card farm-dispatch-actions">
+        <article class="farm-dispatch-card farm-dispatch-actions" id="farm-dispatch-step-review" data-farm-dispatch-step="review">
+          <p class="farm-mobile-step-label">ขั้นตอน 5 · ตรวจและส่งงาน</p>
           <h4>ส่งงานให้หัวหน้าทีม</h4>
           ${renderFarmQrCard(order, "QR สำหรับหัวหน้าทีม", "dispatch")}
           <p>เมื่อบันทึก ระบบจะตั้งสถานะใบงานเป็น “ส่งเข้ามือถือ” และบันทึกรายการพัสดุ รถ และคนงานไว้กับใบงาน</p>
@@ -16666,6 +17557,84 @@ async function saveFarmDispatchOrder() {
   } finally {
     state.farmSyncBusy = false;
     render();
+  }
+}
+
+async function saveFarmDispatchOrderActionOnly() {
+  const order = farmDispatchSelectedOrder();
+  if (!order) return;
+  const scheduledDate = dateValue(document.querySelector("#farmDispatchDate"));
+  const scheduledEndDate = dateValue(document.querySelector("#farmDispatchEndDate")) || scheduledDate;
+  const teamId = document.querySelector("#farmDispatchTeam")?.value || "";
+  const machines = farmMergeDispatchRows(Array.from(document.querySelectorAll("[data-farm-dispatch-machine]")).map((row) => ({
+    vehicle_id: row.querySelector("[data-farm-dispatch-machine-vehicle]")?.value || row.dataset.farmDispatchMachine,
+    driver_employee_id: row.querySelector("[data-farm-dispatch-machine-driver]")?.value || null,
+    planned_hours: n(row.querySelector("[data-farm-dispatch-machine-hours]")?.value),
+    fuel_plan_liter: n(row.querySelector("[data-farm-dispatch-machine-fuel]")?.value),
+  })).filter((row) => row.vehicle_id), "vehicle_id");
+  const driverIds = machines.map((row) => row.driver_employee_id).filter(Boolean);
+  const workers = farmBudgetUnique([
+    ...Array.from(document.querySelectorAll("[data-farm-dispatch-worker]:checked")).map((input) => input.value),
+    ...driverIds,
+  ]).map((employeeId) => {
+    const employee = farmLookup("employees", employeeId) || {};
+    const vehicle = machines.find((row) => row.driver_employee_id === employeeId);
+    return {
+      employee_id: employeeId,
+      role: vehicle ? `driver:${vehicle.vehicle_id}` : (employee.worker_type || "worker"),
+      planned_hours: 8,
+      rate: vehicle ? farmDispatchDriverRateForOrder(order) : n(employee.daily_wage || employee.hourly_wage_rate),
+    };
+  });
+  const materials = farmMergeDispatchRows(Array.from(document.querySelectorAll("[data-farm-dispatch-material]")).map((row) => {
+    const materialId = row.dataset.farmDispatchMaterial;
+    const material = farmLookup("materials", materialId) || {};
+    const issueFactor = n(row.dataset.farmDispatchIssueFactor || 1) || 1;
+    const issueQuantity = n(row.querySelector("[data-farm-dispatch-issue-qty]")?.value);
+    return {
+      material_id: materialId,
+      planned_quantity: n(row.dataset.farmDispatchPlannedQuantity) || issueQuantity * issueFactor,
+      unit_id: material.base_unit_id || null,
+      note: JSON.stringify({
+        plan_unit_name: farmCleanUnitDisplay(row.dataset.farmDispatchPlanUnitName || ""),
+        issue_unit_name: farmCleanUnitDisplay(row.dataset.farmDispatchUnitName || ""),
+        issue_factor: issueFactor,
+        planned_issue_quantity: issueQuantity,
+      }),
+    };
+  }).filter((row) => row.material_id), "material_id");
+
+  if (!scheduledDate || !scheduledEndDate || scheduledEndDate < scheduledDate) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาตรวจวันที่เริ่มและสิ้นสุดงาน";
+    render();
+    return;
+  }
+  if (!teamId || !workers.length) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "ต้องเลือกทีมและคนงานอย่างน้อย 1 คนก่อนส่งงาน";
+    render();
+    return;
+  }
+  if (machines.some((row) => !row.driver_employee_id)) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "รถและเครื่องจักรทุกคันต้องระบุคนขับ";
+    render();
+    return;
+  }
+  const result = await runFarmAction("save_dispatch_assignment", {
+    work_order_id: order.id,
+    scheduled_date: scheduledDate,
+    scheduled_end_date: scheduledEndDate,
+    team_id: teamId,
+    workers,
+    materials,
+    vehicles: machines,
+  }, { confirmed: true, reason: "บันทึก Mobile Dispatch assignment" }).catch(() => null);
+  if (result) {
+    state.farmDispatchWorkOrderId = result.work_order?.id || order.id;
+    state.farmWorkDetailId = state.farmDispatchWorkOrderId;
+    state.farmSyncMessage = `ส่งงานแล้ว · คนงาน ${fmt(result.workers)} คน · พัสดุ ${fmt(result.materials)} รายการ · รถ ${fmt(result.vehicles)} คัน`;
   }
 }
 
@@ -17782,12 +18751,155 @@ function renderFarmInventoryLegacyOverview() {
 }
 
 function farmInventoryCan(permission) {
-  const admin = ["super_admin", "director", "estate_manager"].some((role) =>
-    state.workspaceRoles.has(role));
-  return admin
-    || state.workspacePermissions.has("inventory.manage")
-    || state.workspacePermissions.has(permission)
+  return actorCan("inventory.manage")
+    || actorCan(permission)
     || (!state.workspaceRoles.size && state.farmFilters.role === "super_admin");
+}
+
+async function loadSystemUsers({ force = false } = {}) {
+  if (state.systemUsersLoading || (state.systemUsersLoaded && !force)) return;
+  if (!actorCan("system.user.view") && !actorCan("system.user.manage")) return;
+  state.systemUsersLoading = true;
+  try {
+    const { response, payload } = await farmJsonRequest(FARM_USERS_API, { cache: "no-store" });
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "โหลดบัญชีผู้ใช้งานไม่สำเร็จ"));
+    state.systemUsers = payload.users || [];
+    state.systemUserEmployees = payload.employees || [];
+    state.systemUserRoles = payload.roles || [];
+    state.systemUsersLoaded = true;
+  } catch (error) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = error.message;
+  } finally {
+    state.systemUsersLoading = false;
+    render();
+  }
+}
+
+function systemEmployeeLabel(employee = {}) {
+  return [employee.employee_code, employee.full_name].filter(Boolean).join(" · ");
+}
+
+function systemUserEmployeeFromInput(value = "") {
+  return state.systemUserEmployees.find((employee) => employee.id === value || systemEmployeeLabel(employee) === value) || null;
+}
+
+function systemUserRole(roleId = "") {
+  return state.systemUserRoles.find((role) => role.id === roleId) || null;
+}
+
+function renderSystemUserDrawer() {
+  const drawer = state.systemUserDrawer;
+  if (!drawer) return "";
+  const current = state.systemUsers.find((user) => user.id === drawer.profileId) || null;
+  const resetMode = drawer.mode === "reset";
+  const editMode = Boolean(current) && !resetMode;
+  const selectedEmployee = state.systemUserEmployees.find((employee) => employee.id === (drawer.employeeId || current?.employeeId)) || null;
+  const existingEmployeeUser = !editMode && selectedEmployee
+    ? state.systemUsers.find((user) => user.employeeId === selectedEmployee.id && user.status === "active")
+    : null;
+  const canAssignSuper = actorIsSuperAdmin();
+  if (resetMode) {
+    return `<aside class="system-user-drawer" role="dialog" aria-modal="true" aria-labelledby="systemUserDrawerTitle">
+      <header><div><small>Supabase Auth</small><h3 id="systemUserDrawerTitle">ตั้งรหัสผ่านใหม่</h3><p>${esc(current?.employeeName || current?.username || "")}</p></div><button type="button" data-system-user-close aria-label="ปิด">×</button></header>
+      <label>รหัสผ่านใหม่<input id="systemUserPassword" type="password" minlength="8" autocomplete="new-password"></label>
+      <label>ยืนยันรหัสผ่าน<input id="systemUserPasswordConfirm" type="password" minlength="8" autocomplete="new-password"></label>
+      <label class="password-toggle"><input type="checkbox" data-system-user-show-password> แสดงรหัสผ่าน</label>
+      <footer><button type="button" data-system-user-close>ยกเลิก</button><button type="button" data-system-user-save>ตั้งรหัสผ่านใหม่</button></footer>
+    </aside>`;
+  }
+  const employeeValue = selectedEmployee ? systemEmployeeLabel(selectedEmployee) : "";
+  return `<aside class="system-user-drawer" role="dialog" aria-modal="true" aria-labelledby="systemUserDrawerTitle">
+    <header><div><small>Employee-linked account</small><h3 id="systemUserDrawerTitle">${editMode ? "แก้ไขบัญชีผู้ใช้งาน" : "สร้างผู้ใช้งาน"}</h3></div><button type="button" data-system-user-close aria-label="ปิด">×</button></header>
+    <label>พนักงาน *
+      ${editMode
+        ? `<input value="${esc([current.employeeCode, current.employeeName].filter(Boolean).join(" · "))}" readonly>`
+        : `<input id="systemUserEmployee" list="systemUserEmployeeOptions" value="${esc(employeeValue)}" placeholder="ค้นหารหัส ชื่อ หรือชื่อเล่น" autocomplete="off">
+          <datalist id="systemUserEmployeeOptions">${state.systemUserEmployees.map((employee) => `<option value="${esc(systemEmployeeLabel(employee))}">${esc(employee.nickname || "")}</option>`).join("")}</datalist>`}
+    </label>
+    <section class="system-user-employee-card">
+      ${selectedEmployee ? `<b>${esc(selectedEmployee.employee_code)} · ${esc(selectedEmployee.full_name)}</b><span>ชื่อเล่น: ${esc(selectedEmployee.nickname || "-")}</span><span>ตำแหน่ง: ${esc(selectedEmployee.position || "-")}</span><span>แผนก: ${esc(selectedEmployee.departmentName || "-")}</span><span>สถานะ: ${esc(selectedEmployee.status || "-")}</span>${existingEmployeeUser ? `<strong class="warning-text">พนักงานรายนี้มีบัญชีผู้ใช้งานแล้ว: ${esc(existingEmployeeUser.username || "-")} · ${esc(existingEmployeeUser.roleName || existingEmployeeUser.role || "-")} · ${esc(existingEmployeeUser.status)}</strong><button type="button" data-system-user-edit="${esc(existingEmployeeUser.id)}">แก้ไขบัญชี</button>` : ""}` : "เลือกพนักงานเพื่อดูข้อมูลจาก HR"}
+    </section>
+    <label>Username *<input id="systemUserUsername" value="${esc(current?.username || "")}" pattern="[A-Za-z0-9._-]{3,50}" autocomplete="off"></label>
+    <label>Email *<input id="systemUserEmail" type="email" value="${esc(current?.email || "")}" autocomplete="off"></label>
+    ${editMode ? "" : `<label>Password *<input id="systemUserPassword" type="password" minlength="8" autocomplete="new-password"></label>
+      <label>ยืนยัน Password *<input id="systemUserPasswordConfirm" type="password" minlength="8" autocomplete="new-password"></label>
+      <label class="password-toggle"><input type="checkbox" data-system-user-show-password> แสดงรหัสผ่าน</label>`}
+    <label>LINE ID<input id="systemUserLineId" value="${esc(current?.lineId || "")}" autocomplete="off"></label>
+    <label>บทบาท *<select id="systemUserRole">${state.systemUserRoles
+      .filter((role) => canAssignSuper || role.role_key !== "super_admin" || role.id === current?.roleId)
+      .map((role) => `<option value="${esc(role.id)}"${role.id === current?.roleId ? " selected" : ""}>${esc(role.role_name || role.role_key)}${role.description ? ` — ${esc(role.description)}` : ""}</option>`).join("")}</select></label>
+    <label>สถานะ<select id="systemUserStatus"><option value="active"${current?.status !== "inactive" ? " selected" : ""}>active</option><option value="inactive"${current?.status === "inactive" ? " selected" : ""}>inactive</option></select></label>
+    <footer><button type="button" data-system-user-close>ยกเลิก</button><button type="button" data-system-user-save>${editMode ? "บันทึก" : "สร้างผู้ใช้งาน"}</button></footer>
+  </aside>`;
+}
+
+function renderSystemUserManagement(module, table) {
+  if (!state.systemUsersLoaded && !state.systemUsersLoading) queueMicrotask(() => loadSystemUsers());
+  const canManage = actorCan("system.user.manage");
+  const canResetPassword = actorCan("system.user.password.reset") || canManage;
+  const rows = state.systemUsers.filter((user) => {
+    const query = state.farmFilters.query.trim().toLowerCase();
+    const statusOk = state.farmFilters.status === "all" || user.status === state.farmFilters.status;
+    return statusOk && (!query || Object.values(user).join(" ").toLowerCase().includes(query));
+  });
+  return `<div class="farm-page system-user-page">
+    <div class="report-title"><div><h2>ผู้ใช้งานระบบ</h2><p>บัญชี Login ที่ผูกกับ Employee Master และ Supabase Auth</p></div><button type="button" data-system-user-refresh>Refresh</button></div>
+    ${renderFarmConnectionNotice()}
+    ${renderFarmModuleHealthNotice(module.id)}
+    ${renderFarmGovernanceBoard(table)}
+    ${state.farmSyncMessage ? `<div class="farm-sync-status ${esc(state.farmSyncStatus)}">${esc(state.farmSyncMessage)}</div>` : ""}
+    <section class="farm-toolbar system-user-toolbar">
+      <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="พนักงาน รหัส Username Email Role"></label>
+      <label>สถานะ<select id="farmStatusFilter">${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}</select></label>
+      <button type="button" data-system-user-new ${canManage ? "" : "disabled"}>+ สร้างผู้ใช้งาน</button>
+    </section>
+    <section class="farm-panel"><div class="section-head"><div><h3>บัญชีผู้ใช้งาน</h3><span>${state.systemUsersLoading ? "กำลังโหลด…" : `${fmt(rows.length)} บัญชี`}</span></div></div>
+      <div class="table-wrap"><table class="mini-table farm-table system-user-table"><thead><tr><th>พนักงาน</th><th>รหัสพนักงาน</th><th>Username</th><th>Email</th><th>LINE ID</th><th>Role</th><th>สถานะ</th><th>เข้าสู่ระบบล่าสุด</th><th>Actions</th></tr></thead>
+      <tbody>${rows.map((user) => `<tr>
+        <td><button class="link-button" type="button" data-system-user-employee="${esc(user.employeeId || "")}">${esc(user.employeeName || "ไม่ผูกพนักงาน")}</button>${user.employeeStatus && user.employeeStatus !== "active" ? `<small class="warning-text">พนักงาน ${esc(user.employeeStatus)} — แนะนำให้ปิดบัญชี</small>` : ""}</td>
+        <td>${esc(user.employeeCode || "-")}</td><td>${esc(user.username || "-")}</td><td>${esc(user.email || "-")}</td><td>${esc(user.lineId || "-")}</td><td>${esc(user.roleName || user.role || "-")}</td><td>${esc(user.status)}</td><td>${esc(user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString("th-TH") : "-")}</td>
+        <td class="farm-actions"><button type="button" data-system-user-edit="${esc(user.id)}" ${canManage ? "" : "disabled"}>แก้ไข</button><button type="button" data-system-user-reset="${esc(user.id)}" ${(canResetPassword && (actorIsSuperAdmin() || user.role !== "super_admin")) ? "" : "disabled"}>ตั้งรหัสผ่านใหม่</button></td>
+      </tr>`).join("") || `<tr><td colspan="9">${state.systemUsersLoading ? "กำลังโหลดข้อมูล" : "ไม่พบบัญชีผู้ใช้งาน"}</td></tr>`}</tbody></table></div>
+    </section>${renderSystemUserDrawer()}
+  </div>`;
+}
+
+async function submitSystemUserDrawer() {
+  const drawer = state.systemUserDrawer;
+  if (!drawer) return;
+  const password = document.querySelector("#systemUserPassword")?.value || "";
+  const confirmation = document.querySelector("#systemUserPasswordConfirm")?.value || "";
+  let body;
+  if (drawer.mode === "reset") {
+    if (password !== confirmation) throw new Error("ยืนยันรหัสผ่านไม่ตรงกัน");
+    body = { action: "reset_password", profileId: drawer.profileId, password };
+  } else {
+    const current = state.systemUsers.find((user) => user.id === drawer.profileId) || null;
+    const employee = current || systemUserEmployeeFromInput(document.querySelector("#systemUserEmployee")?.value || "");
+    if (!employee) throw new Error("กรุณาเลือกพนักงานจาก Employee Master");
+    if (!current && password !== confirmation) throw new Error("ยืนยันรหัสผ่านไม่ตรงกัน");
+    body = {
+      action: current ? "update_user" : "create_user",
+      ...(current ? { profileId: current.id } : { employeeId: employee.id, password }),
+      username: document.querySelector("#systemUserUsername")?.value || "",
+      email: document.querySelector("#systemUserEmail")?.value || "",
+      lineId: document.querySelector("#systemUserLineId")?.value || "",
+      roleId: document.querySelector("#systemUserRole")?.value || "",
+      status: document.querySelector("#systemUserStatus")?.value || "active",
+    };
+  }
+  state.farmSyncBusy = true;
+  try {
+    const { response, payload } = await farmJsonRequest(FARM_USERS_API, { method: "POST", body: JSON.stringify(body) });
+    if (!response.ok || !payload?.ok) throw new Error(farmApiErrorMessage(payload, "บันทึกบัญชีผู้ใช้งานไม่สำเร็จ"));
+    state.systemUserDrawer = null;
+    state.farmSyncStatus = "success";
+    state.farmSyncMessage = body.action === "reset_password" ? "ตั้งรหัสผ่านใหม่แล้ว" : "บันทึกบัญชีผู้ใช้งานแล้ว";
+    await loadSystemUsers({ force: true });
+  } finally {
+    state.farmSyncBusy = false;
+  }
 }
 
 function farmInventoryIssueWorkspaceRows() {
@@ -18218,6 +19330,22 @@ function farmResultStatusFilterOptions(rows = farmResultCandidateOrders()) {
   return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "th"));
 }
 
+function farmResultResumeInfo(order = {}) {
+  const orderId = farmWorkOrderDbId(order) || order.id;
+  const result = farmRowsByKey("work_results")
+    .filter((row) => String(row.work_order_id || "") === String(orderId || ""))
+    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0];
+  const planned = n(order.planned_quantity);
+  const actual = n(result?.actual_quantity);
+  const progress = Math.max(0, Math.min(100, n(result?.completion_pct) || (planned > 0 ? actual / planned * 100 : 0)));
+  const status = String(result?.result_status || "new");
+  const label = status === "draft" ? "ทำต่อร่าง"
+    : status === "submitted" ? "ส่งตรวจแล้ว"
+      : status === "verified" ? "ตรวจแล้ว"
+        : status === "closed" ? "ปิดผลแล้ว" : "เริ่มบันทึกวันนี้";
+  return { result, status, label, progress };
+}
+
 function renderFarmResultWorkSearch(order, allOrders = farmResultCandidateOrders()) {
   const filters = farmResultFilterState();
   const filtered = farmResultFilteredOrders();
@@ -18271,14 +19399,17 @@ function renderFarmResultWorkSearch(order, allOrders = farmResultCandidateOrders
       <div class="farm-result-search-results" role="listbox" aria-label="รายการใบสั่งงาน">
         ${rows.map((row) => {
           const selected = String(row.id) === String(order?.id);
+          const resume = farmResultResumeInfo(row);
           return `
-            <button type="button" class="farm-result-order-card${selected ? " is-selected" : ""}" data-farm-result-order-pick="${esc(row.id)}" role="option" aria-selected="${selected ? "true" : "false"}">
+            <button type="button" class="farm-result-order-card${selected ? " is-selected" : ""} result-${esc(resume.status)}" data-farm-result-order-pick="${esc(row.id)}" role="option" aria-selected="${selected ? "true" : "false"}">
               <span class="farm-result-order-no">${esc(farmShortWorkOrderNo(row))}</span>
               <span class="farm-result-order-main">${esc(farmShortActivityText(row))}</span>
               <span>${esc(farmShortBlockText(row))}</span>
               <span>${esc(farmLookupLabel("teams", row.team_id) || "-")}</span>
               <span>${esc(farmResultOrderDateLabel(row))}</span>
               <em>${esc(farmEffectiveWorkStatusMeta(row)?.label || "-")}</em>
+              <span class="farm-result-order-progress"><i style="width:${resume.progress}%"></i></span>
+              <strong class="farm-result-order-resume">${esc(resume.label)}${resume.result?.result_date ? ` · ${esc(displayDate(resume.result.result_date))}` : ""}</strong>
             </button>`;
         }).join("") || farmWorkflowEmptyState("daily", { candidateCount: allOrders.length, filteredCount: filtered.length })}
       </div>
@@ -18322,6 +19453,17 @@ function farmResultBlankDraft(order = farmResultSelectedOrder()) {
   const existing = farmRowsByKey("work_results")
     .filter((row) => row.work_order_id === orderId && ["draft", "submitted"].includes(row.result_status))
     .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0];
+  const survey = farmSurveyForOrder(order || {});
+  const surveyResponse = farmRowsByKey("survey_responses")
+    .filter((row) => (!existing?.id || String(row.work_result_id || "") === String(existing.id))
+      && (!survey?.id || String(row.template_id || "") === String(survey.id)))
+    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0];
+  const surveyAnswers = Object.fromEntries(farmRowsByKey("survey_answers")
+    .filter((row) => String(row.response_id || "") === String(surveyResponse?.id || ""))
+    .map((row) => [row.question_code_snapshot || row.question_id,
+      row.answer_number ?? row.answer_boolean ?? row.answer_date ?? row.answer_text
+        ?? (Array.isArray(row.answer_json) ? row.answer_json : row.answer_json?.values)
+        ?? (Object.keys(row.answer_json || {}).length ? row.answer_json : "")]));
   return {
     resultDate: existing?.result_date || resultDate,
     ticketText: "",
@@ -18338,11 +19480,12 @@ function farmResultBlankDraft(order = farmResultSelectedOrder()) {
     weatherCondition: existing?.weather_condition || "",
     terrainCondition: existing?.terrain_condition || "",
     qualityScore: existing?.quality_score ?? "",
-    surveyStatus: existing?.survey_status || "pending",
+    surveyStatus: surveyResponse?.status || existing?.survey_status || "pending",
     surveyNote: "",
     note: existing?.note || "",
     existingResultId: existing?.id || "",
-    surveyAnswers: { POSTING_DATE: resultDate },
+    surveyResponseId: surveyResponse?.id || "",
+    surveyAnswers: { POSTING_DATE: existing?.result_date || resultDate, ...surveyAnswers },
     extraWorkerIds: [],
     workerEntries: {},
     materialEntries: {},
@@ -18547,10 +19690,37 @@ function farmResultCleanResourceNote(value = "") {
 
 function farmResultMachineLines(order) {
   const draftEntries = state.farmResultDraft?.machineEntries || {};
+  const workOrderId = farmWorkOrderDbId(order) || order?.id || "";
+  const result = farmDailyCurrentResult(order);
+  const requisitions = farmRowsByKey("fuel_requisitions")
+    .filter((item) => item.work_order_id === workOrderId);
+  const issues = farmRowsByKey("fuel_issues");
+  const usages = farmRowsByKey("v_work_result_vehicle_fuel_detail")
+    .filter((item) => !result?.id || item.work_result_id === result.id);
+  const fuelStatuses = farmRowsByKey("v_vehicle_fuel_status");
+  const firstValue = (...values) => values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
   return farmDispatchMachineCandidates(order).map((row) => {
     const key = row.vehicle_id;
     const entry = draftEntries[key] || {};
     const vehicle = farmLookup("vehicles", row.vehicle_id) || {};
+    const usage = usages.find((item) => item.vehicle_id === row.vehicle_id) || {};
+    const vehicleRequisitions = requisitions
+      .filter((item) => item.vehicle_id === row.vehicle_id)
+      .sort((left, right) => String(right.created_at || "").localeCompare(String(left.created_at || "")));
+    const requisition = vehicleRequisitions[0] || null;
+    const requisitionIds = new Set(vehicleRequisitions.map((item) => item.id));
+    const vehicleIssues = issues.filter((item) => requisitionIds.has(item.fuel_requisition_id)
+      && !["cancelled", "void"].includes(item.status));
+    const fuelStatus = fuelStatuses.find((item) => item.vehicle_id === row.vehicle_id) || {};
+    const efficiencyStandard = farmRowsByKey("vehicle_fuel_efficiency_standards").find((item) =>
+      item.status !== "inactive" && (item.vehicle_id === row.vehicle_id
+        || (!item.vehicle_id && item.vehicle_type === vehicle.vehicle_type))) || null;
+    const issuedLiter = vehicleIssues.reduce((sum, item) => sum + n(item.issued_liter), 0);
+    const openingFuelLiter = firstValue(entry.startFuelLiter, fuelStatus.opening_balance_liter, fuelStatus.current_balance_liter);
+    const closingFuelLiter = firstValue(entry.endFuelLiter, usage.closing_fuel_liter, fuelStatus.current_balance_liter, fuelStatus.remaining_liter, row.end_fuel_liter);
+    const measuredFuelUsed = openingFuelLiter !== "" && closingFuelLiter !== ""
+      ? Math.max(0, Math.round((n(openingFuelLiter) + issuedLiter - n(closingFuelLiter)) * 1000) / 1000)
+      : firstValue(entry.fuelUsedLiter, usage.allocated_fuel_liter);
     const fuelMaterial = farmRowsByKey("materials").find((item) =>
       String(item.material_code || item.id).toLowerCase().includes("fuel")
       || String(item.material_name || "").includes("น้ำมัน")
@@ -18560,14 +19730,25 @@ function farmResultMachineLines(order) {
       key,
       vehicle,
       driver_name: row.driver_employee_id ? farmLookupLabel("employees", row.driver_employee_id) : farmLookupLabel("employees", vehicle.default_driver_id),
-      actual_hours: entry.actualHours !== undefined ? entry.actualHours : row.actual_hours || "",
-      start_hour_meter: entry.startHourMeter || row.start_hour_meter || "",
-      end_hour_meter: entry.endHourMeter || row.end_hour_meter || "",
-      start_km: entry.startKm || row.start_km || "",
-      end_km: entry.endKm || row.end_km || "",
-      start_fuel_liter: entry.startFuelLiter || "",
-      end_fuel_liter: entry.endFuelLiter || row.end_fuel_liter || "",
-      fuel_issue_liter: entry.fuelIssueLiter !== undefined ? entry.fuelIssueLiter : row.fuel_issue_liter || row.fuel_plan_liter || "",
+      start_at: firstValue(entry.startAt, usage.start_at),
+      end_at: firstValue(entry.endAt, usage.end_at),
+      actual_hours: firstValue(entry.actualHours, usage.working_hours, row.actual_hours),
+      start_hour_meter: firstValue(entry.startHourMeter, usage.start_hour_meter, row.start_hour_meter),
+      end_hour_meter: firstValue(entry.endHourMeter, usage.end_hour_meter, row.end_hour_meter),
+      start_km: firstValue(entry.startKm, usage.start_odometer, row.start_km),
+      end_km: firstValue(entry.endKm, usage.end_odometer, row.end_km),
+      distance_km: firstValue(usage.distance_km),
+      engine_hours: firstValue(usage.engine_hours),
+      start_fuel_liter: openingFuelLiter,
+      end_fuel_liter: closingFuelLiter,
+      fuel_used_liter: measuredFuelUsed,
+      fuel_issued_liter: issuedLiter,
+      fuel_issue_liter: issuedLiter,
+      fuel_cost_amount: n(usage.fuel_cost_amount),
+      fuel_requisition: requisition,
+      fuel_requested_liter: n(requisition?.requested_liter),
+      fuel_issue_remaining_liter: Math.max(0, n(requisition?.requested_liter) - issuedLiter),
+      efficiency_standard: efficiencyStandard,
       fuel_material_id: entry.fuelMaterialId || row.fuel_material_id || fuelMaterial.id || "material-diesel",
       note: entry.note || row.note || "",
     };
@@ -19014,9 +20195,10 @@ function farmResultCalculation(order = farmResultSelectedOrder()) {
   const payrollTotal = workerLines.reduce((sum, row) => sum + row.grossAmount, 0);
   const materialActualTotal = materialLines.reduce((sum, row) => sum + n(row.actualQuantity), 0);
   const materialPendingTotal = materialLines.reduce((sum, row) => sum + n(row.pendingIssueQuantity), 0);
-  const fuelIssueTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_issue_liter), 0);
+  const fuelIssuedTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_issued_liter), 0);
+  const fuelUsedTotal = machineLines.reduce((sum, row) => sum + n(row.fuel_used_liter), 0);
   const machineHoursTotal = machineLines.reduce((sum, row) => sum + n(row.actual_hours || row.planned_hours), 0);
-  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, wageTotal, payrollTotal, workerCount, shareQuantity, shareWage, fullBagQuantity, roleSummary, materialActualTotal, materialPendingTotal, fuelIssueTotal, machineHoursTotal };
+  return { draft, workers, workerLines, materialLines, machineLines, tickets, ticketKg, rate, method, basis, actualUnit, actualQuantity, calculationQuantity, rateAmount, totalWage, wageTotal, payrollTotal, workerCount, shareQuantity, shareWage, fullBagQuantity, roleSummary, materialActualTotal, materialPendingTotal, fuelIssuedTotal, fuelUsedTotal, machineHoursTotal };
 }
 
 function farmResultPayrollPeriodForDate(date) {
@@ -19045,6 +20227,13 @@ function renderFarmSurveyChoiceControl(question, draft) {
         }).join("")}
       </div>`;
   }
+  if (["multi_choice", "multiple_choice", "checkbox"].includes(question.answer_type) && choices.length) {
+    const selected = new Set(Array.isArray(value) ? value.map(String) : String(value || "").split(",").filter(Boolean));
+    return `<div class="farm-survey-multi-choice">${choices.map((choice) => `<label>
+      <input type="checkbox" value="${esc(choice.value)}" data-farm-survey-answer="${esc(key)}" ${selected.has(String(choice.value)) ? "checked" : ""}>
+      <span>${esc(choice.label ?? choice.value)}</span>
+    </label>`).join("")}</div>`;
+  }
   if (choices.length) {
     return `<select data-farm-survey-answer="${esc(key)}">
       <option value="">เลือกผลตรวจ</option>
@@ -19057,41 +20246,74 @@ function renderFarmSurveyChoiceControl(question, draft) {
 function renderFarmSurveyMeasureControl(question, draft) {
   const key = farmSurveyQuestionKey(question);
   const value = farmSurveyAnswerValue(draft, key);
-  const type = question.answer_type === "number" ? "number" : "text";
+  const answerType = String(question.answer_type || "text");
+  const unit = farmSurveyQuestionUnit(question);
+  if (["long_text", "textarea"].includes(answerType)) return `<label>${esc(question.question_text || key)}
+    <textarea data-farm-survey-answer="${esc(key)}" maxlength="5000" placeholder="${esc(question.help_text || "รายละเอียด")}">${esc(value)}</textarea>
+    <small>${String(question.required) === "true" || question.required === true ? "จำเป็น" : ""}</small></label>`;
+  if (answerType === "date") return `<label>${esc(question.question_text || key)}
+    <input data-farm-survey-answer="${esc(key)}" type="date" value="${esc(value)}">
+    <small>${String(question.required) === "true" || question.required === true ? "จำเป็น" : ""}</small></label>`;
+  if (["photo", "image", "file", "signature"].includes(answerType)) return `<label class="farm-survey-evidence-question">${esc(question.question_text || key)}
+    <span>เพิ่มในขั้นตอน 9 · หลักฐาน${answerType === "signature" ? " (ลายเซ็น/ชื่อผู้รับรอง)" : ""}</span>
+    <small>${String(question.required) === "true" || question.required === true ? "จำเป็น" : ""}</small></label>`;
+  const type = ["number", "rating"].includes(answerType) ? "number" : "text";
   return `
     <label>
       ${esc(question.question_text || key)}
-      <input data-farm-survey-answer="${esc(key)}" type="${type}" ${type === "number" ? 'step="0.01"' : ""} value="${esc(value)}" placeholder="${esc(question.answer_unit || "")}">
-      <small>${esc(question.answer_unit || "")}${String(question.required) === "true" ? " · จำเป็น" : ""}</small>
+      <input data-farm-survey-answer="${esc(key)}" type="${type}" ${type === "number" ? `step="0.01"${question.min_value != null ? ` min="${esc(question.min_value)}"` : ""}${question.max_value != null ? ` max="${esc(question.max_value)}"` : ""}` : ""} value="${esc(value)}" placeholder="${esc(unit)}">
+      <small>${esc(unit)}${String(question.required) === "true" || question.required === true ? " · จำเป็น" : ""}</small>
     </label>`;
 }
 
+function farmCurrentSurveyResponse(survey = farmSurveyForOrder(farmResultSelectedOrder()), draft = state.farmResultDraft || {}) {
+  if (!survey) return null;
+  const responseId = draft.surveyResponseId || "";
+  const resultId = draft.existingResultId || "";
+  const order = farmResultSelectedOrder();
+  const orderId = farmWorkOrderDbId(order) || order?.id || "";
+  return farmRowsByKey("survey_responses")
+    .filter((row) => String(row.template_id || "") === String(survey.id || ""))
+    .filter((row) => !responseId || String(row.id || "") === String(responseId))
+    .filter((row) => responseId || (resultId && String(row.work_result_id || "") === String(resultId)) || String(row.work_order_id || "") === String(orderId))
+    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0]
+    || (responseId ? { id: responseId, status: "draft", template_id: survey.id, work_result_id: resultId, work_order_id: orderId } : null);
+}
+
 function renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, draft, resultDate }) {
-  const scoreQuestions = farmSurveyScoreQuestions(surveyQuestions);
-  const measureQuestions = farmSurveyMeasureQuestions(surveyQuestions);
-  const readinessQuestions = farmSurveyReadinessQuestions(surveyQuestions);
-  const score = farmSurveyScoreTotal(surveyQuestions, draft);
+  const visibleQuestions = surveyQuestions.filter((question) => farmSurveyQuestionVisible(question, draft));
+  const scoreQuestions = farmSurveyScoreQuestions(visibleQuestions);
+  const measureQuestions = farmSurveyMeasureQuestions(visibleQuestions);
+  const readinessQuestions = farmSurveyReadinessQuestions(visibleQuestions);
+  const score = farmSurveyScoreTotal(visibleQuestions, draft);
   const scoreValue = draft.qualityScore || (score.max ? String(score.percent) : "");
   const scoreGroups = farmSurveySectionGroups(scoreQuestions);
   const metaDate = farmSurveyAnswerValue(draft, "POSTING_DATE") || resultDate || farmToday();
+  const response = farmCurrentSurveyResponse(survey, draft);
+  const responseStatus = response?.status || (draft.surveyResponseId ? "draft" : "not_started");
   return `
-    <article class="farm-result-card farm-result-survey-card" data-daily-section="survey">
+    <article class="farm-result-card farm-result-survey-card" data-daily-section="survey" id="farm-daily-step-survey">
       <div class="farm-survey-answer-box">
         <div class="section-head">
           <h3>ตรวจงาน / Survey</h3>
-          <span>${survey ? `${esc(survey.template_code || "")} · ${esc(survey.template_name || survey.file_name || "")}` : "ยังไม่พบแบบตรวจตามกิจกรรม"}</span>
+          <span>${survey ? `${esc(survey.template_code || "")} · ${esc(survey.template_name || survey.file_name || "")} · v${fmt(survey.version_no || 1)} · ${esc(survey.selection_source || "assignment")}` : "ยังไม่พบแบบตรวจตาม Assignment"}</span>
         </div>
         <div class="farm-survey-report-actions">
           <div>
             <strong>${score.max ? `${moneyNf.format(score.score)} / ${moneyNf.format(score.max)} คะแนน` : "รอกรอกผลประเมิน"}</strong>
             <small>${score.max ? `คิดเป็น ${fmt(score.percent)}%` : esc(surveyAttachment?.file_name || "แนบรายงานตรวจงานจากกิจกรรม")}</small>
           </div>
-          <button type="button" class="ghost" data-farm-survey-print ${!survey ? "disabled" : ""}>พิมพ์ / PDF รายงาน</button>
+          <div class="farm-survey-action-buttons">
+            <span class="farm-survey-response-status status-${esc(responseStatus)}">${esc(responseStatus)}</span>
+            <button type="button" data-farm-survey-save ${!survey || state.farmSyncBusy ? "disabled" : ""}>บันทึกแบบตรวจ</button>
+            <button type="button" class="farm-danger-confirm" data-farm-survey-submit ${!response?.id || responseStatus !== "draft" || state.farmSyncBusy ? "disabled" : ""}>ส่งแบบตรวจ</button>
+            <button type="button" class="ghost" data-farm-survey-print ${!survey ? "disabled" : ""}>พิมพ์ / PDF</button>
+          </div>
         </div>
         <div class="farm-survey-meta-grid">
           <label>External ID
             <input data-farm-survey-answer="EXTERNAL_ID" type="text" value="${esc(farmSurveyAnswerValue(draft, "EXTERNAL_ID"))}" placeholder="อ้างอิงภายนอก">
-            <small>type the id that is in the uploaded navigation file</small>
+            <small>เลขอ้างอิงภายนอก (ถ้ามี)</small>
           </label>
           <label>Posting date
             ${renderDateInputControl({ value: metaDate, extra: 'data-farm-survey-answer="POSTING_DATE"', ariaLabel: "เลือกวันที่ตรวจงาน" })}
@@ -19113,21 +20335,21 @@ function renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, 
             <input id="farmResultSurveyNote" type="text" value="${esc(draft.surveyNote || "")}" placeholder="${esc(survey?.template_name || "รายละเอียดตรวจงาน")}">
           </label>
         </div>
-        ${Object.entries(scoreGroups).map(([title, questions]) => `
-          <section class="farm-survey-score-section">
-            <div>
+        ${Object.entries(scoreGroups).map(([title, questions], groupIndex) => `
+          <details class="farm-survey-score-section" ${groupIndex === 0 ? "open" : ""}>
+            <summary>
               <h4>${esc(title)}</h4>
-              <span>Score ${fmt(questions.reduce((sum, row) => sum + n(row.score_weight), 0))}%</span>
-            </div>
+              <span>Score ${fmt(questions.reduce((sum, row) => sum + farmSurveyQuestionWeight(row), 0))}</span>
+            </summary>
             <div class="farm-survey-score-grid">
               ${questions.map((question) => `
                 <label>
                   <span>${esc(question.question_text || farmSurveyQuestionKey(question))}</span>
                   ${renderFarmSurveyChoiceControl(question, draft)}
-                  <small>Score ${fmt(n(question.score_weight))}${question.answer_unit ? ` · ${esc(question.answer_unit)}` : ""}</small>
+                  <small>Score ${fmt(farmSurveyQuestionWeight(question))}${farmSurveyQuestionUnit(question) ? ` · ${esc(farmSurveyQuestionUnit(question))}` : ""}</small>
                 </label>`).join("")}
             </div>
-          </section>`).join("")}
+          </details>`).join("")}
         ${measureQuestions.length ? `
           <section class="farm-survey-score-section">
             <div><h4>ข้อมูลปริมาณงาน</h4><span>ใช้ประกอบรายงานตรวจงาน</span></div>
@@ -19147,10 +20369,55 @@ function renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, 
                 </div>`).join("")}
             </div>
           </section>` : ""}
-        ${!surveyQuestions.length ? `<p class="farm-muted">ยังไม่มีเกณฑ์ตรวจงานสำหรับกิจกรรมนี้ สามารถเพิ่มได้ที่ ข้อมูลกิจกรรม > คำถามประเมิน</p>` : ""}
-        ${renderFarmSurveyPrintReport({ survey, surveyQuestions, draft, score, resultDate: metaDate })}
+        ${!visibleQuestions.length ? `<p class="farm-muted">ยังไม่มีคำถามที่ตรงตามเงื่อนไขของงานนี้</p>` : ""}
+        ${renderFarmSurveyPrintReport({ survey, surveyQuestions: visibleQuestions, draft, score, resultDate: metaDate })}
       </div>
     </article>`;
+}
+
+function renderFarmSurveyFindingEvidence({ survey, draft }) {
+  const response = farmCurrentSurveyResponse(survey, draft);
+  const findings = farmRowsByKey("survey_findings").filter((row) => String(row.response_id || "") === String(response?.id || ""));
+  const responseLinks = farmRowsByKey("survey_response_attachments").filter((row) => String(row.response_id || "") === String(response?.id || ""));
+  const attachmentById = new Map(farmRowsByKey("attachments").map((row) => [String(row.id), row]));
+  const evidence = responseLinks.map((link) => ({ link, file: attachmentById.get(String(link.attachment_id)) || {} }));
+  return `
+    <div class="farm-survey-followup-grid">
+      <article class="farm-result-card farm-survey-finding-card" data-daily-section="findings" id="farm-daily-step-findings">
+        <div class="section-head"><h3>Finding / สิ่งที่ต้องแก้ไข</h3><span>ขั้นตอน 8 · ${fmt(findings.length)} รายการ</span></div>
+        ${response?.id ? `<div class="farm-survey-finding-form">
+          <label>ระดับ
+            <select id="farmSurveyFindingSeverity"><option value="low">ต่ำ</option><option value="medium">กลาง</option><option value="high">สูง</option><option value="critical">วิกฤต</option></select>
+          </label>
+          <label class="wide">รายละเอียด<input id="farmSurveyFindingDescription" type="text" maxlength="5000" placeholder="สิ่งที่พบและผลกระทบ"></label>
+          <label class="wide">วิธีแก้ไข<input id="farmSurveyFindingAction" type="text" maxlength="5000" placeholder="Corrective action"></label>
+          <label>กำหนดเสร็จ<input id="farmSurveyFindingDueDate" type="date"></label>
+          <button type="button" data-farm-survey-create-finding>เพิ่ม Finding</button>
+        </div>` : `<p class="farm-muted">บันทึกแบบตรวจเป็น Draft ก่อนเพิ่ม Finding</p>`}
+        <div class="farm-survey-finding-list">
+          ${findings.map((row) => `<div class="severity-${esc(row.severity || "low")}">
+            <span>${esc(row.severity || "low")} · ${esc(row.status || "open")}</span>
+            <strong>${esc(row.description || "-")}</strong>
+            <small>${esc(row.corrective_action || "ยังไม่ระบุวิธีแก้")}${row.due_date ? ` · ครบ ${esc(displayDate(row.due_date))}` : ""}</small>
+          </div>`).join("") || `<p class="farm-muted">ยังไม่มี Finding</p>`}
+        </div>
+      </article>
+      <article class="farm-result-card farm-survey-evidence-card" data-daily-section="evidence" id="farm-daily-step-evidence">
+        <div class="section-head"><h3>รูปและเอกสารหลักฐาน</h3><span>ขั้นตอน 9 · private storage</span></div>
+        ${response?.id && response.status === "draft" ? `<div class="farm-survey-evidence-form">
+          <label>เลือกภาพหรือ PDF
+            <input id="farmSurveyEvidenceFile" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" capture="environment">
+            <small>JPG, PNG, WEBP หรือ PDF · ไม่เกิน 10 MB</small>
+          </label>
+          <label>คำอธิบาย<input id="farmSurveyEvidenceCaption" type="text" maxlength="500" placeholder="จุดตรวจ/รายละเอียดหลักฐาน"></label>
+          <button type="button" data-farm-survey-upload-evidence>อัปโหลดหลักฐาน</button>
+        </div>` : `<p class="farm-muted">${response?.id ? "Survey ที่ส่งแล้วไม่สามารถเพิ่มไฟล์ได้" : "บันทึกแบบตรวจเป็น Draft ก่อนแนบหลักฐาน"}</p>`}
+        <div class="farm-survey-evidence-list">
+          ${evidence.map(({ link, file }) => `<div><span aria-hidden="true">▣</span><strong>${esc(file.file_name || `หลักฐาน ${link.attachment_id}`)}</strong><small>${esc(link.caption || file.file_type || "private")}</small></div>`).join("") || `<p class="farm-muted">ยังไม่มีหลักฐาน</p>`}
+        </div>
+        <p class="farm-survey-private-note">ไฟล์เก็บใน bucket <code>survey-evidence</code> แบบ private และไม่มี public URL</p>
+      </article>
+    </div>`;
 }
 
 function renderFarmSurveyPrintReport({ survey, surveyQuestions, draft, score, resultDate }) {
@@ -19285,15 +20552,16 @@ function renderFarmResultPanel() {
         <span>หัวหน้าทีมบันทึกผลงานจริง รายชื่อคนทำงาน และค่าแรงรายคนจากใบสั่งงานเดียว</span>
       </div>
       ${renderFarmResultWorkSearch(order, orders)}
-      <div class="farm-result-summary-strip" data-daily-section="all">
+      ${renderFarmDailyMobileStepper(calc, survey)}
+      <div class="farm-result-summary-strip" data-daily-section="summary" id="farm-daily-step-summary">
         <article><span>กิจกรรม</span><strong>${esc(farmLookupLabel("activities", order?.activity_id) || "-")}</strong><small>${esc(area)}</small></article>
         <article><span>ทีม</span><strong>${esc(farmLookupLabel("teams", order?.team_id) || "-")}</strong><small>${fmt(calc.workerCount)} คน · ${esc(effectiveOrderStatus?.label || "-")}</small></article>
         <article><span>เรทตามบทบาท</span><strong>${fmt(calc.roleSummary.filter((row) => row.count).length || 1)} ชุด</strong><small>${esc(roleRateSummary || rateLabel)}</small></article>
         <article><span>ค่าแรงรวม</span><strong>${moneyNf.format(calc.payrollTotal || calc.totalWage)}</strong><small>ล็อก snapshot หลังบันทึก</small></article>
-        <article><span>วัสดุ / น้ำมัน</span><strong>${fmt(calc.materialLines.length)} / ${fmt(calc.machineLines.length)}</strong><small>น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร</small></article>
+        <article><span>วัสดุ / รถ</span><strong>${fmt(calc.materialLines.length)} / ${fmt(calc.machineLines.length)}</strong><small>น้ำมันใช้จริง ${moneyNf.format(calc.fuelUsedTotal)} ลิตร</small></article>
         <article><span>แบบตรวจงาน</span><strong>${esc(survey?.template_code || "-")}</strong><small>${esc(surveyAttachment?.file_name || survey?.template_name || "ไม่พบแบบตรวจ")}</small></article>
       </div>
-      <div class="farm-result-entry-grid" data-daily-section="results">
+      <div class="farm-result-entry-grid" data-daily-section="result" id="farm-daily-step-result">
         <article class="farm-result-card farm-result-main-entry">
           <div class="section-head"><h3>ผลงานรวม</h3><span>ใช้ใบชั่งหรือกรอกจำนวนเอง</span></div>
           <div class="farm-result-fields">
@@ -19315,12 +20583,6 @@ function renderFarmResultPanel() {
             <label>จำนวนต้น<input id="farmResultTreeCount" type="number" min="0" step="1" value="${esc(draft.actualTreeCount || "")}"></label>
             <label>ชั่วโมงแรงงาน<input id="farmResultLaborHours" type="number" min="0" step="0.25" value="${esc(draft.totalLaborHours || "")}"></label>
             <label>เวลาหยุด (นาที)<input id="farmResultStoppage" type="number" min="0" step="1" value="${esc(draft.stoppageMinutes || "")}"></label>
-            <label>คุณภาพ %<input id="farmResultWorkQuality" type="number" min="0" max="100" step="0.1" value="${esc(draft.qualityScore || "")}"></label>
-            <label>ความสำเร็จ %<input id="farmResultCompletion" type="number" min="0" max="100" step="0.1" value="${esc(draft.completionPct || "")}"></label>
-            <label>งานแก้ไขซ้ำ<input id="farmResultRework" type="number" min="0" step="0.01" value="${esc(draft.reworkQuantity || "")}"></label>
-            <label>สภาพอากาศ<input id="farmResultWeather" type="text" maxlength="120" value="${esc(draft.weatherCondition || "")}"></label>
-            <label>สภาพพื้นที่<input id="farmResultTerrain" type="text" maxlength="120" value="${esc(draft.terrainCondition || "")}"></label>
-            <label class="farm-result-note-field">หมายเหตุ<textarea id="farmResultNote" maxlength="2000">${esc(draft.note || "")}</textarea></label>
             ${workHistory}
           </div>
         </article>
@@ -19339,9 +20601,9 @@ function renderFarmResultPanel() {
         ${roleTabs || `<span><b>ทีมงาน</b>${fmt(calc.workerLines.length)} คน</span>`}
         <span><b>วัสดุ</b>${fmt(calc.materialLines.length)} รายการ</span>
         <span><b>รถ/เครื่องจักร</b>${fmt(calc.machineLines.length)} รายการ</span>
-        <span><b>น้ำมันใช้จริง</b>${moneyNf.format(calc.fuelIssueTotal)} ลิตร</span>
+        <span><b>น้ำมันใช้จริง</b>${moneyNf.format(calc.fuelUsedTotal)} ลิตร</span>
       </section>
-      <article class="farm-result-card farm-result-worker-card" data-daily-section="workers">
+      <article class="farm-result-card farm-result-worker-card" data-daily-section="workers" id="farm-daily-step-workers">
         <div class="section-head">
           <h3>บันทึกแรงงานตามบทบาท</h3>
           <span>คนงานและคนขับใช้ rate แยกจากอัตรางบประมาณ แล้วล็อกค่าแรงเป็น snapshot หลังบันทึก</span>
@@ -19420,7 +20682,7 @@ function renderFarmResultPanel() {
         </div>
       </article>
       <div class="farm-result-resource-grid">
-        <article class="farm-result-card farm-result-worker-card" data-daily-section="materials">
+        <article class="farm-result-card farm-result-worker-card" data-daily-section="materials" id="farm-daily-step-materials">
           <div class="section-head">
             <h3>วัสดุที่ใช้จริง</h3>
             <span>ใช้ผลงานจริงเป็นยอดใช้จริง และคำนวณวัสดุรอเบิกจากยอดจ่ายคงเหลือ</span>
@@ -19443,35 +20705,77 @@ function renderFarmResultPanel() {
             </table>
           </div>
         </article>
-        <article class="farm-result-card farm-result-worker-card" data-daily-section="vehicles">
+        <article class="farm-result-card farm-result-worker-card" data-daily-section="vehicles" id="farm-daily-step-vehicles">
           <div class="section-head">
             <h3>รถ/เครื่องจักร และน้ำมัน</h3>
-            <span>บันทึกชั่วโมง กม. และน้ำมันที่ใช้จริงจากงานนี้</span>
+            <span>ขั้นตอน 5 · ใบจ่ายน้ำมันไม่ใช่ยอดใช้จริง ยอดใช้จะเกิดเมื่อบันทึก allocation ของงานนี้</span>
           </div>
-          <div class="table-wrap farm-result-resource-wrap">
-            <table class="mini-table farm-table farm-result-resource-table farm-result-machine-table" data-no-export="true">
-              <thead><tr><th>รถ/เครื่องจักร</th><th>คนขับ</th><th>ชม.จริง</th><th>ชม.เริ่ม</th><th>ชม.จบ</th><th>กม.เริ่ม</th><th>กม.จบ</th><th>น้ำมันเบิก</th><th>น้ำมันคงเหลือ</th><th>หมายเหตุ</th></tr></thead>
-              <tbody>
-                ${calc.machineLines.map((row) => `
-                  <tr data-farm-result-machine="${esc(row.key)}">
-                    <td><strong>${esc(row.vehicle_name || row.vehicle_id)}</strong><small>${esc(row.vehicle?.plate_no || row.vehicle_id || "")}</small></td>
-                    <td>${esc(row.driver_name || "-")}</td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.actual_hours || "")}" placeholder="${esc(row.planned_hours || "")}" data-farm-result-machine-field="actualHours"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.start_hour_meter || "")}" data-farm-result-machine-field="startHourMeter"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.end_hour_meter || "")}" data-farm-result-machine-field="endHourMeter"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.start_km || "")}" data-farm-result-machine-field="startKm"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.end_km || "")}" data-farm-result-machine-field="endKm"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.fuel_issue_liter || "")}" data-farm-result-machine-field="fuelIssueLiter"></td>
-                    <td><input type="number" min="0" step="0.1" value="${esc(row.end_fuel_liter || "")}" data-farm-result-machine-field="endFuelLiter"></td>
-                    <td><input type="text" value="${esc(row.note || "")}" data-farm-result-machine-field="note" placeholder="หมายเหตุ"></td>
-                  </tr>`).join("") || `<tr><td colspan="10">ยังไม่มีรถ/เครื่องจักรในใบงาน</td></tr>`}
-              </tbody>
-              <tfoot><tr><td colspan="2">รวม</td><td class="num">${moneyNf.format(calc.machineHoursTotal)}</td><td colspan="4"></td><td class="num">${moneyNf.format(calc.fuelIssueTotal)}</td><td colspan="2"></td></tr></tfoot>
-            </table>
+          <div class="farm-daily-vehicle-list">
+            ${calc.machineLines.map((row) => {
+              const request = row.fuel_requisition;
+              const tanks = farmRowsByKey("fuel_tanks").filter((tank) => tank.status !== "inactive");
+              const canIssue = request?.id && row.fuel_issue_remaining_liter > 0;
+              const distance = row.start_km !== "" && row.end_km !== "" ? Math.max(0, n(row.end_km) - n(row.start_km)) : n(row.distance_km);
+              const engineHours = row.start_hour_meter !== "" && row.end_hour_meter !== ""
+                ? Math.max(0, n(row.end_hour_meter) - n(row.start_hour_meter)) : n(row.engine_hours);
+              return `<article class="farm-daily-vehicle-card" data-farm-result-machine="${esc(row.key)}">
+                <header>
+                  <div><strong>${esc(row.vehicle_name || row.vehicle_id)}</strong><span>${esc(row.vehicle?.plate_no || row.vehicle_id || "")} · คนขับ ${esc(row.driver_name || "-")}</span></div>
+                  <span class="farm-status-badge status-${esc(request?.status || "pending")}">${request ? esc(request.requisition_no || request.status || "มีใบขอเบิก") : "ยังไม่มีใบขอเบิก"}</span>
+                </header>
+                <div class="farm-daily-vehicle-metrics">
+                  <span><b>${moneyNf.format(n(row.fuel_requested_liter))}</b>ขอเบิก (ลิตร)</span>
+                  <span><b>${moneyNf.format(n(row.fuel_issued_liter))}</b>จ่ายแล้ว (ลิตร)</span>
+                  <span class="is-usage"><b>${moneyNf.format(n(row.fuel_used_liter))}</b>ใช้จริง (ลิตร)</span>
+                  <label><b>คงเหลือรถ</b><input type="number" min="0" step="0.1" value="${esc(row.end_fuel_liter || "")}" data-farm-result-machine-field="endFuelLiter"><small>ลิตร</small></label>
+                </div>
+                <div class="farm-daily-vehicle-fields farm-daily-vehicle-time-fields">
+                  <label>เริ่มใช้รถ<input type="datetime-local" value="${esc(String(row.start_at || "").slice(0, 16))}" data-farm-result-machine-field="startAt"></label>
+                  <label>สิ้นสุดใช้รถ<input type="datetime-local" value="${esc(String(row.end_at || "").slice(0, 16))}" data-farm-result-machine-field="endAt"></label>
+                  <label>ชั่วโมงทำงาน<input type="number" min="0" step="0.1" value="${esc(row.actual_hours || "")}" placeholder="${esc(row.planned_hours || "")}" data-farm-result-machine-field="actualHours"></label>
+                </div>
+                <div class="farm-daily-vehicle-fields">
+                  <label>เลขไมล์เริ่ม<input type="number" min="0" step="0.1" value="${esc(row.start_km || "")}" data-farm-result-machine-field="startKm"></label>
+                  <label>เลขไมล์จบ<input type="number" min="0" step="0.1" value="${esc(row.end_km || "")}" data-farm-result-machine-field="endKm"></label>
+                  <span class="farm-daily-computed"><b>${moneyNf.format(distance)}</b>ระยะทาง กม.</span>
+                  <label>มิเตอร์ ชม. เริ่ม<input type="number" min="0" step="0.1" value="${esc(row.start_hour_meter || "")}" data-farm-result-machine-field="startHourMeter"></label>
+                  <label>มิเตอร์ ชม. จบ<input type="number" min="0" step="0.1" value="${esc(row.end_hour_meter || "")}" data-farm-result-machine-field="endHourMeter"></label>
+                  <span class="farm-daily-computed"><b>${moneyNf.format(engineHours)}</b>ชั่วโมงเครื่อง</span>
+                </div>
+                <section class="farm-daily-fuel-allocation">
+                  <div>
+                    <label>น้ำมันใช้จริงในงานนี้ (ลิตร)<input type="number" min="0" step="0.1" value="${esc(row.fuel_used_liter || "")}" data-farm-result-machine-field="fuelUsedLiter" readonly></label>
+                    <small>Server คำนวณ: ยอดเปิด + ยอดจ่าย - ยอดปิด ${n(row.fuel_cost_amount) ? `· ต้นทุน ${moneyNf.format(row.fuel_cost_amount)} บาท` : ""}</small>
+                    ${row.efficiency_standard ? "" : "<small class=\"farm-fuel-no-standard\">ไม่มีค่ามาตรฐานเปรียบเทียบ — แสดงผลใช้จริงโดยไม่สร้าง Pass/Fail สมมติ</small>"}
+                  </div>
+                  <button type="button" data-farm-fuel-request="${esc(row.vehicle_id)}" ${state.farmSyncBusy ? "disabled" : ""}>${request ? "คำนวณใบขอเบิกใหม่" : "สร้างใบขอเบิกน้ำมัน"}</button>
+                </section>
+                ${request ? `<div class="farm-daily-fuel-issue">
+                  <label>ถังจ่าย<select data-farm-fuel-tank><option value="">เลือกถังน้ำมัน</option>${tanks.map((tank) => `<option value="${esc(tank.id)}">${esc(tank.tank_name || tank.tank_code)}</option>`).join("")}</select></label>
+                  <label>จำนวนที่จะจ่าย<input type="number" min="0.1" max="${esc(row.fuel_issue_remaining_liter)}" step="0.1" value="${esc(row.fuel_issue_remaining_liter || "")}" data-farm-fuel-issue-amount></label>
+                  <button type="button" data-farm-fuel-issue="${esc(request.id)}" data-farm-fuel-vehicle="${esc(row.vehicle_id)}" ${!canIssue || state.farmSyncBusy ? "disabled" : ""}>บันทึกการจ่ายน้ำมัน</button>
+                  <small>เหลือจ่ายตามใบขอเบิก ${moneyNf.format(row.fuel_issue_remaining_liter)} ลิตร</small>
+                </div>` : ""}
+                <label class="farm-daily-vehicle-note">หมายเหตุ<input type="text" maxlength="1000" value="${esc(row.note || "")}" data-farm-result-machine-field="note" placeholder="สภาพรถ เหตุหยุด หรือรายละเอียดเพิ่มเติม"></label>
+              </article>`;
+            }).join("") || `<div class="farm-empty-state"><strong>ยังไม่มีรถ/เครื่องจักรในใบงาน</strong><span>ให้ผู้จัดการเพิ่มรถในหน้าสั่งงานก่อนบันทึกการใช้รถ</span></div>`}
           </div>
+          <footer class="farm-daily-vehicle-total"><span>ชั่วโมงทำงานรวม <b>${moneyNf.format(calc.machineHoursTotal)}</b></span><span>จ่ายน้ำมันรวม <b>${moneyNf.format(calc.fuelIssuedTotal)}</b> ลิตร</span><span>ใช้จริงรวม <b>${moneyNf.format(calc.fuelUsedTotal)}</b> ลิตร</span></footer>
         </article>
       </div>
+      <article class="farm-result-card farm-result-quality-card" data-daily-section="quality" id="farm-daily-step-quality">
+        <div class="section-head"><h3>คุณภาพและสภาพหน้างาน</h3><span>ขั้นตอน 6 · ประเมินผลก่อนทำแบบตรวจงาน</span></div>
+        <div class="farm-result-quality-grid">
+          <label>คุณภาพ %<input id="farmResultWorkQuality" type="number" min="0" max="100" step="0.1" value="${esc(draft.qualityScore || "")}"></label>
+          <label>ความสำเร็จ %<input id="farmResultCompletion" type="number" min="0" max="100" step="0.1" value="${esc(draft.completionPct || "")}"></label>
+          <label>งานแก้ไขซ้ำ<input id="farmResultRework" type="number" min="0" step="0.01" value="${esc(draft.reworkQuantity || "")}"></label>
+          <label>สภาพอากาศ<input id="farmResultWeather" type="text" maxlength="120" value="${esc(draft.weatherCondition || "")}"></label>
+          <label>สภาพพื้นที่<input id="farmResultTerrain" type="text" maxlength="120" value="${esc(draft.terrainCondition || "")}"></label>
+          <label class="farm-result-note-field">หมายเหตุ<textarea id="farmResultNote" maxlength="2000">${esc(draft.note || "")}</textarea></label>
+        </div>
+      </article>
       ${renderFarmSurveyEntryCard({ survey, surveyAttachment, surveyQuestions, draft, resultDate: draft.resultDate || farmToday() })}
+      ${renderFarmSurveyFindingEvidence({ survey, draft })}
       <div class="farm-result-bottom-grid">
         <article class="farm-result-card" data-daily-section="weigh-tickets">
           <div class="section-head"><h3>ใบชั่ง / แหล่งผลงาน</h3><span>${fmt(calc.tickets.length)} ใบ · ${fmt(calc.ticketKg)} กก.</span></div>
@@ -19482,7 +20786,7 @@ function renderFarmResultPanel() {
             </table>
           </div>
         </article>
-        <article class="farm-result-card" data-daily-section="review">
+        <article class="farm-result-card" data-daily-section="review" id="farm-daily-step-review">
           <div class="section-head"><h3>ตรวจสอบก่อนปิดงาน</h3><span>ส่งต่อค่าแรงและปิดสถานะงาน</span></div>
           <div class="farm-result-review-list">
             <p><strong>ผลงานรวม</strong><span>${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)}</span></p>
@@ -19508,10 +20812,18 @@ function syncFarmResultDraftFromForm() {
   let actualQuantity = quantityInput?.value || "";
   let actualUnit = unitInput?.value || "";
   const surveyAnswers = { ...(state.farmResultDraft?.surveyAnswers || {}) };
+  const surveyMultiAnswers = new Map();
   document.querySelectorAll("[data-farm-survey-answer]").forEach((input) => {
     if ((input.type === "radio" || input.type === "checkbox") && !input.checked) return;
+    if (input.type === "checkbox") {
+      const key = input.dataset.farmSurveyAnswer;
+      if (!surveyMultiAnswers.has(key)) surveyMultiAnswers.set(key, []);
+      surveyMultiAnswers.get(key).push(input.value);
+      return;
+    }
     surveyAnswers[input.dataset.farmSurveyAnswer] = input.value;
   });
+  surveyMultiAnswers.forEach((values, key) => { surveyAnswers[key] = values; });
   const postingDate = isoDay(surveyAnswers.POSTING_DATE) || surveyAnswers.POSTING_DATE || "";
   if (!surveyAnswers.POSTING_DATE || postingDate === previousResultDate) surveyAnswers.POSTING_DATE = resultDate;
   state.farmResultDraft = {
@@ -19540,6 +20852,7 @@ function syncFarmResultDraftFromForm() {
     materialEntries,
     machineEntries,
     existingResultId: state.farmResultDraft?.existingResultId || "",
+    surveyResponseId: state.farmResultDraft?.surveyResponseId || "",
   };
   rememberFarmResultDraft();
 }
@@ -20080,7 +21393,7 @@ async function saveFarmResultEntry() {
     state.farmWorkDetailId = nextOrder.id;
     state.farmResultWorkOrderId = nextOrder.id;
     state.farmSyncStatus = "success";
-    state.farmSyncMessage = `บันทึกงานแล้ว (${nextWorkStatusMeta.label}): ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงสุทธิ ${moneyNf.format(calc.payrollTotal)} บาท · วัสดุ ${fmt(calc.materialLines.length)} รายการ · น้ำมัน ${moneyNf.format(calc.fuelIssueTotal)} ลิตร`;
+    state.farmSyncMessage = `บันทึกงานแล้ว (${nextWorkStatusMeta.label}): ${esc(farmShortWorkOrderNo(order))} · ผลงาน ${fmt(calc.actualQuantity)} ${esc(calc.actualUnit)} · ค่าแรงสุทธิ ${moneyNf.format(calc.payrollTotal)} บาท · วัสดุ ${fmt(calc.materialLines.length)} รายการ · น้ำมันใช้จริง ${moneyNf.format(calc.fuelUsedTotal)} ลิตร`;
   } catch (error) {
     resetFarmDerivedCaches();
     saveFarmRecords();
@@ -21027,6 +22340,7 @@ function farmWorkPlanState() {
   }
   const picks = state.farmWorkPlan;
   if (!Array.isArray(picks.selectedBlocks)) picks.selectedBlocks = [];
+  if (!Array.isArray(picks.areaPlantingYears)) picks.areaPlantingYears = [];
   if (!Array.isArray(picks.plantingYearSelectedBlockIds)) picks.plantingYearSelectedBlockIds = [];
   if (!Array.isArray(picks.selectedActivities)) picks.selectedActivities = [];
   if (!Array.isArray(picks.selectedMaterials)) picks.selectedMaterials = [];
@@ -21052,6 +22366,12 @@ function farmBudgetYearId(fiscalYear = "") {
 }
 
 async function saveFarmBudgetYearSetting({ silent = false } = {}) {
+  if (!farmCanManageBudget()) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "บัญชีนี้ดูข้อมูลพื้นที่และงบประมาณได้ แต่ไม่มีสิทธิ์แก้ไขอัตรางบประมาณ";
+    if (!silent) render();
+    return null;
+  }
   const picks = farmBudgetContractState();
   const fiscalYear = String(picks.budgetFiscalYear || farmBudgetFiscalYear(picks.budgetStartDate || farmToday())).trim();
   if (!fiscalYear) {
@@ -21949,11 +23269,7 @@ function applyFarmBudgetRateToBuilder(rateId, displayCode = "") {
 }
 
 function farmBudgetBlockLabel(block) {
-  const plot = farmLookup("plots", block.plot_id);
-  const zone = farmLookup("zones", block.zone_id || plot?.zone_id);
-  const code = block.block_code || block.terrain_code || block.area_code || block.id;
-  const name = block.block_name || block.area_name || "";
-  return [code, name && name !== code ? name : ""].filter(Boolean).join(" · ");
+  return farmLocationBlockLabel(block);
 }
 
 function farmBudgetActivityLabel(activity) {
@@ -21979,34 +23295,304 @@ function farmBudgetWorkerLabel(worker) {
   return [worker.employee_code, worker.full_name].filter(Boolean).join(" · ");
 }
 
-function farmBudgetScopedBlocks() {
-  const blocks = farmBudgetUniqueBlockRows(farmRowsByKey("blocks"));
-  const areas = farmBudgetUniqueBlockRows(farmRowsByKey("areas")
-    .filter((area) => !area.area_level || area.area_level === "block"));
-  if (!blocks.length) return areas;
-  const areaByKey = new Map();
-  for (const area of areas) {
-    for (const key of farmBudgetBlockComparableKeys(area.id)) areaByKey.set(key, area);
+function farmAreaHierarchyComparableKeys(row = {}) {
+  return [
+    row.id,
+    row.block_id,
+    row.area_id,
+    row.block_code,
+    row.block_name,
+    row.area_code,
+    row.area_name,
+    row.terrain_code,
+  ].map(farmBlockMapKey).filter(Boolean);
+}
+
+function farmAreaPresentationKey(value = "") {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function farmEstateDisplayName(value = "") {
+  const raw = String(value || "").trim();
+  const key = farmAreaPresentationKey(raw);
+  if (["สวนคีรีรัฐนิคม", "สวนคีรีรัฐ", "kirirat"].includes(key)) return "Kirirat";
+  return raw || "ไม่ระบุพื้นที่";
+}
+
+function farmZoneDisplayName(value = "") {
+  const raw = String(value || "").trim();
+  const key = farmAreaPresentationKey(raw);
+  if (["ตอนบน", "upper"].includes(key)) return "Upper";
+  if (["ตอนล่าง", "lower"].includes(key)) return "Lower";
+  return raw || "ยังไม่ระบุ Zone";
+}
+
+function farmBlockGroupCode(block = {}, plotGroup = {}) {
+  const direct = [
+    block.plot_group_code,
+    block.plot_group_name,
+    block.plot_group,
+    plotGroup.group_code,
+    plotGroup.group_name,
+  ].map((value) => String(value || "").trim()).find(Boolean);
+  if (direct) return direct;
+  const source = [block.block_name, block.area_name, block.terrain_code, block.area_code, block.block_code]
+    .map((value) => String(value || "").trim().toUpperCase())
+    .find(Boolean) || "";
+  const fromFullName = source.match(/^\d{2}-([A-Z]+)\d+/);
+  if (fromFullName) return fromFullName[1];
+  const fromShortCode = source.match(/^([A-Z]+)\d+/);
+  if (fromShortCode && !/^BA$/i.test(fromShortCode[1])) return fromShortCode[1];
+  const fromMiddle = source.match(/-([A-Z]+)\d+/);
+  return fromMiddle ? fromMiddle[1] : "ไม่ระบุกลุ่ม";
+}
+
+function farmLocationBlockLabel(block = {}) {
+  return block.block_name || block.blockName || block.area_name || block.block_code || block.area_code || block.id || "-";
+}
+
+function buildFarmLocationTree(blocks = []) {
+  const estateMap = new Map();
+  const orderedBlocks = [...(blocks || [])].sort((a, b) => {
+    const aParts = [a.estateDisplay || a.estateName || a.estate_name, a.zoneDisplay || a.zoneName || a.zone_name, a.blockGroupCode || farmBlockGroupCode(a), farmLocationBlockLabel(a)];
+    const bParts = [b.estateDisplay || b.estateName || b.estate_name, b.zoneDisplay || b.zoneName || b.zone_name, b.blockGroupCode || farmBlockGroupCode(b), farmLocationBlockLabel(b)];
+    for (let index = 0; index < aParts.length; index += 1) {
+      const compared = String(aParts[index] || "").localeCompare(String(bParts[index] || ""), "th", { numeric: true });
+      if (compared) return compared;
+    }
+    return 0;
+  });
+  for (const block of orderedBlocks) {
+    const estate = block.estateDisplay || farmEstateDisplayName(block.estateName || block.estate_name);
+    const zone = block.zoneDisplay || farmZoneDisplayName(block.zoneName || block.zone_name);
+    const group = block.blockGroupCode || farmBlockGroupCode(block);
+    if (!estateMap.has(estate)) estateMap.set(estate, new Map());
+    const zoneMap = estateMap.get(estate);
+    if (!zoneMap.has(zone)) zoneMap.set(zone, new Map());
+    const groupMap = zoneMap.get(zone);
+    if (!groupMap.has(group)) groupMap.set(group, []);
+    groupMap.get(group).push(block);
   }
-  return blocks.map((block) => {
-    const area = farmBudgetBlockComparableKeys(block.id).map((key) => areaByKey.get(key)).find(Boolean) || {};
-    return { ...area, ...block };
+  return [...estateMap.entries()].map(([label, zoneMap]) => {
+    const estateBlocks = [...zoneMap.values()].flatMap((groupMap) => [...groupMap.values()].flat());
+    return {
+      label,
+      blocks: estateBlocks,
+      blockIds: estateBlocks.map((row) => row.id),
+      zones: [...zoneMap.entries()].map(([zoneLabel, groupMap]) => {
+        const zoneBlocks = [...groupMap.values()].flat();
+        return {
+          label: zoneLabel,
+          blocks: zoneBlocks,
+          blockIds: zoneBlocks.map((row) => row.id),
+          groups: [...groupMap.entries()].map(([groupLabel, groupBlocks]) => ({
+        label: groupLabel,
+        blockIds: groupBlocks.map((row) => row.id),
+        blocks: groupBlocks,
+          })),
+        };
+      }),
+    };
   });
 }
 
-function farmBudgetBlockHierarchy(block = {}) {
-  const plot = block.plot_id ? farmLookup("plots", block.plot_id) : null;
-  const zone = farmLookup("zones", block.zone_id || plot?.zone_id);
-  const estate = farmLookup("estates", block.estate_id || zone?.estate_id || plot?.estate_id);
-  const plotGroup = plot?.plot_group_id ? farmLookup("plot_groups", plot.plot_group_id) : null;
+function checkFarmBlockIdConsistency({ area = null, visible = null, areaMaster = [], budget = [], planning = [] } = {}) {
+  const ids = (values) => [...new Set((values || []).filter(Boolean))].sort();
+  const areaIds = ids(area ?? visible ?? areaMaster);
+  const budgetIds = ids(budget);
+  const planningIds = ids(planning);
+  const areaSet = new Set(areaIds);
+  const budgetSet = new Set(budgetIds);
+  const planningSet = new Set(planningIds);
+  const sameIds = (left, right) => left.length === right.length && left.every((id, index) => id === right[index]);
   return {
-    estate: block.estate_name || estate?.estate_name || estate?.estate_code || "ไม่ระบุพื้นที่",
-    zone: block.zone_name || zone?.zone_name || zone?.zone_code || "ไม่ระบุโซน",
-    group: block.plot_group_code || block.plot_group_name || plotGroup?.group_code || plotGroup?.group_name || block.plot_name || plot?.plot_name || plot?.plot_code || "ไม่ระบุกลุ่ม",
+    ok: sameIds(areaIds, budgetIds) && sameIds(areaIds, planningIds),
+    areaCount: areaIds.length,
+    budgetCount: budgetIds.length,
+    planningCount: planningIds.length,
+    missingInArea: [...new Set([...budgetIds, ...planningIds])].filter((id) => !areaSet.has(id)),
+    missingInBudget: areaIds.filter((id) => !budgetSet.has(id)),
+    missingInPlanning: areaIds.filter((id) => !planningSet.has(id)),
   };
 }
 
-function farmBudgetSelectedPlantingYears(picks = farmBudgetContractState(), blocks = farmBudgetScopedBlocks()) {
+function assertFarmBlockIdConsistency(input = {}) {
+  const diagnostic = checkFarmBlockIdConsistency(input);
+  if (!diagnostic.ok) {
+    throw new Error("Visible Area, Budget, and Planning must expose identical canonical blocks.id values");
+  }
+  return true;
+}
+
+function buildFarmAreaHierarchy({
+  estates = [],
+  zones = [],
+  plotGroups = [],
+  plots = [],
+  blocks = [],
+  legacyAreas = [],
+} = {}) {
+  const activeRows = (rows) => (rows || []).filter((row) => String(row?.status || "active").toLowerCase() !== "inactive");
+  const indexById = (rows) => new Map(activeRows(rows).filter((row) => row?.id).map((row) => [String(row.id), row]));
+  const estateById = indexById(estates);
+  const zoneById = indexById(zones);
+  const plotById = indexById(plots);
+  const plotGroupById = indexById(plotGroups);
+  const normalizedBlocks = activeRows(blocks).filter((row) => row?.id);
+  const legacyBlocks = activeRows(legacyAreas)
+    .filter((row) => !row?.area_level || String(row.area_level).toLowerCase() === "block")
+    .filter((row) => row?.id);
+  const legacyByKey = new Map();
+  for (const row of legacyBlocks) {
+    for (const key of farmAreaHierarchyComparableKeys(row)) {
+      if (!legacyByKey.has(key)) legacyByKey.set(key, row);
+    }
+  }
+  const usesNormalizedBlocks = normalizedBlocks.length > 0;
+  const sourceBlocks = normalizedBlocks;
+  const resolvedBlocks = sourceBlocks.map((block) => {
+    const legacy = farmAreaHierarchyComparableKeys(block).map((key) => legacyByKey.get(key)).find(Boolean) || {};
+    const plotId = String(block.plot_id || "");
+    const plot = plotById.get(plotId) || null;
+    const zoneId = String(block.zone_id || plot?.zone_id || "");
+    const zone = zoneById.get(zoneId) || null;
+    const estateId = String(block.estate_id || zone?.estate_id || plot?.estate_id || "");
+    const estate = estateById.get(estateId) || null;
+    const plotGroupId = String(plot?.plot_group_id || block.plot_group_id || "");
+    const plotGroup = plotGroupById.get(plotGroupId) || null;
+    const blockCode = block.block_code || legacy.block_code || legacy.area_code || legacy.terrain_code || block.id;
+    const blockName = block.block_name || legacy.block_name || legacy.area_name || blockCode;
+    const estateName = estate?.estate_name || estate?.estate_code || legacy.estate_name || "ไม่ระบุพื้นที่";
+    const zoneName = zone?.zone_name || zone?.zone_code || legacy.zone_name || "ยังไม่ระบุ Zone";
+    const plotCode = plot?.plot_code || legacy.plot_code || "";
+    const plotName = plot?.plot_name || legacy.plot_name || "";
+    const plotLabel = plotCode || plotName || "ไม่ระบุ Plot / AP Code";
+    const blockGroupCode = farmBlockGroupCode({ ...legacy, ...block, block_code: blockCode, block_name: blockName }, plotGroup || {});
+    const apCode = block.ap_code || block.AP_code || legacy.ap_code || legacy.AP_code || "";
+    const areaRai = block.area_rai ?? legacy.area_rai ?? "";
+    const treeCount = block.tree_count ?? legacy.tree_count ?? "";
+    const plantingYear = block.planting_year ?? legacy.planting_year ?? "";
+    const rspoStatus = block.rspo_status || legacy.rspo_status || "";
+    return {
+      ...legacy,
+      ...block,
+      id: block.id,
+      blockCode,
+      blockName,
+      block_code: blockCode,
+      block_name: blockName,
+      estateId,
+      estateName,
+      estateDisplay: farmEstateDisplayName(estateName),
+      estate_id: estateId,
+      estate_name: estateName,
+      zoneId,
+      zoneName,
+      zoneDisplay: farmZoneDisplayName(zoneName),
+      zone_id: zoneId,
+      zone_name: zoneName,
+      plotId,
+      plotCode,
+      plotName,
+      plotLabel,
+      plot_id: plotId,
+      plot_code: plotCode,
+      plot_name: plotName,
+      plotGroupId: plotGroup?.id || "",
+      plotGroupName: plotGroup ? (plotGroup.group_name || plotGroup.group_code || "") : "",
+      blockGroupCode,
+      apCode,
+      ap_code: apCode,
+      areaRai,
+      area_rai: areaRai,
+      treeCount,
+      tree_count: treeCount,
+      plantingYear,
+      planting_year: plantingYear,
+      rspoStatus,
+      rspo_status: rspoStatus,
+      _areaSource: "blocks",
+    };
+  });
+  return {
+    blocks: resolvedBlocks,
+    estateById,
+    zoneById,
+    plotById,
+    plotGroupById,
+    usesNormalizedBlocks,
+    hasPlotGroups: plotGroupById.size > 0,
+  };
+}
+
+function farmAreaHierarchy() {
+  return buildFarmAreaHierarchy({
+    estates: farmRowsByKey("estates"),
+    zones: farmRowsByKey("zones"),
+    plotGroups: farmRowsByKey("plot_groups"),
+    plots: farmRowsByKey("plots"),
+    blocks: farmRowsByKey("blocks"),
+    legacyAreas: farmRowsByKey("areas"),
+  });
+}
+
+function farmCanonicalAreaHierarchy() {
+  return buildFarmAreaHierarchy({
+    estates: farmRowsByKey("estates"),
+    zones: farmRowsByKey("zones"),
+    plotGroups: farmRowsByKey("plot_groups"),
+    plots: farmRowsByKey("plots"),
+    blocks: state.farmCanonicalAreaRows,
+    legacyAreas: [],
+  });
+}
+
+function farmAreaCatalogHierarchy() {
+  const canonicalRows = state.farmCanonicalAreaRows.filter((block) => String(block.status || "active").toLowerCase() === "active");
+  const databaseRows = farmRowsByKey("blocks").filter((block) => String(block.status || "active").toLowerCase() === "active");
+  return buildFarmAreaHierarchy({
+    estates: farmRowsByKey("estates"),
+    zones: farmRowsByKey("zones"),
+    plotGroups: farmRowsByKey("plot_groups"),
+    plots: farmRowsByKey("plots"),
+    blocks: canonicalRows.length ? canonicalRows : databaseRows,
+    legacyAreas: [],
+  });
+}
+
+function farmAreaCatalogBlocks() {
+  return farmBudgetUniqueBlockRows(farmAreaCatalogHierarchy().blocks);
+}
+
+function farmCanonicalAreaBlocks() {
+  return farmAreaCatalogBlocks();
+}
+
+function farmCheckAreaCatalogConsistency() {
+  const diagnostic = checkFarmBlockIdConsistency({
+    area: farmAreaCatalogBlocks().map((block) => block.id),
+    budget: farmAreaCatalogBlocks().map((block) => block.id),
+    planning: farmPlanningBlockRows().map((block) => block.id),
+  });
+  const signature = JSON.stringify(diagnostic);
+  state.farmAreaCatalogDiagnostic = diagnostic;
+  if (!diagnostic.ok && signature !== state.farmAreaCatalogDiagnosticSignature) {
+    console.warn("Area catalog consistency diagnostic", diagnostic);
+  }
+  state.farmAreaCatalogDiagnosticSignature = signature;
+  return diagnostic;
+}
+
+function farmBudgetBlockHierarchy(block = {}) {
+  const resolved = farmAreaCatalogHierarchy().blocks.find((row) => row.id === block.id) || block;
+  return {
+    estate: resolved.estateDisplay || farmEstateDisplayName(resolved.estateName || resolved.estate_name),
+    zone: resolved.zoneDisplay || farmZoneDisplayName(resolved.zoneName || resolved.zone_name),
+    group: resolved.blockGroupCode || farmBlockGroupCode(resolved),
+  };
+}
+
+function farmBudgetSelectedPlantingYears(picks = farmBudgetContractState(), blocks = farmAreaCatalogBlocks()) {
   return farmBudgetPlantingSelectionSummary(blocks, picks.selectedBlocks).selectedYears;
 }
 
@@ -22140,7 +23726,7 @@ function farmBudgetFilterPlantingBlocks(blocks = [], query = "", selectedYears =
     return [
       block.block_code, block.terrain_code, block.area_code, block.block_name, block.area_name,
       block.estate_name, block.zone_name, block.plot_group_code, block.plot_group_name,
-      block.plot_name, block.plot_code, year,
+      block.blockGroupCode, block.estateDisplay, block.zoneDisplay, block.plot_name, block.plot_code, year,
     ].some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
   });
 }
@@ -22270,75 +23856,279 @@ function renderFarmBudgetAreaTreeLegacy(picks = farmBudgetContractState()) {
   }).join("") || blocks.map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่`)).join("");
 }
 
-function renderFarmBudgetAreaTree(picks = farmBudgetContractState()) {
-  const blocks = farmBudgetScopedBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
+function farmWorkAreaZoneKey(block = {}) {
+  const plot = farmLookup("plots", block.plot_id);
+  const zone = farmLookup("zones", block.zone_id || plot?.zone_id);
+  const text = [
+    block.zone_name, zone?.zone_name, zone?.zone_code, block.zone, block.superior, block.location_group, block.area_group,
+  ].filter(Boolean).join(" ").trim().toLowerCase();
+  if (text.includes("upper") || text.includes("ตอนบน")) return "upper";
+  if (text.includes("lower") || text.includes("ตอนล่าง")) return "lower";
+  return "other";
+}
+
+function farmWorkAreaSpecialKey(block = {}) {
+  const plot = farmLookup("plots", block.plot_id);
+  const zone = farmLookup("zones", block.zone_id || plot?.zone_id);
+  const blockCode = String(block.block_code || block.area_code || block.terrain_code || "").trim().toUpperCase();
+  if (/^SB(?:\d|[^A-Z0-9]|$)/.test(blockCode)) return "sb";
+  const values = [
+    block.block_name, block.area_name,
+    block.zone_name, zone?.zone_name, zone?.zone_code, block.zone, block.superior,
+    block.location_group, block.area_group,
+  ].filter(Boolean).map((value) => String(value).trim().toLowerCase());
+  return values.some((value) => /^sb(?:[^a-z0-9]|$)/i.test(value) || /(^|[^a-z0-9])sb(?:[^a-z0-9]|$)/i.test(value))
+    ? "sb"
+    : "other";
+}
+
+function farmWorkAreaCatalogRows() {
+  const seen = new Set();
+  const sourceRows = farmRowsByKey("blocks").length
+    ? farmRowsByKey("blocks").map(farmEnrichPlanningBlock)
+    : farmPlanningBlockRows();
+  return sourceRows.filter((block) => {
+    const key = farmBlockMapKey(block.id || block.area_id || block.block_code || block.area_code || block.terrain_code);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => String(a.block_code || a.area_code || a.terrain_code || a.id || "")
+    .localeCompare(String(b.block_code || b.area_code || b.terrain_code || b.id || ""), "th", { numeric: true, sensitivity: "base" }));
+}
+
+function farmWorkPlantingYear(block = {}) {
+  return String(block.planting_year ?? "").trim();
+}
+
+function farmWorkAreaRecordKind(block = {}) {
+  const type = String(block.terrain_type || block.area_type || block.location_type || "").trim().toLowerCase();
+  if (["ทั้งแปลง", "aggregate"].includes(type)) return "aggregate";
+  if (["นอกแปลง", "non-field", "non_field", "nonfield"].includes(type)) return "nonfield";
+  return "physical";
+}
+
+function farmWorkNormalizePlotGroup(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/^ทั้งแปลง[\s\-_/]*/i, "")
+    .replace(/^แปลง[\s\-_/]*/i, "")
+    .trim()
+    .toUpperCase();
+}
+
+function farmWorkPlotGroupInfo(block = {}) {
+  const plot = block.plot_id ? farmLookup("plots", block.plot_id) : null;
+  const plotGroupId = block.plot_group_id || plot?.plot_group_id;
+  const plotGroup = plotGroupId ? farmLookup("plot_groups", plotGroupId) : null;
+  const direct = farmFirstFilled(
+    plotGroup?.group_code,
+    block.plot_group_code,
+    block.plot_group_name,
+    plot?.plot_group_code,
+    plot?.plot_group_name,
+    plot?.plot_code,
+    block.plot_code,
+    block.plot_name
+  );
+  const code = farmWorkNormalizePlotGroup(direct || farmWorkBlockPlotGroupCode(block, plot));
+  if (!code) return { key: "ungrouped", code: "", label: "ไม่ระบุแปลง" };
+  return { key: farmNormalizeComparable(code), code, label: `แปลง ${code}` };
+}
+
+function farmWorkBlocksByPlot(blocks = []) {
+  const groups = new Map();
+  blocks.forEach((block) => {
+    const info = farmWorkPlotGroupInfo(block);
+    if (!groups.has(info.key)) groups.set(info.key, { ...info, blocks: [] });
+    groups.get(info.key).blocks.push(block);
+  });
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      blocks: group.blocks.slice().sort((a, b) => String(a.block_code || a.area_code || a.terrain_code || a.id || "")
+        .localeCompare(String(b.block_code || b.area_code || b.terrain_code || b.id || ""), "th", { numeric: true, sensitivity: "base" })),
+    }))
+    .sort((a, b) => {
+      if (a.key === "ungrouped") return 1;
+      if (b.key === "ungrouped") return -1;
+      return a.code.localeCompare(b.code, "th", { numeric: true, sensitivity: "base" });
+    });
+}
+
+function renderFarmWorkBlockOption(block, picks) {
+  const value = block.id || block.area_id || block.block_code || block.area_code || block.terrain_code;
+  const checked = farmBudgetBlockValueChecked(value, picks.selectedBlocks || []);
+  const id = farmBudgetCheckId("block", value);
+  const code = block.block_code || block.area_code || block.terrain_code || value;
+  const rawName = block.block_name || block.area_name || "";
+  const name = rawName && rawName !== code ? rawName : "";
+  const detail = [
+    name,
+    farmWorkPlantingYear(block) ? `ปีปลูก ${farmWorkPlantingYear(block)}` : "",
+    n(block.area_rai) ? `${fmt(n(block.area_rai))} ไร่` : "",
+  ].filter(Boolean).join(" · ");
+  return `
+    <label class="farm-work-block-option" for="${esc(id)}" title="${esc([code, detail].filter(Boolean).join(" · "))}">
+      <input id="${esc(id)}" type="checkbox" data-budget-pick="block" value="${esc(value)}"${checked ? " checked" : ""}>
+      <span>${esc(code)}</span>
+      ${name ? `<small>${esc(name)}</small>` : ""}
+    </label>`;
+}
+
+function renderFarmWorkPlotGroup({ panelKey, group, allBlocks, picks }) {
+  const blockIds = group.blocks.map((block) => block.id || block.area_id || block.block_code || block.area_code || block.terrain_code).filter(Boolean);
+  const allGroup = farmWorkBlocksByPlot(allBlocks).find((item) => item.key === group.key);
+  const allGroupBlocks = allGroup?.blocks || group.blocks;
+  const allGroupIds = allGroupBlocks.map((block) => block.id || block.area_id || block.block_code || block.area_code || block.terrain_code).filter(Boolean);
+  const selectedVisibleCount = blockIds.filter((id) => farmBudgetBlockValueChecked(id, picks.selectedBlocks || [])).length;
+  const selectedCount = allGroupIds.filter((id) => farmBudgetBlockValueChecked(id, picks.selectedBlocks || [])).length;
+  const checked = blockIds.length > 0 && selectedVisibleCount === blockIds.length;
+  const indeterminate = selectedVisibleCount > 0 && !checked;
+  const selectAllId = `farm_work_plot_${farmBudgetSafeCode(panelKey)}_${farmBudgetSafeCode(group.key)}_all`;
+  const filteredMeta = group.blocks.length === allGroupBlocks.length ? "" : ` · แสดง ${fmt(group.blocks.length)}`;
+  return `
+    <details class="farm-work-plot-group" data-farm-plot-group="${esc(`${panelKey}:${group.key}`)}" open>
+      <summary>
+        <span class="farm-work-plot-toggle" aria-hidden="true"></span>
+        <span class="farm-work-plot-title"><strong>${esc(group.label)}</strong><small>${fmt(allGroupBlocks.length)} Block${esc(filteredMeta)} · เลือก ${fmt(selectedCount)}</small></span>
+        <label class="farm-work-plot-select-all" for="${esc(selectAllId)}" onclick="event.stopPropagation()">
+          <input id="${esc(selectAllId)}" type="checkbox" data-budget-pick="block" data-budget-block-group="1" value="${esc(farmBudgetAreaGroupValue(group.blocks))}" aria-checked="${indeterminate ? "mixed" : checked ? "true" : "false"}"${checked ? " checked" : ""}${indeterminate ? ' data-budget-indeterminate="true"' : ""}${blockIds.length ? "" : " disabled"}>
+          <span>เลือกทั้งแปลง</span>
+        </label>
+      </summary>
+      <div class="farm-work-block-grid">
+        ${group.blocks.map((block) => renderFarmWorkBlockOption(block, picks)).join("")}
+      </div>
+    </details>`;
+}
+
+function renderFarmWorkAreaPanel({ key, title, countLabel, allBlocks, visibleBlocks, picks, special = false, grouped = true, selectAllLabel = "เลือกทั้งหมด" }) {
+  const blockIds = visibleBlocks.map((block) => block.id || block.area_id || block.block_code || block.area_code || block.terrain_code).filter(Boolean);
+  const checkedCount = blockIds.filter((id) => farmBudgetBlockValueChecked(id, picks.selectedBlocks || [])).length;
+  const checked = blockIds.length > 0 && checkedCount === blockIds.length;
+  const indeterminate = checkedCount > 0 && !checked;
+  const selectAllId = `farm_work_area_${key}_all`;
+  const filteredMeta = visibleBlocks.length === allBlocks.length ? "" : ` · แสดง ${fmt(visibleBlocks.length)}`;
+  return `
+    <section class="farm-work-area-panel${special ? " is-special" : ""}" data-farm-area-panel="${esc(key)}">
+      <header>
+        <div><strong>${esc(title)}</strong><small>${esc(`${countLabel}${filteredMeta}`)}</small></div>
+        <label class="farm-work-area-select-all" for="${esc(selectAllId)}">
+          <input id="${esc(selectAllId)}" type="checkbox" data-budget-pick="block" data-budget-block-group="1" value="${esc(farmBudgetAreaGroupValue(visibleBlocks))}" aria-checked="${indeterminate ? "mixed" : checked ? "true" : "false"}"${checked ? " checked" : ""}${indeterminate ? ' data-budget-indeterminate="true"' : ""}${blockIds.length ? "" : " disabled"}>
+          <span>${esc(selectAllLabel)}</span>
+        </label>
+      </header>
+      ${grouped ? `<div class="farm-work-plot-groups">
+        ${farmWorkBlocksByPlot(visibleBlocks).map((group) => renderFarmWorkPlotGroup({ panelKey: key, group, allBlocks, picks })).join("") || `<span class="farm-work-area-empty">ไม่มี Block ตามปีปลูกที่เลือก</span>`}
+      </div>` : `<div class="farm-work-block-grid">
+        ${visibleBlocks.map((block) => renderFarmWorkBlockOption(block, picks)).join("") || `<span class="farm-work-area-empty">ไม่มี Block ตามปีปลูกที่เลือก</span>`}
+      </div>`}
+    </section>`;
+}
+
+function renderFarmWorkAreaSelector(picks = farmWorkPlanState()) {
+  const blocks = farmWorkAreaCatalogRows();
   if (!blocks.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูล Block</div>`;
-  const estateMap = new Map();
-  for (const block of blocks) {
-    if (!estateMap.has(block.estate)) estateMap.set(block.estate, new Map());
-    const zoneMap = estateMap.get(block.estate);
-    if (!zoneMap.has(block.zone)) zoneMap.set(block.zone, new Map());
-    const groupMap = zoneMap.get(block.zone);
-    if (!groupMap.has(block.group)) groupMap.set(block.group, []);
-    groupMap.get(block.group).push(block);
-  }
-  return [...estateMap.entries()].map(([estateName, zoneMap]) => {
-    const estateBlocks = [...zoneMap.values()].flatMap((groupMap) => [...groupMap.values()].flat());
-    return `
+  const upperZoneBlocks = blocks.filter((block) => farmWorkAreaZoneKey(block) === "upper");
+  const lowerZoneBlocks = blocks.filter((block) => farmWorkAreaZoneKey(block) === "lower");
+  const aggregateBlocks = blocks.filter((block) => farmWorkAreaRecordKind(block) === "aggregate");
+  const nonFieldBlocks = blocks.filter((block) => farmWorkAreaRecordKind(block) === "nonfield");
+  const physicalBlocks = blocks.filter((block) => farmWorkAreaRecordKind(block) === "physical");
+  const sbBlocks = physicalBlocks.filter((block) => farmWorkAreaSpecialKey(block) === "sb");
+  const regularBlocks = physicalBlocks.filter((block) => farmWorkAreaSpecialKey(block) !== "sb");
+  const upperBlocks = regularBlocks.filter((block) => farmWorkAreaZoneKey(block) === "upper");
+  const lowerBlocks = regularBlocks.filter((block) => farmWorkAreaZoneKey(block) === "lower");
+  const otherBlocks = regularBlocks.filter((block) => farmWorkAreaZoneKey(block) === "other");
+  const years = [...new Set(blocks.map(farmWorkPlantingYear).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "th", { numeric: true, sensitivity: "base" }));
+  const selectedYears = new Set((picks.areaPlantingYears || []).map(String));
+  const visible = (rows) => selectedYears.size ? rows.filter((block) => selectedYears.has(farmWorkPlantingYear(block))) : rows;
+  const selectedCount = blocks.filter((block) => farmBudgetBlockValueChecked(block.id, picks.selectedBlocks || [])).length;
+  return `
+    <div class="farm-work-area-selector${selectedYears.size ? " is-filtered" : ""}">
+      <div class="farm-work-area-summary" aria-label="สรุปข้อมูลพื้นที่">
+        <p>ข้อมูลพื้นที่ทั้งหมด: <b>${fmt(blocks.length)} Block</b></p>
+        <p>Upper <b>${fmt(upperZoneBlocks.length)}</b> <i aria-hidden="true">|</i> Lower <b>${fmt(lowerZoneBlocks.length)}</b> <i aria-hidden="true">|</i> Selected <b>${fmt(selectedCount)}</b></p>
+      </div>
+      <div class="farm-work-planting-years" role="group" aria-label="ปีปลูก">
+        <strong>ปีปลูก</strong>
+        <div class="farm-work-planting-year-options">
+          <label class="farm-work-year-option">
+            <input type="checkbox" data-farm-work-planting-year-all${selectedYears.size ? "" : " checked"}>
+            <span>ทั้งหมด</span>
+          </label>
+          ${years.map((year) => `<label class="farm-work-year-option">
+            <input type="checkbox" data-farm-work-planting-year="${esc(year)}"${selectedYears.has(year) ? " checked" : ""}>
+            <span>${esc(year)}</span>
+          </label>`).join("")}
+        </div>
+      </div>
+      <div class="farm-work-area-panels">
+        ${renderFarmWorkAreaPanel({ key: "upper", title: "ตอนบน / Upper", countLabel: `${fmt(upperZoneBlocks.length)} Block · แปลงจริง ${fmt(upperBlocks.length)}`, allBlocks: upperBlocks, visibleBlocks: visible(upperBlocks), picks, selectAllLabel: "เลือกทั้งหมด Upper" })}
+        ${renderFarmWorkAreaPanel({ key: "lower", title: "ตอนล่าง / Lower", countLabel: `${fmt(lowerZoneBlocks.length)} Block · แปลงจริง ${fmt(lowerBlocks.length)}`, allBlocks: lowerBlocks, visibleBlocks: visible(lowerBlocks), picks, selectAllLabel: "เลือกทั้งหมด Lower" })}
+      </div>
+      ${renderFarmWorkAreaPanel({ key: "sb", title: "SB", countLabel: `${fmt(sbBlocks.length)} Block`, allBlocks: sbBlocks, visibleBlocks: visible(sbBlocks), picks, special: true })}
+      ${renderFarmWorkAreaPanel({ key: "other", title: "ไม่ระบุแปลง", countLabel: `${fmt(otherBlocks.length)} Block`, allBlocks: otherBlocks, visibleBlocks: visible(otherBlocks), picks, special: true })}
+      ${renderFarmWorkAreaPanel({ key: "aggregate", title: "ข้อมูลรวมทั้งแปลง", countLabel: `${fmt(aggregateBlocks.length)} รายการ`, allBlocks: aggregateBlocks, visibleBlocks: visible(aggregateBlocks), picks, special: true, grouped: false })}
+      ${renderFarmWorkAreaPanel({ key: "nonfield", title: "พื้นที่นอกแปลง / Non-field", countLabel: `${fmt(nonFieldBlocks.length)} รายการ`, allBlocks: nonFieldBlocks, visibleBlocks: visible(nonFieldBlocks), picks, special: true, grouped: false })}
+    </div>`;
+}
+
+function renderFarmBudgetAreaTree(picks = farmBudgetContractState()) {
+  farmCheckAreaCatalogConsistency();
+  const blocks = farmAreaCatalogBlocks()
+    .map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }))
+    .filter((block) => farmBudgetMatchesQuery([
+      farmBudgetBlockLabel(block), block.estate, block.zone, block.group,
+    ].filter(Boolean).join(" ")));
+  if (!blocks.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูล Block</div>`;
+  return buildFarmLocationTree(blocks).map((estate) => `
       <details open>
-        ${renderBudgetAreaGroupSummary(estateName, estateBlocks, picks.selectedBlocks)}
+        ${renderBudgetAreaGroupSummary(estate.label, estate.blocks, picks.selectedBlocks)}
         <div class="budget-area-zone-grid">
-        ${[...zoneMap.entries()].map(([zoneName, groupMap]) => {
-          const zoneBlocks = [...groupMap.values()].flat();
-          return `
+        ${estate.zones.map((zone) => `
             <details open class="budget-zone-branch">
-              ${renderBudgetAreaGroupSummary(zoneName, zoneBlocks, picks.selectedBlocks)}
-              ${[...groupMap.entries()].map(([groupName, groupBlocks]) => `
+              ${renderBudgetAreaGroupSummary(zone.label, zone.blocks, picks.selectedBlocks)}
+              ${zone.groups.map((group) => `
                 <details open>
-                  ${renderBudgetAreaGroupSummary(groupName, groupBlocks, picks.selectedBlocks)}
-                  ${groupBlocks.map((block) => {
+                  ${renderBudgetAreaGroupSummary(group.label, group.blocks, picks.selectedBlocks)}
+                  ${group.blocks.map((block) => {
                     const area = n(block.area_rai) ? `${fmt(n(block.area_rai))} ไร่` : n(block.area_hectare || block.hectare) ? `${fmt(n(block.area_hectare || block.hectare))} hectare` : "";
                     const meta = [area, n(block.tree_count) ? `${fmt(n(block.tree_count))} ต้น` : ""].filter(Boolean).join(" · ");
                     return renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, meta);
                   }).join("")}
                 </details>
               `).join("")}
-            </details>`;
-        }).join("")}
+            </details>`).join("")}
         </div>
-      </details>`;
-  }).join("");
+      </details>`).join("");
 }
 
 function farmBudgetAreaOptions(picks = farmBudgetContractState()) {
-  const estates = farmRowsByKey("estates");
-  const zones = farmRowsByKey("zones");
-  const plots = farmRowsByKey("plots");
-  const allBlocks = farmRowsByKey("blocks").filter((block) => farmBudgetMatchesQuery(farmBudgetBlockLabel(block)));
-  const selectedBlock = picks.selectedBlocks.length === 1 ? farmLookup("blocks", picks.selectedBlocks[0]) : null;
-  const selectedPlot = selectedBlock?.plot_id ? farmLookup("plots", selectedBlock.plot_id) : null;
-  const selectedZone = selectedBlock?.zone_id ? farmLookup("zones", selectedBlock.zone_id) : selectedPlot?.zone_id ? farmLookup("zones", selectedPlot.zone_id) : null;
-  const estateId = picks.areaEstateId || selectedBlock?.estate_id || selectedZone?.estate_id || selectedPlot?.estate_id || "";
-  const zoneId = picks.areaZoneId || selectedBlock?.zone_id || selectedPlot?.zone_id || "";
-  const plotId = picks.areaPlotId || selectedBlock?.plot_id || "";
-  const filteredZones = zones.filter((zone) => !estateId || zone.estate_id === estateId);
-  const filteredPlots = plots.filter((plot) => {
-    if (zoneId && plot.zone_id !== zoneId) return false;
-    if (estateId && plot.estate_id && plot.estate_id !== estateId) return false;
-    if (estateId && !plot.estate_id) {
-      const zone = farmLookup("zones", plot.zone_id);
-      if (zone?.estate_id && zone.estate_id !== estateId) return false;
-    }
-    return true;
-  });
+  const hierarchy = farmAreaCatalogHierarchy();
+  const catalogBlocks = hierarchy.blocks;
+  const allBlocks = catalogBlocks.filter((block) => farmBudgetMatchesQuery(farmBudgetBlockLabel(block)));
+  const selectedBlock = picks.selectedBlocks.length === 1
+    ? catalogBlocks.find((block) => block.id === picks.selectedBlocks[0]) || null
+    : null;
+  const estateId = picks.areaEstateId || selectedBlock?.estateId || "";
+  const zoneId = picks.areaZoneId || selectedBlock?.zoneId || "";
+  const plotId = picks.areaPlotId || selectedBlock?.plotId || "";
+  const visibleEstateIds = new Set(catalogBlocks.map((block) => block.estateId).filter(Boolean));
+  const visibleZoneIds = new Set(catalogBlocks.map((block) => block.zoneId).filter(Boolean));
+  const visiblePlotIds = new Set(catalogBlocks.map((block) => block.plotId).filter(Boolean));
+  const estates = [...hierarchy.estateById.values()].filter((estate) => visibleEstateIds.has(String(estate.id)));
+  const filteredZones = [...hierarchy.zoneById.values()]
+    .filter((zone) => visibleZoneIds.has(String(zone.id)))
+    .filter((zone) => !estateId || String(zone.estate_id || "") === String(estateId));
+  const filteredPlots = [...hierarchy.plotById.values()]
+    .filter((plot) => visiblePlotIds.has(String(plot.id)))
+    .filter((plot) => !zoneId || String(plot.zone_id || "") === String(zoneId))
+    .filter((plot) => !estateId || catalogBlocks.some((block) => block.plotId === plot.id && block.estateId === estateId));
   const filteredBlocks = allBlocks.filter((block) => {
-    if (plotId && block.plot_id !== plotId) return false;
-    if (zoneId && block.zone_id !== zoneId && farmLookup("plots", block.plot_id)?.zone_id !== zoneId) return false;
-    if (estateId) {
-      const plot = farmLookup("plots", block.plot_id);
-      const zone = farmLookup("zones", block.zone_id || plot?.zone_id);
-      if (block.estate_id !== estateId && zone?.estate_id !== estateId && plot?.estate_id !== estateId) return false;
-    }
+    if (plotId && block.plotId !== plotId) return false;
+    if (zoneId && block.zoneId !== zoneId) return false;
+    if (estateId && block.estateId !== estateId) return false;
     return true;
   });
   return { estates, zones: filteredZones, plots: filteredPlots, blocks: filteredBlocks, estateId, zoneId, plotId };
@@ -22383,8 +24173,8 @@ function renderFarmBudgetAreaDropdowns() {
 }
 
 function renderFarmBudgetActivityTree(picks = farmBudgetContractState()) {
-  const groups = farmRowsByKey("activity_groups");
-  const activities = farmRowsByKey("activities").filter((activity) => farmBudgetMatchesQuery(farmBudgetActivityLabel(activity)));
+  const groups = farmAuthoritativeRowsByKey("activity_groups");
+  const activities = farmAuthoritativeRowsByKey("activities").filter((activity) => farmBudgetMatchesQuery(farmBudgetActivityLabel(activity)));
   if (!activities.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลกิจกรรม</div>`;
   const knownGroupIds = new Set(groups.map((group) => group.id));
   const inferredGroups = new Map();
@@ -22438,39 +24228,77 @@ function farmSortBudgetMaterials(rows = []) {
   });
 }
 
-function renderFarmBudgetMaterialTree(picks = farmBudgetContractState()) {
-  const categories = farmAuthoritativeRowsByKey("material_categories").slice().sort((a, b) => {
+function groupMaterialsByCategory(materials = [], categories = [], query = "") {
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  const sortedCategories = categories.slice().sort((a, b) => {
     const priority = farmBudgetMaterialPriority(a) - farmBudgetMaterialPriority(b);
     if (priority) return priority;
-    return String(a.category_code || a.category_name || "").localeCompare(String(b.category_code || b.category_name || ""), "th");
+    return String(a.category_code || a.category_name || "")
+      .localeCompare(String(b.category_code || b.category_name || ""), "th");
   });
+  const categoryById = new Map(sortedCategories.map((category) => [String(category.id || ""), category]));
+  const materialsByCategoryId = new Map(sortedCategories.map((category) => [String(category.id || ""), []]));
+  const ungrouped = [];
+  let categorizedMaterials = 0;
+
+  for (const material of farmSortBudgetMaterials(materials)) {
+    const category = categoryById.get(String(material.category_id || "")) || null;
+    const searchableText = [
+      farmBudgetMaterialLabel(material),
+      category?.category_code,
+      category?.category_name,
+    ].filter(Boolean).join(" ").toLowerCase();
+    if (normalizedQuery && !searchableText.includes(normalizedQuery)) continue;
+    if (!category) {
+      ungrouped.push(material);
+      continue;
+    }
+    materialsByCategoryId.get(String(category.id || "")).push(material);
+    categorizedMaterials += 1;
+  }
+
+  return {
+    groups: sortedCategories
+      .map((category) => ({ category, materials: materialsByCategoryId.get(String(category.id || "")) || [] }))
+      .filter((group) => group.materials.length),
+    ungrouped,
+    totalMaterials: materials.length,
+    categorizedMaterials,
+    ungroupedMaterials: ungrouped.length,
+  };
+}
+
+function farmSelectedAvailableMaterialIds(selectedIds = [], materials = []) {
+  const availableIds = new Set(materials.map((material) => material.id).filter(Boolean));
+  return [...new Set(selectedIds || [])].filter((id) => availableIds.has(id));
+}
+
+function renderFarmBudgetMaterialTree(picks = farmBudgetContractState()) {
+  const categories = farmAuthoritativeRowsByKey("material_categories");
   const materials = farmSortBudgetMaterials(farmAuthoritativeRowsByKey("materials")
-    .filter((material) => String(material.status || "active").toLowerCase() !== "inactive")
-    .filter((material) => farmBudgetMatchesQuery(farmBudgetMaterialLabel(material))));
-  const materialIds = new Set(materials.map((material) => material.id).filter(Boolean));
-  picks.selectedMaterials = (picks.selectedMaterials || []).filter((id) => materialIds.has(id));
+    .filter((material) => String(material.status || "active").toLowerCase() !== "inactive"));
+  picks.selectedMaterials = farmSelectedAvailableMaterialIds(picks.selectedMaterials, materials);
   if (!materials.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลวัสดุ</div>`;
-  const grouped = categories.map((category) => {
-    const categoryMaterials = farmSortBudgetMaterials(materials.filter((material) => material.category_id === category.id));
-    if (!categoryMaterials.length) return "";
+  const model = groupMaterialsByCategory(materials, categories, picks.query || "");
+  const grouped = model.groups.map(({ category, materials: categoryMaterials }) => {
     return `
       <details open>
         <summary>${esc(category.category_code || "")} ${esc(category.category_name || "")} <small>${fmt(categoryMaterials.length)}</small></summary>
         ${categoryMaterials.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials, farmLookupLabel("units", material.base_unit_id))).join("")}
       </details>`;
   }).join("");
-  const groupedIds = new Set(categories.flatMap((category) => materials.filter((material) => material.category_id === category.id).map((material) => material.id)));
-  const uncategorized = farmSortBudgetMaterials(materials.filter((material) => !groupedIds.has(material.id)));
-  const uncategorizedHtml = uncategorized.length ? `
+  const uncategorizedHtml = model.ungrouped.length ? `
       <details open>
-        <summary>ไม่ระบุหมวด <small>${fmt(uncategorized.length)}</small></summary>
-        ${uncategorized.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials, farmLookupLabel("units", material.base_unit_id))).join("")}
+        <summary>ไม่ระบุหมวด <small>${fmt(model.ungrouped.length)}</small></summary>
+        ${model.ungrouped.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials, farmLookupLabel("units", material.base_unit_id))).join("")}
       </details>` : "";
-  return grouped || uncategorizedHtml ? `${grouped}${uncategorizedHtml}` : materials.map((material) => renderBudgetCheckbox("material", material.id, farmBudgetMaterialLabel(material), picks.selectedMaterials)).join("");
+  return grouped || uncategorizedHtml
+    ? `${grouped}${uncategorizedHtml}`
+    : `<div class="budget-tree-empty">ไม่พบวัสดุที่ตรงกับคำค้นหา</div>`;
 }
 
 function renderFarmBudgetVehicleTree(picks = farmBudgetContractState()) {
-  const vehicles = farmRowsByKey("vehicles").filter((vehicle) => farmBudgetMatchesQuery(farmBudgetVehicleLabel(vehicle)));
+  const vehicles = farmAuthoritativeRowsByKey("vehicles").filter((vehicle) => farmBudgetMatchesQuery(farmBudgetVehicleLabel(vehicle)));
   if (!vehicles.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลรถ/เครื่องจักร</div>`;
   const groups = farmBudgetGroupCount(vehicles, (vehicle) => vehicle.vehicle_type || vehicle.item_type || "ไม่ระบุประเภท");
   return groups.map((group) => {
@@ -22484,10 +24312,10 @@ function renderFarmBudgetVehicleTree(picks = farmBudgetContractState()) {
 }
 
 function renderFarmBudgetWorkerTree(picks = farmBudgetContractState()) {
-  const teams = farmRowsByKey("teams").map((row) => ({ ...row, _budgetType: "team" }));
-  const teamMembers = farmRowsByKey("team_members").filter((row) => String(row.is_active) !== "false");
-  const employees = farmRowsByKey("employees").map((row) => ({ ...row, _budgetType: "employee" }));
-  const contractors = farmRowsByKey("contractors").map((row) => ({ ...row, _budgetType: "contractor" }));
+  const teams = farmAuthoritativeRowsByKey("teams").map((row) => ({ ...row, _budgetType: "team" }));
+  const teamMembers = farmAuthoritativeRowsByKey("team_members").filter((row) => String(row.is_active) !== "false");
+  const employees = farmAuthoritativeRowsByKey("employees").map((row) => ({ ...row, _budgetType: "employee" }));
+  const contractors = farmAuthoritativeRowsByKey("contractors").map((row) => ({ ...row, _budgetType: "contractor" }));
   const teamSections = teams.map((team) => {
     const members = teamMembers
       .filter((member) => member.team_id === team.id)
@@ -22521,7 +24349,10 @@ function renderFarmBudgetWorkerTree(picks = farmBudgetContractState()) {
         </div>` : ""}
       </details>`;
   }).join("");
-  const contractorRows = contractors.filter((row) => farmBudgetMatchesQuery(farmBudgetWorkerLabel(row)));
+  const canonicalTeamCodes = new Set(teams.map((row) => String(row.team_code || "").trim().toUpperCase()).filter(Boolean));
+  const contractorRows = contractors
+    .filter((row) => !canonicalTeamCodes.has(String(row.contractor_code || "").trim().toUpperCase()))
+    .filter((row) => farmBudgetMatchesQuery(farmBudgetWorkerLabel(row)));
   const contractorSection = contractorRows.length ? `
     <details open>
       <summary>ผู้รับเหมา <small>${fmt(contractorRows.length)}</small></summary>
@@ -22748,8 +24579,8 @@ function renderFarmBudgetCreateRateBar() {
     <article class="budget-create-rate-bar">
       <span>${editing ? `กำลังแก้ไข ${esc(editingCode)}` : "เลือกพื้นที่ กิจกรรม และรูปแบบอัตรา แล้วสร้าง Rate"}</span>
       <div class="budget-rate-actions">
-        <button type="button" data-budget-rate-create ${state.farmSyncBusy ? "disabled" : ""}>${editing ? "บันทึกแก้ไข Rate" : "สร้าง Rate"}</button>
-        ${editing ? `<button type="button" class="secondary" data-budget-rate-new ${state.farmSyncBusy ? "disabled" : ""}>สร้าง Rate ใหม่</button>` : ""}
+        <button type="button" data-budget-rate-create ${state.farmSyncBusy || !farmCanManageBudget() ? "disabled" : ""}>${editing ? "บันทึกแก้ไข Rate" : "สร้าง Rate"}</button>
+        ${editing ? `<button type="button" class="secondary" data-budget-rate-new ${state.farmSyncBusy || !farmCanManageBudget() ? "disabled" : ""}>สร้าง Rate ใหม่</button>` : ""}
       </div>
     </article>`;
 }
@@ -22861,8 +24692,8 @@ function renderFarmBudgetEditPanel() {
           `).join("")}
         </div>
         <div class="farm-form-actions budget-rate-edit-actions">
-          <button type="button" data-farm-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกแก้ไข Rate</button>
-          <button type="button" class="danger" data-farm-delete-modal ${farmCan("delete") && !state.farmSyncBusy ? "" : "disabled"}>ลบ Rate</button>
+          <button type="button" data-farm-save ${state.farmSyncBusy || !farmCanManageBudget() ? "disabled" : ""}>บันทึกแก้ไข Rate</button>
+          <button type="button" class="danger" data-farm-delete-modal ${farmCanManageBudget() && !state.farmSyncBusy ? "" : "disabled"}>ลบ Rate</button>
           <button type="button" data-farm-clear>ปิดฟอร์ม</button>
         </div>
       </form>
@@ -22897,7 +24728,7 @@ function renderFarmBudgetYearSettings() {
           </select>
         </label>
         <div class="budget-year-actions">
-          <button type="button" data-budget-year-save ${state.farmSyncBusy ? "disabled" : ""}>บันทึกปีอัตรางบประมาณ</button>
+          <button type="button" data-budget-year-save ${state.farmSyncBusy || !farmCanManageBudget() ? "disabled" : ""}>บันทึกปีอัตรางบประมาณ</button>
         </div>
       </div>
       <div class="budget-year-list">
@@ -22911,7 +24742,7 @@ function renderFarmBudgetYearSettings() {
 }
 
 function renderFarmBudgetPlantingYearSelector(picks = farmBudgetContractState(), { idPrefix = "budget", allLabel = "เลือกทุกปี" } = {}) {
-  const blocks = farmBudgetScopedBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
+  const blocks = farmAreaCatalogBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
   const model = farmBudgetPlantingYearGroups(blocks, picks.selectedBlocks, "asc");
   const blockIds = model.years.flatMap((group) => group.blockIds);
   const selectAll = farmBudgetSelectionState(blockIds, picks.selectedBlocks);
@@ -22970,6 +24801,7 @@ function farmBlockMapKey(value) {
 
 function farmBlockMapKeyVariants(value) {
   const key = farmBlockMapKey(value);
+  if (!key) return [];
   const variants = new Set([key]);
   if (key.endsWith("-R")) variants.add(key.replace(/-R$/, ""));
   else variants.add(`${key}-R`);
@@ -22981,7 +24813,7 @@ function farmBlockMapKeyVariants(value) {
 }
 
 function farmAreaBlockRows() {
-  return farmRowsByKey("areas").filter((row) => String(row.area_level || "block").toLowerCase() === "block");
+  return farmCanonicalAreaBlocks();
 }
 
 function farmMapProject(point, bounds, width, height) {
@@ -23001,68 +24833,151 @@ function farmMapBlockColor(row, index) {
   return palette[index % palette.length];
 }
 
+function farmAreaMapStatusLabel(status) {
+  return ({
+    matched: "Matched",
+    map_without_master: "KMZ ไม่มี Master",
+    master_without_map: "Master ไม่มี KMZ",
+    map_conflict: "Map conflict",
+    master_conflict: "Master key conflict",
+  })[status] || "รอตรวจสอบ";
+}
+
+function renderFarmAreaMapAudit() {
+  const audit = state.farmAreaMapAudit || {};
+  const mapWithoutMaster = Array.isArray(audit.mapWithoutMaster) ? audit.mapWithoutMaster : [];
+  const masterWithoutMap = Array.isArray(audit.masterWithoutMap) ? audit.masterWithoutMap : [];
+  const candidates = (Array.isArray(audit.reconciliationCandidates) ? audit.reconciliationCandidates : [])
+    .filter((entry) => Array.isArray(entry.candidates) && entry.candidates.length);
+  const duplicateMapKeys = Array.isArray(audit.duplicateMapKeys) ? audit.duplicateMapKeys : [];
+  const duplicateMasterKeys = Array.isArray(audit.duplicateMasterKeys) ? audit.duplicateMasterKeys : [];
+  const geometryConflicts = Array.isArray(audit.geometryConflicts) ? audit.geometryConflicts : [];
+  if (!state.farmAreaMapReconciliation && !state.farmAreaMasterError) return "";
+  return `
+    <section class="farm-panel farm-area-reconciliation-audit" data-farm-area-reconciliation-audit>
+      <div class="section-head">
+        <h3>KMZ / Master Reconciliation Audit</h3>
+        <span>Exact normalized block_name only · ไม่มี fuzzy/nearest/AP Code matching</span>
+      </div>
+      <div class="farm-area-audit-summary">
+        <span>Map without Master <strong>${fmt(mapWithoutMaster.length)}</strong></span>
+        <span>Master without Map <strong>${fmt(masterWithoutMap.length)}</strong></span>
+        <span>Duplicate Map Keys <strong>${fmt(duplicateMapKeys.length)}</strong></span>
+        <span>Duplicate Master Keys <strong>${fmt(duplicateMasterKeys.length)}</strong></span>
+        <span>Geometry Conflicts <strong>${fmt(geometryConflicts.length)}</strong></span>
+      </div>
+      <details open>
+        <summary>MAP WITHOUT MASTER (${fmt(mapWithoutMaster.length)})</summary>
+        <div class="table-wrap">
+          <table class="mini-table farm-table">
+            <thead><tr><th>Map Key</th><th>Placemark.name</th><th>Source</th><th>Geometry</th></tr></thead>
+            <tbody>${mapWithoutMaster.map((entry) => `
+              <tr data-farm-map-without-master="${esc(entry.mapKey)}">
+                <td><strong>${esc(entry.mapKey || "-")}</strong></td>
+                <td>${esc(entry.placemarkName || "-")}</td>
+                <td>${esc((entry.sourceFiles || []).join(", ") || "-")}</td>
+                <td>${esc(entry.geometryStatus || "-")}</td>
+              </tr>`).join("") || `<tr><td colspan="4">ไม่พบ KMZ ที่ไม่มี Master</td></tr>`}</tbody>
+          </table>
+        </div>
+      </details>
+      <details open>
+        <summary>MASTER WITHOUT MAP (${fmt(masterWithoutMap.length)})</summary>
+        <div class="table-wrap">
+          <table class="mini-table farm-table">
+            <thead><tr><th>Block Name</th><th>Block Code</th><th>AP Code</th><th>Estate</th><th>Zone</th><th>Planting Year</th><th>Block UUID</th></tr></thead>
+            <tbody>${masterWithoutMap.map((entry) => `
+              <tr data-farm-master-without-map="${esc(entry.blockId)}">
+                <td><strong>${esc(entry.blockName || "-")}</strong></td>
+                <td>${esc(entry.blockCode || "-")}</td>
+                <td>${esc(entry.apCode || "-")}</td>
+                <td>${esc(entry.estate || "-")}</td>
+                <td>${esc(entry.zone || "ยังไม่ระบุ Zone")}</td>
+                <td>${esc(entry.plantingYear ?? "-")}</td>
+                <td><code>${esc(entry.blockId || "-")}</code></td>
+              </tr>`).join("") || `<tr><td colspan="7">ไม่พบ Master ที่ไม่มี Map</td></tr>`}</tbody>
+          </table>
+        </div>
+      </details>
+      <details>
+        <summary>Reconciliation candidates — audit only (${fmt(candidates.length)})</summary>
+        <div class="farm-area-audit-candidates">
+          ${candidates.map((entry) => `
+            <article>
+              <strong>KMZ: ${esc(entry.placemarkName || entry.mapKey)}</strong>
+              ${(entry.candidates || []).map((candidate) => `<p>DB: ${esc(candidate.blockName)} · Confidence ${esc(candidate.confidence)} · ${esc(candidate.reason)}</p>`).join("")}
+            </article>`).join("") || `<p>ยังไม่มี candidate ที่ผ่านกฎโครงสร้างแบบตรวจสอบได้</p>`}
+        </div>
+      </details>
+    </section>`;
+}
+
 function renderFarmAreaBlockMap() {
   const map = state.blockMapData || {};
-  const features = Array.isArray(map.features) ? map.features : [];
+  const features = state.farmAreaMapReconciliation && Array.isArray(map.features) ? map.features : [];
   const bounds = Array.isArray(map.bounds) && map.bounds.length === 4 ? map.bounds : null;
   const areaRows = farmAreaBlockRows();
-  const areaByCode = new Map();
-  for (const row of areaRows) {
-    for (const key of farmBlockMapKeyVariants(row.area_code || row.area_name)) {
-      if (!areaByCode.has(key)) areaByCode.set(key, row);
-    }
-  }
+  const areaById = new Map(areaRows.map((row) => [row.id, row]));
+  const stats = state.farmAreaMapReconciliation || {};
   const width = 1000;
   const height = 680;
-  const matched = [];
-  const unmatched = [];
   const polygons = features.map((feature, index) => {
-    const code = feature?.properties?.block_code || feature?.properties?.name || "";
-    const area = farmBlockMapKeyVariants(code).map((key) => areaByCode.get(key)).find(Boolean);
-    if (area) matched.push(code);
-    else unmatched.push(code);
+    const name = feature?.properties?.name || feature?.properties?.map_key || "";
+    const status = feature?.properties?.match_status || "unknown";
+    const area = areaById.get(feature?.properties?.block_id);
     const ring = feature?.geometry?.coordinates?.[0] || [];
     if (!bounds || ring.length < 3) return "";
     const points = ring.map((point) => farmMapProject(point, bounds, width, height)).join(" ");
-    const color = farmMapBlockColor(area, index);
+    const color = status === "matched" ? farmMapBlockColor(area, index)
+      : status.includes("conflict") ? "#f59e0b" : "#ef4444";
     const selected = area?.id && state.farmDetailId === area.id;
-    const meta = area
-      ? `${area.zone_name || "-"} · ${area.plot_group_code || "-"} · ${fmt(n(area.area_rai))} ไร่ · ${fmt(n(area.tree_count))} ต้น`
-      : "ยังไม่พบในตารางพื้นที่";
+    const statusClass = status === "matched" ? " matched"
+      : status.includes("conflict") ? " map-conflict" : " map-without-master";
+    const meta = status === "matched"
+      ? `${area?.zoneDisplay || "ยังไม่ระบุ Zone"} · ${area?.blockGroupCode || "-"} · ${fmt(n(area?.area_rai))} ไร่`
+      : farmAreaMapStatusLabel(status);
     return `
       <polygon
-        class="farm-block-polygon${selected ? " selected" : ""}${area ? "" : " unmatched"}"
+        class="farm-block-polygon${selected ? " selected" : ""}${statusClass}"
         points="${points}"
         fill="${color}"
         ${area ? `data-farm-view="${esc(area.id)}"` : ""}
         tabindex="${area ? "0" : "-1"}"
         role="${area ? "button" : "img"}"
-        aria-label="${esc(`${code} ${meta}`)}">
-        <title>${esc(`${code} | ${meta}`)}</title>
+        aria-label="${esc(`${name} ${meta}`)}">
+        <title>${esc(`${name} | ${meta}`)}</title>
       </polygon>`;
   }).join("");
-  const selectedArea = farmRowsByKey("areas").find((row) => row.id === state.farmDetailId);
+  const selectedArea = areaRows.find((row) => row.id === state.farmDetailId);
   const selectedFeature = selectedArea
-    ? features.find((feature) => {
-      const featureKeys = new Set(farmBlockMapKeyVariants(feature?.properties?.block_code || feature?.properties?.name));
-      return farmBlockMapKeyVariants(selectedArea.area_code || selectedArea.area_name).some((key) => featureKeys.has(key));
-    })
+    ? features.find((feature) => feature?.properties?.block_id === selectedArea.id)
     : null;
-  const selectedCode = selectedArea ? (selectedArea.area_code || selectedArea.area_name || "-") : "-";
-  const selectedBlockName = selectedArea?.area_name || selectedFeature?.properties?.name || selectedCode;
+  const selectedCode = selectedArea?.block_name || selectedFeature?.properties?.name || "-";
   const selectedDetails = selectedArea ? [
-    ["โซน", selectedArea.zone_name || "-"],
-    ["แปลง", selectedArea.plot_group_code || selectedArea.plot_group_id || "-"],
-    ["ขนาดพื้นที่", selectedArea.area_rai ? `${fmt(n(selectedArea.area_rai))} ไร่` : "-"],
+    ["Estate", selectedArea.estateDisplay || selectedArea.estateName || selectedArea.estate_name || "-"],
+    ["Zone", selectedArea.zoneDisplay || selectedArea.zoneName || selectedArea.zone_name || "ยังไม่ระบุ Zone"],
+    ["Block Group", selectedArea.blockGroupCode || "-"],
+    ["พื้นที่", selectedArea.area_rai ? `${fmt(n(selectedArea.area_rai))} ไร่` : "-"],
     ["จำนวนต้น", selectedArea.tree_count ? `${fmt(n(selectedArea.tree_count))} ต้น` : "-"],
     ["AP Code", selectedArea.ap_code || "-"],
     ["RSPO", selectedArea.rspo_status || "-"],
+    ["Map Status", farmAreaMapStatusLabel(selectedArea.map_status)],
   ] : [];
+  const emptyMessage = state.farmAreaMasterLoading
+    ? "กำลังตรวจสอบ Canonical Area Master และ KMZ..."
+    : state.farmAreaMasterError || "ยังไม่มีข้อมูลขอบเขตแผนที่ Block";
   return `
     <section class="farm-panel farm-area-map-panel">
       <div class="section-head">
-        <h3>แผนที่ Block จาก SPC-BLOCK</h3>
-        <span>${fmt(features.length)} block จาก KMZ · จับคู่ข้อมูลพื้นที่ ${fmt(matched.length)} block</span>
+        <h3>สถานะข้อมูลแผนที่ / KMZ</h3>
+        <span>Raw ${fmt(stats.rawPlacemarks || 0)} · Unique ${fmt(stats.uniqueBlockKeys || features.length)} · Duplicate ${fmt(stats.duplicatePlacemarks || 0)}</span>
+      </div>
+      <div class="farm-area-map-status-cards">
+        <article><span>Polygon ใน KMZ</span><strong>${fmt(stats.uniqueBlockKeys || features.length)}</strong><small>หลัง normalize และ dedupe</small></article>
+        <article><span>Matched KMZ ↔ Block</span><strong>${fmt(stats.matchedMaster || 0)}</strong><small>canonical blocks.block_name</small></article>
+        <article><span>KMZ ไม่มี Master</span><strong>${fmt(stats.mapWithoutMaster || 0)}</strong><small>ตรวจด้วย normalized blocks.block_name</small></article>
+        <article><span>Master ไม่มี KMZ</span><strong>${fmt(stats.masterWithoutMap || 0)}</strong><small>Block ยังอยู่ใน Master ตามปกติ</small></article>
+        <article><span>Map conflicts</span><strong>${fmt(stats.mapConflicts || 0)}</strong><small>geometry + duplicate master key</small></article>
       </div>
       <div class="farm-area-map-layout">
         <div class="farm-area-map-canvas">
@@ -23071,16 +24986,16 @@ function renderFarmAreaBlockMap() {
               <rect class="farm-map-bg" x="0" y="0" width="${width}" height="${height}" rx="18"></rect>
               ${polygons}
             </svg>
-          ` : `<div class="farm-map-empty">ยังไม่มีข้อมูลแผนที่ Block</div>`}
+          ` : `<div class="farm-map-empty">${esc(emptyMessage)}</div>`}
         </div>
         <aside class="farm-area-map-side">
-          <article><span>Block ในแผนที่</span><strong>${fmt(features.length)}</strong><small>${esc(map.source?.file || "SPC-BLOCK.kmz")}</small></article>
-          <article><span>จับคู่กับข้อมูลพื้นที่</span><strong>${fmt(matched.length)}</strong><small>จากตาราง areas</small></article>
-          <article><span>ยังไม่จับคู่</span><strong>${fmt(unmatched.length)}</strong><small>${esc(unmatched.slice(0, 6).join(", ") || "-")}</small></article>
+          <article><span>Canonical DB Blocks</span><strong>${fmt(stats.canonicalDbBlocks || 0)}</strong><small>server-side master reconciliation</small></article>
+          <article><span>KMZ Polygons</span><strong>${fmt(stats.uniqueBlockKeys || features.length)}</strong><small>authenticated Area reference</small></article>
+          <article><span>Matched</span><strong>${fmt(stats.matchedMaster || 0)}</strong><small>ใช้ canonical Block UUID ได้</small></article>
           <article class="farm-area-map-selected">
             <span>Block ที่เลือก</span>
             <strong>${esc(selectedCode)}</strong>
-            <small>${esc(selectedArea ? selectedBlockName : "กด Block บนแผนที่เพื่อดูรายละเอียด")}</small>
+            <small>${esc(selectedArea ? farmAreaMapStatusLabel(selectedArea.map_status) : "เลือก Polygon หรือ Block เพื่อดูรายละเอียด")}</small>
           </article>
           ${selectedDetails.length ? `
             <div class="farm-area-map-detail">
@@ -23089,7 +25004,8 @@ function renderFarmAreaBlockMap() {
           ` : ""}
         </aside>
       </div>
-    </section>`;
+    </section>
+    ${renderFarmAreaMapAudit()}`;
 }
 
 function farmAreaGroupDisplay(group) {
@@ -23097,84 +25013,53 @@ function farmAreaGroupDisplay(group) {
 }
 
 function farmAreaBlockDisplay(row) {
-  return row?.area_code || row?.area_name || row?.id || "-";
+  return farmLocationBlockLabel(row);
 }
 
 function renderFarmAreaBoard() {
-  const groupTable = farmTableByKey("plot_groups");
-  const areaTable = farmTableByKey("areas");
+  farmCheckAreaCatalogConsistency();
+  const hierarchy = farmAreaCatalogHierarchy();
   const query = state.farmFilters.query.trim().toLowerCase();
   const statusOk = (row) => state.farmFilters.status === "all" || String(row.status || "").toLowerCase() === state.farmFilters.status;
   const textOk = (row) => !query || Object.values(row).join(" ").toLowerCase().includes(query);
-  const areas = farmRows(areaTable)
-    .filter((row) => String(row.area_level || "block").toLowerCase() === "block")
+  const areas = hierarchy.blocks
     .filter((row) => statusOk(row) && textOk(row))
-    .sort((a, b) => String(a.zone_name || "").localeCompare(String(b.zone_name || ""), "th", { numeric: true })
-      || String(a.plot_group_code || "").localeCompare(String(b.plot_group_code || ""), "th", { numeric: true })
-      || String(a.area_code || "").localeCompare(String(b.area_code || ""), "th", { numeric: true }));
-  const allAreas = farmRows(areaTable).filter((row) => String(row.area_level || "block").toLowerCase() === "block");
-  const allGroups = farmRows(groupTable);
-  const groups = allGroups
-    .filter((row) => statusOk(row) && textOk(row))
-    .sort((a, b) => String(a.group_code || "").localeCompare(String(b.group_code || ""), "th", { numeric: true }));
-  const derivedGroups = new Map();
-  for (const area of areas) {
-    const key = String(area.plot_group_code || area.plot_group_id || "ไม่ระบุกลุ่ม").trim() || "ไม่ระบุกลุ่ม";
-    if (!derivedGroups.has(key)) {
-      const match = allGroups.find((group) => [group.id, group.group_code, group.group_name].map(String).includes(key));
-      derivedGroups.set(key, {
-        id: match?.id || "",
-        group_code: match?.group_code || key,
-        group_name: match?.group_name || key,
-        group_type: match?.group_type || area.zone_name || "-",
-        status: match?.status || "active",
-        _derived: !match,
-        count: 0,
-        area: 0,
-        trees: 0,
-      });
-    }
-    const item = derivedGroups.get(key);
-    item.count += 1;
-    item.area += n(area.area_rai);
-    item.trees += n(area.tree_count);
-  }
-  for (const group of groups) {
-    const key = String(group.group_code || group.id || "").trim();
-    if (!key || derivedGroups.has(key)) continue;
-    derivedGroups.set(key, {
-      ...group,
-      count: areas.filter((area) => [area.plot_group_id, area.plot_group_code].map(String).includes(String(group.id)) || String(area.plot_group_code || "") === String(group.group_code || "")).length,
-      area: 0,
-      trees: 0,
-    });
-  }
-  const groupRows = [...derivedGroups.values()].map((group) => `
-    <tr ${group.id ? `data-farm-area-group-row="${esc(group.id)}"` : ""}>
-      <td><strong>${esc(group.group_code || "-")}</strong></td>
-      <td>${esc(group.group_name || "-")}</td>
-      <td>${esc(group.group_type || "-")}</td>
-      <td class="num">${fmt(group.count || 0)}</td>
-      <td class="num">${fmt(group.area || 0)}</td>
-      <td class="num">${fmt(group.trees || 0)}</td>
-      <td>${esc(farmTranslateValue(group.status) || "-")}</td>
-    </tr>`).join("");
+    .sort((a, b) => String(a.estateDisplay || "").localeCompare(String(b.estateDisplay || ""), "th", { numeric: true })
+      || String(a.zoneDisplay || "").localeCompare(String(b.zoneDisplay || ""), "th", { numeric: true })
+      || String(a.blockGroupCode || "").localeCompare(String(b.blockGroupCode || ""), "th", { numeric: true })
+      || String(a.blockName || a.blockCode || "").localeCompare(String(b.blockName || b.blockCode || ""), "th", { numeric: true }));
+  const allAreas = hierarchy.blocks;
+  const totalArea = allAreas.reduce((sum, area) => sum + n(area.area_rai), 0);
+  const totalTrees = allAreas.reduce((sum, area) => sum + n(area.tree_count), 0);
+  const rspoCount = allAreas.filter((area) => String(area.rspo_status || "").trim().toUpperCase() === "RSPO").length;
+  const nonRspoCount = allAreas.filter((area) => String(area.rspo_status || "").trim().toUpperCase() === "NON-RSPO").length;
   const areaRows = areas.map((area) => `
     <tr data-farm-area-block-row="${esc(area.id)}">
-      <td><strong>${esc(farmAreaBlockDisplay(area))}</strong></td>
-      <td>${esc(area.zone_name || "-")}</td>
-      <td>${esc(area.plot_group_code || "-")}</td>
+      <td><strong>${esc(area.blockName || "-")}</strong></td>
+      <td>${esc(area.blockCode || "-")}</td>
       <td>${esc(area.ap_code || area.AP_code || "-")}</td>
-      <td class="num">${fmt(n(area.area_rai))}</td>
+      <td>${esc(area.estateDisplay || area.estateName || "-")}</td>
+      <td>${esc(area.zoneDisplay || area.zoneName || "ยังไม่ระบุ Zone")}</td>
+      <td>${esc(area.blockGroupCode || "-")}</td>
       <td>${esc(area.planting_year || "-")}</td>
+      <td class="num">${fmt(n(area.area_rai))}</td>
       <td class="num">${fmt(n(area.tree_count))}</td>
       <td>${esc(area.rspo_status || "-")}</td>
-      <td>${esc(farmTranslateValue(area.status) || "-")}</td>
+      <td><span class="farm-map-status status-${esc(area.map_status || "unknown")}">${esc(farmAreaMapStatusLabel(area.map_status))}</span></td>
     </tr>`).join("");
+  const catalogCount = farmAreaCatalogBlocks().length;
+  const budgetCount = farmAreaCatalogBlocks().length;
+  const planningCount = farmPlanningBlockRows().length;
+  const loadingNotice = state.farmAreaMasterLoading
+    ? `<div class="farm-sync-status">กำลังโหลด Canonical Area Master...</div>`
+    : state.farmAreaMasterError
+      ? `<div class="farm-sync-status error">${esc(state.farmAreaMasterError)}</div>`
+      : "";
   return `
     <section class="farm-area-board">
+      ${loadingNotice}
       <div class="farm-activity-toolbar">
-        <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหา Block / Zone / แปลง / AP Code"></label>
+        <label>ค้นหา<input id="farmSearch" type="search" value="${esc(state.farmFilters.query)}" placeholder="ค้นหา Block / Zone / กลุ่ม / AP Code"></label>
         <label>สถานะ
           <select id="farmStatusFilter">
             ${FARM_STATUS_OPTIONS.map((status) => `<option value="${esc(status)}"${state.farmFilters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}
@@ -23186,51 +25071,22 @@ function renderFarmAreaBoard() {
           </select>
         </label>
       </div>
-      <div class="farm-area-split">
-        <article class="farm-panel farm-activity-table-card">
-          <div class="section-head">
-            <h3>ตารางกลุ่มแปลง</h3>
-            <button type="button" data-farm-area-add="plot_groups">เพิ่มกลุ่มแปลง</button>
-          </div>
-          <div class="table-wrap farm-area-table-wrap">
-            <table class="mini-table farm-table">
-              <thead><tr><th>รหัส</th><th>ชื่อกลุ่ม</th><th>ประเภท</th><th>Block</th><th>ไร่</th><th>ต้น</th><th>สถานะ</th></tr></thead>
-              <tbody>${groupRows || `<tr><td colspan="7">ไม่พบกลุ่มแปลง</td></tr>`}</tbody>
-            </table>
-          </div>
-        </article>
-        <article class="farm-panel farm-activity-table-card">
-          <div class="section-head">
-            <h3>ตาราง Block</h3>
-            <button type="button" data-farm-area-add="areas">เพิ่ม Block</button>
-          </div>
-          <div class="table-wrap farm-area-table-wrap">
-            <table class="mini-table farm-table">
-              <thead><tr><th>Block</th><th>Zone</th><th>แปลง</th><th>AP Code</th><th>ไร่</th><th>ปีปลูก</th><th>ต้น</th><th>RSPO</th><th>สถานะ</th></tr></thead>
-              <tbody>${areaRows || `<tr><td colspan="9">ไม่พบข้อมูล Block</td></tr>`}</tbody>
-            </table>
-          </div>
-        </article>
-      </div>
+      <section class="farm-hero farm-area-master-kpis">
+        <article><span>ข้อมูล Block ในระบบ</span><strong>${fmt(allAreas.length)}</strong><small>all active canonical Blocks</small></article>
+        <article><span>จำนวนพื้นที่</span><strong>${fmt(totalArea)}</strong><small>ไร่ จาก Block Master</small></article>
+        <article><span>จำนวนต้น</span><strong>${fmt(totalTrees)}</strong><small>ต้น จาก Block Master</small></article>
+        <article><span>RSPO</span><strong>${fmt(rspoCount)}</strong><small>Block</small></article>
+        <article><span>Non-RSPO</span><strong>${fmt(nonRspoCount)}</strong><small>Block</small></article>
+      </section>
       <section class="farm-panel">
-        <div class="section-head"><h3>ตารางรายการ Block</h3><span>ดับเบิลคลิกแถวเพื่อแก้ไขข้อมูลพื้นที่</span></div>
+        <div class="section-head">
+          <h3>Area Master</h3>
+          <span>Area ${fmt(catalogCount)} · Budget ${fmt(budgetCount)} · Planning ${fmt(planningCount)}</span>
+        </div>
         <div class="table-wrap farm-area-bottom-wrap">
           <table class="mini-table farm-table">
-            <thead><tr><th>Block</th><th>ชื่อพื้นที่</th><th>Zone</th><th>แปลง</th><th>ฝ่ายค่าแรง</th><th>AP Code</th><th>ไร่</th><th>ปีปลูก</th><th>ต้น</th><th>RSPO</th><th>สถานะ</th></tr></thead>
-            <tbody>${areas.map((area) => `
-              <tr data-farm-area-block-row="${esc(area.id)}">
-                <td><strong>${esc(farmAreaBlockDisplay(area))}</strong></td>
-                <td>${esc(area.area_name || "-")}</td>
-                <td>${esc(area.zone_name || "-")}</td>
-                <td>${esc(area.plot_group_code || "-")}</td>
-                <td>${esc([area.payroll_department_code, area.payroll_code_description].filter(Boolean).join(" - ") || "-")}</td>
-                <td>${esc(area.ap_code || area.AP_code || "-")}</td>
-                <td class="num">${fmt(n(area.area_rai))}</td>
-                <td>${esc(area.planting_year || "-")}</td>
-                <td class="num">${fmt(n(area.tree_count))}</td>
-                <td>${esc(area.rspo_status || "-")}</td>
-                <td>${esc(farmTranslateValue(area.status) || "-")}</td>
-              </tr>`).join("") || `<tr><td colspan="11">ไม่พบรายการ</td></tr>`}</tbody>
+            <thead><tr><th>Block Name</th><th>Block Code</th><th>AP Code</th><th>Estate</th><th>Zone</th><th>Block Group</th><th>Planting Year</th><th>Area Rai</th><th>Tree Count</th><th>RSPO</th><th>Map Status</th></tr></thead>
+            <tbody>${areaRows || `<tr><td colspan="11">ไม่พบรายการ Area Master</td></tr>`}</tbody>
           </table>
         </div>
       </section>
@@ -23352,6 +25208,19 @@ function farmPeopleSummary(table, rows) {
   return `ใช้งาน ${fmt(activeCount)} · รายวัน ${fmt(daily)} · รายเดือน ${fmt(monthly)} · รายเหมา ${fmt(contract)}`;
 }
 
+function renderEmployeeSystemAccount() {
+  if (state.farmTableId !== "employees" || !state.farmDetailId) return "";
+  if (!actorCan("system.user.view") && !actorCan("system.user.manage")) return "";
+  if (!state.systemUsersLoaded && !state.systemUsersLoading) queueMicrotask(() => loadSystemUsers());
+  const employee = farmRowsByKey("employees").find((row) => row.id === state.farmDetailId);
+  if (!employee) return "";
+  const user = state.systemUsers.find((row) => row.employeeId === employee.id);
+  return `<section class="farm-panel employee-system-account"><div class="section-head"><div><h3>บัญชีผู้ใช้งานระบบ</h3><span>${esc(employee.employee_code || "")} · ${esc(employee.full_name || "")}</span></div></div>
+    ${state.systemUsersLoading ? "กำลังโหลด…" : user ? `<dl><div><dt>Username</dt><dd>${esc(user.username || "-")}</dd></div><div><dt>Email</dt><dd>${esc(user.email || "-")}</dd></div><div><dt>LINE ID</dt><dd>${esc(user.lineId || "-")}</dd></div><div><dt>Role</dt><dd>${esc(user.roleName || user.role || "-")}</dd></div><div><dt>Status</dt><dd>${esc(user.status)}</dd></div><div><dt>Last Login</dt><dd>${esc(user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString("th-TH") : "-")}</dd></div></dl>`
+      : `<p>ยังไม่มีบัญชีผู้ใช้งาน</p>${actorCan("system.user.manage") ? `<button type="button" data-system-user-create-employee="${esc(employee.id)}">สร้างบัญชีผู้ใช้งาน</button>` : ""}`}
+  </section>`;
+}
+
 function renderFarmPeopleBoard(table, rows, tables) {
   const columns = farmPeopleColumns(table);
   const summary = farmPeopleSummary(table, rows);
@@ -23409,6 +25278,7 @@ function renderFarmPeopleBoard(table, rows, tables) {
         </div>
       </section>
     </section>
+    ${renderEmployeeSystemAccount()}
     ${renderFarmActivityModal()}`;
 }
 
@@ -23590,6 +25460,78 @@ function renderFarmManagementDashboard() {
     </div>`;
 }
 
+function farmSurveyAnswerPayloads(survey, draft = state.farmResultDraft || {}) {
+  return farmSurveyQuestions(survey)
+    .filter((question) => farmLooksUuid(question.id) && farmSurveyQuestionVisible(question, draft))
+    .map((question) => {
+      const key = farmSurveyQuestionKey(question);
+      const value = draft.surveyAnswers?.[key];
+      const answerType = String(question.answer_type || "text");
+      const payload = {
+        question_id: question.id,
+        answer_text: null,
+        answer_number: null,
+        answer_boolean: null,
+        answer_date: null,
+        answer_json: {},
+        score_awarded: 0,
+        is_compliant: null,
+        is_not_applicable: false,
+        note: null,
+      };
+      if (Array.isArray(value)) payload.answer_json = { values: value };
+      else if (["number", "rating"].includes(answerType) && value !== "" && value != null) payload.answer_number = n(value);
+      else if (["yes_no", "boolean"].includes(answerType) && value !== "" && value != null) payload.answer_boolean = ["yes", "true", "1", true].includes(value);
+      else if (answerType === "date" && value) payload.answer_date = isoDay(value);
+      else if (value !== "" && value != null) payload.answer_text = String(value);
+      const weight = farmSurveyQuestionWeight(question);
+      if (weight) payload.score_awarded = ["yes", true, "true"].includes(value) ? weight : Math.min(weight, Math.max(0, n(value)));
+      const expected = farmSurveyConditionObject(question.expected_answer_json);
+      if (expected.value !== undefined) payload.is_compliant = Array.isArray(value)
+        ? value.map(String).includes(String(expected.value)) : String(value) === String(expected.value);
+      else if (["yes_no", "boolean"].includes(answerType) && value !== "" && value != null) payload.is_compliant = payload.answer_boolean;
+      return payload;
+    });
+}
+
+async function ensureFarmDailySurveyDraft(resultId) {
+  const order = farmResultSelectedOrder();
+  const survey = farmSurveyForOrder(order || {});
+  if (!survey || !farmLooksUuid(survey.id)) return null;
+  const workOrderId = farmWorkOrderDbId(order) || order.id;
+  let response = farmCurrentSurveyResponse(survey, state.farmResultDraft);
+  if (!response?.id) response = await runFarmAction("create_survey_response", {
+    template_id: survey.id,
+    survey_scope: survey.survey_scope || "work_result",
+    response_date: state.farmResultDraft.resultDate,
+    work_order_id: workOrderId,
+    work_result_id: resultId,
+    team_id: order.team_id || null,
+    block_id: order.block_id || order.block?.id || null,
+    context_snapshot: {
+      work_order_no: order.work_order_no || farmShortWorkOrderNo(order),
+      activity_id: order.activity_id || null,
+      block_id: order.block_id || order.block?.id || null,
+      team_id: order.team_id || null,
+      result_date: state.farmResultDraft.resultDate,
+    },
+  }, { reason: "สร้าง Survey draft จาก Mobile Daily Entry" });
+  if (!response?.id) throw new Error("ไม่สามารถสร้าง Survey draft ได้");
+  state.farmResultDraft.surveyResponseId = response.id;
+  state.farmResultDraft.surveyStatus = response.status || "draft";
+  if (response.status && response.status !== "draft") {
+    rememberFarmResultDraft();
+    return response;
+  }
+  const answers = farmSurveyAnswerPayloads(survey, state.farmResultDraft);
+  if (answers.length) await runFarmAction("save_survey_draft", {
+    response_id: response.id,
+    answers,
+  }, { reason: "บันทึกคำตอบ Survey จาก Mobile Daily Entry" });
+  rememberFarmResultDraft();
+  return { ...response, status: response.status || "draft" };
+}
+
 async function saveFarmDailyEntry() {
   const order = farmResultSelectedOrder();
   if (!order) return;
@@ -23643,26 +25585,158 @@ async function saveFarmDailyEntry() {
       vehicles: calc.machineLines.filter((row) => row.vehicle_id).map((row) => ({
         vehicle_id: row.vehicle_id,
         driver_employee_id: row.driver_employee_id || null,
+        start_at: row.start_at || null,
+        end_at: row.end_at || null,
         start_odometer: row.start_km,
         end_odometer: row.end_km,
         start_hour_meter: row.start_hour_meter,
         end_hour_meter: row.end_hour_meter,
+        working_hours: row.actual_hours,
+        actual_area_rai: draft.actualAreaRai,
+        actual_tree_count: draft.actualTreeCount,
         actual_quantity: draft.actualQuantity,
         actual_unit: draft.actualUnit,
-        allocation_method: "pending",
+        allocation_basis_value: row.actual_hours || draft.actualQuantity,
+        allocated_fuel_liter: row.fuel_used_liter,
+        opening_fuel_liter: row.start_fuel_liter,
+        issued_fuel_liter: row.fuel_issued_liter,
+        closing_fuel_liter: row.end_fuel_liter,
+        allocation_method: "manual_work_result",
         note: row.note,
       })),
     });
     state.farmResultDraft.existingResultId = resultId;
+    await ensureFarmDailySurveyDraft(resultId);
     rememberFarmResultDraft(state.farmResultWorkOrderId || order.id, state.farmResultDraft);
     updateFarmWorkflowUrl({
       work_order: state.farmResultWorkOrderId || order.id,
       date: state.farmResultDraft.resultDate,
     });
+    return { resultId, surveyResponseId: state.farmResultDraft.surveyResponseId || "" };
   } catch (error) {
     rememberFarmResultDraft();
     console.error("Daily result save failed", error.message);
+    return null;
   }
+}
+
+async function refreshFarmDailyFuelRequisition(vehicleId) {
+  const order = farmResultSelectedOrder();
+  if (!order || !vehicleId) return;
+  syncFarmResultWorkerDraftFromTable();
+  const workOrderId = farmWorkOrderDbId(order) || order.id;
+  await runFarmAction("refresh_vehicle_fuel_requisition", {
+    vehicle_id: vehicleId,
+    work_order_id: workOrderId,
+  }, { reason: "สร้างหรือปรับใบขอเบิกน้ำมันจาก Mobile Daily Entry" }).catch(() => null);
+}
+
+async function issueFarmDailyFuel(requisitionId, vehicleId, card) {
+  const order = farmResultSelectedOrder();
+  if (!order || !requisitionId || !vehicleId || !card) return;
+  syncFarmResultWorkerDraftFromTable();
+  const tankId = card.querySelector("[data-farm-fuel-tank]")?.value || "";
+  const issuedLiter = card.querySelector("[data-farm-fuel-issue-amount]")?.value || "";
+  if (!tankId || n(issuedLiter) <= 0) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาเลือกถังน้ำมันและระบุจำนวนที่จะจ่ายมากกว่า 0 ลิตร";
+    render();
+    return;
+  }
+  const machine = farmResultMachineLines(order).find((row) => row.vehicle_id === vehicleId) || {};
+  await runFarmAction("issue_fuel", {
+    fuel_requisition_id: requisitionId,
+    tank_id: tankId,
+    issued_liter: issuedLiter,
+    driver_employee_id: machine.driver_employee_id || machine.vehicle?.default_driver_id || null,
+    odometer_reading: machine.end_km || machine.start_km || null,
+    hour_meter_reading: machine.end_hour_meter || machine.start_hour_meter || null,
+    note: `จ่ายจาก Mobile Daily Entry · ${farmShortWorkOrderNo(order)}`,
+  }, {
+    confirmed: true,
+    reason: "บันทึกการจ่ายน้ำมันตามใบขอเบิกจาก Mobile Daily Entry",
+  }).catch(() => null);
+}
+
+async function submitFarmDailySurvey() {
+  syncFarmResultDraftFromForm();
+  const saved = await saveFarmDailyEntry();
+  const responseId = saved?.surveyResponseId || state.farmResultDraft?.surveyResponseId;
+  if (!responseId) return;
+  const result = await runFarmAction("submit_survey_response", { response_id: responseId }, {
+    confirmed: true,
+    reason: "ส่ง Survey จาก Mobile Daily Entry",
+  }).catch(() => null);
+  if (result) {
+    state.farmResultDraft.surveyStatus = result.status || "submitted";
+    rememberFarmResultDraft();
+  }
+}
+
+async function createFarmDailySurveyFinding() {
+  const responseId = state.farmResultDraft?.surveyResponseId || farmCurrentSurveyResponse()?.id;
+  if (!responseId) return;
+  const description = document.querySelector("#farmSurveyFindingDescription")?.value.trim() || "";
+  if (!description) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาระบุรายละเอียด Finding";
+    render();
+    return;
+  }
+  await runFarmAction("create_survey_finding", {
+    response_id: responseId,
+    severity: document.querySelector("#farmSurveyFindingSeverity")?.value || "low",
+    finding_type: "non_compliance",
+    description,
+    corrective_action: document.querySelector("#farmSurveyFindingAction")?.value.trim() || null,
+    due_date: document.querySelector("#farmSurveyFindingDueDate")?.value || null,
+  }, { reason: "สร้าง Finding จาก Mobile Daily Entry" }).catch(() => null);
+}
+
+async function uploadFarmDailySurveyEvidence() {
+  const responseId = state.farmResultDraft?.surveyResponseId || farmCurrentSurveyResponse()?.id;
+  const input = document.querySelector("#farmSurveyEvidenceFile");
+  const file = input?.files?.[0];
+  const caption = document.querySelector("#farmSurveyEvidenceCaption")?.value.trim() || null;
+  if (!responseId || !file) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "กรุณาบันทึก Survey draft และเลือกไฟล์หลักฐาน";
+    render();
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "ไฟล์หลักฐานต้องไม่เกิน 10 MB";
+    render();
+    return;
+  }
+  const approved = await runFarmAction("create_survey_evidence_upload", {
+    response_id: responseId,
+    file_name: file.name,
+    content_type: file.type,
+    file_size: file.size,
+  }, { reason: "ขอ signed upload สำหรับ Survey evidence" }).catch(() => null);
+  if (!approved?.upload_url) return;
+  const uploadResponse = await fetch(approved.upload_url, {
+    method: "POST",
+    headers: { "Content-Type": approved.content_type || file.type, "cache-control": "3600", "x-upsert": "false" },
+    body: file,
+  });
+  if (!uploadResponse.ok) {
+    state.farmSyncStatus = "error";
+    state.farmSyncMessage = "อัปโหลดไฟล์หลักฐานไม่สำเร็จ";
+    render();
+    return;
+  }
+  await runFarmAction("finalize_survey_evidence", {
+    response_id: responseId,
+    object_path: approved.object_path,
+    file_name: approved.file_name,
+    content_type: approved.content_type,
+    file_size: approved.file_size,
+    caption,
+    attachment_category: "evidence",
+  }, { reason: "บันทึก metadata Survey evidence" }).catch(() => null);
 }
 
 function renderFarmWorkflowModeBar({ workspaceLabel, entryLabel }) {
@@ -23728,16 +25802,35 @@ function renderFarmDailyEntryActions() {
     </div>
     <div class="farm-daily-detail-actions">
       <span>ไปยังรายละเอียด</span>
-      ${[
-        ["workers", "คนงานและเวลา"],
-        ["materials", "วัสดุ"],
-        ["vehicles", "รถและน้ำมัน"],
-        ["survey", "Survey"],
-        ["weigh-tickets", "ใบชั่ง"],
-        ["review", "ตรวจสอบและปิดงาน"],
-      ].map(([section, label]) => `<button type="button" data-farm-daily-jump="${section}">${label}</button>`).join("")}
+      ${[["summary", "สรุป"], ["result", "ผลงานวันนี้"], ["workers", "คนงาน"], ["materials", "วัสดุ"], ["vehicles", "รถ"], ["quality", "คุณภาพ"], ["survey", "Survey"], ["review", "ตรวจทาน"]]
+        .map(([section, label]) => `<button type="button" data-farm-daily-jump="${section}">${label}</button>`).join("")}
       <button type="button" data-farm-daily-detail-tab="attachments">เอกสารแนบ</button>
     </div>
+  </nav>`;
+}
+
+function renderFarmDailyMobileStepper(calc = {}, survey = null) {
+  const draft = calc.draft || {};
+  const surveyStatus = String(draft.surveyStatus || "pending");
+  const response = farmCurrentSurveyResponse(survey, draft);
+  const findingCount = response ? farmRowsByKey("survey_findings").filter((row) => row.response_id === response.id).length : 0;
+  const evidenceCount = response ? farmRowsByKey("survey_response_attachments").filter((row) => row.response_id === response.id).length : 0;
+  const steps = [
+    ["summary", "สรุปงาน", true, false],
+    ["result", "ผลงานวันนี้", n(draft.actualQuantity) > 0, false],
+    ["workers", "คนงาน", calc.workerLines?.length > 0, false],
+    ["materials", "วัสดุ", !calc.materialLines?.length || calc.materialLines.some((row) => n(row.actualQuantity) > 0), false],
+    ["vehicles", "รถ", !calc.machineLines?.length || calc.machineLines.every((row) => !row.vehicle_id || row.driver_employee_id), false],
+    ["quality", "คุณภาพ", draft.qualityScore !== "" && draft.qualityScore != null, false],
+    ["survey", "Survey", Boolean(survey) && ["draft", "submitted", "verified", "closed", "passed"].includes(surveyStatus), false],
+    ["findings", "Finding", findingCount > 0, !response],
+    ["evidence", "หลักฐาน", evidenceCount > 0, !response],
+    ["review", "ตรวจทาน", false, false],
+  ];
+  return `<nav class="farm-daily-mobile-stepper" aria-label="10 ขั้นตอนบันทึกงานประจำวัน">
+    ${steps.map(([id, label, complete, upcoming], index) => `<button type="button" data-farm-daily-jump="${id}" class="${complete ? "is-complete" : ""}${upcoming ? " is-upcoming" : ""}" ${upcoming ? "disabled" : ""}>
+      <b>${complete ? "✓" : index + 1}</b><span>${esc(label)}</span>
+    </button>`).join("")}
   </nav>`;
 }
 
@@ -23841,7 +25934,7 @@ function renderFarmWorkFilters() {
       `<option value="${esc(year)}"${filters.year === year ? " selected" : ""}>${esc(year)}</option>`).join("")}</select></label>
     <label>กิจกรรม<select data-farm-workspace-filter="activity"><option value="all">ทั้งหมด</option>${farmRowsByKey("activities").map((row) =>
       `<option value="${esc(row.id)}"${filters.activity === row.id ? " selected" : ""}>${esc(row.activity_name || row.activity_code)}</option>`).join("")}</select></label>
-    <label>พื้นที่<select data-farm-workspace-filter="block"><option value="all">ทั้งหมด</option>${farmRowsByKey("blocks").map((row) =>
+    <label>พื้นที่<select data-farm-workspace-filter="block"><option value="all">ทั้งหมด</option>${farmAreaCatalogBlocks().map((row) =>
       `<option value="${esc(row.id)}"${filters.block === row.id ? " selected" : ""}>${esc(row.block_code || row.block_name)}</option>`).join("")}</select></label>
     <label>สถานะ<select data-farm-workspace-filter="status"><option value="all">ทั้งหมด</option>${["draft", "submitted", "approved", "planned", "closed"].map((status) =>
       `<option value="${status}"${filters.status === status ? " selected" : ""}>${esc(farmTranslateValue(status))}</option>`).join("")}</select></label>
@@ -24086,6 +26179,8 @@ function renderFarmPage() {
         </div>
         <button type="button" data-farm-db-refresh>Refresh DB</button>
       </div>
+      ${renderFarmConnectionNotice()}
+      ${renderFarmModuleHealthNotice(module.id)}
       ${isBudgetPage ? "" : renderFarmWorkflowNav(module)}
       ${isHrPage ? renderFarmHrBoard(module, table) : ""}
       ${isBudgetPage ? renderFarmBudgetBoard() : ""}
@@ -24923,6 +27018,7 @@ function handlePrimaryMenuClick(event) {
 }
 
 function handlePrimaryPopstate() {
+  state.notificationCenterOpen = window.location.pathname === "/notifications";
   if (state.view === "farm-result" && document.querySelector("#farmResultDate")) syncFarmResultDraftFromForm();
   const requestedRoute = requestedWorkspaceRouteFromUrl();
   if (requestedRoute) {
@@ -24935,6 +27031,7 @@ function handlePrimaryPopstate() {
   if (state.view === "farm-result" && tab) state.farmDailyWorkspaceTab = tab;
   hydrateFarmWorkflowStateFromUrl();
   render();
+  renderWorkNotificationCenter();
   loadFarmCurrentViewTables({ silent: true });
 }
 
@@ -24970,17 +27067,100 @@ function bindCriticalUiEvents() {
     activatePrimaryMenu({ dataset: { view: "dashboard" } });
   });
   els.farmAuthButton?.addEventListener("click", openFarmAuthDialog);
+  els.appNotificationButton?.addEventListener("click", () => openWorkNotificationCenter({ page: false }));
+  els.appNotificationClose?.addEventListener("click", closeWorkNotificationCenter);
+  els.appNotificationBackdrop?.addEventListener("click", closeWorkNotificationCenter);
+  document.addEventListener("keydown", (event) => handleWorkNotificationCenterKeydown(event));
+  els.appNotificationCenter?.addEventListener("click", async (event) => {
+    const filter = event.target.closest("[data-notification-filter]");
+    if (filter) {
+      state.notificationFilter = filter.dataset.notificationFilter || "all";
+      renderWorkNotificationCenter();
+      return;
+    }
+    if (event.target.closest("[data-notification-mark-all]")) {
+      await mutateWorkNotification("mark_all_notifications_read", {});
+      return;
+    }
+    const read = event.target.closest("[data-notification-read]");
+    if (read) {
+      await mutateWorkNotification("mark_notification_read", { notification_id: read.dataset.notificationRead });
+      return;
+    }
+    const ack = event.target.closest("[data-notification-ack]");
+    if (ack) {
+      await mutateWorkNotification("acknowledge_notification", { notification_id: ack.dataset.notificationAck });
+      return;
+    }
+    const snooze = event.target.closest("[data-notification-snooze]");
+    if (snooze) {
+      await mutateWorkNotification("snooze_notification", {
+        notification_id: snooze.dataset.notificationSnooze,
+        snoozed_until: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      });
+      return;
+    }
+    const open = event.target.closest("[data-notification-open]");
+    if (open) {
+      const actionUrl = safeNotificationActionUrl(open.dataset.actionUrl);
+      if (!actionUrl) return;
+      await mutateWorkNotification("mark_notification_read", { notification_id: open.dataset.notificationOpen });
+      window.location.assign(actionUrl);
+    }
+  });
   els.farmAuthClose?.addEventListener("click", closeFarmAuthDialog);
   els.farmAuthCancel?.addEventListener("click", closeFarmAuthDialog);
   els.farmAuthForm?.addEventListener("submit", (event) => {
     event.preventDefault();
-    submitFarmSignIn();
+    if (state.farmPasswordRecoveryToken) submitFarmRecoveryPassword();
+    else submitFarmSignIn();
   });
   els.farmAuthSignOut?.addEventListener("click", submitFarmSignOut);
+  els.farmForgotPassword?.addEventListener("click", submitFarmPasswordResetRequest);
+  els.farmRecoveryPasswordSubmit?.addEventListener("click", submitFarmRecoveryPassword);
+  els.farmRecoveryShowPassword?.addEventListener("change", () => {
+    const type = els.farmRecoveryShowPassword.checked ? "text" : "password";
+    els.farmRecoveryPassword.type = type;
+    els.farmRecoveryPasswordConfirm.type = type;
+  });
+  els.farmOwnPasswordSubmit?.addEventListener("click", submitFarmOwnPassword);
   els.farmAuthDialog?.addEventListener("click", (event) => {
     if (event.target === els.farmAuthDialog) closeFarmAuthDialog();
   });
   return true;
+}
+
+function bindFarmAuthGateEvents() {
+  els.farmAuthGateLoginForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitFarmSignIn();
+  });
+  els.farmAuthGateForgot?.addEventListener("click", () => {
+    if (els.farmAuthGateForgotIdentifier) els.farmAuthGateForgotIdentifier.value = els.farmAuthGateIdentifier?.value.trim() || "";
+    showFarmAuthScreen("forgot-password");
+  });
+  els.farmAuthGateForgotForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitFarmPasswordResetRequest();
+  });
+  els.farmAuthGateResetForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitFarmRecoveryPassword();
+  });
+  els.farmAuthGate?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-auth-show-login]")) showFarmAuthScreen("login");
+    if (event.target.closest("[data-auth-show-forgot]")) showFarmAuthScreen("forgot-password");
+  });
+  const bindVisibility = (button, input) => button?.addEventListener("click", () => {
+    if (!input) return;
+    const visible = input.type === "text";
+    input.type = visible ? "password" : "text";
+    button.setAttribute("aria-pressed", String(!visible));
+    button.setAttribute("aria-label", visible ? "แสดงรหัสผ่าน" : "ซ่อนรหัสผ่าน");
+  });
+  bindVisibility(els.farmAuthGateShowPassword, els.farmAuthGatePassword);
+  bindVisibility(els.farmAuthGateRecoveryShow, els.farmAuthGateRecoveryPassword);
+  bindVisibility(els.farmAuthGateRecoveryConfirmShow, els.farmAuthGateRecoveryConfirm);
 }
 
 function ensureFarmViewState(view = state.view) {
@@ -25043,16 +27223,30 @@ function downloadCsv() {
   URL.revokeObjectURL(url);
 }
 
-async function init() {
+async function startAuthenticatedApplication() {
+  if (state.farmAppInitialized) {
+    renderFarmAuthState();
+    render();
+    startLiveRefresh();
+    return loadFarmPostLoginData();
+  }
+  state.farmAppInitialized = true;
   ensurePrintPreviewElements();
   applySidebarState();
   loadFarmResultDraftCache();
   state.view = initialViewFromUrl();
   const initialWorkspaceRoute = requestedWorkspaceRouteFromUrl();
+  const initialNotificationRoute = window.location.pathname === "/notifications";
   if (initialWorkspaceRoute) applyWorkspaceFallbackRoute(initialWorkspaceRoute);
   bindCriticalUiEvents();
-  if (isFarmView(state.view) || initialWorkspaceRoute) await loadWorkspaceShell();
+  if (isFarmView(state.view) || initialWorkspaceRoute) {
+    ensureFarmViewState(state.view);
+    render();
+    await loadWorkspaceShell();
+  }
+  else if (initialNotificationRoute) await loadWorkspaceShell();
   hydrateFarmWorkflowStateFromUrl();
+  if (window.location.pathname === "/notifications") state.notificationCenterOpen = true;
   ensureFarmViewState(state.view);
   loadClearOverrides();
   loadEstDailyEntries();
@@ -25063,10 +27257,7 @@ async function init() {
     // Paint the shell immediately; the database response can fill the page
     // afterward without making the route look frozen on a cold load.
     render();
-    const priorityFarmTables = farmDatabaseTablesForView(state.view);
-    if (priorityFarmTables.length) {
-      await loadFarmTablesFromDatabase({ silent: false, tables: priorityFarmTables });
-    }
+    await loadFarmCurrentViewTables({ silent: false });
   } else {
     const startupLoads = await Promise.allSettled([
       loadPayload(), loadMillWeightData(), loadEstData(), loadMasterFolderData(),
@@ -25151,11 +27342,33 @@ async function init() {
   document.addEventListener("toggle", (e) => saveSidebarDropdownState(e.target), true);
   document.addEventListener("click", handleEnhancedTableClick);
   els.reportPage.addEventListener("change", (e) => {
+    if (e.target.id === "systemUserEmployee") {
+      const employee = systemUserEmployeeFromInput(e.target.value);
+      if (employee && state.systemUserDrawer) {
+        state.systemUserDrawer.employeeId = employee.id;
+        render();
+      }
+      return;
+    }
+    if (e.target.matches("[data-farm-work-planting-year], [data-farm-work-planting-year-all]")) {
+      const picks = farmWorkPlanState();
+      if (e.target.matches("[data-farm-work-planting-year-all]")) {
+        picks.areaPlantingYears = [];
+      } else {
+        const years = new Set((picks.areaPlantingYears || []).map(String));
+        const year = String(e.target.dataset.farmWorkPlantingYear || "");
+        if (e.target.checked) years.add(year);
+        else years.delete(year);
+        picks.areaPlantingYears = [...years];
+      }
+      renderPreservingBudgetTreeScroll(e.target);
+      return;
+    }
     if (e.target.matches("[data-budget-planting-year], [data-budget-planting-year-all]")) {
       const picks = e.target.closest('[data-budget-context="work-plan"]')
         ? farmWorkPlanState()
         : farmBudgetContractState();
-      const blocks = farmBudgetScopedBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
+      const blocks = farmAreaCatalogBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
       const model = farmBudgetPlantingYearGroups(blocks, picks.selectedBlocks, "asc");
       const targetGroups = e.target.matches("[data-budget-planting-year-all]")
         ? model.years
@@ -25306,9 +27519,6 @@ async function init() {
       return;
     }
     if (e.target.id === "farmDispatchOrderSelect") {
-      if (state.farmDispatchWorkOrderId) {
-        updateFarmWorkflowUrl({ work_order: state.farmDispatchWorkOrderId });
-      }
       state.farmDispatchWorkOrderId = e.target.value;
       state.farmWorkDetailId = e.target.value;
       state.farmDispatchTeamId = "";
@@ -25341,6 +27551,13 @@ async function init() {
     }
     if (["farmResultDate", "farmResultTicketText", "farmResultQuantity", "farmResultUnit", "farmResultQuality", "farmResultSurveyStatus", "farmResultSurveyNote"].includes(e.target.id)) {
       handleFarmResultFormFieldChange(e.target);
+      return;
+    }
+    if (e.target.matches("[data-farm-survey-answer]")) {
+      const scrollTop = document.scrollingElement?.scrollTop || window.scrollY;
+      syncFarmResultDraftFromForm();
+      render();
+      requestAnimationFrame(() => window.scrollTo({ top: scrollTop }));
       return;
     }
     if (e.target.matches("[data-farm-result-worker-field]")) {
@@ -25709,6 +27926,83 @@ async function init() {
     }
   });
   els.reportPage.addEventListener("click", async (e) => {
+    if (e.target.closest("[data-system-user-close]")) {
+      state.systemUserDrawer = null;
+      render();
+      return;
+    }
+    if (e.target.closest("[data-system-user-refresh]")) {
+      await loadSystemUsers({ force: true });
+      return;
+    }
+    if (e.target.closest("[data-system-user-new]")) {
+      state.systemUserDrawer = { mode: "create", employeeId: "" };
+      render();
+      return;
+    }
+    const editUser = e.target.closest("[data-system-user-edit]");
+    if (editUser) {
+      state.systemUserDrawer = { mode: "edit", profileId: editUser.dataset.systemUserEdit };
+      render();
+      return;
+    }
+    const resetUser = e.target.closest("[data-system-user-reset]");
+    if (resetUser) {
+      state.systemUserDrawer = { mode: "reset", profileId: resetUser.dataset.systemUserReset };
+      render();
+      return;
+    }
+    const employeeUser = e.target.closest("[data-system-user-employee]");
+    if (employeeUser?.dataset.systemUserEmployee) {
+      state.view = "farm-people";
+      state.farmTableId = "employees";
+      state.farmDetailId = employeeUser.dataset.systemUserEmployee;
+      render();
+      return;
+    }
+    const createEmployeeUser = e.target.closest("[data-system-user-create-employee]");
+    if (createEmployeeUser) {
+      state.view = "farm-governance";
+      state.farmTableId = "profiles";
+      state.systemUserDrawer = { mode: "create", employeeId: createEmployeeUser.dataset.systemUserCreateEmployee };
+      render();
+      return;
+    }
+    if (e.target.closest("[data-system-user-show-password]")) {
+      const visible = e.target.checked;
+      document.querySelectorAll("#systemUserPassword, #systemUserPasswordConfirm").forEach((input) => { input.type = visible ? "text" : "password"; });
+      return;
+    }
+    if (e.target.closest("[data-system-user-save]")) {
+      try {
+        await submitSystemUserDrawer();
+      } catch (error) {
+        state.farmSyncStatus = "error";
+        state.farmSyncMessage = error.message;
+        render();
+      }
+      return;
+    }
+    const dispatchOpen = e.target.closest("[data-farm-dispatch-open]");
+    if (dispatchOpen) {
+      const orderId = dispatchOpen.dataset.farmDispatchOpen;
+      state.farmDispatchWorkOrderId = orderId;
+      state.farmWorkDetailId = orderId;
+      state.farmDispatchTeamId = "";
+      state.farmDispatchExtraWorkers = [];
+      state.farmDispatchExtraMaterials = [];
+      state.farmDispatchExtraVehicles = [];
+      updateFarmWorkflowUrl({ work_order: orderId }, { push: true });
+      render();
+      requestAnimationFrame(() => document.querySelector("#farm-dispatch-step-overview")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      return;
+    }
+    const dispatchJump = e.target.closest("[data-farm-dispatch-jump]");
+    if (dispatchJump) {
+      document.querySelector(`#farm-dispatch-step-${CSS.escape(dispatchJump.dataset.farmDispatchJump)}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     const workflowMode = e.target.closest("[data-farm-workflow-mode]");
     if (workflowMode) {
       setFarmWorkflowMode(workflowMode.dataset.farmWorkflowMode);
@@ -26115,8 +28409,7 @@ async function init() {
       return;
     }
     if (e.target.closest("[data-farm-db-refresh]")) {
-      const viewTables = farmDatabaseTablesForView(state.view);
-      loadFarmTablesFromDatabase({ silent: true, force: true, tables: viewTables.length ? viewTables : null });
+      loadFarmCurrentViewTables({ silent: true, force: true });
       return;
     }
     if (e.target.closest("[data-farm-budget-sync]")) {
@@ -26325,7 +28618,7 @@ async function init() {
       return;
     }
     if (e.target.closest("[data-farm-dispatch-save]")) {
-      saveFarmDispatchOrder();
+      saveFarmDispatchOrderActionOnly();
       return;
     }
     if (e.target.closest("[data-farm-dispatch-add-worker]")) {
@@ -26393,6 +28686,36 @@ async function init() {
     }
     if (e.target.closest("[data-farm-dispatch-bulk-print]")) {
       printFarmDispatchBulkOrders();
+      return;
+    }
+    const fuelRequest = e.target.closest("[data-farm-fuel-request]");
+    if (fuelRequest) {
+      refreshFarmDailyFuelRequisition(fuelRequest.dataset.farmFuelRequest);
+      return;
+    }
+    const fuelIssue = e.target.closest("[data-farm-fuel-issue]");
+    if (fuelIssue) {
+      issueFarmDailyFuel(
+        fuelIssue.dataset.farmFuelIssue,
+        fuelIssue.dataset.farmFuelVehicle,
+        fuelIssue.closest("[data-farm-result-machine]"),
+      );
+      return;
+    }
+    if (e.target.closest("[data-farm-survey-save]")) {
+      saveFarmDailyEntry();
+      return;
+    }
+    if (e.target.closest("[data-farm-survey-submit]")) {
+      submitFarmDailySurvey();
+      return;
+    }
+    if (e.target.closest("[data-farm-survey-create-finding]")) {
+      createFarmDailySurveyFinding();
+      return;
+    }
+    if (e.target.closest("[data-farm-survey-upload-evidence]")) {
+      uploadFarmDailySurveyEvidence();
       return;
     }
     if (e.target.closest("[data-farm-survey-print]")) {
@@ -26948,11 +29271,24 @@ async function init() {
 
   renderFarmAuthState();
   render();
+  renderWorkNotificationCenter();
   startLiveRefresh();
   if (new URLSearchParams(window.location.search).has("autoRefresh")) autoRefreshTransportFromQuery();
 }
 
+async function init() {
+  bindFarmAuthGateEvents();
+  if (await detectFarmPasswordRecovery()) return;
+  const restored = await loadWorkspaceShell({ sessionOnly: true });
+  if (!restored || !state.farmSession?.ok) {
+    showFarmAuthScreen("login");
+    return;
+  }
+  showFarmAuthenticatedApplication();
+  await startAuthenticatedApplication();
+}
+
 init().catch((error) => {
-  els.sourceInfo.textContent = "โหลดข้อมูลไม่สำเร็จ";
-  els.reportPage.innerHTML = `<div class="report-title"><h2>${error.message}</h2></div>`;
+  state.farmAppActive = false;
+  showFarmAuthScreen("login", "ไม่สามารถเริ่มระบบได้ กรุณาลองใหม่");
 });

@@ -43,8 +43,8 @@ test("payroll rows follow work-result period and summary relationships", () => {
 });
 
 test("partial table responses merge into existing client state without clearing other tables", () => {
-  assert.match(appSource, /replaceSnapshot = replacesAll && !Object\.keys\(payload\.errors \|\| \{\}\)\.length/);
+  assert.match(appSource, /replaceSnapshot = replacesAll && !Object\.keys\(errors\)\.length/);
   assert.match(appSource, /state\.farmDbRows = replaceSnapshot \? nextRows : \{ \.\.\.\(state\.farmDbRows \|\| \{\}\), \.\.\.nextRows \}/);
-  assert.match(appSource, /state\.farmDbErrors = replaceSnapshot \? \(payload\.errors \|\| \{\}\)/);
+  assert.match(appSource, /state\.farmDbErrors = replaceSnapshot \? errors/);
   assert.match(appSource, /farmMarkTablesLoaded\(Object\.keys\(nextRows\)\)/);
 });

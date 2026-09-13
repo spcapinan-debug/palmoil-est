@@ -21,7 +21,12 @@ async function handler(req, res) {
       ok: true,
       profile: {
         id: actor.profile.id,
+        employeeId: actor.profile.employee_id || null,
+        employeeCode: actor.profile.employee_code || null,
         displayName: actor.profile.display_name || actor.profile.full_name || actor.profile.email || "User",
+        username: actor.profile.username || null,
+        email: actor.user.email || null,
+        lineId: actor.profile.line_id || null,
       },
       roles: [...actor.roles],
       permissions: [...actor.permissions],

@@ -262,7 +262,7 @@ test("farm table healthcheck validates server configuration without exposing sec
     const res = responseRecorder();
     await farmTables({ method: "GET", url: "/api/farm-tables?healthcheck=1", headers: {} }, res);
     assert.equal(res.statusCode, 200);
-    assert.deepEqual(res.body, { ok: true, route: "farm-tables", configured: true, authRequired: true });
+    assert.deepEqual(res.body, { ok: true, route: "farm-tables", configured: true, authRequired: true, projectRef: "example" });
     assert.doesNotMatch(JSON.stringify(res.body), /server-only-test-key|SUPABASE_SERVICE_ROLE_KEY/);
   } finally {
     if (previousUrl === undefined) delete process.env.SUPABASE_URL;
