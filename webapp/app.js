@@ -15833,26 +15833,134 @@ function renderFarmWorkPlanner() {
     && farmRateMatchesActivity(row, previewActivity)
     && selectedBlocks.some((block) => farmRateMatchesBlock(row, block))
   );
-  const planBudgetRates = matchingBudgetRates;
-  const savedBudgetRate = budgetRates.find((row) => row.id === budgetPicks.selectedBudgetRateId) || null;
-  const matchingSelectedBudgetRate = planBudgetRates.find((row) => row.id === budgetPicks.selectedBudgetRateId) || null;
-  const autoBudgetRate = planBudgetRates[0] || {};
-  const keepSavedBudgetRate = Boolean(state.farmWorkDetailId && savedBudgetRate?.id);
-  const selectedBudgetRate = keepSavedBudgetRate
-    ? savedBudgetRate
-    : (matchingSelectedBudgetRate || autoBudgetRate);
-  if (!keepSavedBudgetRate) budgetPicks.selectedBudgetRateId = selectedBudgetRate?.id || "";
-  const planBudgetRateOptions = selectedBudgetRate?.id
-    ? [selectedBudgetRate, ...planBudgetRates.filter((row) => row.id !== selectedBudgetRate.id)]
-    : planBudgetRates;
-  const selectedBudgetRateMatches = Boolean(selectedBudgetRate?.id
-    && previewActivity
-    && selectedBlocks.length
-    && farmRateMatchesActivity(selectedBudgetRate, previewActivity)
-    && selectedBlocks.some((block) => farmRateMatchesBlock(selectedBudgetRate, block)));
-  const budgetMatchedBlocks = selectedBudgetRate?.id
-    ? selectedBlocks.filter((block) => farmRateMatchesBlock(selectedBudgetRate, block))
-    : [];
+  const logicalPlanBudgetRateGroups =
+    farmPlanLogicalRateGroups(
+      matchingBudgetRates,
+      budgetPicks.selectedBudgetRateId,
+    );
+
+  const savedBudgetRate =
+    budgetRates.find(
+      (row) =>
+        String(row.id || "")
+        === String(
+          budgetPicks.selectedBudgetRateId
+          || ""
+        )
+    )
+    || null;
+
+  const matchingSelectedLogicalRateGroup =
+    farmPlanLogicalRateGroupForId(
+      logicalPlanBudgetRateGroups,
+      budgetPicks.selectedBudgetRateId,
+    );
+
+  const autoLogicalRateGroup =
+    logicalPlanBudgetRateGroups.length === 1
+      ? logicalPlanBudgetRateGroups[0]
+      : null;
+
+  const keepSavedBudgetRate =
+    Boolean(
+      state.farmWorkDetailId
+      && savedBudgetRate?.id
+    );
+
+  const savedLogicalRateGroup =
+    keepSavedBudgetRate
+    && savedBudgetRate?.id
+      ? (
+          farmPlanLogicalRateGroups(
+            budgetRates.filter(
+              (row) =>
+                farmPlanLogicalRateKey(row)
+                === farmPlanLogicalRateKey(
+                  savedBudgetRate
+                )
+            ),
+            savedBudgetRate.id,
+          )[0]
+          || null
+        )
+      : null;
+
+  const selectedLogicalRateGroup =
+    savedLogicalRateGroup
+    || matchingSelectedLogicalRateGroup
+    || autoLogicalRateGroup
+    || null;
+
+  const selectedBudgetRate =
+    selectedLogicalRateGroup
+      ?.representative
+    || null;
+
+  if (!keepSavedBudgetRate) {
+    budgetPicks.selectedBudgetRateId =
+      selectedBudgetRate?.id
+      || "";
+  }
+
+  const planBudgetRateGroups =
+    selectedLogicalRateGroup
+    && !logicalPlanBudgetRateGroups.some(
+      (group) =>
+        group.key
+        === selectedLogicalRateGroup.key
+    )
+      ? [
+          selectedLogicalRateGroup,
+          ...logicalPlanBudgetRateGroups,
+        ]
+      : selectedLogicalRateGroup
+        ? [
+            selectedLogicalRateGroup,
+            ...logicalPlanBudgetRateGroups.filter(
+              (group) =>
+                group.key
+                !== selectedLogicalRateGroup.key
+            ),
+          ]
+        : logicalPlanBudgetRateGroups;
+
+  const planBudgetRateOptions =
+    planBudgetRateGroups
+      .map(
+        (group) =>
+          group.representative
+      )
+      .filter(Boolean);
+  const selectedBudgetRateMatches =
+    Boolean(
+      selectedLogicalRateGroup
+      && previewActivity
+      && selectedBlocks.length
+      && selectedBlocks.some(
+        (block) =>
+          Boolean(
+            farmPlanLogicalRateMemberForBlock(
+              selectedLogicalRateGroup,
+              block,
+              previewActivity,
+            )
+          )
+      )
+    );
+
+  const budgetMatchedBlocks =
+    selectedLogicalRateGroup
+      ? selectedBlocks.filter(
+          (block) =>
+            Boolean(
+              farmPlanLogicalRateMemberForBlock(
+                selectedLogicalRateGroup,
+                block,
+                previewActivity,
+              )
+            )
+        )
+      : [];
   const budgetMismatchMessage = farmPlanBudgetMatchMessage({
     activeRates: activeBudgetRates,
     activity: previewActivity,
@@ -15877,9 +15985,16 @@ function renderFarmWorkPlanner() {
   const selectedMaterial = selectedMaterials[0]
     || materials.find((row) => row.id === (selectedUsageRate.material_id || materialBudgetRate?.material_id || selectedBudgetRate?.material_id))
     || {};
-  const rateMaterialUsageRows = selectedBudgetRate?.id
-    ? farmBudgetMaterialUsageRows(selectedBudgetRate, budgetMatchedBlocks.length ? budgetMatchedBlocks : selectedBlocks)
-    : [];
+  const rateMaterialUsageRows =
+    selectedLogicalRateGroup
+      ? farmPlanLogicalRateMaterialUsageRows(
+          selectedLogicalRateGroup,
+          budgetMatchedBlocks.length
+            ? budgetMatchedBlocks
+            : selectedBlocks,
+          previewActivity,
+        )
+      : [];
   const previewSurvey = farmSurveyForActivity(previewActivity);
   const previewSurveyQuestions = farmSurveyQuestions(previewSurvey);
   const calculationBase = selectedUsageRate.usage_basis === "per_tree" ? totalTrees : selectedUsageRate.usage_basis === "per_rai" ? totalRai : selectedBlocks.length;
@@ -15991,6 +16106,9 @@ function renderFarmWorkPlanner() {
           </div>
           <label class="farm-plan-rate-select">อัตรางบประมาณ
             <select id="farmPlanBudgetRate">
+              ${planBudgetRateOptions.length && !selectedBudgetRate?.id
+                ? `<option value="" selected>เลือก Rate</option>`
+                : ""}
               ${planBudgetRateOptions.length
                 ? planBudgetRateOptions.map((row) => `<option value="${esc(row.id)}"${row.id === selectedBudgetRate?.id ? " selected" : ""}>${esc(farmPlanBudgetRateOptionLabel(row))}</option>`).join("")
                 : `<option value="">ยังไม่มีอัตราที่ตรงกับ Block และกิจกรรม</option>`}
@@ -16083,9 +16201,12 @@ async function createFarmWorkPlanFromSelection() {
           const survey = farmSurveyForActivity(activity);
           const activeRates = budgetRates.filter((rate) => String(rate.status || "active").toLowerCase() !== "inactive");
           const ratePool = activeRates.filter((rate) => farmRateMatchesActivity(rate, activity) && farmRateMatchesBlock(rate, block));
-          const explicitRate = activeRates.find((rate) => rate.id === picks.selectedBudgetRateId);
-          const selectedRate = (explicitRate?.id && farmRateMatchesActivity(explicitRate, activity) ? explicitRate : null)
-            || ratePool[0];
+          const selectedRate = farmPlanResolveLogicalRateForBlock(
+            activeRates,
+            picks.selectedBudgetRateId,
+            activity,
+            block,
+          );
           if (!selectedRate?.id) {
             throw new Error(farmPlanBudgetMatchMessage({ activeRates, activity, selectedBlocks: [block], matchingRates: ratePool }));
           }
@@ -16243,9 +16364,12 @@ async function saveFarmWorkPlanEditFromSelection() {
           const occurrenceNo = scheduledDates.indexOf(scheduledDate) + 1;
           const activeRates = budgetRates.filter((rate) => String(rate.status || "active").toLowerCase() !== "inactive");
           const ratePool = activeRates.filter((rate) => farmRateMatchesActivity(rate, activity) && farmRateMatchesBlock(rate, block));
-          const explicitRate = activeRates.find((rate) => rate.id === picks.selectedBudgetRateId);
-          const selectedRate = (explicitRate?.id && farmRateMatchesActivity(explicitRate, activity) ? explicitRate : null)
-            || ratePool[0];
+          const selectedRate = farmPlanResolveLogicalRateForBlock(
+            activeRates,
+            picks.selectedBudgetRateId,
+            activity,
+            block,
+          );
           if (!selectedRate?.id) throw new Error(farmPlanBudgetMatchMessage({ activeRates, activity, selectedBlocks: [block], matchingRates: ratePool }));
           const estimate = farmBudgetRateCost(selectedRate, [block]);
           const materialRate = farmBestBudgetRateForPlan(activeRates, activity, [block], ["material"]);
@@ -22976,6 +23100,264 @@ function farmBudgetBahtRateLabel(row = {}) {
   return `${farmBudgetRateNumberLabel(amount)} บาท${unit ? `/${unit}` : ""}`;
 }
 
+/* FARM_RATE_DEDUPE_AUTOSELECT_V3
+   Planning logical Rate = Activity + Rate + UOM.
+
+   Source Budget Rate records remain unchanged.
+   No database mutation is performed here.
+*/
+function farmPlanLogicalRateKey(rate = {}) {
+  const activityKey = String(
+    rate.activity_id
+    || farmNormalizeKey(rate.activity_code)
+    || farmNormalizeKey(rate.activity_name)
+    || ""
+  );
+
+  const rawAmount =
+    rate.rate_amount
+    ?? rate.rate_text
+    ?? "";
+
+  const numericAmount = Number(rawAmount);
+
+  const amountKey =
+    rawAmount !== ""
+    && Number.isFinite(numericAmount)
+      ? numericAmount
+          .toFixed(6)
+          .replace(/\.?0+$/, "")
+      : farmNormalizeKey(rawAmount);
+
+  const unitKey = farmNormalizeKey(
+    farmBudgetRateUnitLabel(
+      rate.unit_name
+      || rate.uom
+      || ""
+    )
+  );
+
+  return [
+    activityKey,
+    amountKey,
+    unitKey,
+  ].join("|");
+}
+
+function farmPlanLogicalRateGroups(
+  rates = [],
+  preferredRateId = ""
+) {
+  const preferredId =
+    String(preferredRateId || "");
+
+  const groups = new Map();
+
+  (rates || []).forEach((rate) => {
+    if (!rate?.id) return;
+
+    const key =
+      farmPlanLogicalRateKey(rate);
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        members: [],
+      });
+    }
+
+    const group = groups.get(key);
+
+    if (
+      !group.members.some(
+        (member) =>
+          String(member.id || "")
+          === String(rate.id || "")
+      )
+    ) {
+      group.members.push(rate);
+    }
+  });
+
+  return [...groups.values()].map((group) => {
+    const preferred =
+      preferredId
+        ? group.members.find((rate) =>
+            String(rate.id || "") === preferredId
+            || farmBudgetRateIds(rate).has(preferredId)
+          )
+        : null;
+
+    return {
+      ...group,
+      representative:
+        preferred
+        || group.members[0]
+        || null,
+    };
+  });
+}
+
+function farmPlanLogicalRateGroupForId(
+  groups = [],
+  rateId = ""
+) {
+  const target =
+    String(rateId || "");
+
+  if (!target) return null;
+
+  return (
+    (groups || []).find((group) =>
+      (group.members || []).some((rate) =>
+        String(rate.id || "") === target
+        || farmBudgetRateIds(rate).has(target)
+      )
+    )
+    || null
+  );
+}
+
+function farmPlanLogicalRateMemberForBlock(
+  group,
+  block,
+  activity = null
+) {
+  if (!group || !block) return null;
+
+  const representative =
+    group.representative || null;
+
+  const ordered = [
+    ...(representative
+      ? [representative]
+      : []),
+    ...(group.members || []).filter(
+      (rate) => rate !== representative
+    ),
+  ];
+
+  return (
+    ordered.find((rate) =>
+      (
+        !activity
+        || farmRateMatchesActivity(
+          rate,
+          activity
+        )
+      )
+      && farmRateMatchesBlock(
+        rate,
+        block
+      )
+    )
+    || null
+  );
+}
+
+function farmPlanResolveLogicalRateForBlock(
+  rates = [],
+  selectedRateId = "",
+  activity,
+  block
+) {
+  const target =
+    String(selectedRateId || "");
+
+  if (
+    !target
+    || !activity
+    || !block
+  ) {
+    return null;
+  }
+
+  const selectedRate =
+    (rates || []).find(
+      (rate) =>
+        String(rate.id || "") === target
+    )
+    || (rates || []).find(
+      (rate) =>
+        farmBudgetRateIds(rate).has(target)
+    )
+    || null;
+
+  if (
+    !selectedRate?.id
+    || !farmRateMatchesActivity(
+      selectedRate,
+      activity
+    )
+  ) {
+    return null;
+  }
+
+  const logicalKey =
+    farmPlanLogicalRateKey(
+      selectedRate
+    );
+
+  const matchingLogicalRates =
+    (rates || []).filter((rate) =>
+      farmPlanLogicalRateKey(rate)
+        === logicalKey
+      && farmRateMatchesActivity(
+        rate,
+        activity
+      )
+      && farmRateMatchesBlock(
+        rate,
+        block
+      )
+    );
+
+  return (
+    matchingLogicalRates.find(
+      (rate) =>
+        String(rate.id || "") === target
+    )
+    || matchingLogicalRates[0]
+    || null
+  );
+}
+
+function farmPlanLogicalRateMaterialUsageRows(
+  group,
+  blocks = [],
+  activity = null
+) {
+  if (!group) return [];
+
+  const buckets = new Map();
+
+  (blocks || []).forEach((block) => {
+    const rate =
+      farmPlanLogicalRateMemberForBlock(
+        group,
+        block,
+        activity
+      );
+
+    if (!rate) return;
+
+    if (!buckets.has(rate)) {
+      buckets.set(rate, []);
+    }
+
+    buckets.get(rate).push(block);
+  });
+
+  return [...buckets.entries()]
+    .flatMap(([rate, rateBlocks]) =>
+      farmBudgetMaterialUsageRows(
+        rate,
+        rateBlocks
+      )
+    );
+}
+
+/* FARM_RATE_DEDUPE_AUTOSELECT_V3_END */
 function farmPlanBudgetRateOptionLabel(row = {}) {
   return [
     farmBudgetDisplayRateCode(row),
