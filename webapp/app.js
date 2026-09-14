@@ -14833,7 +14833,7 @@ function farmWorkGroupKey(row) {
   const zoneOption = farmWorkTextOption(row, "zone");
   const plotGroupOption = farmWorkTextOption(row, "plotGroup");
   const parts = [
-    checks.activity !== false ? (row.activityGroup?.group_name || row.activityGroup?.group_code || "ไม่ระบุกลุ่มกิจกรรม") : "",
+    checks.activity !== false ? (row.activityGroup?.group_name || row.activityGroup?.group_code || farmWorkTimelineActivityLabel(row)) : "",
     checks.zone !== false ? (zoneOption.label || row.zone?.zone_name || row.zone?.zone_code || "ไม่ระบุโซน") : "",
     checks.plotGroup !== false ? (plotGroupOption.label || row.plotGroup?.group_name || row.plotGroup?.group_code || "ไม่ระบุกลุ่มแปลง") : "",
   ].filter(Boolean);
@@ -15004,6 +15004,40 @@ function farmShortActivityText(row) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 30) || "-";
+}
+
+function farmWorkTimelineActivityMeta(row = {}) {
+  const masterActivity = farmLookup("activities", row?.activity_id) || {};
+  const activity = { ...masterActivity, ...(row?.activity || {}) };
+  const originalTitle = String(row?.work_order_title || activity.activity_name || activity.name || "-").trim() || "-";
+  let activityName = String(activity.activity_name || activity.name || originalTitle).trim();
+  let activityCode = String(activity.activity_code || activity.code || "").trim();
+
+  activityName = activityName.replace(/^\s*ไม่ระบุกลุ่มกิจกรรม\s*\/\s*/i, "").trim();
+  const trailingCode = activityName.match(/\s*\/\s*([A-Z]{1,8}[-_]?\d{1,8})\s*$/i);
+  if (!activityCode && trailingCode) activityCode = trailingCode[1];
+  if (trailingCode && (!activityCode || trailingCode[1].toLowerCase() === activityCode.toLowerCase())) {
+    activityName = activityName.slice(0, trailingCode.index).trim();
+  }
+  activityName = activityName
+    .replace(/^\s*[A-Z]{1,8}[-_]?\d{0,8}\s*[-:]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim() || "-";
+
+  return {
+    activityCode,
+    activityName,
+    label: [activityName, activityCode].filter(Boolean).join(" / ") || "-",
+    title: originalTitle,
+  };
+}
+
+function farmWorkTimelineActivityLabel(row = {}) {
+  return farmWorkTimelineActivityMeta(row).label;
+}
+
+function farmWorkTimelineActivityTitle(row = {}) {
+  return farmWorkTimelineActivityMeta(row).title;
 }
 
 function farmShortBlockText(row) {
@@ -16087,7 +16121,7 @@ function renderFarmWorkPlanner() {
           </div>
           <div class="budget-tree-grid budget-tree-grid-work-order farm-work-budget-selector" data-budget-context="work-plan">
             <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmWorkAreaSelector(budgetPicks)}</div></section>
-            <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree(budgetPicks)}</div></section>
+            <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree(budgetPicks, { groups: activityGroups, activities })}</div></section>
             <section class="budget-tree-card"><h4>วัสดุ</h4><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>รถ / เครื่องจักร</h4><div class="budget-tree-scroll">${renderFarmBudgetVehicleTree(budgetPicks)}</div></section>
             <section class="budget-tree-card"><h4>พนักงาน</h4><div class="budget-tree-scroll">${renderFarmBudgetWorkerTree(budgetPicks)}</div></section>
@@ -21678,7 +21712,7 @@ function renderFarmWorkBoard(options = {}) {
   for (const row of timelineRows) {
     const group = farmWorkGroupKey(row);
     if (group !== lastGroup) {
-      groupedRows.push({ type: "group", id: `group-${group}`, group, count: groupCounts.get(group) || 0 });
+      groupedRows.push({ type: "group", id: `group-${group}`, group, title: farmWorkTimelineActivityTitle(row), count: groupCounts.get(group) || 0 });
       lastGroup = group;
     }
     groupedRows.push({ type: "order", row });
@@ -21757,7 +21791,7 @@ function renderFarmWorkBoard(options = {}) {
               if (item.type === "group") {
                 return `
                   <div class="farm-work-row farm-work-group-row">
-                    <div class="farm-work-group-left"><strong>${esc(item.group)}</strong><span>${fmt(item.count)} work orders</span></div>
+                    <div class="farm-work-group-left"><strong title="${esc(item.title || item.group)}">${esc(item.group)}</strong><span>${fmt(item.count)} work orders</span></div>
                     <div class="farm-work-group-lane" style="width:${timelineWidth}px"></div>
                   </div>`;
               }
@@ -21775,7 +21809,8 @@ function renderFarmWorkBoard(options = {}) {
               const approvedIndex = approvedRawIndex >= 0 && approvedRawIndex < days.length ? approvedRawIndex : -1;
               const closedIndex = closedRawIndex >= 0 && closedRawIndex < days.length ? closedRawIndex : -1;
               const needsApproval = row.statusMeta.key === "pending_approval";
-              const activityText = farmShortActivityText(row);
+              const activityText = farmWorkTimelineActivityLabel(row);
+              const activityTitle = farmWorkTimelineActivityTitle(row);
               const blockText = farmShortBlockText(row);
               const teamText = row.team?.team_name || farmLookupLabel("teams", row.team_id) || "-";
               const segmentBars = segments.map((segment) => {
@@ -21787,7 +21822,7 @@ function renderFarmWorkBoard(options = {}) {
               return `
                 <div class="farm-work-row status-${esc(row.statusMeta.key)}${selected?.id === row.id ? " active" : ""}" data-farm-work-detail="${esc(row.id)}">
                   <button type="button" class="farm-work-left">
-                    <strong title="${esc(row.work_order_title || row.activity?.activity_name || "-")}"><small>${esc(row.shortNo || farmShortWorkOrderNo(row))}</small>${esc(activityText)}</strong>
+                    <strong title="${esc(activityTitle)}"><small>${esc(row.shortNo || farmShortWorkOrderNo(row))}</small><span class="farm-work-activity-label">${esc(activityText)}</span></strong>
                     <span>${esc(blockText)}</span>
                     <span>${esc(teamText)}</span>
                     <i style="--status:${esc(row.statusMeta.color)}">${esc(row.statusMeta.label)}</i>
@@ -24554,9 +24589,12 @@ function renderFarmBudgetAreaDropdowns() {
     </div>`;
 }
 
-function renderFarmBudgetActivityTree(picks = farmBudgetContractState()) {
-  const groups = farmAuthoritativeRowsByKey("activity_groups");
-  const activities = farmAuthoritativeRowsByKey("activities").filter((activity) => farmBudgetMatchesQuery(farmBudgetActivityLabel(activity)));
+function renderFarmBudgetActivityTree(picks = farmBudgetContractState(), source = {}) {
+  const groups = (Array.isArray(source.groups) ? source.groups : farmAuthoritativeRowsByKey("activity_groups"))
+    .filter((group) => farmCanonicalRowIsActive(group));
+  const activities = (Array.isArray(source.activities) ? source.activities : farmAuthoritativeRowsByKey("activities"))
+    .filter((activity) => farmCanonicalRowIsActive(activity))
+    .filter((activity) => farmBudgetMatchesQuery(farmBudgetActivityLabel(activity)));
   if (!activities.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูลกิจกรรม</div>`;
   const knownGroupIds = new Set(groups.map((group) => group.id));
   const inferredGroups = new Map();

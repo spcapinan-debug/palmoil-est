@@ -10980,6 +10980,16 @@ tfoot td {
   white-space: nowrap;
 }
 
+.farm-work-left .farm-work-activity-label {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 .farm-work-left span {
   overflow: hidden;
   color: var(--muted);
@@ -11311,6 +11321,10 @@ tfoot td {
   color: #0f2942;
   font-size: 9px;
   font-weight: 950;
+}
+
+.farm-work-compact .farm-work-left .farm-work-activity-label {
+  max-width: calc(100% - 54px);
 }
 
 .farm-work-compact .farm-work-left span {
