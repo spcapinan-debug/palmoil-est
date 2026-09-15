@@ -15267,6 +15267,11 @@ function farmEnrichPlanningBlock(block = {}) {
   const id = block.id || matchedArea?.id || matchedBlock?.id || "";
   const sourceBlockId = matchedBlock?.id || (!isAreaRow ? block.id : "") || "";
   const areaId = matchedArea?.id || (isAreaRow ? block.id : "") || "";
+  const zoneName = farmAreaZoneValue(
+    block.zone_name, block.zoneName, block.zone, block.superior,
+    matchedArea?.zone_name, matchedArea?.zoneName, matchedArea?.zone, matchedArea?.superior,
+    matchedBlock?.zone_name, matchedBlock?.zoneName, matchedBlock?.zone, matchedBlock?.superior,
+  );
   return {
     ...matchedBlock,
     ...matchedArea,
@@ -15280,7 +15285,9 @@ function farmEnrichPlanningBlock(block = {}) {
     area_name: farmFirstFilled(block.area_name, matchedArea?.area_name, block.block_name, matchedBlock?.block_name),
     terrain_code: farmFirstFilled(block.terrain_code, block.block_code, block.area_code, matchedArea?.terrain_code, matchedArea?.area_code, matchedBlock?.terrain_code),
     estate_name: farmFirstFilled(block.estate_name, matchedArea?.estate_name, matchedBlock?.estate_name),
-    zone_name: farmFirstFilled(block.zone_name, matchedArea?.zone_name, matchedBlock?.zone_name),
+    zone_name: zoneName,
+    zoneName,
+    zoneDisplay: farmZoneDisplayName(zoneName),
     plot_group_code: farmFirstFilled(block.plot_group_code, block.plot_group_name, matchedArea?.plot_group_code, matchedArea?.plot_group_name, matchedBlock?.plot_group_code),
     ap_code: farmFirstFilled(block.ap_code, block.AP_code, matchedArea?.ap_code, matchedArea?.AP_code, matchedBlock?.ap_code, matchedBlock?.AP_code),
     area_rai: farmFirstPositiveNumber(block.area_rai, matchedArea?.area_rai, matchedBlock?.area_rai),
@@ -22522,6 +22529,8 @@ function renderPreservingBudgetTreeScroll(target) {
   const tree = target?.closest?.(".budget-tree-scroll");
   const treeScrollTop = tree ? tree.scrollTop : 0;
   const treeIndex = tree ? [...document.querySelectorAll(".budget-tree-scroll")].indexOf(tree) : -1;
+  const areaTree = target?.closest?.("[data-area-block-selector]") || tree?.querySelector?.("[data-area-block-selector]");
+  const areaTreeScrollTop = areaTree ? areaTree.scrollTop : 0;
   const pageX = window.scrollX;
   const pageY = window.scrollY;
   render();
@@ -22529,7 +22538,11 @@ function renderPreservingBudgetTreeScroll(target) {
     if (tree) {
       const trees = [...document.querySelectorAll(".budget-tree-scroll")];
       const nextTree = treeIndex >= 0 ? trees[treeIndex] : null;
-      if (nextTree) nextTree.scrollTop = treeScrollTop;
+      if (nextTree) {
+        nextTree.scrollTop = treeScrollTop;
+        const nextAreaTree = nextTree.querySelector("[data-area-block-selector]");
+        if (nextAreaTree) nextAreaTree.scrollTop = areaTreeScrollTop;
+      }
     }
     window.scrollTo(pageX, pageY);
   });
@@ -23328,72 +23341,24 @@ function farmZoneDisplayName(value = "") {
 }
 
 function farmBlockGroupCode(block = {}, plotGroup = {}) {
+  const source = [block.block_code, block.terrain_code, block.area_code, block.block_name, block.area_name]
+    .map((value) => String(value || "").trim())
+    .find(Boolean) || "";
+  const parsed = getPlotGroup(source);
+  if (parsed) return parsed;
   const direct = [
     block.plot_group_code,
     block.plot_group_name,
     block.plot_group,
     plotGroup.group_code,
     plotGroup.group_name,
-  ].map((value) => String(value || "").trim()).find(Boolean);
+  ].map((value) => String(value || "").trim()).find((value) => value && !/^EST\d+$/i.test(value));
   if (direct) return direct;
-  const source = [block.block_name, block.area_name, block.terrain_code, block.area_code, block.block_code]
-    .map((value) => String(value || "").trim().toUpperCase())
-    .find(Boolean) || "";
-  const fromFullName = source.match(/^\d{2}-([A-Z]+)\d+/);
-  if (fromFullName) return fromFullName[1];
-  const fromShortCode = source.match(/^([A-Z]+)\d+/);
-  if (fromShortCode && !/^BA$/i.test(fromShortCode[1])) return fromShortCode[1];
-  const fromMiddle = source.match(/-([A-Z]+)\d+/);
-  return fromMiddle ? fromMiddle[1] : "ไม่ระบุกลุ่ม";
+  return "ไม่ระบุกลุ่ม";
 }
 
 function farmLocationBlockLabel(block = {}) {
   return block.block_name || block.blockName || block.area_name || block.block_code || block.area_code || block.id || "-";
-}
-
-function buildFarmLocationTree(blocks = []) {
-  const estateMap = new Map();
-  const orderedBlocks = [...(blocks || [])].sort((a, b) => {
-    const aParts = [a.estateDisplay || a.estateName || a.estate_name, a.zoneDisplay || a.zoneName || a.zone_name, a.blockGroupCode || farmBlockGroupCode(a), farmLocationBlockLabel(a)];
-    const bParts = [b.estateDisplay || b.estateName || b.estate_name, b.zoneDisplay || b.zoneName || b.zone_name, b.blockGroupCode || farmBlockGroupCode(b), farmLocationBlockLabel(b)];
-    for (let index = 0; index < aParts.length; index += 1) {
-      const compared = String(aParts[index] || "").localeCompare(String(bParts[index] || ""), "th", { numeric: true });
-      if (compared) return compared;
-    }
-    return 0;
-  });
-  for (const block of orderedBlocks) {
-    const estate = block.estateDisplay || farmEstateDisplayName(block.estateName || block.estate_name);
-    const zone = block.zoneDisplay || farmZoneDisplayName(block.zoneName || block.zone_name);
-    const group = block.blockGroupCode || farmBlockGroupCode(block);
-    if (!estateMap.has(estate)) estateMap.set(estate, new Map());
-    const zoneMap = estateMap.get(estate);
-    if (!zoneMap.has(zone)) zoneMap.set(zone, new Map());
-    const groupMap = zoneMap.get(zone);
-    if (!groupMap.has(group)) groupMap.set(group, []);
-    groupMap.get(group).push(block);
-  }
-  return [...estateMap.entries()].map(([label, zoneMap]) => {
-    const estateBlocks = [...zoneMap.values()].flatMap((groupMap) => [...groupMap.values()].flat());
-    return {
-      label,
-      blocks: estateBlocks,
-      blockIds: estateBlocks.map((row) => row.id),
-      zones: [...zoneMap.entries()].map(([zoneLabel, groupMap]) => {
-        const zoneBlocks = [...groupMap.values()].flat();
-        return {
-          label: zoneLabel,
-          blocks: zoneBlocks,
-          blockIds: zoneBlocks.map((row) => row.id),
-          groups: [...groupMap.entries()].map(([groupLabel, groupBlocks]) => ({
-        label: groupLabel,
-        blockIds: groupBlocks.map((row) => row.id),
-        blocks: groupBlocks,
-          })),
-        };
-      }),
-    };
-  });
 }
 
 function checkFarmBlockIdConsistency({ area = null, visible = null, areaMaster = [], budget = [], planning = [] } = {}) {
@@ -23463,7 +23428,11 @@ function buildFarmAreaHierarchy({
     const blockCode = block.block_code || legacy.block_code || legacy.area_code || legacy.terrain_code || block.id;
     const blockName = block.block_name || legacy.block_name || legacy.area_name || blockCode;
     const estateName = estate?.estate_name || estate?.estate_code || legacy.estate_name || "ไม่ระบุพื้นที่";
-    const zoneName = zone?.zone_name || zone?.zone_code || legacy.zone_name || "ยังไม่ระบุ Zone";
+    const zoneName = farmAreaZoneValue(
+      zone?.zone_name, zone?.zone_code,
+      block.zone_name, block.zoneName, block.zone, block.superior,
+      legacy.zone_name, legacy.zoneName, legacy.zone, legacy.superior,
+    );
     const plotCode = plot?.plot_code || legacy.plot_code || "";
     const plotName = plot?.plot_name || legacy.plot_name || "";
     const plotLabel = plotCode || plotName || "ไม่ระบุ Plot / AP Code";
@@ -23778,122 +23747,111 @@ function renderBudgetTeamMemberCheckbox(teamId, employee, checkedList, meta = ""
     </label>`;
 }
 
-function renderFarmBudgetAreaTreeLegacy(picks = farmBudgetContractState()) {
-  const areaBlocks = farmRowsByKey("areas")
-    .filter((area) => !area.area_level || area.area_level === "block")
-    .filter((area) => farmBudgetMatchesQuery(farmBudgetBlockLabel(area)));
-  const blocks = areaBlocks.length
-    ? areaBlocks
-    : farmRowsByKey("blocks").filter((block) => farmBudgetMatchesQuery(farmBudgetBlockLabel(block)));
-  const estates = farmRowsByKey("estates");
-  const zones = farmRowsByKey("zones");
-  const plots = farmRowsByKey("plots");
-  if (!blocks.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูล Block</div>`;
-  if (areaBlocks.length) {
-    const estateMap = new Map();
-    for (const block of areaBlocks) {
-      const estateName = block.estate_name || "ไม่ระบุพื้นที่";
-      const zoneName = block.zone_name || "ไม่ระบุโซน";
-      const groupName = block.plot_group_code || block.plot_group_name || "ไม่ระบุแปลง";
-      if (!estateMap.has(estateName)) estateMap.set(estateName, new Map());
-      const zoneMap = estateMap.get(estateName);
-      if (!zoneMap.has(zoneName)) zoneMap.set(zoneName, new Map());
-      const groupMap = zoneMap.get(zoneName);
-      if (!groupMap.has(groupName)) groupMap.set(groupName, []);
-      groupMap.get(groupName).push(block);
-    }
-    return [...estateMap.entries()].map(([estateName, zoneMap]) => {
-      const estateBlocks = [...zoneMap.values()].flatMap((groupMap) => [...groupMap.values()].flat());
-      return `
-        <details open>
-          ${renderBudgetAreaGroupSummary(estateName, estateBlocks, picks.selectedBlocks)}
-          <div class="budget-area-zone-grid">
-          ${[...zoneMap.entries()].map(([zoneName, groupMap]) => {
-            const zoneBlocks = [...groupMap.values()].flat();
-            return `
-              <details open class="budget-zone-branch">
-                ${renderBudgetAreaGroupSummary(zoneName, zoneBlocks, picks.selectedBlocks)}
-                ${[...groupMap.entries()].map(([groupName, groupBlocks]) => `
-                  <details open>
-                    ${renderBudgetAreaGroupSummary(groupName, groupBlocks, picks.selectedBlocks)}
-                    ${groupBlocks.map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่ · ${fmt(n(block.tree_count))} ต้น`)).join("")}
-                  </details>
-                `).join("")}
-              </details>`;
-          }).join("")}
-          </div>
-        </details>`;
-    }).join("");
+function farmAreaZoneValue(...values) {
+  const placeholders = new Set(["ยังไม่ระบุzone", "ไม่ระบุzone", "unassigned", "unknown", "-"]);
+  for (const value of values) {
+    const raw = String(value || "").trim();
+    if (!raw) continue;
+    const comparable = raw.toLowerCase().replace(/[\s/_-]+/g, "");
+    if (raw === "-" || !comparable || placeholders.has(comparable)) continue;
+    return raw;
   }
-  return estates.map((estate) => {
-    const estateZones = zones.filter((zone) => zone.estate_id === estate.id);
-    const estateBlocks = blocks.filter((block) => block.estate_id === estate.id || estateZones.some((zone) => zone.id === block.zone_id));
-    if (!estateBlocks.length) return "";
-    return `
-      <details open>
-        ${renderBudgetAreaGroupSummary(estate.estate_name || estate.estate_code || estate.id, estateBlocks, picks.selectedBlocks)}
-        ${estateZones.map((zone) => {
-          const zonePlots = plots.filter((plot) => plot.zone_id === zone.id);
-          const zoneBlocks = estateBlocks.filter((block) => block.zone_id === zone.id || zonePlots.some((plot) => plot.id === block.plot_id));
-          if (!zoneBlocks.length) return "";
-          return `
-            <details open>
-              ${renderBudgetAreaGroupSummary(zone.zone_name || zone.zone_code || zone.id, zoneBlocks, picks.selectedBlocks)}
-              ${zonePlots.map((plot) => {
-                const plotBlocks = zoneBlocks.filter((block) => block.plot_id === plot.id);
-                if (!plotBlocks.length) return "";
-                return `
-                  <details open>
-                    ${renderBudgetAreaGroupSummary(plot.plot_name || plot.plot_code || plot.id, plotBlocks, picks.selectedBlocks)}
-                    ${plotBlocks.map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่ · ${fmt(n(block.tree_count))} ต้น`)).join("")}
-                  </details>`;
-              }).join("")}
-              ${zoneBlocks.filter((block) => !block.plot_id).map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่`)).join("")}
-            </details>`;
-        }).join("")}
-        ${estateBlocks.filter((block) => !block.zone_id).map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่`)).join("")}
-      </details>`;
-  }).join("") || blocks.map((block) => renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, `${fmt(n(block.area_rai))} ไร่`)).join("");
+  return "";
 }
 
-function farmWorkAreaZoneKey(block = {}) {
-  const plot = farmLookup("plots", block.plot_id);
-  const zone = farmLookup("zones", block.zone_id || plot?.zone_id);
-  const text = [
-    block.zone_name, zone?.zone_name, zone?.zone_code, block.zone, block.superior, block.location_group, block.area_group,
-  ].filter(Boolean).join(" ").trim().toLowerCase();
-  if (text.includes("upper") || text.includes("ตอนบน")) return "upper";
-  if (text.includes("lower") || text.includes("ตอนล่าง")) return "lower";
-  return "other";
+function normalizeAreaBlockCode(value = "") {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[‐‑‒–—―]/g, "-")
+    .replace(/_/g, "-")
+    .replace(/\s+/g, "");
 }
 
-function farmWorkAreaSpecialKey(block = {}) {
-  const plot = farmLookup("plots", block.plot_id);
-  const zone = farmLookup("zones", block.zone_id || plot?.zone_id);
-  const blockCode = String(block.block_code || block.area_code || block.terrain_code || "").trim().toUpperCase();
-  if (/^SB(?:\d|[^A-Z0-9]|$)/.test(blockCode)) return "sb";
+function farmAreaBlockCode(block = {}) {
+  return farmFirstFilled(block.terrain_code, block.block_code, block.area_code, block.block_name, block.area_name);
+}
+
+function farmAreaBlockValue(block = {}) {
+  return block.id || block.area_id || block.block_code || block.area_code || block.terrain_code;
+}
+
+function getPlotGroup(blockCode = "") {
+  const code = normalizeAreaBlockCode(blockCode);
+  if (/^SB(?=\d|[-/]|$)/.test(code)) return "SB";
+  if (/^EST\d+/i.test(code)) return "";
+  return code.match(/^(?:\d{2,4}-)?([A-Z]+)(?=\d)/)?.[1] || "";
+}
+
+function farmAreaSelectorZoneKey(block = {}) {
+  if (getPlotGroup(farmAreaBlockCode(block)) === "SB") return "sb";
   const values = [
-    block.block_name, block.area_name,
-    block.zone_name, zone?.zone_name, zone?.zone_code, block.zone, block.superior,
-    block.location_group, block.area_group,
-  ].filter(Boolean).map((value) => String(value).trim().toLowerCase());
-  return values.some((value) => /^sb(?:[^a-z0-9]|$)/i.test(value) || /(^|[^a-z0-9])sb(?:[^a-z0-9]|$)/i.test(value))
-    ? "sb"
-    : "other";
+    block.zone_name, block.zoneName, block.zoneDisplay, block.zone, block.zone_code,
+    block.superior, block.section_name, block.section, block.location_group, block.area_group,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  const text = values.join(" ").replace(/\s+/g, "");
+  if (text.includes("upper") || text.includes("ตอนบน") || text.includes("โซนบน")
+    || values.some((value) => ["u", "up", "n", "north"].includes(value))) return "upper";
+  if (text.includes("lower") || text.includes("ตอนล่าง") || text.includes("โซนล่าง")
+    || values.some((value) => ["l", "low", "s", "south"].includes(value))) return "lower";
+  return "unassigned";
 }
 
-function farmWorkAreaCatalogRows() {
+function buildAreaTree(blocks = []) {
+  const createZone = (key, label) => ({ key, label, blocks: [], blockIds: [], groups: [] });
+  const tree = {
+    upper: createZone("upper", "Upper"),
+    lower: createZone("lower", "Lower"),
+    sb: createZone("sb", "SB"),
+    unassigned: createZone("unassigned", "ยังไม่ระบุ Zone"),
+  };
   const seen = new Set();
-  const sourceRows = farmRowsByKey("blocks").length
-    ? farmRowsByKey("blocks").map(farmEnrichPlanningBlock)
-    : farmPlanningBlockRows();
-  return sourceRows.filter((block) => {
-    const key = farmBlockMapKey(block.id || block.area_id || block.block_code || block.area_code || block.terrain_code);
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).sort((a, b) => String(a.block_code || a.area_code || a.terrain_code || a.id || "")
-    .localeCompare(String(b.block_code || b.area_code || b.terrain_code || b.id || ""), "th", { numeric: true, sensitivity: "base" }));
+  const grouped = new Map();
+  for (const block of blocks || []) {
+    const id = String(farmAreaBlockValue(block) || "").trim();
+    const code = normalizeAreaBlockCode(farmAreaBlockCode(block));
+    if (!id || !code || seen.has(id) || String(block.status || "active").toLowerCase() === "inactive" || code === "RAMP") continue;
+    seen.add(id);
+    const zoneKey = farmAreaSelectorZoneKey(block);
+    const zone = tree[zoneKey] || tree.unassigned;
+    zone.blocks.push(block);
+    zone.blockIds.push(id);
+    if (zone.key === "sb") continue;
+    const groupCode = getPlotGroup(code);
+    const groupKey = groupCode || "ungrouped";
+    const mapKey = `${zone.key}:${groupKey}`;
+    if (!grouped.has(mapKey)) grouped.set(mapKey, { key: groupKey.toLowerCase(), code: groupCode, label: groupCode || "ไม่ระบุกลุ่ม", blocks: [], blockIds: [] });
+    const group = grouped.get(mapKey);
+    group.blocks.push(block);
+    group.blockIds.push(id);
+  }
+  const compareBlocks = (a, b) => normalizeAreaBlockCode(farmAreaBlockCode(a))
+    .localeCompare(normalizeAreaBlockCode(farmAreaBlockCode(b)), "th", { numeric: true, sensitivity: "base" });
+  for (const zone of Object.values(tree)) {
+    zone.blocks.sort(compareBlocks);
+    zone.groups = [...grouped.entries()]
+      .filter(([key]) => key.startsWith(`${zone.key}:`))
+      .map(([, group]) => ({ ...group, blocks: group.blocks.sort(compareBlocks) }))
+      .sort((a, b) => {
+        if (a.key === "ungrouped") return 1;
+        if (b.key === "ungrouped") return -1;
+        return a.label.localeCompare(b.label, "th", { numeric: true, sensitivity: "base" });
+      });
+  }
+  return tree;
+}
+
+function farmAreaSelectorBlocks() {
+  const seen = new Set();
+  return farmAreaCatalogBlocks()
+    .map(farmEnrichPlanningBlock)
+    .filter((block) => {
+      const id = String(farmAreaBlockValue(block) || "").trim();
+      const code = normalizeAreaBlockCode(farmAreaBlockCode(block));
+      if (!id || !code || seen.has(id) || code === "RAMP" || farmWorkAreaRecordKind(block) !== "physical") return false;
+      seen.add(id);
+      return true;
+    });
 }
 
 function farmWorkPlantingYear(block = {}) {
@@ -23907,201 +23865,83 @@ function farmWorkAreaRecordKind(block = {}) {
   return "physical";
 }
 
-function farmWorkNormalizePlotGroup(value = "") {
-  return String(value || "")
-    .trim()
-    .replace(/^ทั้งแปลง[\s\-_/]*/i, "")
-    .replace(/^แปลง[\s\-_/]*/i, "")
-    .trim()
-    .toUpperCase();
+function farmAreaSelectorPlantingYear(block = {}) {
+  const normalized = farmBudgetPlantingYearFromBlock(block).year;
+  return String(normalized || farmWorkPlantingYear(block) || "");
 }
 
-function farmWorkPlotGroupInfo(block = {}) {
-  const plot = block.plot_id ? farmLookup("plots", block.plot_id) : null;
-  const plotGroupId = block.plot_group_id || plot?.plot_group_id;
-  const plotGroup = plotGroupId ? farmLookup("plot_groups", plotGroupId) : null;
-  const direct = farmFirstFilled(
-    plotGroup?.group_code,
-    block.plot_group_code,
-    block.plot_group_name,
-    plot?.plot_group_code,
-    plot?.plot_group_name,
-    plot?.plot_code,
-    block.plot_code,
-    block.plot_name
-  );
-  const code = farmWorkNormalizePlotGroup(direct || farmWorkBlockPlotGroupCode(block, plot));
-  if (!code) return { key: "ungrouped", code: "", label: "ไม่ระบุแปลง" };
-  return { key: farmNormalizeComparable(code), code, label: `แปลง ${code}` };
+function renderAreaTreeBlock(block, picks) {
+  const value = farmAreaBlockValue(block);
+  const code = farmAreaBlockCode(block) || value;
+  const area = n(block.area_rai) ? `${fmt(n(block.area_rai))} ไร่` : n(block.area_hectare || block.hectare) ? `${fmt(n(block.area_hectare || block.hectare))} hectare` : "";
+  const meta = [area, n(block.tree_count) ? `${fmt(n(block.tree_count))} ต้น` : ""].filter(Boolean).join(" · ");
+  return renderBudgetCheckbox("block", value, code, picks.selectedBlocks || [], meta);
 }
 
-function farmWorkBlocksByPlot(blocks = []) {
-  const groups = new Map();
-  blocks.forEach((block) => {
-    const info = farmWorkPlotGroupInfo(block);
-    if (!groups.has(info.key)) groups.set(info.key, { ...info, blocks: [] });
-    groups.get(info.key).blocks.push(block);
-  });
-  return [...groups.values()]
-    .map((group) => ({
-      ...group,
-      blocks: group.blocks.slice().sort((a, b) => String(a.block_code || a.area_code || a.terrain_code || a.id || "")
-        .localeCompare(String(b.block_code || b.area_code || b.terrain_code || b.id || ""), "th", { numeric: true, sensitivity: "base" })),
-    }))
-    .sort((a, b) => {
-      if (a.key === "ungrouped") return 1;
-      if (b.key === "ungrouped") return -1;
-      return a.code.localeCompare(b.code, "th", { numeric: true, sensitivity: "base" });
-    });
-}
-
-function renderFarmWorkBlockOption(block, picks) {
-  const value = block.id || block.area_id || block.block_code || block.area_code || block.terrain_code;
-  const checked = farmBudgetBlockValueChecked(value, picks.selectedBlocks || []);
-  const id = farmBudgetCheckId("block", value);
-  const code = block.block_code || block.area_code || block.terrain_code || value;
-  const rawName = block.block_name || block.area_name || "";
-  const name = rawName && rawName !== code ? rawName : "";
-  const detail = [
-    name,
-    farmWorkPlantingYear(block) ? `ปีปลูก ${farmWorkPlantingYear(block)}` : "",
-    n(block.area_rai) ? `${fmt(n(block.area_rai))} ไร่` : "",
-  ].filter(Boolean).join(" · ");
+function renderAreaTreeGroup({ zoneKey, group, allZone, picks }) {
+  const allGroup = allZone.groups.find((item) => item.key === group.key);
+  const allCount = allGroup?.blocks.length || group.blocks.length;
+  const filteredMeta = group.blocks.length === allCount ? "" : ` · แสดง ${fmt(group.blocks.length)}`;
   return `
-    <label class="farm-work-block-option" for="${esc(id)}" title="${esc([code, detail].filter(Boolean).join(" · "))}">
-      <input id="${esc(id)}" type="checkbox" data-budget-pick="block" value="${esc(value)}"${checked ? " checked" : ""}>
-      <span>${esc(code)}</span>
-      ${name ? `<small>${esc(name)}</small>` : ""}
-    </label>`;
-}
-
-function renderFarmWorkPlotGroup({ panelKey, group, allBlocks, picks }) {
-  const blockIds = group.blocks.map((block) => block.id || block.area_id || block.block_code || block.area_code || block.terrain_code).filter(Boolean);
-  const allGroup = farmWorkBlocksByPlot(allBlocks).find((item) => item.key === group.key);
-  const allGroupBlocks = allGroup?.blocks || group.blocks;
-  const allGroupIds = allGroupBlocks.map((block) => block.id || block.area_id || block.block_code || block.area_code || block.terrain_code).filter(Boolean);
-  const selectedVisibleCount = blockIds.filter((id) => farmBudgetBlockValueChecked(id, picks.selectedBlocks || [])).length;
-  const selectedCount = allGroupIds.filter((id) => farmBudgetBlockValueChecked(id, picks.selectedBlocks || [])).length;
-  const checked = blockIds.length > 0 && selectedVisibleCount === blockIds.length;
-  const indeterminate = selectedVisibleCount > 0 && !checked;
-  const selectAllId = `farm_work_plot_${farmBudgetSafeCode(panelKey)}_${farmBudgetSafeCode(group.key)}_all`;
-  const filteredMeta = group.blocks.length === allGroupBlocks.length ? "" : ` · แสดง ${fmt(group.blocks.length)}`;
-  return `
-    <details class="farm-work-plot-group" data-farm-plot-group="${esc(`${panelKey}:${group.key}`)}" open>
-      <summary>
-        <span class="farm-work-plot-toggle" aria-hidden="true"></span>
-        <span class="farm-work-plot-title"><strong>${esc(group.label)}</strong><small>${fmt(allGroupBlocks.length)} Block${esc(filteredMeta)} · เลือก ${fmt(selectedCount)}</small></span>
-        <label class="farm-work-plot-select-all" for="${esc(selectAllId)}" onclick="event.stopPropagation()">
-          <input id="${esc(selectAllId)}" type="checkbox" data-budget-pick="block" data-budget-block-group="1" value="${esc(farmBudgetAreaGroupValue(group.blocks))}" aria-checked="${indeterminate ? "mixed" : checked ? "true" : "false"}"${checked ? " checked" : ""}${indeterminate ? ' data-budget-indeterminate="true"' : ""}${blockIds.length ? "" : " disabled"}>
-          <span>เลือกทั้งแปลง</span>
-        </label>
-      </summary>
-      <div class="farm-work-block-grid">
-        ${group.blocks.map((block) => renderFarmWorkBlockOption(block, picks)).join("")}
+    <details class="farm-work-tree-group area-block-tree-group" data-area-plot-group="${esc(`${zoneKey}:${group.key}`)}" open>
+      ${renderBudgetAreaGroupSummary(group.label, group.blocks, picks.selectedBlocks || [], `${fmt(allCount)} Block${filteredMeta}`)}
+      <div class="farm-work-tree-blocks area-block-tree-blocks">
+        ${group.blocks.map((block) => renderAreaTreeBlock(block, picks)).join("")}
       </div>
     </details>`;
 }
 
-function renderFarmWorkAreaPanel({ key, title, countLabel, allBlocks, visibleBlocks, picks, special = false, grouped = true, selectAllLabel = "เลือกทั้งหมด" }) {
-  const blockIds = visibleBlocks.map((block) => block.id || block.area_id || block.block_code || block.area_code || block.terrain_code).filter(Boolean);
-  const checkedCount = blockIds.filter((id) => farmBudgetBlockValueChecked(id, picks.selectedBlocks || [])).length;
-  const checked = blockIds.length > 0 && checkedCount === blockIds.length;
-  const indeterminate = checkedCount > 0 && !checked;
-  const selectAllId = `farm_work_area_${key}_all`;
-  const filteredMeta = visibleBlocks.length === allBlocks.length ? "" : ` · แสดง ${fmt(visibleBlocks.length)}`;
+function renderAreaTreeZone({ zone, allZone, picks, wide = false, directBlocks = false }) {
+  const filteredMeta = zone.blocks.length === allZone.blocks.length ? "" : ` · แสดง ${fmt(zone.blocks.length)}`;
   return `
-    <section class="farm-work-area-panel${special ? " is-special" : ""}" data-farm-area-panel="${esc(key)}">
-      <header>
-        <div><strong>${esc(title)}</strong><small>${esc(`${countLabel}${filteredMeta}`)}</small></div>
-        <label class="farm-work-area-select-all" for="${esc(selectAllId)}">
-          <input id="${esc(selectAllId)}" type="checkbox" data-budget-pick="block" data-budget-block-group="1" value="${esc(farmBudgetAreaGroupValue(visibleBlocks))}" aria-checked="${indeterminate ? "mixed" : checked ? "true" : "false"}"${checked ? " checked" : ""}${indeterminate ? ' data-budget-indeterminate="true"' : ""}${blockIds.length ? "" : " disabled"}>
-          <span>${esc(selectAllLabel)}</span>
-        </label>
-      </header>
-      ${grouped ? `<div class="farm-work-plot-groups">
-        ${farmWorkBlocksByPlot(visibleBlocks).map((group) => renderFarmWorkPlotGroup({ panelKey: key, group, allBlocks, picks })).join("") || `<span class="farm-work-area-empty">ไม่มี Block ตามปีปลูกที่เลือก</span>`}
-      </div>` : `<div class="farm-work-block-grid">
-        ${visibleBlocks.map((block) => renderFarmWorkBlockOption(block, picks)).join("") || `<span class="farm-work-area-empty">ไม่มี Block ตามปีปลูกที่เลือก</span>`}
-      </div>`}
+    <section class="farm-work-zone-column area-block-zone-column${wide ? " is-wide" : ""}" data-area-zone="${esc(zone.key)}">
+      <details class="budget-zone-branch farm-work-zone-tree area-block-zone-tree" open>
+        ${renderBudgetAreaGroupSummary(zone.label, zone.blocks, picks.selectedBlocks || [], `${fmt(allZone.blocks.length)} Block${filteredMeta}`)}
+        ${directBlocks ? `<div class="farm-work-tree-blocks area-block-tree-blocks is-zone-blocks">
+          ${zone.blocks.map((block) => renderAreaTreeBlock(block, picks)).join("") || `<span class="farm-work-area-empty">ไม่มี Block ตามตัวกรองที่เลือก</span>`}
+        </div>` : `<div class="farm-work-tree-groups area-block-tree-groups">
+          ${zone.groups.map((group) => renderAreaTreeGroup({ zoneKey: zone.key, group, allZone, picks })).join("") || `<span class="farm-work-area-empty">ไม่มี Block ตามตัวกรองที่เลือก</span>`}
+        </div>`}
+      </details>
     </section>`;
 }
 
-function renderFarmWorkAreaSelector(picks = farmWorkPlanState()) {
-  const blocks = farmWorkAreaCatalogRows();
-  if (!blocks.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูล Block</div>`;
-  const upperZoneBlocks = blocks.filter((block) => farmWorkAreaZoneKey(block) === "upper");
-  const lowerZoneBlocks = blocks.filter((block) => farmWorkAreaZoneKey(block) === "lower");
-  const aggregateBlocks = blocks.filter((block) => farmWorkAreaRecordKind(block) === "aggregate");
-  const nonFieldBlocks = blocks.filter((block) => farmWorkAreaRecordKind(block) === "nonfield");
-  const physicalBlocks = blocks.filter((block) => farmWorkAreaRecordKind(block) === "physical");
-  const sbBlocks = physicalBlocks.filter((block) => farmWorkAreaSpecialKey(block) === "sb");
-  const regularBlocks = physicalBlocks.filter((block) => farmWorkAreaSpecialKey(block) !== "sb");
-  const upperBlocks = regularBlocks.filter((block) => farmWorkAreaZoneKey(block) === "upper");
-  const lowerBlocks = regularBlocks.filter((block) => farmWorkAreaZoneKey(block) === "lower");
-  const otherBlocks = regularBlocks.filter((block) => farmWorkAreaZoneKey(block) === "other");
-  const years = [...new Set(blocks.map(farmWorkPlantingYear).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, "th", { numeric: true, sensitivity: "base" }));
-  const selectedYears = new Set((picks.areaPlantingYears || []).map(String));
-  const visible = (rows) => selectedYears.size ? rows.filter((block) => selectedYears.has(farmWorkPlantingYear(block))) : rows;
-  const selectedCount = blocks.filter((block) => farmBudgetBlockValueChecked(block.id, picks.selectedBlocks || [])).length;
+function renderAreaBlockTree({ blocks = [], picks = {}, query = "" } = {}) {
+  const allTree = buildAreaTree(blocks);
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  const visibleBlocks = blocks.filter((block) => {
+    if (!normalizedQuery) return true;
+    return [farmAreaBlockCode(block), block.block_name, block.area_name, block.zone_name, getPlotGroup(farmAreaBlockCode(block))]
+      .some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
+  });
+  const visibleTree = buildAreaTree(visibleBlocks);
+  const hasUnassigned = allTree.unassigned.blocks.length > 0;
   return `
-    <div class="farm-work-area-selector${selectedYears.size ? " is-filtered" : ""}">
-      <div class="farm-work-area-summary" aria-label="สรุปข้อมูลพื้นที่">
-        <p>ข้อมูลพื้นที่ทั้งหมด: <b>${fmt(blocks.length)} Block</b></p>
-        <p>Upper <b>${fmt(upperZoneBlocks.length)}</b> <i aria-hidden="true">|</i> Lower <b>${fmt(lowerZoneBlocks.length)}</b> <i aria-hidden="true">|</i> Selected <b>${fmt(selectedCount)}</b></p>
-      </div>
-      <div class="farm-work-planting-years" role="group" aria-label="ปีปลูก">
-        <strong>ปีปลูก</strong>
-        <div class="farm-work-planting-year-options">
-          <label class="farm-work-year-option">
-            <input type="checkbox" data-farm-work-planting-year-all${selectedYears.size ? "" : " checked"}>
-            <span>ทั้งหมด</span>
-          </label>
-          ${years.map((year) => `<label class="farm-work-year-option">
-            <input type="checkbox" data-farm-work-planting-year="${esc(year)}"${selectedYears.has(year) ? " checked" : ""}>
-            <span>${esc(year)}</span>
-          </label>`).join("")}
-        </div>
-      </div>
-      <div class="farm-work-area-panels">
-        ${renderFarmWorkAreaPanel({ key: "upper", title: "ตอนบน / Upper", countLabel: `${fmt(upperZoneBlocks.length)} Block · แปลงจริง ${fmt(upperBlocks.length)}`, allBlocks: upperBlocks, visibleBlocks: visible(upperBlocks), picks, selectAllLabel: "เลือกทั้งหมด Upper" })}
-        ${renderFarmWorkAreaPanel({ key: "lower", title: "ตอนล่าง / Lower", countLabel: `${fmt(lowerZoneBlocks.length)} Block · แปลงจริง ${fmt(lowerBlocks.length)}`, allBlocks: lowerBlocks, visibleBlocks: visible(lowerBlocks), picks, selectAllLabel: "เลือกทั้งหมด Lower" })}
-      </div>
-      ${renderFarmWorkAreaPanel({ key: "sb", title: "SB", countLabel: `${fmt(sbBlocks.length)} Block`, allBlocks: sbBlocks, visibleBlocks: visible(sbBlocks), picks, special: true })}
-      ${renderFarmWorkAreaPanel({ key: "other", title: "ไม่ระบุแปลง", countLabel: `${fmt(otherBlocks.length)} Block`, allBlocks: otherBlocks, visibleBlocks: visible(otherBlocks), picks, special: true })}
-      ${renderFarmWorkAreaPanel({ key: "aggregate", title: "ข้อมูลรวมทั้งแปลง", countLabel: `${fmt(aggregateBlocks.length)} รายการ`, allBlocks: aggregateBlocks, visibleBlocks: visible(aggregateBlocks), picks, special: true, grouped: false })}
-      ${renderFarmWorkAreaPanel({ key: "nonfield", title: "พื้นที่นอกแปลง / Non-field", countLabel: `${fmt(nonFieldBlocks.length)} รายการ`, allBlocks: nonFieldBlocks, visibleBlocks: visible(nonFieldBlocks), picks, special: true, grouped: false })}
+    <div class="farm-work-area-tree-layout area-block-tree-layout" data-area-block-selector>
+      ${renderAreaTreeZone({ zone: visibleTree.upper, allZone: allTree.upper, picks })}
+      ${renderAreaTreeZone({ zone: visibleTree.lower, allZone: allTree.lower, picks })}
+      ${renderAreaTreeZone({ zone: visibleTree.sb, allZone: allTree.sb, picks, wide: true, directBlocks: true })}
+      ${hasUnassigned ? renderAreaTreeZone({ zone: visibleTree.unassigned, allZone: allTree.unassigned, picks, wide: true }) : ""}
     </div>`;
+}
+
+function renderAreaBlockSelector({ picks = {}, idPrefix = "area", allLabel = "ทุกปี", query = "" } = {}) {
+  const blocks = farmAreaSelectorBlocks();
+  if (!blocks.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูล Block</div>`;
+  return `
+    <div class="area-block-selector farm-work-area-selector" data-shared-area-block-selector>
+      ${renderFarmBudgetPlantingYearSelector(picks, { idPrefix, allLabel, blocks })}
+      ${renderAreaBlockTree({ blocks, picks, query })}
+    </div>`;
+}
+
+function renderFarmWorkAreaSelector(picks = farmWorkPlanState()) {
+  return renderAreaBlockSelector({ picks, idPrefix: "work-plan", allLabel: "ทุกปี" });
 }
 
 function renderFarmBudgetAreaTree(picks = farmBudgetContractState()) {
   farmCheckAreaCatalogConsistency();
-  const blocks = farmAreaCatalogBlocks()
-    .map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }))
-    .filter((block) => farmBudgetMatchesQuery([
-      farmBudgetBlockLabel(block), block.estate, block.zone, block.group,
-    ].filter(Boolean).join(" ")));
-  if (!blocks.length) return `<div class="budget-tree-empty">ยังไม่มีข้อมูล Block</div>`;
-  return buildFarmLocationTree(blocks).map((estate) => `
-      <details open>
-        ${renderBudgetAreaGroupSummary(estate.label, estate.blocks, picks.selectedBlocks)}
-        <div class="budget-area-zone-grid">
-        ${estate.zones.map((zone) => `
-            <details open class="budget-zone-branch">
-              ${renderBudgetAreaGroupSummary(zone.label, zone.blocks, picks.selectedBlocks)}
-              ${zone.groups.map((group) => `
-                <details open>
-                  ${renderBudgetAreaGroupSummary(group.label, group.blocks, picks.selectedBlocks)}
-                  ${group.blocks.map((block) => {
-                    const area = n(block.area_rai) ? `${fmt(n(block.area_rai))} ไร่` : n(block.area_hectare || block.hectare) ? `${fmt(n(block.area_hectare || block.hectare))} hectare` : "";
-                    const meta = [area, n(block.tree_count) ? `${fmt(n(block.tree_count))} ต้น` : ""].filter(Boolean).join(" · ");
-                    return renderBudgetCheckbox("block", block.id, farmBudgetBlockLabel(block), picks.selectedBlocks, meta);
-                  }).join("")}
-                </details>
-              `).join("")}
-            </details>`).join("")}
-        </div>
-      </details>`).join("");
+  return renderAreaBlockSelector({ picks, idPrefix: "budget", allLabel: "เลือกทุกปี", query: farmBudgetContractState().query });
 }
 
 function farmBudgetAreaOptions(picks = farmBudgetContractState()) {
@@ -24741,8 +24581,7 @@ function renderFarmBudgetYearSettings() {
     </article>`;
 }
 
-function renderFarmBudgetPlantingYearSelector(picks = farmBudgetContractState(), { idPrefix = "budget", allLabel = "เลือกทุกปี" } = {}) {
-  const blocks = farmAreaCatalogBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
+function renderFarmBudgetPlantingYearSelector(picks = farmBudgetContractState(), { idPrefix = "budget", allLabel = "เลือกทุกปี", blocks = farmAreaSelectorBlocks() } = {}) {
   const model = farmBudgetPlantingYearGroups(blocks, picks.selectedBlocks, "asc");
   const blockIds = model.years.flatMap((group) => group.blockIds);
   const selectAll = farmBudgetSelectionState(blockIds, picks.selectedBlocks);
@@ -24777,7 +24616,7 @@ function renderFarmBudgetBoard() {
       ${renderFarmBudgetYearSettings()}
       <article class="budget-contract-options">
         <div class="budget-tree-grid budget-tree-grid-wide-area">
-          <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetPlantingYearSelector(picks)}${renderFarmBudgetAreaTree(picks)}</div></section>
+          <section class="budget-tree-card budget-area-tree-card"><h4>พื้นที่ / ที่ตั้ง</h4><div class="budget-tree-scroll">${renderFarmBudgetAreaTree(picks)}</div></section>
           <section class="budget-tree-card"><h4>กลุ่มกิจกรรม / กิจกรรม</h4><div class="budget-tree-scroll">${renderFarmBudgetActivityTree()}</div></section>
           <section class="budget-tree-card"><h4>วัสดุ</h4><div class="budget-tree-scroll">${renderFarmBudgetMaterialTree()}</div></section>
           <section class="budget-tree-card"><h4>พนักงาน</h4><div class="budget-tree-scroll">${renderFarmBudgetWorkerTree()}</div></section>
@@ -27350,25 +27189,11 @@ async function startAuthenticatedApplication() {
       }
       return;
     }
-    if (e.target.matches("[data-farm-work-planting-year], [data-farm-work-planting-year-all]")) {
-      const picks = farmWorkPlanState();
-      if (e.target.matches("[data-farm-work-planting-year-all]")) {
-        picks.areaPlantingYears = [];
-      } else {
-        const years = new Set((picks.areaPlantingYears || []).map(String));
-        const year = String(e.target.dataset.farmWorkPlantingYear || "");
-        if (e.target.checked) years.add(year);
-        else years.delete(year);
-        picks.areaPlantingYears = [...years];
-      }
-      renderPreservingBudgetTreeScroll(e.target);
-      return;
-    }
     if (e.target.matches("[data-budget-planting-year], [data-budget-planting-year-all]")) {
       const picks = e.target.closest('[data-budget-context="work-plan"]')
         ? farmWorkPlanState()
         : farmBudgetContractState();
-      const blocks = farmAreaCatalogBlocks().map((block) => ({ ...block, ...farmBudgetBlockHierarchy(block) }));
+      const blocks = farmAreaSelectorBlocks();
       const model = farmBudgetPlantingYearGroups(blocks, picks.selectedBlocks, "asc");
       const targetGroups = e.target.matches("[data-budget-planting-year-all]")
         ? model.years

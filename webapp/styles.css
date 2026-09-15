@@ -17855,3 +17855,206 @@ details.farm-survey-score-section[open] > summary::after {
   .auth-card { padding-inline: 20px; }
   .auth-card h1 { font-size: 1.42rem; }
 }
+
+/* Planning Area: Budget-style Zone → Plot Group → Block tree. */
+.budget-area-tree-card > .budget-tree-scroll {
+  height: auto;
+  max-height: none;
+  padding-right: 0;
+  overflow: visible;
+}
+
+.farm-work-area-selector {
+  display: block;
+  gap: 6px;
+  height: auto;
+  min-height: 0;
+}
+
+.area-block-selector .budget-planting-year-section {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0 8px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 2px 7px;
+  border-bottom: 1px solid #dbe2ec;
+  box-sizing: border-box;
+}
+
+.area-block-selector .budget-planting-year-section > strong {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.area-block-selector .budget-planting-year-section .budget-planting-year-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+  gap: 0 2px;
+  align-items: center;
+}
+
+.area-block-selector .budget-planting-year-section .budget-planting-year-item {
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 1px;
+  font-size: 10.5px;
+  touch-action: manipulation;
+}
+
+.area-block-selector .budget-planting-year-section .budget-planting-year-item input {
+  flex-basis: 14px;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  min-height: 14px;
+}
+
+.farm-work-area-tree-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  align-items: start;
+  gap: 6px;
+  width: 100%;
+  height: clamp(320px, 38vh, 400px);
+  min-height: 320px;
+  max-height: 400px;
+  margin-top: 6px;
+  padding: 0 4px 4px 0;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior-y: contain;
+  scrollbar-color: #7d8b9d #edf1f5;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+}
+
+.farm-work-area-tree-layout::-webkit-scrollbar {
+  width: 12px;
+}
+
+.farm-work-area-tree-layout::-webkit-scrollbar-track {
+  border-radius: 8px;
+  background: #edf1f5;
+}
+
+.farm-work-area-tree-layout::-webkit-scrollbar-thumb {
+  min-height: 48px;
+  border: 3px solid #edf1f5;
+  border-radius: 8px;
+  background: #7d8b9d;
+}
+
+.farm-work-zone-column {
+  min-width: 0;
+  min-height: max-content;
+  height: max-content;
+  align-self: start;
+  padding: 3px 6px 5px;
+  overflow: visible;
+  border: 1px solid #e1e8ef;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.farm-work-zone-column.is-wide {
+  grid-column: 1 / -1;
+  overflow: visible;
+}
+
+.farm-work-zone-tree,
+.farm-work-tree-group {
+  min-width: 0;
+  margin: 0 !important;
+}
+
+.farm-work-zone-tree > .budget-team-summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 25px;
+  margin: 0;
+  padding: 3px 1px 4px;
+  border-bottom: 1px solid #dbe2ec;
+  background: #fff;
+}
+
+.farm-work-zone-column.is-wide .farm-work-zone-tree > .budget-team-summary {
+  position: static;
+}
+
+.farm-work-tree-groups {
+  display: grid;
+  gap: 2px;
+  margin: 3px 0 0 5px;
+  padding: 0 0 4px 10px;
+  border-left: 2px solid #e7edf3;
+}
+
+.farm-work-tree-group > .budget-team-summary {
+  min-height: 22px;
+  margin: 0;
+  padding: 2px 0;
+}
+
+.farm-work-tree-blocks {
+  display: grid;
+  gap: 1px;
+  margin: 1px 0 4px 13px;
+  padding-left: 8px;
+  overflow: visible;
+  border-left: 2px solid #edf1f5;
+}
+
+.farm-work-tree-blocks.is-zone-blocks {
+  margin-top: 3px;
+}
+
+.area-block-zone-column.is-wide .area-block-tree-blocks.is-zone-blocks {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 2px 8px;
+}
+
+.farm-work-tree-blocks .budget-tree-item {
+  min-height: 20px;
+  margin: 1px 0;
+  padding: 1px 2px;
+}
+
+.farm-work-area-empty {
+  padding: 6px 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+@media (max-width: 1023px) {
+  .farm-work-area-tree-layout {
+    height: clamp(320px, 42vh, 380px);
+    max-height: 380px;
+  }
+}
+
+@media (max-width: 760px) {
+  .area-block-selector .budget-planting-year-section {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .area-block-selector .budget-planting-year-section > strong {
+    min-height: 28px;
+  }
+
+  .farm-work-area-tree-layout {
+    height: 340px;
+    min-height: 320px;
+    max-height: 340px;
+  }
+}

@@ -39,27 +39,62 @@ test("planning renders its canonical area selector inside the existing location 
   assert.match(appSource, /data-budget-context="work-plan"[^`]+budget-area-tree-card[^`]+พื้นที่ \/ ที่ตั้ง[^`]+budget-tree-scroll[^`]+renderFarmWorkAreaSelector\(budgetPicks\)/s);
 
   const body = functionSlice("renderFarmWorkAreaSelector", "renderFarmBudgetAreaTree");
-  assert.match(body, /farmWorkAreaCatalogRows\(\)/);
-  assert.match(body, /picks\.areaPlantingYears/);
-  assert.match(body, /data-farm-work-planting-year-all/);
-  assert.match(body, /data-farm-work-planting-year=/);
-  assert.match(body, /<span>ทั้งหมด<\/span>/);
+  assert.match(body, /return renderAreaBlockSelector\(\{ picks, idPrefix: "work-plan", allLabel: "ทุกปี" \}\)/);
+  assert.doesNotMatch(body, /areaPlantingYears|data-farm-work-planting-year/);
+  assert.doesNotMatch(body, /เลือกทั้งหมด|estate|EST|renderFarmWorkAreaPanel/);
 });
 
-test("budget settings still render the shared budget selector inside their location box", () => {
-  assert.match(appSource, /budget-area-tree-card[^`]+พื้นที่ \/ ที่ตั้ง[^`]+budget-tree-scroll[^`]+renderFarmBudgetPlantingYearSelector\(picks\)[^`]+renderFarmBudgetAreaTree\(picks\)/s);
+test("planning area tree uses Zone to Plot Letter Group to Block with shared selection state", () => {
+  const zoneBody = functionSlice("renderAreaTreeBlock", "renderFarmWorkAreaSelector");
+  assert.match(zoneBody, /renderBudgetAreaGroupSummary\(group\.label, group\.blocks, picks\.selectedBlocks/);
+  assert.match(zoneBody, /renderBudgetAreaGroupSummary\(zone\.label, zone\.blocks, picks\.selectedBlocks/);
+  assert.match(zoneBody, /renderAreaTreeBlock\(block, picks\)/);
+  assert.match(zoneBody, /data-area-zone=/);
+  assert.doesNotMatch(zoneBody, /เลือกทั้งหมด|เลือกทั้งแปลง/);
+  assert.match(cssSource, /\.farm-work-area-tree-layout\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
+  assert.match(cssSource, /\.farm-work-zone-column\.is-wide\s*\{[^}]*grid-column:\s*1 \/ -1/s);
+  assert.match(cssSource, /\.farm-work-area-tree-layout\s*\{[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*scroll/s);
+  assert.match(cssSource, /\.farm-work-area-tree-layout\s*\{[^}]*height:\s*clamp\(320px,[^}]*max-height:\s*400px/s);
+  assert.match(cssSource, /\.farm-work-zone-column\s*\{[^}]*overflow:\s*visible/s);
+  assert.match(cssSource, /\.farm-work-zone-column\s*\{[^}]*min-height:\s*max-content[^}]*height:\s*max-content/s);
+  assert.doesNotMatch(cssSource, /\.farm-work-zone-column\s*\{[^}]*(?:overflow-y:\s*(?:auto|scroll))/s);
+  assert.match(cssSource, /\.farm-work-tree-blocks\s*\{[^}]*overflow:\s*visible/s);
 });
 
-test("planning and budget use separate selector implementations without sharing state", () => {
+test("planning uses one visible touch-scroll container and preserves its scroll position", () => {
+  assert.match(cssSource, /\.farm-work-area-tree-layout::-webkit-scrollbar\s*\{[^}]*width:\s*12px/s);
+  assert.match(cssSource, /\.farm-work-area-tree-layout\s*\{[^}]*touch-action:\s*pan-y[^}]*-webkit-overflow-scrolling:\s*touch/s);
+  const body = functionSlice("renderPreservingBudgetTreeScroll", "farmBudgetExtraRateNote");
+  assert.match(body, /querySelector\("\[data-area-block-selector\]"\)/);
+  assert.match(body, /nextAreaTree\.scrollTop\s*=\s*areaTreeScrollTop/);
+});
+
+test("shared Budget planting-year selector stays compact in Work Order", () => {
+  const body = functionSlice("renderAreaBlockSelector", "renderFarmWorkAreaSelector");
+  assert.match(body, /renderFarmBudgetPlantingYearSelector/);
+  assert.match(cssSource, /\.area-block-selector \.budget-planting-year-section\s*\{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\)[^}]*padding:\s*6px 2px 7px/s);
+  assert.match(cssSource, /\.area-block-selector \.budget-planting-year-section \.budget-planting-year-grid\s*\{[^}]*repeat\(auto-fit, minmax\(42px, 1fr\)\)[^}]*gap:\s*0 2px/s);
+  assert.match(cssSource, /\.area-block-selector \.budget-planting-year-section \.budget-planting-year-item\s*\{[^}]*min-height:\s*32px/s);
+});
+
+test("budget settings still render the shared Area selector inside their location box", () => {
+  assert.match(appSource, /budget-area-tree-card[^`]+พื้นที่ \/ ที่ตั้ง[^`]+budget-tree-scroll[^`]+renderFarmBudgetAreaTree\(picks\)/s);
+});
+
+test("planning and budget keep separate state while sharing one Area selector renderer", () => {
   assert.equal((appSource.match(/function renderFarmBudgetPlantingYearSelector/g) || []).length, 1);
   assert.equal((appSource.match(/function renderFarmWorkAreaSelector/g) || []).length, 1);
 
   const planningBody = functionSlice("renderFarmWorkAreaSelector", "renderFarmBudgetAreaTree");
-  assert.match(planningBody, /picks\.areaPlantingYears/);
-  assert.match(planningBody, /picks\.selectedBlocks/);
+  assert.match(planningBody, /renderAreaBlockSelector\([^\n]+picks/);
+  const budgetBody = functionSlice("renderFarmBudgetAreaTree", "farmBudgetAreaOptions");
+  assert.match(budgetBody, /renderAreaBlockSelector\([^\n]+picks/);
+  const treeBody = functionSlice("renderAreaTreeBlock", "renderAreaBlockSelector");
+  assert.match(treeBody, /picks\.selectedBlocks/);
 
   assert.match(appSource, /renderFarmWorkAreaSelector\(budgetPicks\)/);
-  assert.match(appSource, /renderFarmBudgetPlantingYearSelector\(picks\)/);
+  assert.match(appSource, /renderFarmBudgetPlantingYearSelector\(picks, \{ idPrefix, allLabel, blocks \}\)/);
+  assert.equal((appSource.match(/data-farm-work-planting-year/g) || []).length, 0);
 });
 test("Block Master year priority and Buddhist-year normalization are preserved", () => {
   const api = plantingHarness();

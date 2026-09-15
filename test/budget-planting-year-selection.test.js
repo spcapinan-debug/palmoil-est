@@ -186,7 +186,8 @@ test("server verifies planting years against the database Block", async () => {
 test("planting years stay inside the original location box with accessible responsive controls", () => {
   assert.match(appSource, /data-budget-planting-year/);
   assert.match(appSource, /aria-checked="\$\{group\.ariaChecked\}"/);
-  assert.match(appSource, /budget-area-tree-card[^`]+พื้นที่ \/ ที่ตั้ง[^`]+budget-tree-scroll[^`]+renderFarmBudgetPlantingYearSelector\(picks\)[^`]+renderFarmBudgetAreaTree\(picks\)/s);
+  assert.match(appSource, /budget-area-tree-card[^`]+พื้นที่ \/ ที่ตั้ง[^`]+budget-tree-scroll[^`]+renderFarmBudgetAreaTree\(picks\)/s);
+  assert.match(appSource, /function renderAreaBlockSelector[\s\S]+renderFarmBudgetPlantingYearSelector\(picks, \{ idPrefix, allLabel, blocks \}\)[\s\S]+renderAreaBlockTree\(\{ blocks, picks, query \}\)/);
   assert.doesNotMatch(appSource, /budget-planting-year-panel|budgetBlockSearch|budgetPlantingYearOnly/);
   assert.match(appSource, /selectedBlockIds:\s*farmBudgetUnique/);
   assert.match(appSource, /plantingYearSelectedBlockIds:\s*\[\]/);
