@@ -29398,7 +29398,7 @@ init().catch((error) => {
           <button type="button" class="ghost" data-area-dialog-close aria-label="ปิด">✕</button>
         </header>
         <div class="area-admin-form-grid">
-          <label class="span-2">Block UUID<input name="id" readonly></label>
+
           <label>Block Code<input name="block_code" required maxlength="80"></label>
           <label>Block Name<input name="block_name" required maxlength="160"></label>
           <label>AP Code<input name="ap_code" required maxlength="80"></label>
@@ -29447,7 +29447,7 @@ init().catch((error) => {
     dialog.querySelector("[data-area-block-title]").textContent = block ? `แก้ไข Block ${row.block_code || row.block_name || ""}` : "เพิ่ม Block ใหม่";
     form.elements.estate_id.innerHTML = `<option value="">ไม่ระบุ</option>${estateOptions(row.estate_id || "")}`;
     form.elements.zone_id.innerHTML = `<option value="">ไม่ระบุ</option>${zoneOptions(row.zone_id || "")}`;
-    form.elements.id.value = id;
+    form.dataset.blockId = id;
     form.elements.block_code.value = row.block_code || "";
     form.elements.block_name.value = row.block_name || row.block_code || "";
     form.elements.ap_code.value = row.ap_code || row.block_code || "";
@@ -29489,7 +29489,7 @@ init().catch((error) => {
     const now = new Date().toISOString();
     return filterBlockFields({
       ...(original || {}),
-      id: form.elements.id.value,
+      id: form.dataset.blockId,
       estate_id: form.elements.estate_id.value || null,
       zone_id: form.elements.zone_id.value || null,
       plot_id: original?.plot_id || null,
@@ -29953,6 +29953,20 @@ init().catch((error) => {
     ui.enhanceQueued = true;
     queueMicrotask(enhance);
   }
+
+  document.addEventListener("dblclick", (event) => {
+    const row = event.target.closest("tr[data-farm-area-block-row]");
+    if (!row || !isFarmAreaView()) return;
+    if (event.target.closest("button, a, input, select, textarea")) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    const id = row.dataset.farmAreaBlockRow || "";
+    const block = rawBlockById(id);
+    if (block) populateBlockDialog(block);
+  }, true);
 
   document.addEventListener("click", (event) => {
     const add = event.target.closest("[data-area-add-block]");
