@@ -29229,6 +29229,9 @@ init().catch((error) => {
   }
 
   function decorateTerrainReferenceTable(board) {
+    if (board.dataset.areaTerrainDecorated === "1") return;
+    board.dataset.areaTerrainDecorated = "1";
+
     const rows = [...board.querySelectorAll("tr[data-farm-area-block-row]")];
 
     for (const row of rows) {
