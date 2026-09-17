@@ -24813,7 +24813,7 @@ function renderFarmAreaBoard() {
       <td>${esc(area.ap_code || area.AP_code || "-")}</td>
       <td>${esc(area.estateDisplay || area.estateName || "-")}</td>
       <td>${esc(area.zoneDisplay || area.zoneName || "ยังไม่ระบุ Zone")}</td>
-      <td>${esc(area.blockGroupCode || "-")}</td>
+      <td>${esc(areaPlotDisplay(area.blockGroupCode))}</td>
       <td>${esc(area.planting_year || "-")}</td>
       <td class="num">${fmt(n(area.area_rai))}</td>
       <td class="num">${fmt(n(area.tree_count))}</td>
@@ -24858,7 +24858,7 @@ function renderFarmAreaBoard() {
         </div>
         <div class="table-wrap farm-area-bottom-wrap">
           <table class="mini-table farm-table">
-            <thead><tr><th>Block Name</th><th>Block Code</th><th>AP Code</th><th>Estate</th><th>Zone</th><th>Block Group</th><th>Planting Year</th><th>Area Rai</th><th>Tree Count</th><th>RSPO</th><th>Map Status</th></tr></thead>
+            <thead><tr><th>Block Name</th><th>Block Code</th><th>AP Code</th><th>Estate</th><th>Zone</th><th>Plot</th><th>Planting Year</th><th>Area Rai</th><th>Tree Count</th><th>RSPO</th><th>Map Status</th></tr></thead>
             <tbody>${areaRows || `<tr><td colspan="11">ไม่พบรายการ Area Master</td></tr>`}</tbody>
           </table>
         </div>
@@ -29111,6 +29111,193 @@ init().catch((error) => {
     return match?.[1] || "";
   }
 
+  const AREA_PLOT_NAMES = Object.freeze({
+    A: "กะเปา",
+    B: "บางกัน",
+    C: "พันไร่",
+    D: "หมอนไม้",
+    P: "ปลายราง",
+    PU: "ยวนสาว",
+    T: "ตะกุก",
+    SB: "แปลงเพาะ",
+  });
+
+  function areaPlotDisplay(value) {
+    const code = String(value || "").trim().toUpperCase();
+    if (!code) return "-";
+    const name = AREA_PLOT_NAMES[code] || "";
+    return name ? `${code} - ${name}` : code;
+  }
+/* AREA_TERRAIN_REFERENCE_2569 */
+  const AREA_TERRAIN_PLOT_NAMES = Object.freeze({
+    A: "กะเปา",
+    B: "บางกัน",
+    C: "พันไร่",
+    D: "หมอนไม้",
+    P: "ปลายราง",
+    PU: "ยวนสาว",
+    T: "ตะกุก",
+    SB: "แปลงเพาะ",
+  });
+
+  const AREA_TERRAIN_REFERENCE_2569 = Object.freeze([{"source_row":4,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"22-C05-R","block_name":"22-C05-R","planting_year":2522,"area_rai":8,"area_planted_rai":8,"tree_count":184,"rspo_status":"RSPO","payroll_department_code":"541","payroll_code_description":"พันไร่","ap_code":"EST004","source_block":"C"},{"source_row":5,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"30-B14","block_name":"30-B14","planting_year":2530,"area_rai":6,"area_planted_rai":6,"tree_count":126,"rspo_status":"NON-RSPO","payroll_department_code":"651","payroll_code_description":"บางกัน","ap_code":"EST002","source_block":"B"},{"source_row":6,"estate":"Kirirat","zone":"Lower","plot_code":"PU","plot_name":"ยวนสาว","block_code":"30-PU1","block_name":"30-PU1","planting_year":2530,"area_rai":82,"area_planted_rai":82,"tree_count":1813,"rspo_status":"NON-RSPO","payroll_department_code":"531","payroll_code_description":"ยวนสาว","ap_code":"EST003","source_block":"PU"},{"source_row":7,"estate":"Kirirat","zone":"Lower","plot_code":"PU","plot_name":"ยวนสาว","block_code":"30-PU3","block_name":"30-PU3","planting_year":2530,"area_rai":72,"area_planted_rai":72,"tree_count":1574,"rspo_status":"NON-RSPO","payroll_department_code":"531","payroll_code_description":"ยวนสาว","ap_code":"EST003","source_block":"PU"},{"source_row":8,"estate":"Kirirat","zone":"Lower","plot_code":"PU","plot_name":"ยวนสาว","block_code":"30-PU4","block_name":"30-PU4","planting_year":2530,"area_rai":69,"area_planted_rai":69,"tree_count":1509,"rspo_status":"NON-RSPO","payroll_department_code":"531","payroll_code_description":"ยวนสาว","ap_code":"EST003","source_block":"PU"},{"source_row":9,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"37-T29","block_name":"37-T29","planting_year":2537,"area_rai":102,"area_planted_rai":102,"tree_count":2243,"rspo_status":"NON-RSPO","payroll_department_code":"601","payroll_code_description":"ตะกุก","ap_code":"EST001","source_block":"T"},{"source_row":10,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"37-T30","block_name":"37-T30","planting_year":2537,"area_rai":113,"area_planted_rai":113,"tree_count":2494,"rspo_status":"NON-RSPO","payroll_department_code":"601","payroll_code_description":"ตะกุก","ap_code":"EST001","source_block":"T"},{"source_row":11,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"49-A10-R","block_name":"49-A10-R","planting_year":2549,"area_rai":111,"area_planted_rai":111,"tree_count":2785,"rspo_status":"RSPO","payroll_department_code":"501","payroll_code_description":"กะเปา 49","ap_code":"EST009","source_block":"A"},{"source_row":12,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"49-A11-R","block_name":"49-A11-R","planting_year":2549,"area_rai":97,"area_planted_rai":97,"tree_count":2421,"rspo_status":"RSPO","payroll_department_code":"501","payroll_code_description":"กะเปา 49","ap_code":"EST009","source_block":"A"},{"source_row":13,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"49-A12-R","block_name":"49-A12-R","planting_year":2549,"area_rai":151,"area_planted_rai":151,"tree_count":3764,"rspo_status":"RSPO","payroll_department_code":"501","payroll_code_description":"กะเปา 49","ap_code":"EST009","source_block":"A"},{"source_row":14,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"49-A13-R","block_name":"49-A13-R","planting_year":2549,"area_rai":116,"area_planted_rai":116,"tree_count":2893,"rspo_status":"RSPO","payroll_department_code":"501","payroll_code_description":"กะเปา 49","ap_code":"EST009","source_block":"A"},{"source_row":15,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"49-B13","block_name":"49-B13","planting_year":2549,"area_rai":168,"area_planted_rai":168,"tree_count":4192,"rspo_status":"NON-RSPO","payroll_department_code":"652","payroll_code_description":"บางกัน 49","ap_code":"EST011","source_block":"B"},{"source_row":16,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"49-T16-R","block_name":"49-T16-R","planting_year":2549,"area_rai":4,"area_planted_rai":4,"tree_count":112,"rspo_status":"RSPO","payroll_department_code":"602","payroll_code_description":"ตะกุก 49","ap_code":"EST010","source_block":"T"},{"source_row":17,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"49-T20-R","block_name":"49-T20-R","planting_year":2549,"area_rai":113,"area_planted_rai":113,"tree_count":2833,"rspo_status":"RSPO","payroll_department_code":"602","payroll_code_description":"ตะกุก 49","ap_code":"EST010","source_block":"T"},{"source_row":18,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"50-A04","block_name":"50-A04","planting_year":2550,"area_rai":195,"area_planted_rai":195,"tree_count":4864,"rspo_status":"NON-RSPO","payroll_department_code":"502","payroll_code_description":"กะเปา 50","ap_code":"EST008","source_block":"A"},{"source_row":19,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"50-A05","block_name":"50-A05","planting_year":2550,"area_rai":171,"area_planted_rai":171,"tree_count":4608,"rspo_status":"NON-RSPO","payroll_department_code":"502","payroll_code_description":"กะเปา 50","ap_code":"EST008","source_block":"A"},{"source_row":20,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"50-B07","block_name":"50-B07","planting_year":2550,"area_rai":157,"area_planted_rai":157,"tree_count":4022,"rspo_status":"NON-RSPO","payroll_department_code":"653","payroll_code_description":"บางกัน 50","ap_code":"EST011","source_block":"B"},{"source_row":21,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"50-B10","block_name":"50-B10","planting_year":2550,"area_rai":170,"area_planted_rai":170,"tree_count":4245,"rspo_status":"NON-RSPO","payroll_department_code":"653","payroll_code_description":"บางกัน 50","ap_code":"EST011","source_block":"B"},{"source_row":22,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"50-C05-R","block_name":"50-C05-R","planting_year":2550,"area_rai":103,"area_planted_rai":103,"tree_count":2792,"rspo_status":"RSPO","payroll_department_code":"542","payroll_code_description":"พันไร่ 50","ap_code":"EST005","source_block":"C"},{"source_row":23,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"50-C07-R","block_name":"50-C07-R","planting_year":2550,"area_rai":156,"area_planted_rai":156,"tree_count":4202,"rspo_status":"RSPO","payroll_department_code":"542","payroll_code_description":"พันไร่ 50","ap_code":"EST005","source_block":"C"},{"source_row":24,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"50-T10-R","block_name":"50-T10-R","planting_year":2550,"area_rai":115,"area_planted_rai":115,"tree_count":2872,"rspo_status":"RSPO","payroll_department_code":"603","payroll_code_description":"ตะกุก 50","ap_code":"EST010","source_block":"T"},{"source_row":25,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"50-T12-R","block_name":"50-T12-R","planting_year":2550,"area_rai":121,"area_planted_rai":121,"tree_count":3030,"rspo_status":"RSPO","payroll_department_code":"603","payroll_code_description":"ตะกุก 50","ap_code":"EST010","source_block":"T"},{"source_row":26,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"51-P07","block_name":"51-P07","planting_year":2551,"area_rai":5,"area_planted_rai":5,"tree_count":152,"rspo_status":"NON-RSPO","payroll_department_code":"512","payroll_code_description":"ปลายราง 51","ap_code":"EST007","source_block":"P"},{"source_row":27,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"51-P07-R","block_name":"51-P07-R","planting_year":2551,"area_rai":15,"area_planted_rai":15,"tree_count":401,"rspo_status":"RSPO","payroll_department_code":"512","payroll_code_description":"ปลายราง 51","ap_code":"EST006","source_block":"P"},{"source_row":28,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"52-T28-R","block_name":"52-T28-R","planting_year":2552,"area_rai":4,"area_planted_rai":4,"tree_count":92,"rspo_status":"RSPO","payroll_department_code":"604","payroll_code_description":"ตะกุก 52","ap_code":"EST010","source_block":"T"},{"source_row":29,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"55-P07-R","block_name":"55-P07-R","planting_year":2555,"area_rai":4,"area_planted_rai":4,"tree_count":93,"rspo_status":"RSPO","payroll_department_code":"513","payroll_code_description":"ปลายราง 55","ap_code":"EST020","source_block":"P"},{"source_row":30,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"56-A01","block_name":"56-A01","planting_year":2556,"area_rai":78,"area_planted_rai":78,"tree_count":1950,"rspo_status":"NON-RSPO","payroll_department_code":"503","payroll_code_description":"กะเปา 56","ap_code":"EST013","source_block":"A"},{"source_row":31,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"56-A02","block_name":"56-A02","planting_year":2556,"area_rai":153,"area_planted_rai":153,"tree_count":3835,"rspo_status":"NON-RSPO","payroll_department_code":"503","payroll_code_description":"กะเปา 56","ap_code":"EST013","source_block":"A"},{"source_row":32,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"56-A03-R","block_name":"56-A03-R","planting_year":2556,"area_rai":85,"area_planted_rai":85,"tree_count":2119,"rspo_status":"RSPO","payroll_department_code":"503","payroll_code_description":"กะเปา 56","ap_code":"EST012","source_block":"A"},{"source_row":33,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"56-C10-R","block_name":"56-C10-R","planting_year":2556,"area_rai":124,"area_planted_rai":124,"tree_count":3106,"rspo_status":"RSPO","payroll_department_code":"543","payroll_code_description":"พันไร่ 56","ap_code":"EST014","source_block":"C"},{"source_row":34,"estate":"Kirirat","zone":"Lower","plot_code":"D","plot_name":"หมอนไม้","block_code":"56-D07-R","block_name":"56-D07-R","planting_year":2556,"area_rai":157,"area_planted_rai":157,"tree_count":3931,"rspo_status":"RSPO","payroll_department_code":"522","payroll_code_description":"หมอนไม้ 56","ap_code":"EST016","source_block":"D"},{"source_row":35,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"56-T08","block_name":"56-T08","planting_year":2556,"area_rai":9,"area_planted_rai":9,"tree_count":213,"rspo_status":"NON-RSPO","payroll_department_code":"605","payroll_code_description":"ตะกุก 56","ap_code":"EST018","source_block":"T"},{"source_row":36,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"56-T08-R","block_name":"56-T08-R","planting_year":2556,"area_rai":113,"area_planted_rai":113,"tree_count":2816,"rspo_status":"RSPO","payroll_department_code":"605","payroll_code_description":"ตะกุก 56","ap_code":"EST017","source_block":"T"},{"source_row":37,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"56-T19-R","block_name":"56-T19-R","planting_year":2556,"area_rai":128,"area_planted_rai":128,"tree_count":3199,"rspo_status":"RSPO","payroll_department_code":"605","payroll_code_description":"ตะกุก 56","ap_code":"EST017","source_block":"T"},{"source_row":38,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"56-T21-R","block_name":"56-T21-R","planting_year":2556,"area_rai":121,"area_planted_rai":121,"tree_count":3015,"rspo_status":"RSPO","payroll_department_code":"605","payroll_code_description":"ตะกุก 56","ap_code":"EST017","source_block":"T"},{"source_row":39,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"56-T28-R","block_name":"56-T28-R","planting_year":2556,"area_rai":56,"area_planted_rai":56,"tree_count":1403,"rspo_status":"RSPO","payroll_department_code":"605","payroll_code_description":"ตะกุก 56","ap_code":"EST017","source_block":"T"},{"source_row":40,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"57-A08-R","block_name":"57-A08-R","planting_year":2557,"area_rai":172,"area_planted_rai":172,"tree_count":4308,"rspo_status":"RSPO","payroll_department_code":"504","payroll_code_description":"กะเปา 57","ap_code":"EST012","source_block":"A"},{"source_row":41,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"57-A09-R","block_name":"57-A09-R","planting_year":2557,"area_rai":154,"area_planted_rai":154,"tree_count":3861,"rspo_status":"RSPO","payroll_department_code":"504","payroll_code_description":"กะเปา 57","ap_code":"EST012","source_block":"A"},{"source_row":42,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"57-B03","block_name":"57-B03","planting_year":2557,"area_rai":169,"area_planted_rai":169,"tree_count":4231,"rspo_status":"NON-RSPO","payroll_department_code":"654","payroll_code_description":"บางกัน 57","ap_code":"EST019","source_block":"B"},{"source_row":43,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"57-B12","block_name":"57-B12","planting_year":2557,"area_rai":171,"area_planted_rai":171,"tree_count":4265,"rspo_status":"NON-RSPO","payroll_department_code":"654","payroll_code_description":"บางกัน 57","ap_code":"EST019","source_block":"B"},{"source_row":44,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"57-B14","block_name":"57-B14","planting_year":2557,"area_rai":67,"area_planted_rai":67,"tree_count":1663,"rspo_status":"NON-RSPO","payroll_department_code":"654","payroll_code_description":"บางกัน 57","ap_code":"EST019","source_block":"B"},{"source_row":45,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"57-C06","block_name":"57-C06","planting_year":2557,"area_rai":12,"area_planted_rai":12,"tree_count":300,"rspo_status":"RSPO","payroll_department_code":"544","payroll_code_description":"พันไร่ 57","ap_code":"EST015","source_block":"C"},{"source_row":46,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"57-C06-R","block_name":"57-C06-R","planting_year":2557,"area_rai":100,"area_planted_rai":100,"tree_count":2495,"rspo_status":"RSPO","payroll_department_code":"544","payroll_code_description":"พันไร่ 57","ap_code":"EST014","source_block":"C"},{"source_row":47,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"58-T09-R","block_name":"58-T09-R","planting_year":2558,"area_rai":117,"area_planted_rai":117,"tree_count":2934,"rspo_status":"RSPO","payroll_department_code":"606","payroll_code_description":"ตะกุก 58","ap_code":"EST017","source_block":"T"},{"source_row":48,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"58-T11-R","block_name":"58-T11-R","planting_year":2558,"area_rai":116,"area_planted_rai":116,"tree_count":2903,"rspo_status":"RSPO","payroll_department_code":"606","payroll_code_description":"ตะกุก 58","ap_code":"EST017","source_block":"T"},{"source_row":49,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"58-T13-R","block_name":"58-T13-R","planting_year":2558,"area_rai":115,"area_planted_rai":115,"tree_count":2864,"rspo_status":"RSPO","payroll_department_code":"606","payroll_code_description":"ตะกุก 58","ap_code":"EST017","source_block":"T"},{"source_row":50,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"58-T17-R","block_name":"58-T17-R","planting_year":2558,"area_rai":128,"area_planted_rai":128,"tree_count":2825,"rspo_status":"RSPO","payroll_department_code":"606","payroll_code_description":"ตะกุก 58","ap_code":"EST017","source_block":"T"},{"source_row":51,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"58-T18-R","block_name":"58-T18-R","planting_year":2558,"area_rai":129,"area_planted_rai":129,"tree_count":2843,"rspo_status":"RSPO","payroll_department_code":"606","payroll_code_description":"ตะกุก 58","ap_code":"EST017","source_block":"T"},{"source_row":52,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"59-C03-R","block_name":"59-C03-R","planting_year":2559,"area_rai":133,"area_planted_rai":133,"tree_count":3333,"rspo_status":"RSPO","payroll_department_code":"545","payroll_code_description":"พันไร่ 59","ap_code":"EST021","source_block":"C"},{"source_row":53,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"59-C04-R","block_name":"59-C04-R","planting_year":2559,"area_rai":101,"area_planted_rai":101,"tree_count":2525,"rspo_status":"RSPO","payroll_department_code":"545","payroll_code_description":"พันไร่ 59","ap_code":"EST021","source_block":"C"},{"source_row":54,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"59-C08-R","block_name":"59-C08-R","planting_year":2559,"area_rai":116,"area_planted_rai":116,"tree_count":2888,"rspo_status":"RSPO","payroll_department_code":"545","payroll_code_description":"พันไร่ 59","ap_code":"EST021","source_block":"C"},{"source_row":55,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"59-C09-R","block_name":"59-C09-R","planting_year":2559,"area_rai":76,"area_planted_rai":76,"tree_count":1905,"rspo_status":"RSPO","payroll_department_code":"545","payroll_code_description":"พันไร่ 59","ap_code":"EST021","source_block":"C"},{"source_row":56,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"59-C11-R","block_name":"59-C11-R","planting_year":2559,"area_rai":92,"area_planted_rai":92,"tree_count":2291,"rspo_status":"RSPO","payroll_department_code":"545","payroll_code_description":"พันไร่ 59","ap_code":"EST021","source_block":"C"},{"source_row":57,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"60-A06","block_name":"60-A06","planting_year":2560,"area_rai":142,"area_planted_rai":142,"tree_count":3259,"rspo_status":"NON-RSPO","payroll_department_code":"505","payroll_code_description":"กะเปา 60","ap_code":"EST022","source_block":"A"},{"source_row":58,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"60-B04","block_name":"60-B04","planting_year":2560,"area_rai":154,"area_planted_rai":154,"tree_count":3851,"rspo_status":"NON-RSPO","payroll_department_code":"655","payroll_code_description":"บางกัน 60","ap_code":"EST023","source_block":"B"},{"source_row":59,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"60-B08","block_name":"60-B08","planting_year":2560,"area_rai":139,"area_planted_rai":139,"tree_count":3476,"rspo_status":"NON-RSPO","payroll_department_code":"655","payroll_code_description":"บางกัน 60","ap_code":"EST023","source_block":"B"},{"source_row":60,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"60-B09","block_name":"60-B09","planting_year":2560,"area_rai":165,"area_planted_rai":165,"tree_count":4127,"rspo_status":"NON-RSPO","payroll_department_code":"655","payroll_code_description":"บางกัน 60","ap_code":"EST023","source_block":"B"},{"source_row":61,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"60-C01-R","block_name":"60-C01-R","planting_year":2560,"area_rai":108,"area_planted_rai":108,"tree_count":2707,"rspo_status":"RSPO","payroll_department_code":"546","payroll_code_description":"พันไร่ 60","ap_code":"EST021","source_block":"C"},{"source_row":62,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"60-C02-R","block_name":"60-C02-R","planting_year":2560,"area_rai":85,"area_planted_rai":85,"tree_count":2132,"rspo_status":"RSPO","payroll_department_code":"546","payroll_code_description":"พันไร่ 60","ap_code":"EST021","source_block":"C"},{"source_row":63,"estate":"Kirirat","zone":"Lower","plot_code":"C","plot_name":"พันไร่","block_code":"60-C05-R","block_name":"60-C05-R","planting_year":2560,"area_rai":29,"area_planted_rai":29,"tree_count":720,"rspo_status":"RSPO","payroll_department_code":"546","payroll_code_description":"พันไร่ 60","ap_code":"EST021","source_block":"C"},{"source_row":64,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"63-A01-R","block_name":"63-A01-R","planting_year":2563,"area_rai":24,"area_planted_rai":24,"tree_count":534,"rspo_status":"RSPO","payroll_department_code":"506","payroll_code_description":"พันไร่ 60","ap_code":"EST025","source_block":"A"},{"source_row":65,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"63-A03-R","block_name":"63-A03-R","planting_year":2563,"area_rai":39,"area_planted_rai":39,"tree_count":981,"rspo_status":"RSPO","payroll_department_code":"506","payroll_code_description":"กะเปา 63","ap_code":"EST025","source_block":"A"},{"source_row":66,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"63-A07","block_name":"63-A07","planting_year":2563,"area_rai":109,"area_planted_rai":109,"tree_count":2388,"rspo_status":"NON-RSPO","payroll_department_code":"506","payroll_code_description":"กะเปา 63","ap_code":"EST026","source_block":"A"},{"source_row":67,"estate":"Kirirat","zone":"Lower","plot_code":"A","plot_name":"กะเปา","block_code":"63-A07-R","block_name":"63-A07-R","planting_year":2563,"area_rai":14,"area_planted_rai":14,"tree_count":309,"rspo_status":"RSPO","payroll_department_code":"506","payroll_code_description":"กะเปา 63","ap_code":"EST025","source_block":"A"},{"source_row":68,"estate":"Kirirat","zone":"Lower","plot_code":"D","plot_name":"หมอนไม้","block_code":"63-D08-R","block_name":"63-D08-R","planting_year":2563,"area_rai":108,"area_planted_rai":108,"tree_count":2365,"rspo_status":"RSPO","payroll_department_code":"523","payroll_code_description":"กะเปา 63","ap_code":"EST024","source_block":"D"},{"source_row":69,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"63-T05-R","block_name":"63-T05-R","planting_year":2563,"area_rai":121,"area_planted_rai":121,"tree_count":3037,"rspo_status":"RSPO","payroll_department_code":"607","payroll_code_description":"หมอนไม้ 63","ap_code":"EST029","source_block":"T"},{"source_row":70,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"63-T22-R","block_name":"63-T22-R","planting_year":2563,"area_rai":38,"area_planted_rai":38,"tree_count":842,"rspo_status":"RSPO","payroll_department_code":"607","payroll_code_description":"ตะกุก 63","ap_code":"EST029","source_block":"T"},{"source_row":71,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"63-T23-R","block_name":"63-T23-R","planting_year":2563,"area_rai":38,"area_planted_rai":38,"tree_count":844,"rspo_status":"RSPO","payroll_department_code":"607","payroll_code_description":"ตะกุก 63","ap_code":"EST029","source_block":"T"},{"source_row":72,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"64-B02","block_name":"64-B02","planting_year":2564,"area_rai":158,"area_planted_rai":158,"tree_count":3480,"rspo_status":"NON-RSPO","payroll_department_code":"656","payroll_code_description":"บางกัน 64","ap_code":"EST030","source_block":"B"},{"source_row":73,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"64-B05","block_name":"64-B05","planting_year":2564,"area_rai":143,"area_planted_rai":143,"tree_count":3140,"rspo_status":"NON-RSPO","payroll_department_code":"656","payroll_code_description":"บางกัน 64","ap_code":"EST030","source_block":"B"},{"source_row":74,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"64-B06","block_name":"64-B06","planting_year":2564,"area_rai":167,"area_planted_rai":167,"tree_count":3671,"rspo_status":"NON-RSPO","payroll_department_code":"656","payroll_code_description":"บางกัน 64","ap_code":"EST030","source_block":"B"},{"source_row":75,"estate":"Kirirat","zone":"Lower","plot_code":"D","plot_name":"หมอนไม้","block_code":"64-D02-R","block_name":"64-D02-R","planting_year":2564,"area_rai":130,"area_planted_rai":130,"tree_count":2853,"rspo_status":"RSPO","payroll_department_code":"524","payroll_code_description":"หมอนไม้ 64","ap_code":"EST024","source_block":"D"},{"source_row":76,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"64-P06-R","block_name":"64-P06-R","planting_year":2564,"area_rai":131,"area_planted_rai":131,"tree_count":2886,"rspo_status":"RSPO","payroll_department_code":"514","payroll_code_description":"ปลายราง 64","ap_code":"EST027","source_block":"P"},{"source_row":77,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"64-P07-R","block_name":"64-P07-R","planting_year":2564,"area_rai":117,"area_planted_rai":117,"tree_count":2579,"rspo_status":"RSPO","payroll_department_code":"514","payroll_code_description":"ปลายราง 64","ap_code":"EST027","source_block":"P"},{"source_row":78,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"64-P08-R","block_name":"64-P08-R","planting_year":2564,"area_rai":155,"area_planted_rai":155,"tree_count":3402,"rspo_status":"RSPO","payroll_department_code":"514","payroll_code_description":"ปลายราง 64","ap_code":"EST027","source_block":"P"},{"source_row":79,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"64-P09-R","block_name":"64-P09-R","planting_year":2564,"area_rai":100,"area_planted_rai":100,"tree_count":2192,"rspo_status":"RSPO","payroll_department_code":"514","payroll_code_description":"ปลายราง 64","ap_code":"EST027","source_block":"P"},{"source_row":80,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"65-B01","block_name":"65-B01","planting_year":2565,"area_rai":130,"area_planted_rai":130,"tree_count":2868,"rspo_status":"NON-RSPO","payroll_department_code":"657","payroll_code_description":"บางกัน 65","ap_code":"EST030","source_block":"B"},{"source_row":81,"estate":"Kirirat","zone":"Upper","plot_code":"B","plot_name":"บางกัน","block_code":"65-B11","block_name":"65-B11","planting_year":2565,"area_rai":145,"area_planted_rai":145,"tree_count":3193,"rspo_status":"NON-RSPO","payroll_department_code":"657","payroll_code_description":"บางกัน 65","ap_code":"EST030","source_block":"B"},{"source_row":82,"estate":"Kirirat","zone":"Lower","plot_code":"D","plot_name":"หมอนไม้","block_code":"65-D01-R","block_name":"65-D01-R","planting_year":2565,"area_rai":115,"area_planted_rai":115,"tree_count":2531,"rspo_status":"RSPO","payroll_department_code":"525","payroll_code_description":"หมอนไม้ 65","ap_code":"EST024","source_block":"D"},{"source_row":83,"estate":"Kirirat","zone":"Lower","plot_code":"D","plot_name":"หมอนไม้","block_code":"65-D03-R","block_name":"65-D03-R","planting_year":2565,"area_rai":127,"area_planted_rai":127,"tree_count":2803,"rspo_status":"RSPO","payroll_department_code":"525","payroll_code_description":"หมอนไม้ 65","ap_code":"EST024","source_block":"D"},{"source_row":84,"estate":"Kirirat","zone":"Lower","plot_code":"D","plot_name":"หมอนไม้","block_code":"65-D04-R","block_name":"65-D04-R","planting_year":2565,"area_rai":128,"area_planted_rai":128,"tree_count":2819,"rspo_status":"RSPO","payroll_department_code":"525","payroll_code_description":"หมอนไม้ 65","ap_code":"EST024","source_block":"D"},{"source_row":85,"estate":"Kirirat","zone":"Lower","plot_code":"D","plot_name":"หมอนไม้","block_code":"65-D05-R","block_name":"65-D05-R","planting_year":2565,"area_rai":122,"area_planted_rai":122,"tree_count":2687,"rspo_status":"RSPO","payroll_department_code":"525","payroll_code_description":"หมอนไม้ 65","ap_code":"EST024","source_block":"D"},{"source_row":86,"estate":"Kirirat","zone":"Lower","plot_code":"D","plot_name":"หมอนไม้","block_code":"66-D09-R","block_name":"66-D09-R","planting_year":2566,"area_rai":136,"area_planted_rai":136,"tree_count":2999,"rspo_status":"RSPO","payroll_department_code":"526","payroll_code_description":"หมอนไม้ 66","ap_code":"EST032","source_block":"D"},{"source_row":87,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"66-P03-R","block_name":"66-P03-R","planting_year":2566,"area_rai":116,"area_planted_rai":116,"tree_count":2550,"rspo_status":"RSPO","payroll_department_code":"515","payroll_code_description":"ปลายราง 66","ap_code":"EST031","source_block":"P"},{"source_row":88,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"66-P04-R","block_name":"66-P04-R","planting_year":2566,"area_rai":130,"area_planted_rai":130,"tree_count":2854,"rspo_status":"RSPO","payroll_department_code":"515","payroll_code_description":"ปลายราง 66","ap_code":"EST031","source_block":"P"},{"source_row":89,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"66-P05-R","block_name":"66-P05-R","planting_year":2566,"area_rai":141,"area_planted_rai":141,"tree_count":3111,"rspo_status":"RSPO","payroll_department_code":"515","payroll_code_description":"ปลายราง 66","ap_code":"EST031","source_block":"P"},{"source_row":90,"estate":"Kirirat","zone":"Lower","plot_code":"PU","plot_name":"ยวนสาว","block_code":"66-PU2","block_name":"66-PU2","planting_year":2566,"area_rai":90,"area_planted_rai":90,"tree_count":1970,"rspo_status":"NON-RSPO","payroll_department_code":"533","payroll_code_description":"ยวนสาว 66","ap_code":"EST034","source_block":"PU"},{"source_row":91,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"66-T03","block_name":"66-T03","planting_year":2566,"area_rai":111,"area_planted_rai":111,"tree_count":2449,"rspo_status":"NON-RSPO","payroll_department_code":"608","payroll_code_description":"ตะกุก 66","ap_code":"EST033","source_block":"T"},{"source_row":92,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"66-T04","block_name":"66-T04","planting_year":2566,"area_rai":92,"area_planted_rai":92,"tree_count":2014,"rspo_status":"NON-RSPO","payroll_department_code":"608","payroll_code_description":"ตะกุก 66","ap_code":"EST033","source_block":"T"},{"source_row":93,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"66-T06","block_name":"66-T06","planting_year":2566,"area_rai":132,"area_planted_rai":132,"tree_count":2898,"rspo_status":"NON-RSPO","payroll_department_code":"608","payroll_code_description":"ตะกุก 66","ap_code":"EST033","source_block":"T"},{"source_row":94,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"66-T07","block_name":"66-T07","planting_year":2566,"area_rai":107,"area_planted_rai":107,"tree_count":2364,"rspo_status":"NON-RSPO","payroll_department_code":"608","payroll_code_description":"ตะกุก 66","ap_code":"EST033","source_block":"T"},{"source_row":95,"estate":"Kirirat","zone":"Lower","plot_code":"D","plot_name":"หมอนไม้","block_code":"67-D06-R","block_name":"67-D06-R","planting_year":2567,"area_rai":130,"area_planted_rai":130,"tree_count":2865,"rspo_status":"RSPO","payroll_department_code":"527","payroll_code_description":"หมอนไม้ 67","ap_code":"EST036","source_block":"D"},{"source_row":96,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"67-P01-R","block_name":"67-P01-R","planting_year":2567,"area_rai":99,"area_planted_rai":99,"tree_count":2167,"rspo_status":"RSPO","payroll_department_code":"516","payroll_code_description":"ปลายราง 67","ap_code":"EST035","source_block":"P"},{"source_row":97,"estate":"Kirirat","zone":"Lower","plot_code":"P","plot_name":"ปลายราง","block_code":"67-P02-R","block_name":"67-P02-R","planting_year":2567,"area_rai":105,"area_planted_rai":105,"tree_count":2320,"rspo_status":"RSPO","payroll_department_code":"516","payroll_code_description":"ปลายราง 67","ap_code":"EST035","source_block":"P"},{"source_row":98,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"67-T10","block_name":"67-T10","planting_year":2567,"area_rai":3,"area_planted_rai":3,"tree_count":61,"rspo_status":"NON-RSPO","payroll_department_code":"610","payroll_code_description":"ตะกุก 67 (T10,18,21)","ap_code":"EST038","source_block":"T"},{"source_row":99,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"67-T18","block_name":"67-T18","planting_year":2567,"area_rai":8,"area_planted_rai":8,"tree_count":171,"rspo_status":"NON-RSPO","payroll_department_code":"610","payroll_code_description":"ตะกุก 67 (T10,18,21)","ap_code":"EST038","source_block":"T"},{"source_row":100,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"67-T21","block_name":"67-T21","planting_year":2567,"area_rai":11,"area_planted_rai":11,"tree_count":241,"rspo_status":"NON-RSPO","payroll_department_code":"610","payroll_code_description":"ตะกุก 67 (T10,18,21)","ap_code":"EST038","source_block":"T"},{"source_row":101,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"67-T29","block_name":"67-T29","planting_year":2567,"area_rai":140,"area_planted_rai":140,"tree_count":3070,"rspo_status":"NON-RSPO","payroll_department_code":"609","payroll_code_description":"ตะกุก 67 (T29,30)","ap_code":"EST037","source_block":"T"},{"source_row":102,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"67-T30","block_name":"67-T30","planting_year":2567,"area_rai":149,"area_planted_rai":149,"tree_count":3270,"rspo_status":"NON-RSPO","payroll_department_code":"609","payroll_code_description":"ตะกุก 67 (T29,30)","ap_code":"EST037","source_block":"T"},{"source_row":103,"estate":"Kirirat","zone":"Lower","plot_code":"PU","plot_name":"ยวนสาว","block_code":"68-PU1","block_name":"68-PU1","planting_year":2568,"area_rai":86,"area_planted_rai":86,"tree_count":1892,"rspo_status":"NON-RSPO","payroll_department_code":"535","payroll_code_description":"ยวนสาว 68 (68-PU1,3,4 ปลูกแซม)","ap_code":"EST041","source_block":"PU"},{"source_row":104,"estate":"Kirirat","zone":"Lower","plot_code":"PU","plot_name":"ยวนสาว","block_code":"68-PU3","block_name":"68-PU3","planting_year":2568,"area_rai":77,"area_planted_rai":77,"tree_count":1686,"rspo_status":"NON-RSPO","payroll_department_code":"535","payroll_code_description":"ยวนสาว 68 (68-PU1,3,4 ปลูกแซม)","ap_code":"EST041","source_block":"PU"},{"source_row":105,"estate":"Kirirat","zone":"Lower","plot_code":"PU","plot_name":"ยวนสาว","block_code":"68-PU4","block_name":"68-PU4","planting_year":2568,"area_rai":63,"area_planted_rai":63,"tree_count":1380,"rspo_status":"NON-RSPO","payroll_department_code":"535","payroll_code_description":"ยวนสาว 68 (68-PU1,3,4 ปลูกแซม)","ap_code":"EST041","source_block":"PU"},{"source_row":106,"estate":"Kirirat","zone":"Lower","plot_code":"PU","plot_name":"ยวนสาว","block_code":"68-PU5","block_name":"68-PU5","planting_year":2568,"area_rai":34,"area_planted_rai":34,"tree_count":751,"rspo_status":"NON-RSPO","payroll_department_code":"534","payroll_code_description":"ยวนสาว 68 (68-PU5,6)","ap_code":"EST041","source_block":"PU"},{"source_row":107,"estate":"Kirirat","zone":"Lower","plot_code":"PU","plot_name":"ยวนสาว","block_code":"68-PU5-R","block_name":"68-PU5-R","planting_year":2568,"area_rai":53,"area_planted_rai":53,"tree_count":1168,"rspo_status":"RSPO","payroll_department_code":"534","payroll_code_description":"ยวนสาว 68 (68-PU5,6)","ap_code":"EST040","source_block":"PU"},{"source_row":108,"estate":"Kirirat","zone":"Lower","plot_code":"PU","plot_name":"ยวนสาว","block_code":"68-PU6","block_name":"68-PU6","planting_year":2568,"area_rai":7,"area_planted_rai":7,"tree_count":145,"rspo_status":"NON-RSPO","payroll_department_code":"534","payroll_code_description":"ยวนสาว 68 (68-PU5,6)","ap_code":"EST042","source_block":"PU"},{"source_row":109,"estate":"Kirirat","zone":"Lower","plot_code":"PU","plot_name":"ยวนสาว","block_code":"68-PU6-R","block_name":"68-PU6-R","planting_year":2568,"area_rai":70,"area_planted_rai":70,"tree_count":1547,"rspo_status":"RSPO","payroll_department_code":"534","payroll_code_description":"ยวนสาว 68 (68-PU5,6)","ap_code":"EST040","source_block":"PU"},{"source_row":110,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"68-T01","block_name":"68-T01","planting_year":2568,"area_rai":144,"area_planted_rai":144,"tree_count":3171,"rspo_status":"NON-RSPO","payroll_department_code":"611","payroll_code_description":"ตะกุก 68","ap_code":"EST039","source_block":"T"},{"source_row":111,"estate":"Kirirat","zone":"Upper","plot_code":"T","plot_name":"ตะกุก","block_code":"68-T02","block_name":"68-T02","planting_year":2568,"area_rai":134,"area_planted_rai":134,"tree_count":2950,"rspo_status":"NON-RSPO","payroll_department_code":"611","payroll_code_description":"ตะกุก 68","ap_code":"EST039","source_block":"T"},{"source_row":112,"estate":"Kirirat","zone":"X-NU01","plot_code":"SB","plot_name":"แปลงเพาะ","block_code":"SB170867","block_name":"SB170867","planting_year":null,"area_rai":0,"area_planted_rai":null,"tree_count":22749,"rspo_status":null,"payroll_department_code":"560","payroll_code_description":"แปลงเพาะ SB170867","ap_code":"EST043","source_block":"X-NU01"},{"source_row":113,"estate":"Kirirat","zone":"X-NU01","plot_code":"SB","plot_name":"แปลงเพาะ","block_code":"SB270766","block_name":"SB270766","planting_year":null,"area_rai":0,"area_planted_rai":null,"tree_count":1358,"rspo_status":null,"payroll_department_code":"559","payroll_code_description":"แปลงเพาะ SB270766","ap_code":"EST044","source_block":"X-NU01"}]);
+
+  const AREA_TERRAIN_BY_BLOCK_2569 = new Map(
+    AREA_TERRAIN_REFERENCE_2569.map((row) => [normalizeMapKey(row.block_code), row])
+  );
+
+  function areaTerrainRef(blockCode) {
+    return AREA_TERRAIN_BY_BLOCK_2569.get(normalizeMapKey(blockCode)) || null;
+  }
+
+  function areaTerrainPlotDisplay(refOrCode) {
+    const code = typeof refOrCode === "object"
+      ? String(refOrCode?.plot_code || "").trim().toUpperCase()
+      : String(refOrCode || "").trim().toUpperCase();
+    if (!code) return "-";
+    const name = AREA_TERRAIN_PLOT_NAMES[code] ||
+      (typeof refOrCode === "object" ? refOrCode?.plot_name : "") || "";
+    return name ? code + " - " + name : code;
+  }
+
+  function areaTerrainCompare(block) {
+    if (!block) return { status: "NO_BLOCK", diffs: [] };
+    const ref = areaTerrainRef(block.block_code || block.block_name || "");
+    if (!ref) return { status: "MISSING_IN_TERRAIN", diffs: [] };
+
+    const diffs = [];
+    const numEq = (a, b) => {
+      if (a == null && b == null) return true;
+      const na = Number(a);
+      const nb = Number(b);
+      if (!Number.isFinite(na) || !Number.isFinite(nb)) {
+        return String(a ?? "") === String(b ?? "");
+      }
+      return Math.abs(na - nb) < 0.000001;
+    };
+    const txt = (v) => String(v ?? "").trim().toUpperCase();
+
+    if (!numEq(block.area_rai, ref.area_rai)) diffs.push("AREA");
+    if (!numEq(block.tree_count, ref.tree_count)) diffs.push("TREES");
+    if (txt(block.rspo_status) !== txt(ref.rspo_status)) diffs.push("RSPO");
+    if (txt(block.ap_code) !== txt(ref.ap_code)) diffs.push("AP_CODE");
+    if (!numEq(block.planting_year, ref.planting_year)) diffs.push("PLANTING_YEAR");
+
+    return { status: diffs.length ? "DIFF" : "MATCH", diffs, ref };
+  }
+
+  function applyTerrainReferenceToForm(form) {
+    if (!form) return;
+    const ref = areaTerrainRef(form.elements.block_code?.value || "");
+
+    if (form.elements.block_group) {
+      form.elements.block_group.value = ref
+        ? areaTerrainPlotDisplay(ref)
+        : areaTerrainPlotDisplay(deriveBlockGroup(form.elements.block_code?.value || ""));
+    }
+
+    if (form.elements.area_planted_rai) {
+      form.elements.area_planted_rai.value = ref?.area_planted_rai ?? "";
+    }
+    if (form.elements.payroll_department_code) {
+      form.elements.payroll_department_code.value = ref?.payroll_department_code ?? "";
+    }
+    if (form.elements.payroll_code_description) {
+      form.elements.payroll_code_description.value = ref?.payroll_code_description ?? "";
+    }
+
+    const status = form.closest("dialog")?.querySelector("[data-area-terrain-compare]");
+    if (!status) return;
+
+    const originalId = form.dataset.originalId || "";
+    const block = originalId && typeof rawBlockById === "function"
+      ? rawBlockById(originalId)
+      : null;
+    const comparison = block ? areaTerrainCompare(block) : null;
+
+    if (!ref) {
+      status.textContent = "Terrain Reference: ไม่พบ Block ในชีต Terrain";
+      status.dataset.status = "missing";
+    } else if (!comparison || comparison.status === "MATCH") {
+      status.textContent = "Terrain Reference: " + ref.block_code + " · " + areaTerrainPlotDisplay(ref);
+      status.dataset.status = "match";
+    } else {
+      status.textContent = "Terrain Compare: ต่าง " + comparison.diffs.join(", ") +
+        " · Source row " + ref.source_row;
+      status.dataset.status = "diff";
+    }
+  }
+
+  function decorateTerrainReferenceTable(board) {
+    const rows = [...board.querySelectorAll("tr[data-farm-area-block-row]")];
+
+    for (const row of rows) {
+      const table = row.closest("table");
+      const header = table?.querySelector("thead tr");
+      if (!header) continue;
+
+      const headers = [...header.children];
+      const groupIndex = headers.findIndex((cell) =>
+        /^(Block Group|กลุ่ม|Plot)$/i.test(String(cell.textContent || "").trim())
+      );
+
+      if (groupIndex >= 0) headers[groupIndex].textContent = "Plot";
+
+      const id = row.dataset.farmAreaBlockRow || "";
+      const block = typeof rawBlockById === "function" ? rawBlockById(id) : null;
+      const ref = areaTerrainRef(block?.block_code || block?.block_name || "");
+
+      if (groupIndex >= 0 && row.children[groupIndex]) {
+        row.children[groupIndex].textContent = ref
+          ? areaTerrainPlotDisplay(ref)
+          : areaTerrainPlotDisplay(deriveBlockGroup(block?.block_code || ""));
+      }
+
+      const comparison = block ? areaTerrainCompare(block) : { status: "NO_BLOCK", diffs: [] };
+      const terrainCheck = !ref
+        ? "MISSING"
+        : comparison.status === "MATCH"
+          ? "MATCH"
+          : "DIFF: " + comparison.diffs.join(", ");
+
+      const cols = [
+        ["area-planted", "Area Planted", ref?.area_planted_rai ?? "-"],
+        ["payroll-dept", "Payroll Dept.", ref?.payroll_department_code ?? "-"],
+        ["payroll-desc", "Payroll Description", ref?.payroll_code_description ?? "-"],
+        ["terrain-check", "Terrain Check", terrainCheck],
+      ];
+
+      for (const [key, title] of cols) {
+        if (!header.querySelector('[data-area-terrain-header="' + key + '"]')) {
+          const th = document.createElement("th");
+          th.setAttribute("data-area-terrain-header", key);
+          th.textContent = title;
+          const actionHeader = header.querySelector("[data-area-actions-header]");
+          if (actionHeader) header.insertBefore(th, actionHeader);
+          else header.appendChild(th);
+        }
+      }
+
+      for (const [key, , value] of cols) {
+        let td = row.querySelector('[data-area-terrain-cell="' + key + '"]');
+        if (!td) {
+          td = document.createElement("td");
+          td.setAttribute("data-area-terrain-cell", key);
+          const actionCell = row.querySelector("[data-area-actions-cell]");
+          if (actionCell) row.insertBefore(td, actionCell);
+          else row.appendChild(td);
+        }
+        td.textContent = String(value ?? "-");
+        if (key === "terrain-check") {
+          td.dataset.status = String(value).startsWith("MATCH")
+            ? "match"
+            : String(value).startsWith("DIFF")
+              ? "diff"
+              : "missing";
+        }
+      }
+    }
+  }
   function isFarmAreaView() {
     try {
       return typeof state !== "undefined" && state?.view === "farm-area";
@@ -29368,12 +29555,15 @@ init().catch((error) => {
           <label>Block Code<input name="block_code" required maxlength="80"></label>
           <label>Block Name<input name="block_name" required maxlength="160"></label>
           <label>AP Code<input name="ap_code" required maxlength="80"></label>
-          <label>กลุ่ม (จาก Block Code)<input name="block_group" readonly></label>
+          <label>Plot<input name="block_group" readonly></label>
           <label>Estate<select name="estate_id"><option value="">ไม่ระบุ</option></select></label>
           <label>Zone<select name="zone_id"><option value="">ไม่ระบุ</option></select></label>
           <label>ปีปลูก (พ.ศ.)<input name="planting_year" type="number" min="2450" max="2700"></label>
           <label>พื้นที่ (ไร่)<input name="area_rai" type="number" step="0.0001" min="0" required></label>
+          <label>Area Planted (ไร่)<input name="area_planted_rai" type="number" step="0.0001" min="0" readonly></label>
           <label>จำนวนต้น<input name="tree_count" type="number" step="1" min="0" required></label>
+          <label>Payroll Dept. Code<input name="payroll_department_code" readonly></label>
+          <label class="span-2">Payroll Description<input name="payroll_code_description" readonly></label>
           <label>RSPO<select name="rspo_status"><option value="">ไม่ระบุ</option><option value="RSPO">RSPO</option><option value="NON-RSPO">NON-RSPO</option></select></label>
           <label>Terrain Type<input name="terrain_type" maxlength="120"></label>
           <label>Productive Status<input name="productive_status" maxlength="120"></label>
@@ -29394,7 +29584,10 @@ init().catch((error) => {
     const form = dialog.querySelector("[data-area-block-form]");
     dialog.querySelectorAll("[data-area-dialog-close]").forEach((button) => button.addEventListener("click", () => dialog.close()));
     form.elements.block_code.addEventListener("input", () => {
-      form.elements.block_group.value = deriveBlockGroup(form.elements.block_code.value);
+      form.elements.block_group.value = areaTerrainPlotDisplay(
+        deriveBlockGroup(form.elements.block_code.value)
+      );
+      applyTerrainReferenceToForm(form);
     });
     form.elements.zone_id.addEventListener("change", () => {
       const option = form.elements.zone_id.selectedOptions?.[0];
@@ -29417,7 +29610,7 @@ init().catch((error) => {
     form.elements.block_code.value = row.block_code || "";
     form.elements.block_name.value = row.block_name || row.block_code || "";
     form.elements.ap_code.value = row.ap_code || row.block_code || "";
-    form.elements.block_group.value = deriveBlockGroup(row.block_code || "");
+    form.elements.block_group.value = areaPlotDisplay(deriveBlockGroup(row.block_code || ""));
     form.elements.estate_id.value = row.estate_id || "";
     form.elements.zone_id.value = row.zone_id || "";
     form.elements.planting_year.value = row.planting_year ?? "";
@@ -29436,6 +29629,7 @@ init().catch((error) => {
     dialog.querySelector("[data-area-remove-uploaded-map]").hidden = !geometry;
     dialog.querySelector("[data-area-block-status]").textContent = "";
     if (!dialog.open) dialog.showModal();
+    applyTerrainReferenceToForm(form);
     queueMicrotask(() => form.elements.block_code.focus());
   }
 
@@ -29911,6 +30105,7 @@ init().catch((error) => {
     const board = document.querySelector(".farm-area-board");
     if (!board) return;
     addToolbar(board);
+    decorateTerrainReferenceTable(board);
     decorateAreaTable(board);
   }
 
