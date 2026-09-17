@@ -29216,14 +29216,46 @@ init().catch((error) => {
     return [];
   }
 
+  function isOperationalBlock(row) {
+    const code = normalizeMapKey(row?.block_code || row?.block_name || "");
+    if (!code) return false;
+
+    const rawName = String(row?.block_name || row?.block_code || "").trim();
+
+    if (/^ทั้งแปลง[-_/]/i.test(rawName)) return false;
+
+    const nonBlockNames = new Set([
+      "สำนักงาน",
+      "อื่นๆ",
+      "ฮวงซุ้ย"
+    ]);
+
+    if (nonBlockNames.has(rawName)) return false;
+
+    return true;
+  }
   function canonicalBlocks() {
+    let rows = [];
+
     try {
-      if (typeof farmAreaCatalogBlocks === "function") return farmAreaCatalogBlocks() || [];
+      if (typeof farmAreaCatalogBlocks === "function") {
+        rows = farmAreaCatalogBlocks() || [];
+      }
     } catch (_) {}
-    try {
-      if (Array.isArray(state?.farmCanonicalAreaRows) && state.farmCanonicalAreaRows.length) return state.farmCanonicalAreaRows;
-    } catch (_) {}
-    return rowList("blocks");
+
+    if (!rows.length) {
+      try {
+        if (Array.isArray(state?.farmCanonicalAreaRows) && state.farmCanonicalAreaRows.length) {
+          rows = state.farmCanonicalAreaRows;
+        }
+      } catch (_) {}
+    }
+
+    if (!rows.length) {
+      rows = rowList("blocks");
+    }
+
+    return rows.filter(isOperationalBlock);
   }
 
   function rawBlockById(id) {
