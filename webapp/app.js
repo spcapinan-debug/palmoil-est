@@ -24813,7 +24813,7 @@ function renderFarmAreaBoard() {
       <td>${esc(area.ap_code || area.AP_code || "-")}</td>
       <td>${esc(area.estateDisplay || area.estateName || "-")}</td>
       <td>${esc(area.zoneDisplay || area.zoneName || "ยังไม่ระบุ Zone")}</td>
-      <td>${esc(areaPlotDisplay(area.blockGroupCode))}</td>
+      <td>${esc(area.blockGroupCode || "-")}</td>
       <td>${esc(area.planting_year || "-")}</td>
       <td class="num">${fmt(n(area.area_rai))}</td>
       <td class="num">${fmt(n(area.tree_count))}</td>
