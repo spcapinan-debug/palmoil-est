@@ -29191,9 +29191,7 @@ init().catch((error) => {
     const ref = areaTerrainRef(form.elements.block_code?.value || "");
 
     if (form.elements.block_group) {
-      form.elements.block_group.value = ref
-        ? areaTerrainPlotDisplay(ref)
-        : areaTerrainPlotDisplay(deriveBlockGroup(form.elements.block_code?.value || ""));
+      form.elements.block_group.value = ref?.plot_code || blockPlotCode(form.elements.block_code?.value || "");
     }
 
     if (form.elements.area_planted_rai) {
@@ -29301,6 +29299,55 @@ init().catch((error) => {
       }
     }
   }
+
+  /* AREA_PLOT_DROPDOWN_V4 */
+  const AREA_PLOT_OPTIONS = Object.freeze({
+    A: "กะเปา",
+    B: "บางกัน",
+    C: "พันไร่",
+    D: "หมอนไม้",
+    P: "ปลายราง",
+    PU: "ยวนสาว",
+    T: "ตะกุก",
+    SB: "แปลงเพาะ",
+  });
+
+  function normalizeAreaPlotCode(value) {
+    const code = String(value || "").trim().toUpperCase();
+    return Object.prototype.hasOwnProperty.call(AREA_PLOT_OPTIONS, code) ? code : "";
+  }
+
+  function blockPlotCode(blockCode) {
+    return normalizeAreaPlotCode(deriveBlockGroup(blockCode || ""));
+  }
+
+  function setAreaPlotFromBlockCode(form, { overwrite = true } = {}) {
+    if (!form?.elements?.block_group) return;
+    const derived = blockPlotCode(form.elements.block_code?.value || "");
+    if (derived && (overwrite || !form.elements.block_group.value)) {
+      form.elements.block_group.value = derived;
+    }
+  }
+
+  function validateAreaPlotSelection(form) {
+    const selected = normalizeAreaPlotCode(form?.elements?.block_group?.value || "");
+    if (!selected) throw new Error("กรุณาเลือก Plot");
+
+    const derived = blockPlotCode(form?.elements?.block_code?.value || "");
+    if (derived && derived !== selected) {
+      const selectedLabel = AREA_PLOT_OPTIONS[selected] || selected;
+      const derivedLabel = AREA_PLOT_OPTIONS[derived] || derived;
+      throw new Error(
+        "Plot ไม่ตรงกับ Block Code: เลือก " +
+        selected + " - " + selectedLabel +
+        " แต่ Block Code อยู่ใน " +
+        derived + " - " + derivedLabel
+      );
+    }
+
+    return selected;
+  }
+
   function isFarmAreaView() {
     try {
       return typeof state !== "undefined" && state?.view === "farm-area";
@@ -29557,7 +29604,19 @@ init().catch((error) => {
         <div class="area-admin-form-grid area-admin-form-grid-compact">
           <label>Block Code <span class="area-required">*</span><input name="block_code" required maxlength="80" autocomplete="off"></label>
           <label>Block Name <span class="area-required">*</span><input name="block_name" required maxlength="160" autocomplete="off"></label>
-          <label>Plot<input name="block_group" readonly></label>
+          <label>Plot <span class="area-required">*</span>
+            <select name="block_group" required>
+              <option value="">เลือก Plot</option>
+              <option value="A">A - กะเปา</option>
+              <option value="B">B - บางกัน</option>
+              <option value="C">C - พันไร่</option>
+              <option value="D">D - หมอนไม้</option>
+              <option value="P">P - ปลายราง</option>
+              <option value="PU">PU - ยวนสาว</option>
+              <option value="T">T - ตะกุก</option>
+              <option value="SB">SB - แปลงเพาะ</option>
+            </select>
+          </label>
 
           <label>Estate <span class="area-required">*</span><select name="estate_id" required><option value="">เลือก Estate</option></select></label>
           <label>Zone <span class="area-required">*</span><select name="zone_id" required><option value="">เลือก Zone</option></select></label>
@@ -29596,9 +29655,7 @@ init().catch((error) => {
     const form = dialog.querySelector("[data-area-block-form]");
     dialog.querySelectorAll("[data-area-dialog-close]").forEach((button) => button.addEventListener("click", () => dialog.close()));
     form.elements.block_code.addEventListener("input", () => {
-      form.elements.block_group.value = areaTerrainPlotDisplay(
-        deriveBlockGroup(form.elements.block_code.value)
-      );
+      setAreaPlotFromBlockCode(form, { overwrite: true });
       applyTerrainReferenceToForm(form);
     });
     form.elements.zone_id.addEventListener("change", () => {
@@ -29670,9 +29727,11 @@ init().catch((error) => {
     const blockCode = text(form.elements.block_code.value);
     const blockName = text(form.elements.block_name.value) || blockCode;
     const apCode = text(form.elements.ap_code.value) || blockCode;
+    const selectedPlotCode = validateAreaPlotSelection(form);
     if (!blockCode) throw new Error("กรุณาระบุ Block Code");
     if (!blockName) throw new Error("กรุณาระบุ Block Name");
     if (!apCode) throw new Error("กรุณาระบุ AP Code");
+    form.dataset.selectedPlotCode = selectedPlotCode;
     if (plantingYear != null && (plantingYear < 2450 || plantingYear > 2700)) throw new Error("ปีปลูกต้องเป็น พ.ศ. ที่ถูกต้อง");
 
     const now = new Date().toISOString();
