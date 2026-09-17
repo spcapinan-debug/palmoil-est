@@ -29553,33 +29553,42 @@ init().catch((error) => {
           <div><small>01 ข้อมูลหลัก · ข้อมูลพื้นที่</small><h3 data-area-block-title>เพิ่ม Block</h3></div>
           <button type="button" class="ghost" data-area-dialog-close aria-label="ปิด">✕</button>
         </header>
-        <div class="area-admin-form-grid">
 
-          <label>Block Code<input name="block_code" required maxlength="80"></label>
-          <label>Block Name<input name="block_name" required maxlength="160"></label>
-          <label>AP Code<input name="ap_code" required maxlength="80"></label>
+        <div class="area-admin-form-grid area-admin-form-grid-compact">
+          <label>Block Code <span class="area-required">*</span><input name="block_code" required maxlength="80" autocomplete="off"></label>
+          <label>Block Name <span class="area-required">*</span><input name="block_name" required maxlength="160" autocomplete="off"></label>
           <label>Plot<input name="block_group" readonly></label>
-          <label>Estate<select name="estate_id"><option value="">ไม่ระบุ</option></select></label>
-          <label>Zone<select name="zone_id"><option value="">ไม่ระบุ</option></select></label>
-          <label>ปีปลูก (พ.ศ.)<input name="planting_year" type="number" min="2450" max="2700"></label>
-          <label>พื้นที่ (ไร่)<input name="area_rai" type="number" step="0.0001" min="0" required></label>
+
+          <label>Estate <span class="area-required">*</span><select name="estate_id" required><option value="">เลือก Estate</option></select></label>
+          <label>Zone <span class="area-required">*</span><select name="zone_id" required><option value="">เลือก Zone</option></select></label>
+          <label>AP Code <span class="area-required">*</span><input name="ap_code" required maxlength="80" autocomplete="off"></label>
+
+          <label>ปีปลูก (พ.ศ.) <span class="area-required">*</span><input name="planting_year" type="number" min="2450" max="2700" required></label>
+          <label>พื้นที่ (ไร่) <span class="area-required">*</span><input name="area_rai" type="number" step="0.0001" min="0" required></label>
           <label>Area Planted (ไร่)<input name="area_planted_rai" type="number" step="0.0001" min="0" readonly></label>
-          <label>จำนวนต้น<input name="tree_count" type="number" step="1" min="0" required></label>
+
+          <label>จำนวนต้น <span class="area-required">*</span><input name="tree_count" type="number" step="1" min="0" required></label>
+          <label>RSPO <span class="area-required">*</span><select name="rspo_status" required><option value="">เลือกสถานะ RSPO</option><option value="RSPO">RSPO</option><option value="NON-RSPO">NON-RSPO</option></select></label>
+          <label>Terrain Type <span class="area-required">*</span><select name="terrain_type" required><option value="">เลือกประเภทพื้นที่</option><option value="แปลงปาล์ม">แปลงปาล์ม</option><option value="แปลงเพาะ">แปลงเพาะ</option><option value="อื่นๆ">อื่นๆ</option></select></label>
+
+          <label>Productive Status <span class="area-required">*</span><select name="productive_status" required><option value="">เลือกสถานะผลผลิต</option><option value="ให้ผลผลิต">ให้ผลผลิต</option><option value="ยังไม่ให้ผลผลิต">ยังไม่ให้ผลผลิต</option><option value="พักแปลง">พักแปลง</option></select></label>
           <label>Payroll Dept. Code<input name="payroll_department_code" readonly></label>
-          <label class="span-2">Payroll Description<input name="payroll_code_description" readonly></label>
-          <label>RSPO<select name="rspo_status"><option value="">ไม่ระบุ</option><option value="RSPO">RSPO</option><option value="NON-RSPO">NON-RSPO</option></select></label>
-          <label>Terrain Type<input name="terrain_type" maxlength="120"></label>
-          <label>Productive Status<input name="productive_status" maxlength="120"></label>
-          <label>สถานะ<select name="status"><option value="active">ใช้งาน</option><option value="inactive">ไม่ใช้งาน</option></select></label>
-          <label class="span-2">หมายเหตุ<textarea name="note" rows="3" maxlength="1000"></textarea></label>
-          <div class="area-admin-map-summary span-2" data-area-block-map-summary></div>
+          <label>สถานะ <span class="area-required">*</span><select name="status" required><option value="active">ใช้งาน</option><option value="inactive">ไม่ใช้งาน</option></select></label>
+
+          <label class="span-3">Payroll Description<input name="payroll_code_description" readonly></label>
+          <label class="span-3">หมายเหตุ<textarea name="note" rows="2" maxlength="1000"></textarea></label>
+          <div class="span-3 area-terrain-compare" data-area-terrain-compare></div>
+
+          <div data-area-block-map-summary hidden></div>
+          <button type="button" data-area-remove-uploaded-map hidden tabindex="-1" aria-hidden="true"></button>
         </div>
         <p class="area-admin-form-status" data-area-block-status role="status"></p>
-        <footer>
-          <button type="button" class="danger ghost" data-area-remove-uploaded-map hidden>ลบ Map ที่ Upload</button>
-          <span></span>
+
+        <footer class="area-admin-editor-footer">
+          <button type="button" class="danger ghost" data-area-block-delete hidden>ลบ</button>
+          <span class="area-admin-footer-spacer"></span>
           <button type="button" class="ghost" data-area-dialog-close>ยกเลิก</button>
-          <button type="submit" class="primary" data-area-block-save>บันทึก Block</button>
+          <button type="submit" class="primary" data-area-block-save>บันทึก</button>
         </footer>
       </form>`;
     document.body.appendChild(dialog);
@@ -29597,8 +29606,23 @@ init().catch((error) => {
       if (option?.dataset.estateId) form.elements.estate_id.value = option.dataset.estateId;
     });
     form.addEventListener("submit", handleBlockFormSubmit);
+    dialog.querySelector("[data-area-block-delete]")?.addEventListener("click", handleBlockDelete);
     dialog.querySelector("[data-area-remove-uploaded-map]").addEventListener("click", handleRemoveUploadedMap);
     return dialog;
+  }
+
+
+  /* AREA_ADMIN_COMPACT_EDITOR_V3 */
+  function setAreaEditorSelectValue(select, value) {
+    if (!select) return;
+    const normalized = String(value || "").trim();
+    if (normalized && ![...select.options].some((option) => option.value === normalized)) {
+      const option = document.createElement("option");
+      option.value = normalized;
+      option.textContent = normalized;
+      select.appendChild(option);
+    }
+    select.value = normalized;
   }
 
   function populateBlockDialog(block = null) {
@@ -29620,11 +29644,13 @@ init().catch((error) => {
     form.elements.area_rai.value = row.area_rai ?? 0;
     form.elements.tree_count.value = row.tree_count ?? 0;
     form.elements.rspo_status.value = row.rspo_status || "";
-    form.elements.terrain_type.value = row.terrain_type || "";
-    form.elements.productive_status.value = row.productive_status || "";
+    setAreaEditorSelectValue(form.elements.terrain_type, row.terrain_type || "");
+    setAreaEditorSelectValue(form.elements.productive_status, row.productive_status || "");
     form.elements.status.value = row.status || "active";
     form.elements.note.value = row.note || "";
     form.dataset.originalId = block ? String(row.id) : "";
+    const deleteButton = dialog.querySelector("[data-area-block-delete]");
+    if (deleteButton) deleteButton.hidden = !block;
     const geometry = blockMapGeometry(row.map_boundary);
     dialog.querySelector("[data-area-block-map-summary]").innerHTML = geometry
       ? `<strong>Map ที่ Upload:</strong> ${html(geometry.type)} · จะคงไว้เมื่อแก้ไขข้อมูล Block`
@@ -29678,6 +29704,83 @@ init().catch((error) => {
       ...(original?.created_at ? { created_at: original.created_at } : {}),
       updated_at: now,
     });
+  }
+
+
+  function loadedBlockUsageSummary(block) {
+    const blockId = String(block?.id || "");
+    const blockCode = String(block?.block_code || "").trim().toUpperCase();
+    const tables = state?.farmDbRows && typeof state.farmDbRows === "object" ? state.farmDbRows : {};
+    const idFields = ["block_id","area_id","terrain_id","block_uuid","source_block_id","target_block_id"];
+    const codeFields = ["block_code","terrain_code","area_code"];
+    const hits = [];
+
+    for (const [tableName, tableRows] of Object.entries(tables)) {
+      if (tableName === "blocks" || !Array.isArray(tableRows)) continue;
+      let count = 0;
+      for (const row of tableRows) {
+        if (!row || typeof row !== "object") continue;
+        const matchedId = idFields.some((field) => blockId && String(row[field] || "") === blockId);
+        const matchedCode = codeFields.some((field) =>
+          blockCode && String(row[field] || "").trim().toUpperCase() === blockCode
+        );
+        if (matchedId || matchedCode) count += 1;
+      }
+      if (count) hits.push({ table: tableName, count });
+    }
+    return hits.sort((a,b) => b.count - a.count);
+  }
+
+  async function handleBlockDelete() {
+    const dialog = ensureBlockDialog();
+    const form = dialog.querySelector("[data-area-block-form]");
+    const status = form.querySelector("[data-area-block-status]");
+    const button = dialog.querySelector("[data-area-block-delete]");
+    const id = form.dataset.originalId;
+    if (!id || ui.busy) return;
+
+    const original = rawBlockById(id);
+    if (!original) {
+      status.textContent = "ไม่พบ Block ที่ต้องการลบ";
+      return;
+    }
+
+    const usage = loadedBlockUsageSummary(original);
+    const usageText = usage.length
+      ? usage.slice(0,8).map((item) => item.table + " " + item.count + " รายการ").join("\n")
+      : "ไม่พบข้อมูลอ้างอิงในชุดข้อมูลที่โหลดอยู่";
+
+    const warning = usage.length
+      ? "พบข้อมูลที่อ้างอิง Block นี้อย่างน้อย:\n\n" + usageText +
+        "\n\nเพื่อไม่ให้ข้อมูลย้อนหลังเสีย ระบบจะไม่ลบถาวร แต่จะเปลี่ยน Block เป็นสถานะ \"ไม่ใช้งาน\""
+      : "ยืนยันลบ Block " + (original.block_code || original.block_name || "") +
+        "?\n\n" + usageText +
+        "\n\nเพื่อรักษาประวัติ ระบบจะเปลี่ยน Block เป็นสถานะ \"ไม่ใช้งาน\" แทนการลบถาวร";
+
+    if (!confirm(warning)) return;
+
+    try {
+      if (!canManageAreaMaster()) throw new Error("บัญชีนี้ไม่มีสิทธิ์แก้ไข Area Master");
+      ui.busy = true;
+      if (button) button.disabled = true;
+      status.textContent = "กำลังปิดใช้งาน Block...";
+
+      const payload = filterBlockFields({
+        ...original,
+        status: "inactive",
+        updated_at: new Date().toISOString(),
+      });
+
+      await apiUpsertBlocks([payload], "Area Master: soft delete Block");
+      await refreshAreaData();
+      dialog.close();
+      toast("ปิดใช้งาน Block " + (original.block_code || original.block_name || "") + " แล้ว");
+    } catch (error) {
+      status.textContent = "ลบไม่สำเร็จ: " + error.message;
+    } finally {
+      ui.busy = false;
+      if (button) button.disabled = false;
+    }
   }
 
   async function handleBlockFormSubmit(event) {
@@ -30080,24 +30183,13 @@ init().catch((error) => {
   }
 
   function decorateAreaTable(board) {
+    board.querySelectorAll("[data-area-actions-header]").forEach((node) => node.remove());
+    board.querySelectorAll("[data-area-actions-cell]").forEach((node) => node.remove());
+
     const rows = [...board.querySelectorAll("tr[data-farm-area-block-row]")];
     for (const row of rows) {
-      const table = row.closest("table");
-      const header = table?.querySelector("thead tr");
-      if (header && !header.querySelector("[data-area-actions-header]")) {
-        const th = document.createElement("th");
-        th.setAttribute("data-area-actions-header", "");
-        th.textContent = "จัดการ";
-        header.appendChild(th);
-      }
-      if (!row.querySelector("[data-area-actions-cell]")) {
-        const id = row.dataset.farmAreaBlockRow;
-        const td = document.createElement("td");
-        td.setAttribute("data-area-actions-cell", "");
-        td.className = "area-admin-row-actions";
-        td.innerHTML = `<button type="button" class="compact" data-area-edit-block="${html(id)}">แก้ไข</button><button type="button" class="compact ghost" data-area-view-map="${html(id)}">แผนที่</button>`;
-        row.appendChild(td);
-      }
+      row.classList.add("area-admin-clickable-row");
+      row.title = "คลิกแถวเพื่อแก้ไข Block";
     }
   }
 
@@ -30133,12 +30225,21 @@ init().catch((error) => {
   }, true);
 
   document.addEventListener("click", (event) => {
+    const editRow = event.target.closest("tr[data-farm-area-block-row]");
+    if (
+      editRow &&
+      isFarmAreaView() &&
+      !event.target.closest("button, a, input, select, textarea, label")
+    ) {
+      const block = rawBlockById(editRow.dataset.farmAreaBlockRow || "");
+      if (block) populateBlockDialog(block);
+      return;
+    }
+
     const add = event.target.closest("[data-area-add-block]");
     if (add) { populateBlockDialog(null); return; }
     const edit = event.target.closest("[data-area-edit-block]");
     if (edit) { populateBlockDialog(rawBlockById(edit.dataset.areaEditBlock)); return; }
-    const map = event.target.closest("[data-area-view-map]");
-    if (map) { viewBlockOnMap(map.dataset.areaViewMap); return; }
     const upload = event.target.closest("[data-area-upload-map]");
     if (upload) ensureUploadInput().click();
   });

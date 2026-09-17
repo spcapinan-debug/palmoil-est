@@ -18125,3 +18125,115 @@ details.farm-survey-score-section[open] > summary::after {
   .area-admin-form-grid { grid-template-columns: 1fr; }
   .area-admin-form-grid .span-2 { grid-column: span 1; }
 }
+
+
+/* AREA_ADMIN_COMPACT_EDITOR_V3 */
+#areaMasterBlockDialog.area-admin-dialog {
+  width: min(1120px, calc(100vw - 28px));
+  max-width: none;
+  max-height: calc(100vh - 28px);
+  padding: 0;
+  overflow: hidden;
+}
+#areaMasterBlockDialog .area-admin-dialog-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100vh - 28px);
+  overflow: hidden;
+}
+#areaMasterBlockDialog .area-admin-dialog-shell > header {
+  flex: 0 0 auto;
+  padding: 14px 18px 12px;
+}
+#areaMasterBlockDialog .area-admin-form-grid-compact {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+  padding: 14px 18px;
+  align-items: start;
+}
+#areaMasterBlockDialog .area-admin-form-grid-compact label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+}
+#areaMasterBlockDialog .area-admin-form-grid-compact input,
+#areaMasterBlockDialog .area-admin-form-grid-compact select,
+#areaMasterBlockDialog .area-admin-form-grid-compact textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+#areaMasterBlockDialog .area-admin-form-grid-compact input,
+#areaMasterBlockDialog .area-admin-form-grid-compact select {
+  min-height: 38px;
+}
+#areaMasterBlockDialog .area-admin-form-grid-compact textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+#areaMasterBlockDialog .area-admin-form-grid-compact .span-2,
+#areaMasterBlockDialog .area-admin-form-grid-compact .span-3 {
+  grid-column: 1 / -1;
+}
+#areaMasterBlockDialog .area-required {
+  font-weight: 800;
+}
+#areaMasterBlockDialog .area-admin-form-status {
+  flex: 0 0 auto;
+  margin: 0;
+  min-height: 22px;
+  padding: 4px 18px;
+}
+#areaMasterBlockDialog .area-admin-editor-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px 14px;
+}
+#areaMasterBlockDialog .area-admin-footer-spacer {
+  flex: 1 1 auto;
+}
+.area-admin-clickable-row { cursor: pointer; }
+
+@media (max-width: 960px) {
+  #areaMasterBlockDialog.area-admin-dialog {
+    width: min(860px, calc(100vw - 20px));
+    max-height: calc(100vh - 20px);
+  }
+  #areaMasterBlockDialog .area-admin-dialog-shell {
+    max-height: calc(100vh - 20px);
+  }
+  #areaMasterBlockDialog .area-admin-form-grid-compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px 10px;
+    padding: 12px 14px;
+  }
+}
+@media (max-width: 640px) {
+  #areaMasterBlockDialog.area-admin-dialog {
+    width: calc(100vw - 12px);
+    max-height: calc(100vh - 12px);
+  }
+  #areaMasterBlockDialog .area-admin-dialog-shell {
+    max-height: calc(100vh - 12px);
+  }
+  #areaMasterBlockDialog .area-admin-form-grid-compact {
+    grid-template-columns: 1fr;
+    padding: 10px 12px;
+  }
+  #areaMasterBlockDialog .area-admin-editor-footer {
+    padding: 9px 12px 12px;
+    flex-wrap: wrap;
+  }
+  #areaMasterBlockDialog .area-admin-footer-spacer { display: none; }
+  #areaMasterBlockDialog .area-admin-editor-footer button { flex: 1 1 auto; }
+}
