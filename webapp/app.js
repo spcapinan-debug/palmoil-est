@@ -30255,6 +30255,9 @@ init().catch((error) => {
 
   /* AREA_MASTER_LAYOUT_V5 */
   function decorateAreaMasterLayout(board) {
+    if (board.dataset.areaMasterLayoutDecorated === "1") return;
+    board.dataset.areaMasterLayoutDecorated = "1";
+
     const toolbar = board.querySelector("[data-area-master-admin-v1]");
     if (toolbar) {
       toolbar.classList.add("area-master-command-bar");
