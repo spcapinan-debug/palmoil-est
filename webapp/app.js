@@ -30318,6 +30318,33 @@ init().catch((error) => {
     }
   }
 
+
+  /* AREA_MASTER_MAP_RESTORE_V51 */
+  function restoreAreaMapPanel(board) {
+    if (!board) return;
+
+    const panel = document.querySelector(".farm-area-map-panel");
+    if (!panel) return;
+
+    if (panel.dataset.areaMapRestored !== "1") {
+      panel.dataset.areaMapRestored = "1";
+
+      const title = panel.querySelector(":scope > .section-head h3");
+      if (title) title.textContent = "แผนที่ Block";
+
+      const searchToolbar =
+        board.querySelector(".area-master-search-toolbar") ||
+        board.querySelector(".farm-activity-toolbar");
+
+      if (searchToolbar) {
+        searchToolbar.insertAdjacentElement("afterend", panel);
+      } else {
+        const toolbar = board.querySelector("[data-area-master-admin-v1]");
+        if (toolbar) toolbar.insertAdjacentElement("afterend", panel);
+      }
+    }
+  }
+
   function enhance() {
     ui.enhanceQueued = false;
     if (!isFarmAreaView()) return;
@@ -30326,6 +30353,7 @@ init().catch((error) => {
     if (!board) return;
     addToolbar(board);
     decorateAreaMasterLayout(board);
+    restoreAreaMapPanel(board);
     decorateTerrainReferenceTable(board);
     decorateAreaTable(board);
   }
