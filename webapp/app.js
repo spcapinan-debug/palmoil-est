@@ -30345,6 +30345,75 @@ init().catch((error) => {
     }
   }
 
+  /* AREA_MASTER_VISUAL_V52 */
+  const AREA_WORKFLOW_TITLES=["ข้อมูลหลัก","วางแผน","สั่งงาน","จ่ายพัสดุ","บันทึกงาน","ประสิทธิภาพการทำงาน","ค่าแรง / ต้นทุน","รายงาน"];
+
+  function decorateAreaWorkflowMenu(){
+    if(!isFarmAreaView()) return;
+    const matches=[...document.querySelectorAll("nav,section,div")].map(container=>{
+      const direct=[...container.children].filter(child=>{
+        const t=String(child.textContent||"").replace(/\s+/g," ").trim();
+        return AREA_WORKFLOW_TITLES.some(title=>t.includes(title));
+      });
+      return {container,direct};
+    }).filter(x=>x.direct.length>=7).sort((a,b)=>b.direct.length-a.direct.length || String(a.container.textContent||"").length-String(b.container.textContent||"").length);
+    const x=matches[0]; if(!x) return;
+    x.container.classList.add("area-workflow-strip");
+    x.direct.forEach(card=>{
+      card.classList.add("area-workflow-strip-card");
+      if(String(card.textContent||"").includes("ข้อมูลหลัก")) card.classList.add("area-workflow-strip-active");
+    });
+  }
+
+  function areaSatelliteExportUrl(){
+    const b=state?.blockMapData?.bounds;
+    if(!Array.isArray(b)||b.length!==4) return "";
+    const v=b.map(Number); if(!v.every(Number.isFinite)) return "";
+    const [minX,minY,maxX,maxY]=v;
+    if(minX>=maxX||minY>=maxY||minX<-180||maxX>180||minY<-90||maxY>90) return "";
+    const p=new URLSearchParams({bbox:v.join(","),bboxSR:"4326",imageSR:"4326",size:"1800,1000",format:"jpg",transparent:"false",f:"image"});
+    return "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?"+p.toString();
+  }
+
+  function applyAreaMapLayer(panel,mode){
+    const canvas=panel?.querySelector(".farm-area-map-canvas"); if(!canvas) return;
+    const m=mode==="satellite"?"satellite":"plan";
+    panel.dataset.areaMapLayer=m;
+    panel.querySelectorAll("[data-area-map-layer]").forEach(b=>{
+      const active=b.dataset.areaMapLayer===m;
+      b.classList.toggle("active",active); b.setAttribute("aria-pressed",active?"true":"false");
+    });
+    if(m==="satellite"){
+      const u=areaSatelliteExportUrl();
+      if(!u){ sessionStorage.setItem("farm-area-map-layer","plan"); return applyAreaMapLayer(panel,"plan"); }
+      canvas.style.backgroundImage='url("'+u+'")';
+      canvas.classList.add("area-map-satellite");
+    }else{
+      canvas.style.backgroundImage="";
+      canvas.classList.remove("area-map-satellite");
+    }
+    sessionStorage.setItem("farm-area-map-layer",m);
+  }
+
+  function decorateAreaMapLayerControls(){
+    if(!isFarmAreaView()) return;
+    const panel=document.querySelector(".farm-area-map-panel");
+    const header=panel?.querySelector(":scope > .section-head");
+    if(!panel||!header) return;
+    let box=header.querySelector("[data-area-map-layer-controls]");
+    if(!box){
+      box=document.createElement("div");
+      box.className="area-map-layer-controls";
+      box.setAttribute("data-area-map-layer-controls","");
+      box.innerHTML='<button type="button" data-area-map-layer="plan">แผนผัง</button><button type="button" data-area-map-layer="satellite">Satellite</button>';
+      header.appendChild(box);
+      box.addEventListener("click",e=>{
+        const b=e.target.closest("[data-area-map-layer]"); if(b) applyAreaMapLayer(panel,b.dataset.areaMapLayer);
+      });
+    }
+    applyAreaMapLayer(panel,sessionStorage.getItem("farm-area-map-layer")||"plan");
+  }
+
   function enhance() {
     ui.enhanceQueued = false;
     if (!isFarmAreaView()) return;
@@ -30354,6 +30423,8 @@ init().catch((error) => {
     addToolbar(board);
     decorateAreaMasterLayout(board);
     restoreAreaMapPanel(board);
+    decorateAreaWorkflowMenu();
+    decorateAreaMapLayerControls();
     decorateTerrainReferenceTable(board);
     decorateAreaTable(board);
   }
