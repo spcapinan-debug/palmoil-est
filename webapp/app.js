@@ -30252,6 +30252,69 @@ init().catch((error) => {
     }
   }
 
+
+  /* AREA_MASTER_LAYOUT_V5 */
+  function decorateAreaMasterLayout(board) {
+    const toolbar = board.querySelector("[data-area-master-admin-v1]");
+    if (toolbar) {
+      toolbar.classList.add("area-master-command-bar");
+      const copy = toolbar.querySelector(".area-admin-toolbar-copy");
+      if (copy) {
+        const strong = copy.querySelector("strong");
+        const span = copy.querySelector("span");
+        if (strong) strong.textContent = "จัดการ Area Master";
+        if (span) span.textContent = "จัดการ Block, Plot, พื้นที่, จำนวนต้น และสถานะใช้งาน";
+      }
+      const status = toolbar.querySelector(".area-admin-toolbar-status");
+      if (status && status.dataset.areaMasterSummary !== "1") {
+        status.dataset.areaMasterSummary = "1";
+        status.innerHTML = '<span>Block <b>' + canonicalBlocks().length + '</b></span><span>Plot <b>8</b></span>';
+      }
+      toolbar.querySelector(".area-admin-toolbar-actions")?.classList.add("area-master-command-actions");
+    }
+
+    const searchInput = board.querySelector("#farmSearch");
+    const search = searchInput?.closest(".farm-activity-toolbar, .farm-toolbar");
+    if (!search) return;
+    search.classList.add("area-master-search-toolbar");
+
+    const mainLabel = searchInput.closest("label");
+    if (mainLabel) {
+      mainLabel.classList.add("area-master-search-main");
+      const txt = [...mainLabel.childNodes].find(n => n.nodeType === Node.TEXT_NODE && String(n.textContent||"").trim());
+      if (txt) txt.textContent = "ค้นหาข้อมูลพื้นที่ ";
+      searchInput.placeholder = "Block Code / Block Name / Plot / Zone / AP Code";
+      if (!mainLabel.querySelector("[data-area-search-help]")) {
+        const help = document.createElement("small");
+        help.setAttribute("data-area-search-help","");
+        help.textContent = "ค้นหาได้จากรหัส Block, ชื่อ Block, Plot, Zone และ AP Code";
+        mainLabel.appendChild(help);
+      }
+    }
+
+    const statusSelect = search.querySelector("#farmStatusFilter");
+    const statusLabel = statusSelect?.closest("label");
+    if (statusLabel) {
+      statusLabel.classList.add("area-master-search-filter");
+      const txt = [...statusLabel.childNodes].find(n => n.nodeType === Node.TEXT_NODE && String(n.textContent||"").trim());
+      if (txt) txt.textContent = "สถานะ Block ";
+    }
+
+    for (const label of search.querySelectorAll("label")) {
+      if (label === mainLabel || label === statusLabel) continue;
+      label.classList.add("area-master-search-filter");
+    }
+
+    if (!search.querySelector("[data-area-clear-search]")) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "ghost compact area-master-clear-search";
+      b.setAttribute("data-area-clear-search","");
+      b.textContent = "ล้างการค้นหา";
+      search.appendChild(b);
+    }
+  }
+
   function enhance() {
     ui.enhanceQueued = false;
     if (!isFarmAreaView()) return;
@@ -30259,6 +30322,7 @@ init().catch((error) => {
     const board = document.querySelector(".farm-area-board");
     if (!board) return;
     addToolbar(board);
+    decorateAreaMasterLayout(board);
     decorateTerrainReferenceTable(board);
     decorateAreaTable(board);
   }
@@ -30284,6 +30348,19 @@ init().catch((error) => {
   }, true);
 
   document.addEventListener("click", (event) => {
+    const clearAreaSearch = event.target.closest("[data-area-clear-search]");
+    if (clearAreaSearch) {
+      const board = clearAreaSearch.closest(".farm-area-board");
+      const input = board?.querySelector("#farmSearch");
+      const status = board?.querySelector("#farmStatusFilter");
+      if (input) { input.value = ""; input.dispatchEvent(new Event("input", { bubbles:true })); }
+      if (status) {
+        const opt = [...status.options].find(o => String(o.textContent||"").trim() === "ทั้งหมด") || status.options[0];
+        if (opt) status.value = opt.value;
+        status.dispatchEvent(new Event("change", { bubbles:true }));
+      }
+      return;
+    }
     const editRow = event.target.closest("tr[data-farm-area-block-row]");
     if (
       editRow &&
