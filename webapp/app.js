@@ -24664,11 +24664,53 @@ function farmMapProject(point, bounds, width, height) {
   return `${x.toFixed(1)},${y.toFixed(1)}`;
 }
 
+/* AREA_MASTER_PLOT_COLOR_V532 */
+function farmMapPlotKey(row = {}) {
+  return String(
+    row?.blockGroupCode ||
+    row?.plotCode ||
+    row?.plot_code ||
+    row?.plotName ||
+    row?.plot_name ||
+    ""
+  ).trim().toUpperCase();
+}
+
 function farmMapBlockColor(row, index) {
-  const zone = String(row?.zone_name || "").toLowerCase();
-  if (zone.includes("upper")) return "#4f83c2";
-  if (zone.includes("lower")) return "#58a875";
-  const palette = ["#d18b4f", "#8e76be", "#5aa6a1", "#c76f79", "#9aa65a"];
+  const plot = farmMapPlotKey(row);
+
+  const plotColors = {
+    A: "#9ec5e8",
+    B: "#d8c993",
+    C: "#95c9b3",
+    D: "#c7addb",
+    P: "#e7b985",
+    PU: "#8dc7cf",
+    T: "#d7a4aa",
+    SB: "#b8c0ca",
+  };
+
+  if (plotColors[plot]) return plotColors[plot];
+
+  const palette = [
+    "#9ec5e8",
+    "#d8c993",
+    "#95c9b3",
+    "#c7addb",
+    "#e7b985",
+    "#8dc7cf",
+    "#d7a4aa",
+    "#b8c0ca",
+  ];
+
+  if (plot) {
+    let hash = 0;
+    for (const ch of plot) {
+      hash = ((hash * 31) + ch.charCodeAt(0)) >>> 0;
+    }
+    return palette[hash % palette.length];
+  }
+
   return palette[index % palette.length];
 }
 
@@ -24729,7 +24771,7 @@ function renderFarmAreaBlockMap() {
   const selectedDetails = selectedArea ? [
     ["Estate", selectedArea.estateDisplay || selectedArea.estateName || selectedArea.estate_name || "-"],
     ["Zone", selectedArea.zoneDisplay || selectedArea.zoneName || selectedArea.zone_name || "ยังไม่ระบุ Zone"],
-    ["Block Group", selectedArea.blockGroupCode || "-"],
+    ["Plot", selectedArea.blockGroupCode || selectedArea.plotCode || selectedArea.plot_code || "-"],
     ["พื้นที่", selectedArea.area_rai ? `${fmt(n(selectedArea.area_rai))} ไร่` : "-"],
     ["จำนวนต้น", selectedArea.tree_count ? `${fmt(n(selectedArea.tree_count))} ต้น` : "-"],
     ["AP Code", selectedArea.ap_code || "-"],
