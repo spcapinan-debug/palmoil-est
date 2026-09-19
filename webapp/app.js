@@ -697,8 +697,14 @@ function renderFarmModuleHealthNotice(view = state.view) {
   const health = farmModuleHealthForView(view);
   if (!health || health.state === "READY" || health.state === "LOADING") return "";
   const failedTables = Array.isArray(health.failedTables) ? health.failedTables : [];
-  const service = health.service || (failedTables.length ? `/api/farm-tables: ${failedTables.join(", ")}` : "ข้อมูลเสริมของ Module");
-  const message = health.message || "ข้อมูลเสริมบางส่วนของหน้านี้ยังไม่พร้อม ข้อมูลหลักยังใช้งานได้";
+  const service = failedTables.length
+    ? `ตารางที่ยังไม่พร้อม: ${failedTables.join(", ")}`
+    : (view === "farm-activities"
+      ? "ข้อมูลเสริมกิจกรรม"
+      : (health.service || "ข้อมูลเสริมของ Module"));
+  const message = health.message || (view === "farm-activities"
+    ? "ข้อมูลเสริมกิจกรรมบางส่วนยังไม่พร้อม ข้อมูลกิจกรรมหลักยังใช้งานได้"
+    : "ข้อมูลเสริมบางส่วนของหน้านี้ยังไม่พร้อม ข้อมูลหลักยังใช้งานได้");
   return `<div class="farm-sync-status warning" data-farm-module-warning="${esc(view)}">
     <span>${esc(message)} <small>${esc(service)}</small></span>
     <button type="button" data-farm-db-refresh>ลองใหม่</button>
@@ -4650,7 +4656,15 @@ function normalizeFarmDbRows(tableKey, rows = []) {
 function farmDatabaseTablesForView(view = state.view) {
   if (!isFarmView(view)) return [];
   const module = farmModuleMap()[view] || null;
-  const tableSet = new Set(view === "farm-inventory" ? [] : (module?.tables || []));
+  /* FARM_ACTIVITY_V553 */
+  const activityPageTables = ["activity_groups", "activities", "wage_codes"];
+  const tableSet = new Set(
+    view === "farm-inventory"
+      ? []
+      : view === "farm-activities"
+        ? activityPageTables
+        : (module?.tables || [])
+  );
   if (view === "farm-inventory") {
     const sharedTables = [
       "inventory_master",
@@ -13473,7 +13487,7 @@ function renderFarmWorkflowNav(module) {
     ? FARM_WORKFLOW_STAGES.filter((stage) => stage.title !== "อนุมัติ")
     : FARM_WORKFLOW_STAGES;
   return `
-    <section class="farm-flow-nav">
+    <section class="farm-flow-nav${module.id === "farm-activities" ? " farm-flow-nav-activity-v553" : ""}">
       ${stages.map((stage) => {
         const active = stage.views.includes(module.id);
         const targetView = stage.views[0] || module.id;
